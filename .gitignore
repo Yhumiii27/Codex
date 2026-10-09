@@ -1,6 +1,39 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
-# dependencies
+# ── Secrets ──────────────────────────────────────────────
+# env files (only the documented template is committed)
+.env
+.env.*
+!.env.example
+# keys and certificates
+*.pem
+*.key
+*.p8
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.cer
+*.crt
+id_rsa*
+id_dsa*
+id_ecdsa*
+id_ed25519*
+# credential and password stores
+*.secret
+*.secrets
+secrets/
+.secrets/
+credentials.json
+service-account*.json
+*.kdbx
+passwords.*
+.npmrc
+.netrc
+# local Claude Code settings (may hold machine-specific permissions)
+.claude/settings.local.json
+
+# ── Dependencies ─────────────────────────────────────────
 /node_modules
 /.pnp
 .pnp.*
@@ -10,43 +43,34 @@
 !.yarn/releases
 !.yarn/versions
 
-# testing
-/coverage
-
+# ── Build output ─────────────────────────────────────────
 # next.js
 /.next/
 /out/
-
 # production
 /build
+/dist
+# desktop app (desktop/build-app.sh)
+/desktop/dist
+*.app
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+# vercel
+.vercel
+# testing
+/coverage
 
-# misc
+# ── Local data ───────────────────────────────────────────
+# local database and uploaded files (PGlite)
+/.data
+# design source archives (extracted in design/)
+/*.zip
+
+# ── Misc ─────────────────────────────────────────────────
 .DS_Store
-*.pem
-
-# debug
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
-
-# env files (can opt-in for committing if needed)
-.env*
-
-# vercel
-.vercel
-
-# typescript
-*.tsbuildinfo
-next-env.d.ts
-
-# local database (PGlite)
-/.data
-
-# design source archives (extracted in design/)
-/*.zip
-
-!.env.example
-
-# desktop app build output
-/desktop/dist
