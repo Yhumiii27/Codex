@@ -38,7 +38,7 @@ Générer un jeton : `openssl rand -base64 32`. Les mêmes valeurs sont déclar�
 ## `GET /api/registry` — registre des types
 
 Registre des familles et des types de documents, dont Codex est propriétaire et que Keystone lit (`docs/modele-cible.md`
-§2). Lecture seule, sans session ni jeton tant qu'Entra ID n'est pas branché : à n'exposer que sur le réseau du groupe.
+§2). Lecture seule, sans session ni jeton tant que l'authentification réelle n'est pas branchée : à n'exposer que sur le réseau du groupe.
 Keystone l'appelle de serveur à serveur (pas d'en-têtes CORS).
 
 **Cache** : `Cache-Control: public, max-age=60, must-revalidate` et un `ETag` calculé sur le contenu du registre ;

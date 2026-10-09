@@ -18,7 +18,8 @@ déposés sont stockés dans `.data/files/` (ou dans SharePoint, voir `src/lib/s
 
 - Repartir de zéro : arrêter le serveur, `npm run db:reset`, relancer. **Obligatoire après le passage au modèle v2** :
   une base créée avec l'ancien modèle ne peut pas recevoir la nouvelle migration.
-- Après une modification de `src/db/schema.ts` : `npm run db:generate` (nouvelle migration SQL).
+- Après une modification de `src/db/schema.ts` : tant qu'il n'y a pas de base de production, régénérer la migration
+  unique (`rm -rf drizzle && npx drizzle-kit generate --name init`) puis `npm run db:reset`.
 - Contrôles : `npm run typecheck`, `npm run lint`, `npm run build`.
 
 Variables : voir `.env.example` (Keystone, Vigie, dossier de données, jetons de l'API d'intégration).
@@ -107,7 +108,8 @@ src/
     i18n.ts            textes FR / EN
 ```
 
-## À valider
+## Décisions et points ouverts
 
-Voir `docs/registre-points-ouverts.md` (registre des types) et les points *provisoires* de `docs/modele-cible.md`
-(organisation, stockage SharePoint), ainsi que le choix du fournisseur d'authentification (Entra ID).
+Les décisions prises avec l'utilisateur et les questions encore ouvertes sont dans `docs/decisions.md` ; le deck
+d'origine et son audit dans `docs/sources/` et `docs/audit-deck-epc2i.md`. Voir aussi `docs/registre-points-ouverts.md`
+(registre des types) et les points *provisoires* de `docs/modele-cible.md` (organisation, stockage SharePoint).

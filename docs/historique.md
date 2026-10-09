@@ -1,0 +1,428 @@
+# Historique du travail sur Codex (7 → 9 octobre 2026)
+
+Ce fichier explique comment le code en est arrivé là. Il résume une session Claude Code locale, sur Mac, dont la
+conversation et les résultats de workflows ne sont pas dans le dépôt. Il permet de reprendre le travail, en particulier
+depuis une session cloud, sans reposer des questions déjà tranchées.
+
+- Décisions de l'utilisateur, citées mot pour mot, et questions encore ouvertes : [decisions.md](decisions.md).
+- Modèle fonctionnel qui fait foi : [modele-cible.md](modele-cible.md).
+- Audit du deck : [audit-deck-epc2i.md](audit-deck-epc2i.md). Deck d'origine : `docs/sources/creation-ged-epc2i.pptx`,
+  transcrit en texte dans `docs/sources/deck-ged-epc2i.md`.
+- État d'avancement et reste à faire : [avancement-v2.md](avancement-v2.md).
+
+Conventions :
+- Les heures sont en UTC (heure de Paris = UTC+2).
+- Les paroles de l'utilisateur sont citées mot pour mot, fautes comprises, et toujours attribuées. Les « » servent
+  aussi pour les libellés d'interface, les titres de section et les citations de l'assistant ou des agents.
+- « Proposé, non confirmé » désigne une proposition de l'assistant que l'utilisateur n'a pas validée.
+
+## Repères
+
+| Quand (UTC) | Étape | § |
+|---|---|---|
+| 7 oct., 10:58 → 11:39 | Construction de Codex v1 depuis la maquette, puis deux relectures | 1 |
+| 7 oct., 12:19 → 17:52 | Audit du deck, puis arbitrages de l'utilisateur | 2 |
+| 7 oct., 17:56 → 18:07 | Modèle v2 : schéma et logique métier. Coupure sur la limite d'usage alors que Codex ne compile pas | 3 |
+| 7 oct., 17:56 → 22:55 | Fusion du registre des types : 69 types, 23 familles | 4 |
+| 7 oct., 22:43 → 23:18 | Reprise, réécriture des écrans sur la v2, test de bout en bout | 5 |
+| 8 oct., 05:33 → 06:19 | Relecture indépendante de la v2 (57 constats) et corrections | 6 |
+| 8 oct., 06:21 → 07:36 | App Mac, relecture (12 constats), corrections partielles | 7 |
+| 8 oct., 07:44 → 9 oct., 14:22 | Premier commit, `.gitignore`, dépôt GitHub privé | 8 |
+| 9 oct., 15:00 | Passage en session cloud : ce qui n'existait qu'en local est versé dans le dépôt | 9 |
+
+La session a été coupée plusieurs fois par une limite d'usage ou de dépense :
+- le 7 octobre à 13:38, reprise à 17:31 sur « Try again » ;
+- le 7 octobre à 18:07, reprise à 22:43 sur « Try again » ;
+- le 8 octobre à 07:35, pendant les corrections de l'app Mac ;
+- le 8 octobre à 07:44, sur la limite de dépense. La demande de commit, renvoyée aussitôt, a abouti.
+
+## 1. Construction depuis la maquette Claude Design (7 oct., 10:58 → 11:39)
+
+- **Demande** : « Regarde dansle dossier Codex et lance la création du software d'après l'extraction de l'IU faite
+  depuis claude design. dit moi si tu as des questions. »
+- **Source** : le handoff Claude Design dans `design/`. L'écran est `design/GED Groupe.dc.html` et le design system
+  Nocturne est dans `design/_ds/`. `design/HANDOFF-README.md` demande une reproduction au pixel près.
+- **Cadrage** : l'utilisateur a choisi « App locale persistée (Recommandé) », « Rôle simulé (Recommandé) » et
+  « Affaires simulées (Recommandé) ».
+- **Réalisation** :
+  - même stack que Keystone : Next.js 16, React 19, PGlite et Drizzle ;
+  - feuille Nocturne copiée telle quelle dans `src/app/nocturne.css` ;
+  - 7 écrans en FR et EN : Accueil, Explorateur, Fiche document, Recherche, Validations, Archivage, Administration.
+- **Bug trouvé en test** : les versions de démo étaient seedées à l'envers, donc la plus ancienne passait pour la
+  courante. Corrigé.
+- **Relecture de fidélité au design** par un sous-agent (20 écarts). Corrigés :
+  - l'ordre des modèles, des affaires et des validations ;
+  - l'onglet Versions, qui ne présélectionne plus de ligne ;
+  - l'en-tête, qui arrivait après le corps de la page (`<Suspense>` retiré) ;
+  - la recherche en direct depuis l'en-tête ;
+  - les sélections, conservées quand on change de filtre.
+- **Relecture des bugs** par un sous-agent (13 constats). Corrigés :
+  - un document archivé ou sous gel juridique est verrouillé ;
+  - pas de nouvelle version pendant un circuit ;
+  - le demandeur ne valide pas son propre document ;
+  - un rejet laisse publié un document qui l'était déjà ;
+  - une garde d'étape bloque les clics venus d'une page périmée ;
+  - les erreurs s'affichent en message (`src/app/error.tsx`) au lieu de faire planter l'écran ;
+  - le 29 février ne bloque plus les dépôts ;
+  - la route fichier répond 404 au lieu de 500.
+- **Écarts gardés volontairement** (proposés, non confirmés) :
+  - le rôle Gestionnaire a le droit « Valider », pour que Claire Bardet traite ses étapes ;
+  - les échéances sont triées par date ;
+  - le point de notification n'apparaît que s'il y a des validations en attente ;
+  - les documents de démo sans fichier affichent « aperçu de démonstration ».
+- **Questions posées en fin d'étape** : durées de rétention et libellés des circuits, fournisseur d'authentification,
+  Keystone par API ou base partagée, premier commit. La suite de chacune est dans [decisions.md](decisions.md), section
+  « Questions posées restées sans réponse directe ».
+- Ce code v1 a ensuite été en grande partie réécrit sur le modèle v2 (§3 à §5).
+
+## 2. Audit du deck et décisions (7 oct., 12:19 → 17:52)
+
+- **Demande** : « Audit le fichier ci-joint qui décrit comment je voulais créer la GED. Fait moi un retour de ce que tu
+  as compris avant d'intégrer cela au projet. » Le fichier joint est le deck « Création de la GED EPC2I » (18 slides),
+  versionné depuis dans `docs/sources/creation-ged-epc2i.pptx`.
+- **Méthode** : un workflow multi-agents, dont le rapport complet est dans [audit-deck-epc2i.md](audit-deck-epc2i.md).
+  - Exigences : 64 relevées.
+  - Modèle de métadonnées : 4 niveaux.
+  - Écarts avec le code, vérifiés un par un : sur 48 éléments, 6 couverts, 21 partiels, 12 absents et 9 en conflit.
+  - Architecture.
+  - Critique du deck : 24 ambiguïtés, 16 contradictions, 23 manques.
+  - Contrôle de complétude : 12 points manqués, 14 conflits, 12 questions prioritaires.
+- **Constat principal** : le deck prévoit SharePoint, Power Automate et Power Apps, alors que Codex est une application
+  autonome.
+- **Découverte** : la spec Keystone (`docs/spec/10-site-docs-mywork-settings.md`, dans le dépôt Keystone) décrit déjà
+  Codex, avec un registre de 28 types codés. Il y avait donc trois modèles à réconcilier : la maquette, la spec Keystone
+  et le deck.
+- **12:40** : retour à l'utilisateur. Rien n'est intégré, et 10 questions lui sont posées.
+- **13:38** : réponses de l'utilisateur. Sur le socle technique, que la session cloud a reposé : « Codex prends toute la
+  charge et les workflow, la seule option ouverte si c'est plus simple est que le stockage des documents soit sous une
+  bibliothèque sharepoint gérée par Codex (les metadonnées et autres informations sont dans codex et uniquement le
+  document et son nom et sa version sont mises dans sharepoin).. »
+
+  Ses autres réponses de 13:38 :
+
+  | Sujet | Réponse de l'utilisateur |
+  |---|---|
+  | Modèle de référence | « Exprime moi cette question autrement je ne comprends pas. » (question reformulée à 17:33) |
+  | Domaine | « Origine et rattachement me parait être la bonen solution » |
+  | Identifiant | « TYPE-Proj-SEQ est une bonne codification pour les documents issus des projets fait moi une proposition pour les autres documents. » |
+  | Révisions | « Un document ne change pas de nom ni d'ID au passage de version. Il doit passer par un workflow de validation pour être approuvé. Nous n'utilisons que des indices en lettre et pas d'indices majeurs/mineurs. » |
+  | Confidentialité | « Il peut y avoir un niveau publique, pour les documents de communication par exemple, le type publique doit être restraint a certaines famille le reste doit être a minima restraint a la diffusion a une extreprise externe ou un client. » |
+  | Brouillons | « La personne propriétaire ou qui modifiera un document via une ECO verra les brouillons des documents qui lui sont liés/attribués. » |
+  | Circuits | « Nous devons construire cela en fonction des roles et des documents mais des workflow differents sont a prévoir, il n'y a pas a proprement parler d'autorité d'approbation cela depend des documents. » |
+  | ECR/ECO | « Je pense que les ECR/ECO doivent être centralisées dans "Vigie", quelles soient projet ou documentaires. » |
+  | Organisation | « Je te donnerais un organigramme des services et des sites plus tard » |
+  | Conservation | « La conservation des documents sera selon les règles d'usage par type de document. » |
+  | Migration | « La migration sera faite via un code dédié fait qpecifiquement pour cette tache et ne sera pas intégré dans codex directement » |
+
+- **17:33** : l'assistant reformule ce qu'il a retenu et fait des propositions : fusion des registres, codification
+  `TYPE-CONTEXTE-SEQ`, cycle de vie, échelle de confidentialité à 5 niveaux. Il demande 6 confirmations.
+- **17:52** : réponse de l'utilisateur, citée en entier :
+
+  ```text
+  1- oui fusionne pour le moment on adaptera plus tard
+  2- QMS est le code pour les templates
+  3- oui
+  4- c'est un workflow vigie
+  5- oui
+  pour la question 2: oui fusionne les deux bases
+  pour le cycle de vie conserve les sous versions de travail
+  pour vigie, il va gérer les ECO/ECR mais les demandes doivent pouvoir etre faites depuis codex pour les documents ou depuis keystone pour les sujets liés au projets ou au projet lui meme.
+  ```
+
+  Les numéros 1 à 5 renvoient aux confirmations demandées à 17:33 :
+  1. fusionner le deck et la liste Keystone en une seule liste de référence ;
+  2. code du département ou `QMS` pour les documents sans rattachement ;
+  3. échelle de confidentialité à 5 niveaux ;
+  4. passage à « obsolète » par un ECR dans Vigie ou par un workflow interne à Codex ;
+  5. valideurs et gestionnaires documentaires voient-ils aussi les brouillons.
+
+  La sixième (SharePoint) est restée sans réponse. « pour la question 2 » renvoie à la question 2 de 12:40 (modèle de
+  référence), reformulée à 17:33.
+- **Encore sans réponse** :
+  - SharePoint : un fichier par version, et aucun accès direct des utilisateurs à la bibliothèque ? Posée 4 fois ;
+    marqué *provisoire* dans le modèle cible.
+  - L'organigramme réel.
+- Le détail de chaque décision et la liste des questions ouvertes sont dans [decisions.md](decisions.md).
+
+## 3. Modèle v2 (7 oct., 17:56 → 18:07)
+
+Le modèle est consigné dans [modele-cible.md](modele-cible.md), qui fait foi. Ce qui change par rapport à la v1 :
+
+- **Classement** : deux axes, l'origine (interne ou externe) et le rattachement (aucun, projet ou recherche). Viennent
+  ensuite la famille, le type et le sous-type. Ils remplacent les 4 axes de la maquette.
+- **Identifiants `TYPE-CONTEXTE-SEQ`** (`src/lib/codes.ts`, `src/lib/codification.ts`).
+  - Le contexte est le code projet, le code programme, `QMS` pour les modèles, ou à défaut le code du département.
+  - Avant la première approbation, un reclassement donne un nouvel ID et garde l'ancien comme alias.
+- **Révisions en lettres** avec versions de travail A.1, A.2… (tables `revisions` et `working_versions` de
+  `src/db/schema.ts`).
+  - Statuts d'une révision : Brouillon → En révision → Approuvé → En vigueur → Remplacé.
+  - Le document lui-même peut être Obsolète ou Archivé.
+- **Confidentialité** : 5 niveaux, de Public à Très confidentiel. La visibilité et le cercle de rédaction sont dans
+  `src/lib/access.ts`.
+- **Circuits par fonction** (tables `functions` et `function_holders`), résolus au lancement. Il n'y a plus
+  d'« autorité d'approbation ».
+- **Demandes Vigie** : ECR de modification ou de retrait (table `change_requests`). La décision est simulée par
+  `simulateVigieDecision` (`src/lib/actions.ts`) tant que `VIGIE_API_URL` n'est pas défini (`vigieSimulated`,
+  `src/lib/vigie.ts`), puis appliquée par `applyChangeDecision` (`src/lib/lifecycle.ts`).
+- **Conservation** : une règle par type, portée par le registre et calculée dans `src/lib/retention.ts`.
+- **Données de démo** : les mêmes personnes que Keystone et ses projets HLT-026, NDC-031 et RCF-019
+  (`src/db/seed-org.ts`, `src/db/seed-docs.ts`). Les départements et les sites restent provisoires.
+- **Coupure à 18:07** : la limite d'usage est atteinte alors que les écrans sont encore sur l'ancien modèle et que Codex
+  ne compile pas. [avancement-v2.md](avancement-v2.md) est créé pour reprendre.
+
+## 4. Fusion du registre des types (7 oct., 17:56 → 22:55)
+
+- **Déroulé** : un workflow fusionne la taxonomie du deck (23 catégories, 45 types, 157 sous-types) et le registre
+  Keystone (28 codes).
+  - Le premier passage (18:12) s'arrête avant l'étape de contrôle, coupée par la limite d'usage.
+  - Le contrôle est relancé à 22:44 en réutilisant le cache.
+  - Le registre contrôlé est écrit dans `src/db/registry.ts` à 22:55.
+- **Résultat** : **69 types dans les 23 familles du deck.**
+  - 41 types viennent du deck seul, 6 sont fusionnés (PRO, CTR, LET, AUD, NCR, REC) et 22 viennent de Keystone seul.
+  - Aucune famille Keystone n'est ajoutée : ses 7 familles trouvent place dans les catégories du deck.
+- **Choix de fusion** :
+  - le type « Audit & Inspection » est éclaté en AUD, NCR et REC ;
+  - MIN (compte rendu de réunion) est transversal ;
+  - les codes d'ingénierie Keystone (PID, PFD, SCH, GA, LST, BOM, FDS, HMI, VAR) deviennent des types ;
+  - FDS désigne la spécification fonctionnelle, et les fiches de données de sécurité deviennent un sous-type de DTF ;
+  - les codes ECR et ECO sont évités, car réservés à Vigie ;
+  - FRM est le type des modèles, avec le contexte `QMS`.
+- **Contrôle** : une vérification complète par script, puis 12 corrections.
+  - La vérification confirme que :
+    - les 45 types et les 157 sous-types du deck sont présents ;
+    - les 28 codes Keystone sont présents et les codes sont uniques ;
+    - les circuits n'utilisent que les 16 fonctions prévues ;
+    - « Public » n'est admis que pour POL, REG, DTF, PUB et COL.
+  - Les 12 corrections :
+    - des libellés et des sous-types (FDS, DEF, REG, PID, RPT, MAN, LST, VIS) ;
+    - la base de conservation de DTF et la note de PRO ;
+    - la source « both » pour AUD, NCR et REC ;
+    - le champ « livrable client » renseigné pour les 41 types venus du seul deck (vrai pour EXG, MES et REM) ; les
+      valeurs Keystone sont inchangées, soit 14 types livrables au total ;
+    - l'ordre des listes.
+- **Points ouverts** : le contrôle en relève 15, ramenés à 9 questions dans
+  [registre-points-ouverts.md](registre-points-ouverts.md). Par exemple :
+  - des ID comme `FIN-FIN-0001` ;
+  - une étape « chef de projet » sur des types sans projet ;
+  - le déclencheur « fin de projet » hors projet ;
+  - les durées de RSQ et de RHF.
+
+## 5. Réécriture des écrans sur la v2 (7 oct., 22:43 → 23:18)
+
+- **Reprise** : sur « Try again », à 22:43. La session principale écrit le seed v2 et le registre ; la couche données
+  compile à 22:49.
+- **Cinq agents en parallèle**, chacun sur ses propres fichiers :
+  - les 14 dialogues et la coque ;
+  - la fiche document et la route fichier ;
+  - l'accueil, l'explorateur, la recherche et l'export CSV ;
+  - les validations, l'archivage et l'administration ;
+  - les API d'intégration : `src/lib/importer.ts`, `/api/registry`, `/api/import`, `/api/integrations/vigie`,
+    [api.md](api.md) et les nouvelles variables de `.env.example`.
+- **Agent d'intégration** : typecheck, lint et build passent sans erreur.
+  - Il a testé un build de production sur une base neuve : 4 rôles, FR et EN, 62 documents, création depuis un modèle
+    puis reclassement avec alias, circuit jusqu'à la mise en vigueur, demande Vigie acceptée.
+  - Il a aussi :
+    - rassemblé les textes dans `src/lib/i18n.ts` ;
+    - compté un circuit rejeté comme terminé ;
+    - affiché les révisions en cours sous la forme « B.2 » ;
+    - gardé modifiables les documents d'un type désactivé ;
+    - rétabli les trois boutons de l'accueil ;
+    - réécrit `README.md` et [avancement-v2.md](avancement-v2.md).
+- **Choix laissé à l'utilisateur** (proposé, non confirmé) : dans le dialogue de création, le type et le rattachement se
+  filtrent l'un l'autre. L'alternative plus stricte serait d'imposer de choisir le type d'abord.
+- **Test de bout en bout par la session principale**, sur une base neuve :
+  - création depuis un vrai fichier, avec l'ID `PRO-HSE-0003` et le fichier `PRO-HSE-0003_A.1.pdf` ;
+  - version de travail A.2 ;
+  - circuit Responsable qualité puis Direction, approuvé par Gabriel Comte puis Hélène Costa, jusqu'à la mise en
+    vigueur ;
+  - règles de visibilité ;
+  - API : le registre renvoie 69 types, l'import et le webhook restent fermés sans jeton ;
+  - export CSV.
+
+## 6. Relecture indépendante et corrections de la v2 (8 oct., 05:33 → 06:19)
+
+- **Demande** : « reprends ».
+- **Méthode** : un workflow de cinq relecteurs (métier, accès, écrans, API, données). Un vérificateur distinct conteste
+  chaque constat, puis un agent corrige ceux qui sont confirmés.
+- **Bilan** : 57 constats, dont 55 confirmés et 2 écartés.
+  - L'agent de correction annonce « 52 » défauts confirmés corrigés, dont 6 en partie, regroupés en 27 lots après
+    fusion des doublons. L'écart avec 55 n'est pas expliqué.
+  - Ci-dessous, le rattachement de ses corrections aux constats est déduit de son rapport. C'est l'état qu'il a rapporté
+    le 8 octobre ; seul le parcours décrit plus bas a été revérifié.
+- **Schéma** :
+  - nouveau statut de révision `cancelled` ;
+  - 5 index uniques : une lettre par document, une révision en vigueur par document, un circuit en cours par révision,
+    une demande Vigie en attente par document, un numéro de version de travail par révision ;
+  - `drizzle/0000_init.sql` régénéré, donc `npm run db:reset` est obligatoire sur une base existante.
+- **Vérification par la session principale**, sur une base neuve :
+  - création de `PRO-QUA-0003`, puis version de travail A.2 ;
+  - circuit qui écarte l'auteur : Gabriel Comte rédige, Hélène Sauvage valide comme Responsable qualité, puis Hélène
+    Costa pour la Direction ;
+  - ECR-2026-004 demandée par Julien Wagner, acceptée en simulation Vigie, puis ouverture de la révision B ;
+  - l'utilisateur par défaut est de nouveau Claire Bardet (`DEFAULT_USER = 'cbardet'` dans `src/lib/context.ts`).
+
+Constats confirmés, dans la numérotation du workflow :
+
+**Métier (14 confirmés)**
+1. `promoteDue` mettait en vigueur des révisions de documents obsolètes, archivés ou gelés. Corrigé.
+2. La simulation Vigie sautait les verrous du webhook. Corrigé : contrôles communs dans `applyChangeDecision`.
+3. Restaurer une archive remettait en vigueur un document retiré. Corrigé : il revient à « obsolète ».
+4. L'auteur ou le modificateur désigné pouvait valider sa propre révision. Corrigé : les auteurs sont exclus du circuit.
+5. Un retrait accepté ou un gel bloquait le circuit et la révision ouverte. Corrigé : circuit clos, révisions annulées,
+   nouvelle action `releaseHold`.
+6. Des contrôles se faisaient hors transaction (circuits en double, versions ajoutées en révision). Corrigé : contrôles
+   dans la transaction et index uniques.
+7. Un reclassement pendant un circuit gardait les valideurs de l'ancien type. Corrigé : refusé (`circuit_running`).
+8. La création depuis un modèle ne contrôlait ni la lecture ni l'état du modèle. Corrigé.
+9. `requestChange` ne contrôlait ni la lecture ni le droit, et permettait de retirer un brouillon. Corrigé.
+10. La conservation depuis « remplacé » ignorait l'archivage et les révisions remplacées. **Partiel** : le décompte
+    reste par document, et c'est documenté.
+11. La date d'effet n'était pas validée (date passée ou invalide). Corrigé (`invalid_date`).
+12. `delegateStep` n'avait pas de garde d'étape. Corrigé.
+13. Import : une référence ancienne égale à un ID Codex désignait un autre document. Corrigé (409 `ref_is_codex_id`).
+14. Changer de projet avant approbation laissait la pièce Keystone attendue sur l'ancien projet. Corrigé.
+
+**Accès (8 confirmés)**
+15. `requestChange` ne contrôlait pas la visibilité, ce qui permettait de viser un document caché. Corrigé.
+16. Un modèle (FRM) confidentiel ou archivé pouvait être copié sans `canRead`. Corrigé.
+17. Les versions de travail intermédiaires étaient servies à tous les lecteurs. Corrigé : réservées au cercle de
+    rédaction.
+18. L'onglet Projet affichait l'ID et le statut de documents cachés. Corrigé.
+19. `setReaders` ne contrôlait ni le droit d'édition ni les verrous. Corrigé.
+20. Matrice : Lire, Publier et Détruire, ainsi que le droit admin du gestionnaire, étaient sans effet. Corrigé : Lire et
+    Publier sont appliqués ; Détruire est affiché en lecture seule et refusé par le serveur.
+21. Archiver, geler et restaurer ne vérifiaient pas la visibilité. Corrigé.
+22. `simulateVigieDecision` ignorait les verrous. Corrigé (doublon du n° 2).
+
+**Écrans (14 confirmés)**
+23. La « Simulation Vigie » était proposée sur un document archivé ou gelé. Corrigé : seul le refus reste possible.
+24. Approuver et Rejeter restaient actifs sur un document gelé ou obsolète. Corrigé : boutons désactivés, avec le motif.
+25. Des cellules et deux lignes de la matrice des droits étaient sans effet. Corrigé : elles sont en lecture seule.
+26. Les lecteurs désignés n'étaient ni affichés ni modifiables sur la fiche. Corrigé.
+27. L'accueil et les notifications menaient à des écrans interdits au rôle. Corrigé.
+28. Le bouton de validation menait à un circuit invisible. Corrigé : « Suivre le circuit », et un écran « pas d'accès ».
+29. Les lignes de tableau cliquables étaient inutilisables au clavier. Corrigé : vrai lien et focus visible.
+30. Les libellés des dialogues n'étaient pas associés aux champs. Corrigé : dialogues nommés, focus gardé à l'intérieur.
+31. Un dialogue se fermait quand on relâchait la souris sur le fond. Corrigé.
+32. Un fichier non prévisualisable affichait une page factice. Corrigé : un panneau de téléchargement la remplace.
+33. La pagination restait sur « Page 1 sur 1 » quand le nombre de pages était inconnu. **Partiel** : les PDF déjà
+    stockés ne sont pas recomptés, ce qui est sans objet après une remise à zéro de la base.
+34. Le dialogue « Déléguer » proposait le demandeur. Corrigé.
+35. Des textes n'étaient pas traduits. Corrigé.
+36. Le rôle en lecture seule pouvait faire des demandes de modification ou de retrait. Corrigé côté serveur.
+    **Partiel** : la liste des demandes n'est pas filtrée selon la visibilité.
+
+**API (10 confirmés, 1 écarté)**
+37. Import : le type MIME était repris tel quel. Corrigé : il est normalisé.
+38. Le fichier était stocké pendant la transaction, ce qui verrouillait PGlite pendant l'envoi SharePoint. Corrigé :
+    dépôt avant la transaction, renommage après.
+39. Les versions de travail étaient servies à tous les lecteurs. Corrigé (doublon du n° 17).
+40. Webhook Vigie : un retrait pendant une révision bloquait le circuit. Corrigé (doublon du n° 5).
+41. Le droit « Lire » n'était pas vérifié par les routes fichier et export. Corrigé : il est contrôlé dans `canRead`.
+42. Import : le doublon (409) n'était détecté qu'après la validation. Corrigé : un rejeu reçoit 409 d'emblée.
+43. *Écarté par le vérificateur* : la comparaison de `legacyRef` aux ID Codex.
+44. Pilote SharePoint : écrasement silencieux et pas d'envoi par morceaux. **Partiel** :
+    - corrigé : plus d'écrasement silencieux, délais et reprises en place ;
+    - non fait : l'import est plafonné à 250 Mo au lieu d'un envoi par morceaux ;
+    - non fait : le fichier n'est pas renommé lors d'un reclassement.
+45. Un fichier sans extension se téléchargeait avec un nom en « .1 ». Corrigé.
+46. L'export du journal d'audit s'arrêtait à 100 000 lignes. Corrigé : export par lots, sans limite.
+47. Une requête HEAD lisait le fichier et journalisait un téléchargement. Corrigé.
+
+**Données (9 confirmés, 1 écarté)**
+48. Des titulaires de fonctions n'avaient pas, avec leur rôle, le droit d'approuver. Corrigé : 9 titulaires passent
+    validateur.
+49. Seed : une révision de travail était créée avant la mise en vigueur de la précédente. Corrigé.
+50. Seed : la date d'émission déclarée était ignorée. Corrigé.
+51. Un retrait pendant un circuit laissait un workflow ouvert. Corrigé (doublon du n° 5).
+52. La simulation Vigie agissait sur des documents archivés ou gelés. Corrigé (doublon du n° 2).
+53. La matrice des droits n'était que partiellement appliquée. Corrigé (doublon du n° 20).
+54. Pièces attendues par Keystone : le type n'était pas vérifié au dépôt. **Partiel** : le serveur refuse un mauvais
+    type, mais le formulaire ne verrouille pas le type.
+55. *Écarté par le vérificateur* : le choix de l'approbateur dépendait de l'ordre des lignes `function_holders`.
+56. Un compte système était accepté comme utilisateur simulé. Corrigé : il est ignoré.
+57. Le numéro de version de travail et le circuit étaient calculés hors transaction. Corrigé : index uniques.
+
+## 7. App Mac (8 oct., 06:21 → 07:36)
+
+- **Demande** : « fait une app que je puisse lancer depuis le bureau de mon mac ».
+- **Réalisation** dans `desktop/` : une app native en Swift (AppKit et WKWebView, sans Electron).
+  - Fichiers : `CodexApp.swift`, `build-app.sh` (lancé par `npm run app`), `make-icon.swift` et `make-alias.swift`.
+  - L'app démarre le serveur de production sur le port 3110 et l'arrête quand on la quitte, même après un plantage.
+    Les deux cas ont été vérifiés.
+  - Elle est installée dans le dossier Applications de l'utilisateur, avec un alias sur le bureau. Le bureau,
+    synchronisé par iCloud, empêchait de signer l'app à cet endroit.
+  - Ses données sont séparées de celles du serveur de développement (section « Application Mac » de `README.md`).
+- **Non vérifié** :
+  - le rendu dans la fenêtre, car macOS a refusé la capture d'écran ;
+  - le choix d'un fichier à déposer et les téléchargements dans la fenêtre, que l'utilisateur doit tester lui-même.
+- **Relecture** : 12 constats, tous confirmés. L'agent de correction a échoué sur la limite de dépense. La session
+  principale a donc corrigé à la main les points suivants, vérifiés dans le code :
+  - « Avec Codex ouvert, relancer npm run app détruit la build » (majeur) et « npm run app recompile .next sous le
+    serveur de l'app ouverte ». Désormais, `desktop/build-app.sh` refuse avant toute compilation si l'app tourne ou si
+    le port 3110 répond.
+  - `make-alias` supprimait sans vérification ce qui se trouvait à l'emplacement de l'alias, y compris un dossier
+    (majeur). Il ne remplace plus qu'un alias existant (`desktop/make-alias.swift`).
+  - Les bundles étaient supprimés sans vérifier qu'il s'agissait de Codex. Seul un bundle d'identifiant
+    `com.epc2i.codex` est désormais supprimé (fonction `ours()` de `desktop/build-app.sh`).
+- **Encore à corriger** (8 constats, aussi listés dans [avancement-v2.md](avancement-v2.md)) :
+  - le message « Compilation de Codex… » ne s'affiche pas ;
+  - si l'on quitte pendant la compilation, `next build` continue de tourner ;
+  - `needsBuild()` ignore `.env*` et `tsconfig.json` ;
+  - un téléchargement (erreur WebKit 102) peut être pris pour une panne du serveur ;
+  - ⇧⌘H ou « Réessayer » relancent un démarrage en parallèle ;
+  - le menu n'a pas d'élément « Fermer », donc ⌘W ne fait rien ;
+  - une copie de l'app reste dans `desktop/dist` ;
+  - la signature ad hoc fait redemander l'accès au dossier Téléchargements à chaque reconstruction.
+- **État de l'app installée** : les scripts corrigés compilent, mais `npm run app` n'a pas été relancé. L'app installée
+  est donc celle d'avant ces corrections.
+
+## 8. Git et GitHub (7 → 9 oct.)
+
+- **7 oct., 11:39** : le dépôt git est initialisé, sans commit. L'assistant demande « Veux-tu que je fasse le premier
+  commit ? », sans réponse directe.
+- **8 oct., 07:44** : « Commit the working tree changes with a sensible message. »
+  - Premier commit, `db26518`, avec 99 fichiers et le message « Codex GED: application Next.js, modèle documentaire v2
+    et app Mac ».
+  - Il est fait sur une nouvelle branche, `codex-ged-v2`, par choix de l'assistant : `main` n'avait encore aucun commit.
+  - Rien n'est poussé.
+- **9 oct., 14:17** : « Add a .gitignore that excludes secrets (.env, keys, passwords) and build folders, initialize git
+  if needed, commit everything, create a private GitHub repository called Codex and push to it. »
+  - **`.gitignore`** : il exclut les fichiers `.env*` (sauf `.env.example`), les clés, les certificats, les fichiers
+    d'identifiants et de mots de passe. Il exclut aussi les sorties de build (`.next`, `out`, `build`, `dist`,
+    `desktop/dist`, `*.app`), `node_modules`, `.data` et les zips de la maquette. Commit `ef1df85` « Gitignore :
+    exclure les secrets et les sorties de build ».
+  - **Premier commit réécrit** en `d05d498`, avec l'identité Git du compte GitHub `Yhumiii27`. Il portait une adresse
+    e-mail personnelle et n'avait été poussé nulle part ; aucune adresse personnelle n'est publiée.
+  - **Connexion** : `gh` est installé, et l'utilisateur se connecte lui-même à GitHub (« c'est fait », 14:21).
+  - **Publication** : le dépôt privé `Yhumiii27/Codex` est créé à 14:22. Les branches `main` (par défaut) et
+    `codex-ged-v2` y sont poussées ; avant le passage en session cloud, les deux pointaient sur `ef1df85`.
+
+## 9. Passage en session cloud (9 oct., 15:00)
+
+- **Constat de la session cloud**, sur la branche `codex-ged-v2-vkmf4l` partie de `ef1df85` :
+  - elle n'a trouvé ni le deck ni l'audit, restés hors du dépôt ;
+  - elle a reposé des questions déjà tranchées : pile Microsoft 365 ou Codex (D-06) ; durées de conservation et
+    libellés des circuits, présentés comme en attente d'une revue juridique (D-20, D-15) ; premier commit (D-23, D-24) ;
+  - elle a aussi posé deux questions qui restent ouvertes, faute de réponse de l'utilisateur : le fournisseur
+    d'authentification (O-02) et la liaison avec Keystone, par API ou base partagée (O-03).
+  - Les réponses et l'état de chaque question sont dans [decisions.md](decisions.md), section « Réponses aux questions
+    que la session cloud a reposées ».
+- **Demande** : « voici ce que me dit la session cloud après le tranfer, fait en sorte de corriger pour que je puisse
+  continuer intégralement dans la session cloud »
+- **Ajouté au dépôt** :
+  - `CLAUDE.md` : le point d'entrée, avec le contexte, les décisions structurantes, les documents à lire et les limites
+    en session cloud ;
+  - `docs/sources/` : le deck `creation-ged-epc2i.pptx` et sa transcription `deck-ged-epc2i.md` ;
+  - [audit-deck-epc2i.md](audit-deck-epc2i.md) : l'audit du 7 octobre ;
+  - [decisions.md](decisions.md) : le journal des décisions, avec citations, et les questions ouvertes ;
+  - ce fichier ;
+  - un renvoi vers ces documents dans `README.md`, section « Décisions et points ouverts ».
+- **Ce que la session cloud ne peut pas faire** :
+  - **Construire ou lancer l'app Mac.** `desktop/build-app.sh` exige macOS (swiftc, AppKit et WebKit, codesign,
+    iconutil, sips). Sous Linux, utiliser `npm run dev`.
+  - **Lire Keystone et Vigie**, tant que leurs dépôts ne sont pas ajoutés à l'environnement :
+    `github.com/Yhumiii27/Keystone` et `github.com/Yhumiii27/Vigie`. Sans eux, la spec Keystone n'est pas lisible, et
+    les deux applications restent simulées (`src/lib/keystone.ts`, `src/lib/vigie.ts`).
+  - **Retrouver les données locales.** La base `.data`, les fichiers déposés et les `.env` sont exclus du dépôt. Au
+    premier lancement de `npm run dev`, une base de démo neuve est créée et remplie.

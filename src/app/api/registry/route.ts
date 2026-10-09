@@ -4,7 +4,7 @@ import { getDb, schema as s } from '@/db';
 import { CONF_LEVELS, DICT, type TKey } from '@/lib/i18n';
 
 // Register of document types, read by Keystone (docs/api.md). Read-only and open within the group network until
-// Entra ID is plugged in; nothing user-specific, so no session is read.
+// real authentication is plugged in; nothing user-specific, so no session is read.
 
 const labels = (key: string) => ({ fr: DICT.fr[key as TKey] ?? key, en: DICT.en[key as TKey] ?? key });
 

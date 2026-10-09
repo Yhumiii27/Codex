@@ -10,7 +10,7 @@ titulaires de fonctions, droit Administrer du gestionnaire, chronologie). Une ba
 recevoir.
 
 ## Fait
-- `docs/modele-cible.md` : décisions validées avec l'utilisateur.
+- `docs/modele-cible.md` : décisions de l'utilisateur et propositions à confirmer (voir `docs/decisions.md`).
 - `src/db/schema.ts` v2 : registre des types, familles, fonctions et titulaires, départements, sites, projets,
   programmes, révisions en lettres et versions de travail, demandes Vigie, lecteurs désignés, `workflows.outcome`.
 - `src/db/registry.ts` : registre fusionné (69 types, 23 familles) ; points à arbitrer dans
@@ -38,9 +38,14 @@ recevoir.
   (rejeu, conflit d'identifiant, type MIME), stockage hors transaction, accessibilité des dialogues et des listes.
 
 ## Reste à faire
-- Dépôt de fichiers réels non vérifié dans le navigateur (création depuis un fichier, nouvelle version de travail).
+- Dépôt de fichiers réels : vérifié dans le navigateur (création depuis un fichier et version de travail, `PRO-HSE-0003`
+  le 7 octobre, `PRO-QUA-0003` le 8) ; reste à tester dans la fenêtre de l'app Mac (dépôt et téléchargement).
+- Corrections restées partielles après la revue du 8 octobre (détail : `docs/decisions.md`, T-03) : renommage des
+  fichiers stockés après reclassement, conservation comptée par révision remplacée, type verrouillé au dépôt d'une pièce
+  attendue par Keystone, liste des demandes de modification filtrée selon la visibilité.
 - Stockage SharePoint : à tester contre un vrai tenant.
-- Intégrations réelles Keystone (API projets) et Vigie (`VIGIE_API_URL`), authentification Entra ID.
+- Intégrations réelles Keystone (API projets ou base partagée : à décider, O-03) et Vigie (`VIGIE_API_URL`),
+  authentification réelle (fournisseur à choisir, O-02).
 - Arbitrages du registre (`docs/registre-points-ouverts.md`) et organigramme définitif.
 
 ## App Mac (`npm run app`) — corrections restantes (relecture du 8 octobre)

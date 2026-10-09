@@ -3,6 +3,11 @@
 Synthèse du deck « Création de la GED EPC2I », de la spec Keystone (`Keystone/docs/spec/10-site-docs-mywork-settings.md` §4-5)
 et des arbitrages du 7 octobre 2026. Ce document fait foi pour l'implémentation ; les points marqués *provisoire* seront revus.
 
+Certaines règles ci-dessous sont des propositions de l'assistant, implémentées mais **non confirmées par l'utilisateur** :
+authentification Entra ID (§1), code département hors rattachement, largeur et portée du compteur, ID attribué au
+brouillon, alias et nom de fichier (§3), « Remplacé » et mise en vigueur automatique (§4). Elles sont listées dans
+`docs/decisions.md` (« Choix de l'assistant non validés explicitement », question O-09), qui prévaut en cas de doute.
+
 ## 1. Architecture
 
 - **Codex est la source de vérité** : métadonnées, droits, révisions, workflows de validation, journal d'audit.
@@ -14,7 +19,7 @@ et des arbitrages du 7 octobre 2026. Ce document fait foi pour l'implémentation
   (documents) ou depuis Keystone (sujets projet) ; Vigie renvoie ses décisions à Codex.
 - **Keystone** fournit les projets (code, chef de projet, phase) et lit le registre des types de Codex.
 - **Migration** : outil séparé, hors de Codex ; Codex expose une API d'import.
-- Authentification : simulée jusqu'au branchement Entra ID.
+- Authentification : simulée ; fournisseur réel à choisir (Entra ID proposé, non confirmé — `docs/decisions.md` O-02).
 
 ## 2. Classement
 
@@ -39,7 +44,7 @@ confidentialité admis et par défaut, clause ISO 9001, livrable client. Codex e
 | Rattaché à un projet | code projet Keystone | 3 chiffres | `PID-HLT-026-001` |
 | Rattaché à un programme de recherche | code programme | 3 chiffres | `PRT-R2601-004` |
 | Modèle de document (template) | `QMS` | 3 chiffres | `FRM-QMS-012` |
-| Sans rattachement | code du département propriétaire | 4 chiffres | `PRO-QHS-0012` |
+| Sans rattachement | code du département propriétaire | 4 chiffres | `PRO-QUA-0012` |
 
 Compteur par couple (type, contexte). ID attribué à la création du brouillon. Avant la première approbation, un
 reclassement attribue un nouvel ID et conserve l'ancien comme alias ; après, l'ID ne change plus jamais.
