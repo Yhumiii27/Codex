@@ -38,6 +38,7 @@ recevoir.
   (rejeu, conflit d'identifiant, type MIME), stockage hors transaction, accessibilité des dialogues et des listes.
 
 ## Reste à faire
+L'inventaire détaillé et vérifié (129 points, dont 69 développables sans décision) est dans `docs/reste-a-faire.md`.
 - Dépôt de fichiers réels : vérifié dans le navigateur (création depuis un fichier et version de travail, `PRO-HSE-0003`
   le 7 octobre, `PRO-QUA-0003` le 8) ; reste à tester dans la fenêtre de l'app Mac (dépôt et téléchargement).
 - Corrections restées partielles après la revue du 8 octobre (détail : `docs/decisions.md`, T-03) : faites le

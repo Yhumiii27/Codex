@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start --port 3100",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:reset": "rm -rf .data",
     "app": "bash desktop/build-app.sh"

@@ -592,9 +592,11 @@ reposer, une fois, en citant leur numéro.
 | T-03 | **Corrections restées partielles après la revue du 8 octobre** : trois sur quatre faites le 9 octobre en session cloud ; voir le détail sous ce tableau. | développement (fait) ; utilisateur pour la conservation (O-09) | `docs/modele-cible.md` §8 (conservation comptée par document) |
 
 Détail de T-03 (état au 9 octobre, session cloud) :
-- **Fait** : après un reclassement, les fichiers déjà stockés prennent le nouvel identifiant (`{ID}_{lettre}.{n}.{ext}`,
-  dans le dossier du nouvel ID) : `renameDocFiles` dans `src/lib/storage.ts`, appelé par `updateMeta`. Vérifié en local
-  (`PRO-QUA-0003` → `PRO-HSE-0003_A.1.pdf`) ; non testé sur SharePoint, comme tout le pilote.
+- **Fait** : après un reclassement, les fichiers déjà stockés prennent le nouvel identifiant (`{ID}_{lettre}.{n}.{ext}` ;
+  dans SharePoint, rangés dans le dossier du nouvel ID ; en local, à plat avec un préfixe unique) : `renameDocFiles`
+  dans `src/lib/storage.ts`, appelé par `updateMeta`. L'extension vient du nom d'origine ou du type MIME, comme au dépôt
+  (une clé SharePoint n'en porte pas). Vérifié en local (`PRO-QUA-0003` → `PRO-HSE-0003_A.1.pdf`) ; non testé sur
+  SharePoint, comme tout le pilote, et l'ancien dossier SharePoint, vide, n'est pas supprimé.
 - **Fait** : lors du dépôt d'une pièce attendue par Keystone, le formulaire verrouille la famille et le type de la pièce
   (`lockType` dans `src/components/dialogs/Dialogs.tsx`) ; le serveur continue de refuser un mauvais type.
 - **Fait** : la liste des demandes de modification ne contient que les demandes sur des documents que l'utilisateur

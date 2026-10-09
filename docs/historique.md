@@ -436,7 +436,12 @@ Constats confirmés, dans la numérotation du workflow :
   - le dépôt d'une pièce attendue par Keystone verrouille la famille et le type dans le formulaire ;
   - `listChangeRequests` ne renvoie que les demandes sur des documents visibles.
   - La conservation par révision remplacée n'est pas faite : elle contredit `docs/modele-cible.md` §8 et attend O-09.
-- **Vérifié** : `npm run typecheck` et `npm run lint` passent (dans un clone neuf, lancer d'abord `npx next typegen`
-  ou `npm run dev` pour générer les types `PageProps`). Dans le navigateur, sur une base neuve : création de
+- **Vérifié** : `npm run typecheck` et `npm run lint` passent (`typecheck` lance désormais `next typegen`, qui génère
+  les types `PageProps` absents d'un clone neuf). Dans le navigateur, sur une base neuve : création de
   `PRO-QUA-0003` avec un PDF, reclassement en `PRO-HSE-0003`, fichier servi sous `PRO-HSE-0003_A.1.pdf` et plus rien
   sous l'ancien nom ; pièce attendue « Attestation d'assurance chantier » (HLT-026) : type JUR verrouillé.
+- **Inventaire du reste à faire** : cinq recensements indépendants (docs, écarts de l'audit, exigences du deck, code et
+  exploitation, maquette et intégrations), fusion, vérification contradictoire dans le code, critique de complétude.
+  Résultat : [reste-a-faire.md](reste-a-faire.md), 129 points ouverts (69 sans blocage, 49 en attente de décision,
+  2 en attente de données, 9 sur macOS). Deux points relevés ont été corrigés aussitôt : l'extension perdue au
+  renommage SharePoint après un reclassement (régression de `44bd1b8`, `renameDocFiles`), et le script `typecheck`.

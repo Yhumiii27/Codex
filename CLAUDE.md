@@ -32,6 +32,7 @@ numéro, sans les trancher à la place de l'utilisateur.
 | `docs/sources/deck-ged-epc2i.md` | Texte intégral du deck. L'original est `docs/sources/creation-ged-epc2i.pptx`. |
 | `docs/historique.md` | Chronologie du travail : construction, audit, modèle v2, revues, app Mac, GitHub. |
 | `docs/avancement-v2.md` | État d'avancement et reste à faire. |
+| `docs/reste-a-faire.md` | Inventaire vérifié du 9 octobre 2026 : 129 points ouverts, classés selon ce qui les bloque (rien, décision, données, macOS). |
 | `docs/registre-points-ouverts.md` | Points à arbitrer sur le registre des types (69 types, 23 familles). |
 | `docs/api.md` | API d'intégration : registre, import de migration, webhook Vigie. |
 | `README.md` | Démarrage, écrans, ce qui est réel ou simulé, organisation du code. |

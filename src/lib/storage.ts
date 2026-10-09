@@ -228,19 +228,21 @@ export async function nameStoredFile(f: StagedFile, docId: string, label: string
 
 /**
  * After a reclassification (new ID), gives every stored file of the document its name under the new ID:
- * {ID}_{letter}.{n}.{ext} in the new ID's folder. Best effort, file by file, like nameStoredFile.
+ * {ID}_{letter}.{n}.{ext} (in the new ID's folder on SharePoint). Best effort, file by file, like nameStoredFile.
  */
 export async function renameDocFiles(docId: string): Promise<void> {
   const db = await getDb();
   const rows = await db
-    .select({ storage: s.workingVersions.storage, fileKey: s.workingVersions.fileKey, n: s.workingVersions.n, letter: s.revisions.letter })
+    .select({ storage: s.workingVersions.storage, fileKey: s.workingVersions.fileKey, fileName: s.workingVersions.fileName, mime: s.workingVersions.mime, n: s.workingVersions.n, letter: s.revisions.letter })
     .from(s.workingVersions)
     .innerJoin(s.revisions, eq(s.revisions.id, s.workingVersions.revisionId))
     .where(eq(s.workingVersions.docId, docId));
   for (const r of rows) {
     if (!r.fileKey) continue;
-    const ext = path.extname(r.fileKey).toLowerCase();
-    await nameStoredFile({ storage: r.storage ?? 'local', fileKey: r.fileKey, fileName: '', mime: '', size: 0, pages: null, ext }, docId, `${r.letter}.${r.n}`);
+    // Same extension as at upload (stageFile): a SharePoint key is a driveItem id and carries none.
+    const name = r.fileName ?? '';
+    const ext = (path.extname(name) || EXT_BY_MIME[normalizeMime(r.mime, name)] || '').toLowerCase().replace(/[^.\w]/g, '');
+    await nameStoredFile({ storage: r.storage ?? 'local', fileKey: r.fileKey, fileName: name, mime: r.mime ?? '', size: 0, pages: null, ext }, docId, `${r.letter}.${r.n}`);
   }
 }
 
