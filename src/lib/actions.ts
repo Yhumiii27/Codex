@@ -11,7 +11,7 @@ import { COOKIE_LANG, COOKIE_ROLE, COOKIE_USER, getCtx, type Ctx } from './conte
 import { addDays, fmtSize, loc, nowStamp, parseIsoDay, todayIso } from './format';
 import { ATTACHMENTS, CONF_LEVELS, ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLES, ORIGINS, PERMS, SIM_ROLES, SIMULATED_MATRIX_ROLES, type Perm, type SimRole, type TKey } from './i18n';
 import { applyChangeDecision, approveRevision, audit, catchUpEffectiveDates, lockOf, refreshHeadline, type Tx } from './lifecycle';
-import { discardFile, fileColumns, nameStoredFile, readStored, stageFile, stageUpload, type StagedFile } from './storage';
+import { discardFile, fileColumns, nameStoredFile, readStored, renameDocFiles, stageFile, stageUpload, type StagedFile } from './storage';
 import { submitChange, vigieSimulated } from './vigie';
 
 export type ActionResult = { ok: true; href?: string; message?: string } | { ok: false; error: string };
@@ -315,6 +315,8 @@ export async function updateMeta(fd: FormData): Promise<ActionResult> {
   });
   if ('err' in res) return fail(ctx, res.err);
   const newId = res.id;
+  // Stored files follow the new ID (outside the transaction, as every store call).
+  if (newId !== docId) await renameDocFiles(newId);
   refresh();
   return { ok: true, message: newId !== docId ? `${ctx.t.act_reclass} : ${newId}` : ctx.t.saved_ok, href: newId !== docId ? docHref(newId, 'meta') : undefined };
 }

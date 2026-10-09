@@ -226,6 +226,24 @@ export async function nameStoredFile(f: StagedFile, docId: string, label: string
   }
 }
 
+/**
+ * After a reclassification (new ID), gives every stored file of the document its name under the new ID:
+ * {ID}_{letter}.{n}.{ext} in the new ID's folder. Best effort, file by file, like nameStoredFile.
+ */
+export async function renameDocFiles(docId: string): Promise<void> {
+  const db = await getDb();
+  const rows = await db
+    .select({ storage: s.workingVersions.storage, fileKey: s.workingVersions.fileKey, n: s.workingVersions.n, letter: s.revisions.letter })
+    .from(s.workingVersions)
+    .innerJoin(s.revisions, eq(s.revisions.id, s.workingVersions.revisionId))
+    .where(eq(s.workingVersions.docId, docId));
+  for (const r of rows) {
+    if (!r.fileKey) continue;
+    const ext = path.extname(r.fileKey).toLowerCase();
+    await nameStoredFile({ storage: r.storage ?? 'local', fileKey: r.fileKey, fileName: '', mime: '', size: 0, pages: null, ext }, docId, `${r.letter}.${r.n}`);
+  }
+}
+
 /** Removes a staged file that no record points to (the transaction refused or failed). Best effort. */
 export async function discardFile(f: StagedFile | null): Promise<void> {
   if (!f) return;

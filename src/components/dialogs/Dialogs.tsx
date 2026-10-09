@@ -136,7 +136,7 @@ function IdPrefix({ prefix, width }: { prefix: string; width: number }) {
  * Every classification and metadata field of a document, laid out on the dialog grid.
  * Controlled where a field drives others (origin, attachment, type, confidentiality…); the rest are plain inputs.
  */
-function DocFields({ types, st, set, doc, preset, withOwner, locked }: {
+function DocFields({ types, st, set, doc, preset, withOwner, locked, lockType }: {
   /** Types the document may take (active ones, plus its current type when editing). */
   types: TypeOpt[];
   st: Classif;
@@ -147,10 +147,12 @@ function DocFields({ types, st, set, doc, preset, withOwner, locked }: {
   withOwner?: boolean;
   /** Type and context are frozen (an approval workflow resolved its approvers from them); `locked` says why. */
   locked?: string;
+  /** A piece Keystone expects: its type is fixed, only the origins that type admits are offered. */
+  lockType?: boolean;
 }) {
   const { t, lang, data } = useApp();
   const lockProject = !!preset?.projectCode;
-  const origins = ORIGINS.filter((o) => types.some((x) => x.origins.includes(o) && (!lockProject || x.attachments.includes('project'))));
+  const origins = ORIGINS.filter((o) => types.some((x) => x.origins.includes(o) && (!lockProject || x.attachments.includes('project')) && (!lockType || x.code === st.typeCode)));
   const atts = ATTACHMENTS.filter((a) => types.some((x) => x.origins.includes(st.origin) && x.attachments.includes(a)));
   const el = eligibleTypes(types, st.origin, st.attachment);
   const families = data.families.filter((f) => el.some((x) => x.family === f.key));
@@ -197,10 +199,10 @@ function DocFields({ types, st, set, doc, preset, withOwner, locked }: {
       ) : (
         <>
           <Field label={t.family}>
-            {(id) => <Select id={id} value={st.family} onChange={(v) => set({ family: v, typeCode: '' })} options={families} disabled={!!locked} />}
+            {(id) => <Select id={id} value={st.family} onChange={(v) => set({ family: v, typeCode: '' })} options={families} disabled={!!locked || lockType} />}
           </Field>
           <Field label={t.type} hint={type ? `${t.circuit} : ${type.circuitL}` : undefined}>
-            {(id) => <><Select id={id} name={locked ? undefined : 'typeCode'} value={st.typeCode} onChange={(v) => set({ typeCode: v })} options={el.filter((x) => x.family === st.family).map((x) => ({ key: x.code, label: `${x.code} · ${x.label}` }))} required disabled={!!locked} />{locked && <input type="hidden" name="typeCode" value={st.typeCode} />}</>}
+            {(id) => <><Select id={id} name={locked || lockType ? undefined : 'typeCode'} value={st.typeCode} onChange={(v) => set({ typeCode: v })} options={el.filter((x) => x.family === st.family).map((x) => ({ key: x.code, label: `${x.code} · ${x.label}` }))} required disabled={!!locked || lockType} />{(locked || lockType) && <input type="hidden" name="typeCode" value={st.typeCode} />}</>}
           </Field>
         </>
       )}
@@ -329,6 +331,8 @@ function NewDocument({ preset }: { preset: NewPreset }) {
   });
   const set = (patch: Partial<Classif>) => setSt((prev) => applyPatch(types, prev, patch, lockProject));
   const { prefix, width } = idParts(st);
+  // A piece Keystone expects is filled by a document of its type only (createDocument refuses any other).
+  const lockType = preset?.expectedId != null && !!preset.typeCode && st.typeCode === preset.typeCode;
 
   return (
     <Modal title={t.new_doc} width={680} actions={<Actions pending={pending} label={t.create_doc} onCancel={close} form="new-form" disabled={!st.typeCode || (mode === 'template' && !tplId)} />}>
@@ -373,7 +377,7 @@ function NewDocument({ preset }: { preset: NewPreset }) {
         {mode === 'file' && <FilePicker label={t.choose_file} required />}
         {mode === 'blank' && <div className="text-muted" style={{ fontSize: 12.5 }}>{t.blank_hint}</div>}
 
-        <DocFields types={types} st={st} set={set} preset={preset} />
+        <DocFields types={types} st={st} set={set} preset={preset} lockType={lockType} />
 
         {st.typeCode && (
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', paddingTop: 10, borderTop: '1px solid var(--color-divider)' }}>

@@ -589,15 +589,18 @@ reposer, une fois, en citant leur numéro.
 |---|---|---|---|
 | T-01 | **Branchements réels** : API projets de Keystone, Vigie (`VIGIE_API_URL`, webhook), SharePoint sur un vrai tenant, authentification réelle. | les adresses, accès et jetons fournis par l'utilisateur, et les réponses à O-01, O-02, O-03 | `docs/avancement-v2.md` (Reste à faire) ; `docs/api.md` ; `.env.example` ; `src/lib/storage.ts` (variables `CODEX_STORAGE` et `CODEX_SP_*`, documentées dans `.env.example`) |
 | T-02 | **App Mac** : 8 corrections restantes. L'utilisateur doit aussi tester lui-même, dans la fenêtre de l'app, le dépôt d'un fichier et un téléchargement. | une session sur macOS | `docs/avancement-v2.md` (section « App Mac ») |
-| T-03 | **Corrections restées partielles après la revue du 8 octobre** : voir le détail sous ce tableau. État rapporté le 8 octobre, non revérifié depuis. | développement | `docs/modele-cible.md` §8 (conservation comptée par document) |
+| T-03 | **Corrections restées partielles après la revue du 8 octobre** : trois sur quatre faites le 9 octobre en session cloud ; voir le détail sous ce tableau. | développement (fait) ; utilisateur pour la conservation (O-09) | `docs/modele-cible.md` §8 (conservation comptée par document) |
 
-Détail de T-03 :
-- après un reclassement, les fichiers déjà stockés gardent leur ancien nom : `updateMeta` (`src/lib/actions.ts`) ne
-  les renomme pas, ni en local ni dans SharePoint ;
-- la conservation est comptée par document, pas par révision remplacée ;
-- lors du dépôt d'une pièce attendue par Keystone, le formulaire ne verrouille pas le type, mais le serveur refuse un
-  mauvais type ;
-- la liste des demandes de modification n'est pas filtrée selon la visibilité.
+Détail de T-03 (état au 9 octobre, session cloud) :
+- **Fait** : après un reclassement, les fichiers déjà stockés prennent le nouvel identifiant (`{ID}_{lettre}.{n}.{ext}`,
+  dans le dossier du nouvel ID) : `renameDocFiles` dans `src/lib/storage.ts`, appelé par `updateMeta`. Vérifié en local
+  (`PRO-QUA-0003` → `PRO-HSE-0003_A.1.pdf`) ; non testé sur SharePoint, comme tout le pilote.
+- **Fait** : lors du dépôt d'une pièce attendue par Keystone, le formulaire verrouille la famille et le type de la pièce
+  (`lockType` dans `src/components/dialogs/Dialogs.tsx`) ; le serveur continue de refuser un mauvais type.
+- **Fait** : la liste des demandes de modification ne contient que les demandes sur des documents que l'utilisateur
+  peut voir (`listChangeRequests` dans `src/lib/queries.ts`).
+- **Non fait, volontairement** : la conservation reste comptée par document, comme le dit `docs/modele-cible.md` §8.
+  La compter par révision remplacée changerait le modèle ; c'est une proposition à confirmer (O-09), pas un correctif.
 
 Le dépôt et le téléchargement de fichiers réels ont été testés dans le navigateur le 7 octobre (`PRO-HSE-0003`) et
 le 8 octobre (`PRO-QUA-0003`) ; seuls ceux de la fenêtre de l'app Mac restent à tester (T-02). `docs/avancement-v2.md`

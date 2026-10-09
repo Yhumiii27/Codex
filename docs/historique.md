@@ -310,7 +310,7 @@ Constats confirmés, dans la numérotation du workflow :
 34. Le dialogue « Déléguer » proposait le demandeur. Corrigé.
 35. Des textes n'étaient pas traduits. Corrigé.
 36. Le rôle en lecture seule pouvait faire des demandes de modification ou de retrait. Corrigé côté serveur.
-    **Partiel** : la liste des demandes n'est pas filtrée selon la visibilité.
+    **Partiel** : la liste des demandes n'est pas filtrée selon la visibilité. *Complété le 9 octobre (§10).*
 
 **API (10 confirmés, 1 écarté)**
 37. Import : le type MIME était repris tel quel. Corrigé : il est normalisé.
@@ -324,7 +324,7 @@ Constats confirmés, dans la numérotation du workflow :
 44. Pilote SharePoint : écrasement silencieux et pas d'envoi par morceaux. **Partiel** :
     - corrigé : plus d'écrasement silencieux, délais et reprises en place ;
     - non fait : l'import est plafonné à 250 Mo au lieu d'un envoi par morceaux ;
-    - non fait : le fichier n'est pas renommé lors d'un reclassement.
+    - non fait : le fichier n'est pas renommé lors d'un reclassement. *Fait le 9 octobre (§10).*
 45. Un fichier sans extension se téléchargeait avec un nom en « .1 ». Corrigé.
 46. L'export du journal d'audit s'arrêtait à 100 000 lignes. Corrigé : export par lots, sans limite.
 47. Une requête HEAD lisait le fichier et journalisait un téléchargement. Corrigé.
@@ -338,7 +338,7 @@ Constats confirmés, dans la numérotation du workflow :
 52. La simulation Vigie agissait sur des documents archivés ou gelés. Corrigé (doublon du n° 2).
 53. La matrice des droits n'était que partiellement appliquée. Corrigé (doublon du n° 20).
 54. Pièces attendues par Keystone : le type n'était pas vérifié au dépôt. **Partiel** : le serveur refuse un mauvais
-    type, mais le formulaire ne verrouille pas le type.
+    type, mais le formulaire ne verrouille pas le type. *Complété le 9 octobre (§10).*
 55. *Écarté par le vérificateur* : le choix de l'approbateur dépendait de l'ordre des lignes `function_holders`.
 56. Un compte système était accepté comme utilisateur simulé. Corrigé : il est ignoré.
 57. Le numéro de version de travail et le circuit étaient calculés hors transaction. Corrigé : index uniques.
@@ -426,3 +426,17 @@ Constats confirmés, dans la numérotation du workflow :
     les deux applications restent simulées (`src/lib/keystone.ts`, `src/lib/vigie.ts`).
   - **Retrouver les données locales.** La base `.data`, les fichiers déposés et les `.env` sont exclus du dépôt. Au
     premier lancement de `npm run dev`, une base de démo neuve est créée et remplie.
+
+## 10. Reprise en session cloud (9 oct.)
+
+- `git merge origin/main` sur `codex-ged-v2-vkmf4l` (avance rapide jusqu'à `9986f2d`), puis relecture de `CLAUDE.md`
+  et de [decisions.md](decisions.md).
+- **Corrections T-03** (détail dans [decisions.md](decisions.md)) :
+  - les fichiers stockés suivent le nouvel identifiant après un reclassement (`renameDocFiles`, `src/lib/storage.ts`) ;
+  - le dépôt d'une pièce attendue par Keystone verrouille la famille et le type dans le formulaire ;
+  - `listChangeRequests` ne renvoie que les demandes sur des documents visibles.
+  - La conservation par révision remplacée n'est pas faite : elle contredit `docs/modele-cible.md` §8 et attend O-09.
+- **Vérifié** : `npm run typecheck` et `npm run lint` passent (dans un clone neuf, lancer d'abord `npx next typegen`
+  ou `npm run dev` pour générer les types `PageProps`). Dans le navigateur, sur une base neuve : création de
+  `PRO-QUA-0003` avec un PDF, reclassement en `PRO-HSE-0003`, fichier servi sous `PRO-HSE-0003_A.1.pdf` et plus rien
+  sous l'ancien nom ; pièce attendue « Attestation d'assurance chantier » (HLT-026) : type JUR verrouillé.

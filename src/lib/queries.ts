@@ -183,10 +183,16 @@ export type WorkflowView = Awaited<ReturnType<typeof listWorkflows>>[number];
 
 // ── Change requests (Vigie) ──────────────────────────────────────────────
 
+/** Requests on documents the user can see; the others are treated as if they did not exist. */
 export async function listChangeRequests(ctx: Ctx, opts: { docId?: string } = {}) {
   const db = await getDb();
   const q = db.select().from(s.changeRequests).orderBy(desc(s.changeRequests.createdAt));
-  const rows = await (opts.docId ? q.where(eq(s.changeRequests.docId, opts.docId)) : q);
+  const all = await (opts.docId ? q.where(eq(s.changeRequests.docId, opts.docId)) : q);
+  const ids = [...new Set(all.map((r) => r.docId))];
+  const ix = await getAccessIndex();
+  const docs = ids.length ? await db.select().from(s.documents).where(inArray(s.documents.id, ids)) : [];
+  const visible = new Set(docs.filter((d) => canRead(ctx, d, ix)).map((d) => d.id));
+  const rows = all.filter((r) => visible.has(r.docId));
   return rows.map((r) => ({
     ...r,
     kindL: ctx.t[`kind_${r.kind}` as TKey],
