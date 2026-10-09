@@ -1,0 +1,12 @@
+.top { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 22px; }
+.hello { font-size: 26px; margin: 0 0 4px; }
+.kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 26px; }
+.kpi { text-align: left; border: 0; cursor: pointer; color: inherit; font: inherit; gap: 2px; padding: 14px 16px; text-decoration: none; }
+.kpi:hover { color: inherit; box-shadow: var(--shadow-sm); }
+.kpiValue { font-size: 30px; line-height: 1.1; font-weight: 500; margin: 4px 0; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 28px; }
+.col { display: flex; flex-direction: column; gap: 26px; min-width: 0; }
+.todo { flex-direction: row; align-items: center; gap: 14px; padding: 10px 14px; }
+.expRow { display: flex; align-items: center; gap: 12px; padding: 9px 0; color: inherit; }
+.expRow:hover { color: inherit; }
+.expRow:hover .tag { background: color-mix(in srgb, var(--color-accent) 10%, transparent); }

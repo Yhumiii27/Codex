@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/nocturne-08af9e11-fa9b-4d10-b0bf-ef17d330333a/styles.css">
+<script src="_ds/nocturne-08af9e11-fa9b-4d10-b0bf-ef17d330333a/_ds_bundle.js"></script>
+<style>
+html,body{height:100%;margin:0;overflow:hidden}
+a{color:var(--color-accent)}a:hover{color:var(--color-accent-400)}
+::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-thumb{background:var(--color-neutral-800);border-radius:8px}::-webkit-scrollbar-track{background:transparent}
+input[type=checkbox]{accent-color:var(--color-accent)}
+</style>
+</helmet>
+<div style="display:grid;grid-template-columns:224px minmax(0,1fr);height:100vh;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body);font-size:13px;line-height:1.45">
+  <nav class="nav" style="flex-direction:column;align-items:stretch;gap:0;padding:var(--space-4) var(--space-3);border-right:1px solid var(--color-divider);min-height:0">
+    <div style="display:flex;align-items:center;gap:10px;padding:4px 8px 20px">
+      <div style="width:28px;height:28px;flex:none;border-radius:var(--radius-md);border:1px solid var(--color-accent);display:grid;place-items:center;color:var(--color-accent);box-shadow:0 0 18px color-mix(in srgb,var(--color-accent) 35%,transparent)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6zM15 3v4h4M9 12h6M9 16h6"></path></svg></div>
+      <div><div class="nav-brand" style="font-size:16px;line-height:1.1;margin:0">Codex</div><div class="text-muted" style="font-size:11px">{{ t.brand_sub }}</div></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:2px">
+      <sc-for list="{{ navItems }}" as="it" hint-placeholder-count="6">
+        <a href="#" aria-current="{{ it.current }}" onClick="{{ it.go }}" style="display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:var(--radius-md);font-size:13px;border-left:2px solid {{ it.bar }}" style-hover="background:color-mix(in srgb,var(--color-text) 6%,transparent)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="{{ it.d }}"></path></svg>
+          <span style="flex:1">{{ it.label }}</span>
+          <sc-if value="{{ it.badge }}" hint-placeholder-val="{{ false }}"><span class="tag tag-accent" style="padding:1px 7px;font-size:10px">{{ it.badge }}</span></sc-if>
+        </a>
+      </sc-for>
+    </div>
+    <div style="margin-top:auto;display:flex;flex-direction:column;gap:8px">
+      <div style="padding:0 8px"><div class="text-muted" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">{{ t.linked_app }}</div><a href="#" style="display:flex;align-items:center;gap:8px;font-size:13px;text-decoration:none;color:inherit;padding:4px 0" style-hover="color:var(--color-accent-300)"><span style="width:18px;height:18px;flex:none;border-radius:4px;border:1px solid var(--color-neutral-600);display:grid;place-items:center;font-size:9px;font-weight:500">K</span><span style="flex:1">Keystone</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="opacity:.6"><path d="M14 4h6v6M20 4l-9 9"></path></svg></a></div>
+      <button type="button" class="btn btn-ghost" onClick="{{ openNotes }}" style="justify-content:flex-start;font-size:12px;padding:6px 8px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v5M12 8v.01"></path></svg>{{ t.notes }}</button>
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 8px 2px;border-top:1px solid var(--color-divider)">
+        <div style="width:30px;height:30px;flex:none;border-radius:50%;background:var(--color-accent-800);color:var(--color-accent-100);display:grid;place-items:center;font-size:11px;font-weight:500">CB</div>
+        <div style="min-width:0"><div style="font-size:13px">Claire Bardet</div><div class="text-muted" style="font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ roleTitle }}</div></div>
+      </div>
+    </div>
+  </nav>
+  <div style="display:flex;flex-direction:column;min-width:0;min-height:0">
+    <header style="display:flex;align-items:center;gap:var(--space-4);padding:9px var(--space-6);border-bottom:1px solid var(--color-divider)">
+      <h5 style="margin:0;font-size:15px;min-width:200px">{{ screenTitle }}</h5>
+      <div style="flex:1;max-width:520px;position:relative">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="position:absolute;left:10px;top:10px;opacity:.6"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4"></path></svg>
+        <input class="input" value="{{ q }}" onChange="{{ setQ }}" onKeyDown="{{ qKey }}" placeholder="{{ t.search_ph }}" style="padding-left:32px;min-height:34px">
+      </div>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
+        <div class="seg" role="radiogroup" aria-label="Langue / Language">
+          <label class="seg-opt" style="padding:5px 10px;font-size:12px"><input type="radio" name="lang" checked="{{ isFr }}" onChange="{{ setFr }}">FR</label>
+          <label class="seg-opt" style="padding:5px 10px;font-size:12px"><input type="radio" name="lang" checked="{{ isEn }}" onChange="{{ setEn }}">EN</label>
+        </div>
+        <button type="button" class="btn btn-secondary btn-icon" aria-label="{{ t.notif }}" style="position:relative;width:34px;height:34px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20a2 2 0 0 0 4 0"></path></svg><span style="position:absolute;top:7px;right:8px;width:6px;height:6px;border-radius:50%;background:var(--color-accent)"></span></button>
+      </div>
+    </header>
+    <main style="flex:1;min-height:0;position:relative">
+      <sc-if value="{{ isHome }}" hint-placeholder-val="{{ true }}">
+      <div data-screen-label="Accueil" style="position:absolute;inset:0;overflow:auto;padding:var(--space-8)">
+        <div style="max-width:1180px">
+          <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:22px">
+            <div><h2 style="font-size:26px;margin:0 0 4px">{{ t.hello }}, Claire</h2><div class="text-muted">{{ today }} · {{ t.home_sub }}</div></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button type="button" class="btn btn-primary" onClick="{{ openNew }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>{{ t.new_from_tpl }}</button>
+              <button type="button" class="btn btn-secondary"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"></path></svg>{{ t.upload }}</button>
+              <button type="button" class="btn btn-secondary" onClick="{{ goSearch }}">{{ t.adv_search }}</button>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:26px">
+            <button type="button" class="card" onClick="{{ goWorkflow }}" style="text-align:left;border:0;cursor:pointer;color:inherit;font:inherit;gap:2px;padding:14px 16px" style-hover="box-shadow:var(--shadow-sm)"><div class="card-kicker">{{ t.kpi_todo }}</div><div style="font-size:30px;line-height:1.1;font-weight:500;margin:4px 0">{{ kpiTodo }}</div><div class="card-meta">{{ t.kpi_todo_sub }}</div></button>
+            <button type="button" class="card" onClick="{{ goRetention }}" style="text-align:left;border:0;cursor:pointer;color:inherit;font:inherit;gap:2px;padding:14px 16px" style-hover="box-shadow:var(--shadow-sm)"><div class="card-kicker">{{ t.kpi_exp }}</div><div style="font-size:30px;line-height:1.1;font-weight:500;margin:4px 0">{{ kpiExp }}</div><div class="card-meta">{{ t.kpi_exp_sub }}</div></button>
+            <button type="button" class="card" onClick="{{ goExplorer }}" style="text-align:left;border:0;cursor:pointer;color:inherit;font:inherit;gap:2px;padding:14px 16px" style-hover="box-shadow:var(--shadow-sm)"><div class="card-kicker">{{ t.kpi_pub }}</div><div style="font-size:30px;line-height:1.1;font-weight:500;margin:4px 0">{{ kpiPub }}</div><div class="card-meta">{{ t.kpi_pub_sub }}</div></button>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:28px">
+            <div style="display:flex;flex-direction:column;gap:26px;min-width:0">
+              <section>
+                <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px"><h6 style="margin:0;opacity:.7">{{ t.todo }}</h6><a href="#" onClick="{{ goWorkflow }}" style="font-size:12px;text-decoration:none;white-space:nowrap;flex:none">{{ t.see_all }}</a></div>
+                <div style="display:flex;flex-direction:column;gap:6px">
+                  <sc-for list="{{ homeTodo }}" as="r" hint-placeholder-count="3">
+                    <div class="card" style="flex-direction:row;align-items:center;gap:14px;padding:10px 14px">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="flex:none;color:var(--color-accent)"><path d="M9 12l2 2 4-4M5 4h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"></path></svg>
+                      <div style="flex:1;min-width:0"><div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.docName }}</div><div class="text-muted" style="font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ t.requested_by }} {{ r.requester }} · {{ t.step }} : {{ r.stepName }} · {{ t.due }} {{ r.dueF }}</div></div>
+                      <button type="button" class="btn btn-ghost" onClick="{{ r.open }}" style="font-size:12px">{{ t.open }}</button>
+                    </div>
+                  </sc-for>
+                </div>
+              </section>
+              <section>
+                <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px"><h6 style="margin:0;opacity:.7">{{ t.recents }}</h6><a href="#" onClick="{{ goExplorer }}" style="font-size:12px;text-decoration:none;white-space:nowrap;flex:none">{{ t.see_all }}</a></div>
+                <table class="table" style="font-size:13px">
+                  <thead><tr><th>{{ t.name }}</th><th>{{ t.type }}</th><th>{{ t.version }}</th><th>{{ t.status }}</th><th>{{ t.modified }}</th></tr></thead>
+                  <tbody>
+                    <sc-for list="{{ recents }}" as="d" hint-placeholder-count="5">
+                      <tr onClick="{{ d.open }}" style="cursor:pointer"><td style="max-width:320px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ d.name }}</td><td class="text-muted">{{ d.typeLabel }}</td><td class="text-muted">v{{ d.version }}</td><td><span class="{{ d.tagClass }}">{{ d.statusLabel }}</span></td><td class="text-muted">{{ d.modifiedF }}</td></tr>
+                    </sc-for>
+                  </tbody>
+                </table>
+              </section>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:26px;min-width:0">
+              <section>
+                <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px"><h6 style="margin:0;opacity:.7">{{ t.expiring }}</h6><a href="#" onClick="{{ goRetention }}" style="font-size:12px;text-decoration:none;white-space:nowrap;flex:none">{{ t.see_all }}</a></div>
+                <div style="display:flex;flex-direction:column">
+                  <sc-for list="{{ homeExpiring }}" as="x" hint-placeholder-count="4">
+                    <div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid color-mix(in srgb,var(--color-text) 8%,transparent)">
+                      <div style="flex:1;min-width:0"><div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ x.name }}</div><div class="text-muted" style="font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ x.typeLabel }} · {{ t.until }} {{ x.endF }}</div></div>
+                      <span class="tag tag-outline" style="flex:none">{{ x.actionLabel }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </section>
+              <section>
+                <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px"><h6 style="margin:0;opacity:.7">{{ t.activity }}</h6><a href="#" onClick="{{ goAdmin }}" style="font-size:12px;text-decoration:none;white-space:nowrap;flex:none">{{ t.see_all }}</a></div>
+                <div style="display:flex;flex-direction:column;gap:10px">
+                  <sc-for list="{{ homeActivity }}" as="a" hint-placeholder-count="5">
+                    <div style="display:flex;gap:12px;align-items:baseline"><span class="text-muted" style="font-size:11px;flex:none;width:78px;font-variant-numeric:tabular-nums">{{ a.when }}</span><span style="min-width:0"><span>{{ a.user }}</span> <span class="text-muted">· {{ a.actionLabel }} · </span><a href="#" onClick="{{ a.open }}" style="text-decoration:none">{{ a.ref }}</a></span></div>
+                  </sc-for>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+      <sc-if value="{{ isExplorer }}" hint-placeholder-val="{{ false }}"><div data-screen-label="Explorateur" style="position:absolute;inset:0;display:flex;min-width:0">
+        <aside style="width:248px;flex:none;border-right:1px solid var(--color-divider);display:flex;flex-direction:column;min-height:0">
+          <div style="padding:14px 14px 10px">
+            <h6 style="margin:0 0 8px;opacity:.7">{{ t.classification }}</h6>
+            <div class="seg" style="display:flex;width:100%" role="radiogroup">
+              <sc-for list="{{ axisOpts }}" as="o" hint-placeholder-count="4"><label class="seg-opt" style="flex:1;justify-content:center;padding:5px 2px;font-size:11px;white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis"><input type="radio" name="axis" checked="{{ o.checked }}" onChange="{{ o.pick }}">{{ o.label }}</label></sc-for>
+            </div>
+          </div>
+          <div style="flex:1;overflow:auto;padding:0 8px 14px;display:flex;flex-direction:column;gap:1px">
+            <button type="button" onClick="{{ pickRoot }}" style="display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:0;background:{{ rootBg }};color:{{ rootColor }};font:inherit;font-size:13px;padding:6px 8px;border-radius:var(--radius-md);cursor:pointer" style-hover="background:color-mix(in srgb,var(--color-text) 6%,transparent)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg><span style="flex:1">{{ t.all_docs }}</span><span class="text-muted" style="font-size:11px">{{ totalCount }}</span></button>
+            <sc-for list="{{ treeNodes }}" as="n" hint-placeholder-count="6">
+              <div style="display:flex;flex-direction:column;gap:1px">
+                <button type="button" onClick="{{ n.pick }}" style="display:flex;align-items:center;gap:6px;width:100%;text-align:left;border:0;background:{{ n.bg }};color:{{ n.color }};font:inherit;font-size:13px;padding:6px 8px 6px 10px;border-radius:var(--radius-md);cursor:pointer" style-hover="background:color-mix(in srgb,var(--color-text) 6%,transparent)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex:none;opacity:.7"><path d="{{ n.caret }}"></path></svg><span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ n.label }}</span><span class="text-muted" style="font-size:11px">{{ n.count }}</span></button>
+                <sc-for list="{{ n.children }}" as="c" hint-placeholder-count="0">
+                  <button type="button" onClick="{{ c.pick }}" style="display:flex;align-items:center;gap:6px;width:100%;text-align:left;border:0;background:transparent;color:{{ c.color }};font:inherit;font-size:12px;padding:5px 8px 5px 30px;border-radius:var(--radius-md);cursor:pointer" style-hover="background:color-mix(in srgb,var(--color-text) 6%,transparent)"><span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.label }}</span><span class="text-muted" style="font-size:11px">{{ c.count }}</span></button>
+                </sc-for>
+              </div>
+            </sc-for>
+          </div>
+        </aside>
+        <section style="flex:1;min-width:0;display:flex;flex-direction:column;min-height:0;overflow:hidden">
+          <div style="display:flex;align-items:center;gap:12px;padding:12px 20px 8px;flex-wrap:wrap">
+            <div style="flex:1;min-width:220px"><div class="text-muted" style="font-size:11px">{{ crumb }}</div><div style="font-size:16px">{{ crumbLast }}</div></div>
+            <div class="seg" role="radiogroup" style="flex:none;max-width:100%;overflow:auto"><sc-for list="{{ statusOpts }}" as="o" hint-placeholder-count="5"><label class="seg-opt" style="padding:5px 10px;font-size:12px"><input type="radio" name="statusF" checked="{{ o.checked }}" onChange="{{ o.pick }}">{{ o.label }}</label></sc-for></div>
+            <button type="button" class="btn btn-secondary"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"></path></svg>{{ t.upload }}</button>
+            <button type="button" class="btn btn-primary" onClick="{{ openNew }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>{{ t.new_doc_btn }}</button>
+          </div>
+          <div style="flex:1;overflow:auto;padding:0 20px 20px">
+            <table class="table" style="font-size:13px">
+              <thead><tr><th>{{ t.name }}</th><th>{{ t.type }}</th><th>{{ t.version }}</th><th>{{ t.status }}</th><th>{{ t.owner }}</th><th>{{ t.modified }}</th><th>{{ t.retention }}</th></tr></thead>
+              <tbody>
+                <sc-for list="{{ rows }}" as="d" hint-placeholder-count="8">
+                  <tr onClick="{{ d.select }}" onDoubleClick="{{ d.open }}" style="cursor:pointer;box-shadow:{{ d.rowShadow }}">
+                    <td style="max-width:380px"><div style="display:flex;align-items:center;gap:8px;min-width:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="flex:none;opacity:.55"><path d="M6 3h9l4 4v14H6zM15 3v4h4M9 12h6M9 16h6"></path></svg><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:{{ d.rowColor }}">{{ d.name }}</span></div><div class="text-muted" style="font-size:11px;padding-left:23px">{{ d.id }} · {{ d.entityL }}</div></td>
+                    <td class="text-muted">{{ d.typeLabel }}</td><td class="text-muted">v{{ d.version }}</td><td><span class="{{ d.tagClass }}">{{ d.statusLabel }}</span></td><td>{{ d.owner }}</td><td class="text-muted" style="white-space:nowrap">{{ d.modifiedF }}</td><td class="text-muted" style="white-space:nowrap">{{ d.rule }} · {{ d.untilF }}</td>
+                  </tr>
+                </sc-for>
+              </tbody>
+            </table>
+            <div class="text-muted" style="font-size:11px;padding:10px 8px">{{ rowCount }}</div>
+          </div>
+        </section>
+        <sc-if value="{{ hasSel }}" hint-placeholder-val="{{ false }}">
+        <aside style="width:300px;flex:none;border-left:1px solid var(--color-divider);overflow:auto;padding:16px 18px;display:flex;flex-direction:column;gap:14px;height:100%;background:var(--color-bg);position:relative;z-index:1">
+          <div style="display:flex;justify-content:space-between;align-items:center"><h6 style="margin:0;opacity:.7">{{ t.quick_view }}</h6><button type="button" class="btn btn-ghost btn-icon" onClick="{{ clearSel }}" style="width:28px;height:28px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></div>
+          <div><div style="font-size:15px;line-height:1.3;margin-bottom:8px">{{ sel.name }}</div><div style="display:flex;gap:6px;flex-wrap:wrap"><sc-if value="{{ sel.hasAff }}" hint-placeholder-val="{{ false }}"><span class="tag tag-accent">{{ sel.aff }}</span></sc-if><span class="{{ sel.tagClass }}">{{ sel.statusLabel }}</span><span class="tag tag-neutral">v{{ sel.version }}</span><span class="tag tag-neutral">{{ sel.confL }}</span></div></div>
+          <dl style="display:grid;grid-template-columns:auto minmax(0,1fr);gap:7px 14px;margin:0;font-size:12px">
+            <dt class="text-muted">{{ t.ref }}</dt><dd style="margin:0">{{ sel.id }}</dd>
+            <dt class="text-muted">{{ t.type }}</dt><dd style="margin:0">{{ sel.typeLabel }}</dd>
+            <dt class="text-muted">{{ t.entity }}</dt><dd style="margin:0">{{ sel.entityL }}</dd>
+            <dt class="text-muted">{{ t.service }}</dt><dd style="margin:0">{{ sel.serviceL }}</dd>
+            <dt class="text-muted">{{ t.process }}</dt><dd style="margin:0">{{ sel.processL }}</dd>
+            <dt class="text-muted">{{ t.owner }}</dt><dd style="margin:0">{{ sel.owner }}</dd>
+            <dt class="text-muted">{{ t.modified }}</dt><dd style="margin:0">{{ sel.modifiedF }}</dd>
+            <dt class="text-muted">{{ t.retention }}</dt><dd style="margin:0">{{ sel.rule }} · {{ sel.untilF }}</dd>
+          </dl>
+          <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn btn-primary" onClick="{{ sel.open }}">{{ t.open_record }}</button><button type="button" class="btn btn-secondary"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12M7 11l5 5 5-5M4 20h16"></path></svg>{{ t.download }}</button></div>
+        </aside>
+        </sc-if>
+      </div></sc-if>
+      <sc-if value="{{ isDocument }}" hint-placeholder-val="{{ false }}"><div data-screen-label="Fiche document" style="position:absolute;inset:0;display:flex;flex-direction:column;min-width:0">
+        <div style="display:flex;align-items:flex-start;gap:16px;padding:14px 24px 12px;border-bottom:1px solid var(--color-divider);flex-wrap:wrap">
+          <button type="button" class="btn btn-ghost" onClick="{{ backToExplorer }}" style="padding:6px 6px;font-size:12px;margin-top:2px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"></path></svg>{{ t.back }}</button>
+          <div style="flex:1;min-width:260px">
+            <div class="text-muted" style="font-size:11px">{{ doc.id }} · {{ doc.path }}</div>
+            <h3 style="font-size:20px;margin:2px 0 8px;line-height:1.25">{{ doc.name }}</h3>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><sc-if value="{{ doc.hasAff }}" hint-placeholder-val="{{ false }}"><span class="tag tag-accent">{{ doc.aff }}</span></sc-if><span class="{{ doc.tagClass }}">{{ doc.statusLabel }}</span><span class="tag tag-neutral">{{ doc.typeLabel }}</span><span class="tag tag-neutral">v{{ doc.version }}</span><span class="tag tag-neutral">{{ doc.confL }}</span><span class="text-muted" style="font-size:12px;margin-left:4px;white-space:nowrap">{{ t.modified }} {{ doc.modifiedF }} {{ t.by }} {{ doc.owner }}</span></div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button type="button" class="btn btn-secondary"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12M7 11l5 5 5-5M4 20h16"></path></svg>{{ t.download }}</button>
+            <button type="button" class="btn btn-secondary"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"></path></svg>{{ t.new_version }}</button>
+            <button type="button" class="btn btn-primary" onClick="{{ requestApproval }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4M5 4h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"></path></svg>{{ t.request_approval }}</button>
+            <button type="button" class="btn btn-secondary btn-icon" aria-label="{{ t.share }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M5 12h.01M12 12h.01M19 12h.01"></path></svg></button>
+          </div>
+        </div>
+        <div style="flex:1;min-height:0;display:flex">
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column;background:radial-gradient(ellipse at 50% 0%,var(--color-surface),var(--color-bg) 75%)">
+            <div style="flex:1;overflow:auto;padding:28px 24px;display:flex;justify-content:center;align-items:flex-start">
+              <div style="width:min(100%,560px);aspect-ratio:1/1.414;background:var(--color-neutral-100);color:var(--color-neutral-900);border-radius:2px;box-shadow:0 20px 50px rgba(0,0,0,.55);padding:52px 56px;display:flex;flex-direction:column;gap:14px;flex:none">
+                <div style="display:flex;justify-content:space-between;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-neutral-600)"><span>{{ doc.id }} · v{{ doc.version }}</span><span>{{ doc.entityL }}</span></div>
+                <div style="font-size:18px;line-height:1.25;font-weight:500;margin-top:10px">{{ doc.name }}</div>
+                <div style="height:1px;background:var(--color-neutral-300);margin:4px 0 10px"></div>
+                <div style="height:8px;width:38%;background:var(--color-neutral-400);border-radius:2px"></div>
+                <div style="display:flex;flex-direction:column;gap:7px"><div style="height:6px;background:var(--color-neutral-300);border-radius:2px"></div><div style="height:6px;background:var(--color-neutral-300);border-radius:2px"></div><div style="height:6px;width:82%;background:var(--color-neutral-300);border-radius:2px"></div></div>
+                <div style="height:8px;width:46%;background:var(--color-neutral-400);border-radius:2px;margin-top:10px"></div>
+                <div style="display:flex;flex-direction:column;gap:7px"><div style="height:6px;background:var(--color-neutral-300);border-radius:2px"></div><div style="height:6px;width:94%;background:var(--color-neutral-300);border-radius:2px"></div><div style="height:6px;background:var(--color-neutral-300);border-radius:2px"></div><div style="height:6px;width:61%;background:var(--color-neutral-300);border-radius:2px"></div></div>
+                <div style="margin-top:10px;border:1px solid var(--color-neutral-300);border-radius:2px;display:grid;grid-template-columns:1fr 1fr 1fr;font-size:8px;color:var(--color-neutral-600)"><div style="padding:6px 8px;border-right:1px solid var(--color-neutral-300)">Rév. {{ doc.version }}</div><div style="padding:6px 8px;border-right:1px solid var(--color-neutral-300)">{{ doc.owner }}</div><div style="padding:6px 8px">{{ doc.modifiedF }}</div></div>
+                <div style="display:flex;flex-direction:column;gap:7px;margin-top:6px"><div style="height:6px;background:var(--color-neutral-300);border-radius:2px"></div><div style="height:6px;width:88%;background:var(--color-neutral-300);border-radius:2px"></div><div style="height:6px;width:40%;background:var(--color-neutral-300);border-radius:2px"></div></div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:center;gap:14px;padding:10px 20px;border-top:1px solid var(--color-divider)">
+              <button type="button" class="btn btn-ghost btn-icon" style="width:28px;height:28px" aria-label="Previous"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"></path></svg></button>
+              <span style="font-size:12px;font-variant-numeric:tabular-nums">{{ t.page }} 1 {{ t.of }} 12</span>
+              <button type="button" class="btn btn-ghost btn-icon" style="width:28px;height:28px" aria-label="Next"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg></button>
+              <span class="text-muted" style="font-size:11px;margin-left:12px">{{ t.preview_note }}</span>
+            </div>
+          </div>
+          <aside style="width:400px;flex:none;border-left:1px solid var(--color-divider);display:flex;flex-direction:column;min-height:0">
+            <div style="padding:12px 18px 0"><div class="seg" role="radiogroup" style="display:flex;width:100%"><sc-for list="{{ docTabs }}" as="o" hint-placeholder-count="5"><label class="seg-opt" style="flex:1;justify-content:center;padding:6px 2px;font-size:11.5px;white-space:nowrap"><input type="radio" name="docTab" checked="{{ o.checked }}" onChange="{{ o.pick }}">{{ o.label }}</label></sc-for></div></div>
+            <div style="flex:1;overflow:auto;padding:16px 18px 20px">
+              <sc-if value="{{ tabAffaire }}" hint-placeholder-val="{{ true }}">
+                <sc-if value="{{ hasAff }}" hint-placeholder-val="{{ true }}">
+                  <div style="display:flex;flex-direction:column;gap:18px">
+                    <div>
+                      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap"><span class="tag tag-accent">{{ aff.code }}</span><span class="text-muted" style="font-size:11px">{{ t.synced }} {{ aff.synced }}</span></div>
+                      <div style="font-size:14px;line-height:1.3">{{ aff.name }}</div>
+                    </div>
+                    <div style="display:flex">
+                      <sc-for list="{{ affStages }}" as="st" hint-placeholder-count="4">
+                        <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px">
+                          <div style="display:flex;align-items:center"><div style="width:10px;height:10px;border-radius:50%;flex:none;background:{{ st.dotBg }};border:1.5px solid {{ st.ring }};box-shadow:{{ st.glow }}"></div><div style="flex:1;height:1px;background:{{ st.lineColor }};visibility:{{ st.lineVis }}"></div></div>
+                          <div style="font-size:11px;color:{{ st.color }};padding-right:6px">{{ st.label }}</div>
+                        </div>
+                      </sc-for>
+                    </div>
+                    <dl style="display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 16px;margin:0;font-size:12.5px">
+                      <dt class="text-muted">{{ t.client }}</dt><dd style="margin:0">{{ aff.client }}</dd>
+                      <dt class="text-muted">{{ t.pm }}</dt><dd style="margin:0">{{ aff.manager }}</dd>
+                      <dt class="text-muted">{{ t.site }}</dt><dd style="margin:0">{{ aff.site }}</dd>
+                      <dt class="text-muted">{{ t.tiers }}</dt><dd style="margin:0">{{ aff.tiers }}</dd>
+                    </dl>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                      <button type="button" class="btn btn-primary"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-9 9M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"></path></svg>{{ t.open_keystone }}</button>
+                      <button type="button" class="btn btn-secondary" onClick="{{ affSearch }}">{{ t.aff_docs }}</button>
+                    </div>
+                    <section>
+                      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px"><h6 style="margin:0;opacity:.7">{{ t.expected_pieces }}</h6><span class="text-muted" style="font-size:11px;font-variant-numeric:tabular-nums">{{ affProgress }}</span></div>
+                      <div style="display:flex;flex-direction:column">
+                        <sc-for list="{{ affPieces }}" as="p" hint-placeholder-count="5">
+                          <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid color-mix(in srgb,var(--color-text) 8%,transparent)">
+                            <div style="width:16px;height:16px;flex:none;border-radius:50%;border:1.5px {{ p.borderStyle }} {{ p.ring }};background:{{ p.bg }};display:grid;place-items:center;color:var(--color-bg)"><sc-if value="{{ p.isOk }}" hint-placeholder-val="{{ false }}"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"></path></svg></sc-if></div>
+                            <div style="flex:1;min-width:0"><div style="font-size:12.5px;color:{{ p.color }}">{{ p.label }}</div><div class="text-muted" style="font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.stateLabel }}</div></div>
+                            <sc-if value="{{ p.has }}" hint-placeholder-val="{{ true }}"><button type="button" class="btn btn-ghost" onClick="{{ p.open }}" style="font-size:11px;padding:2px 8px">{{ t.open }}</button></sc-if>
+                            <sc-if value="{{ p.isMissing }}" hint-placeholder-val="{{ false }}"><button type="button" class="btn btn-secondary" style="font-size:11px;padding:2px 8px">{{ t.deposit }}</button></sc-if>
+                          </div>
+                        </sc-for>
+                      </div>
+                    </section>
+                    <section>
+                      <h6 style="margin:0 0 10px;opacity:.7">{{ t.ks_feed }}</h6>
+                      <div style="display:flex;flex-direction:column;gap:10px">
+                        <sc-for list="{{ affEvents }}" as="e" hint-placeholder-count="3"><div style="display:flex;gap:12px;align-items:baseline"><span class="text-muted" style="font-size:11px;flex:none;width:78px;font-variant-numeric:tabular-nums">{{ e.when }}</span><span style="font-size:12.5px">{{ e.text }}</span></div></sc-for>
+                      </div>
+                    </section>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ noAff }}" hint-placeholder-val="{{ false }}">
+                  <p class="text-muted" style="margin:0 0 14px;font-size:13px">{{ t.no_aff }}</p>
+                  <button type="button" class="btn btn-secondary">{{ t.attach_aff }}</button>
+                </sc-if>
+              </sc-if>
+              <sc-if value="{{ tabMeta }}" hint-placeholder-val="{{ false }}">
+                <dl style="display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px 16px;margin:0;font-size:12.5px">
+                  <dt class="text-muted">{{ t.ref }}</dt><dd style="margin:0">{{ doc.id }}</dd>
+                  <dt class="text-muted">{{ t.doc_type }}</dt><dd style="margin:0">{{ doc.typeLabel }}</dd>
+                  <dt class="text-muted">{{ t.entity }}</dt><dd style="margin:0">{{ doc.entityL }}</dd>
+                  <dt class="text-muted">{{ t.service }}</dt><dd style="margin:0">{{ doc.serviceL }}</dd>
+                  <dt class="text-muted">{{ t.process }}</dt><dd style="margin:0">{{ doc.processL }}</dd>
+                  <dt class="text-muted">{{ t.owner }}</dt><dd style="margin:0">{{ doc.owner }}</dd>
+                  <dt class="text-muted">{{ t.created }}</dt><dd style="margin:0">{{ createdF }}</dd>
+                  <dt class="text-muted">{{ t.modified }}</dt><dd style="margin:0">{{ doc.modifiedF }}</dd>
+                  <dt class="text-muted">{{ t.conf }}</dt><dd style="margin:0">{{ doc.confL }}</dd>
+                  <dt class="text-muted">{{ t.language }}</dt><dd style="margin:0">{{ docLang }}</dd>
+                  <dt class="text-muted">{{ t.rule }}</dt><dd style="margin:0">{{ doc.rule }}</dd>
+                  <dt class="text-muted">{{ t.until }}</dt><dd style="margin:0">{{ doc.untilF }}</dd>
+                  <dt class="text-muted">{{ t.hold }}</dt><dd style="margin:0">{{ t.hold_off }}</dd>
+                  <dt class="text-muted">{{ t.keywords }}</dt><dd style="margin:0;display:flex;gap:4px;flex-wrap:wrap"><sc-for list="{{ kw }}" as="w" hint-placeholder-count="3"><span class="tag tag-neutral" style="font-size:10.5px;padding:2px 8px">{{ w.k }}</span></sc-for></dd>
+                </dl>
+                <button type="button" class="btn btn-secondary" style="margin-top:18px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"></path></svg>{{ t.edit_meta }}</button>
+              </sc-if>
+              <sc-if value="{{ tabVersions }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;flex-direction:column">
+                  <sc-for list="{{ versions }}" as="v" hint-placeholder-count="4">
+                    <div style="display:flex;gap:12px;padding:11px 0;border-bottom:1px solid color-mix(in srgb,var(--color-text) 8%,transparent)">
+                      <div style="width:40px;height:40px;flex:none;border-radius:var(--radius-md);border:1px solid var(--color-divider);display:grid;place-items:center;font-size:11px;font-weight:500">v{{ v.v }}</div>
+                      <div style="flex:1;min-width:0"><div style="font-size:13px">{{ v.comment }}</div><div class="text-muted" style="font-size:11px">{{ v.author }} · {{ v.dateF }}</div>
+                        <sc-if value="{{ v.current }}" hint-placeholder-val="{{ true }}"><span class="tag tag-accent" style="margin-top:6px">{{ t.current }}</span></sc-if>
+                        <sc-if value="{{ v.current }}" hint-placeholder-val="{{ false }}"></sc-if>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:14px"><button type="button" class="btn btn-secondary">{{ t.compare }}</button><button type="button" class="btn btn-ghost">{{ t.restore }}</button></div>
+              </sc-if>
+              <sc-if value="{{ tabApproval }}" hint-placeholder-val="{{ false }}">
+                <sc-if value="{{ hasReq }}" hint-placeholder-val="{{ true }}">
+                  <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px"><span style="font-size:13px">{{ reqCircuit }}</span><a href="#" onClick="{{ openReq }}" style="font-size:12px;text-decoration:none">{{ reqId }}</a></div>
+                  <div style="display:flex;flex-direction:column">
+                    <sc-for list="{{ reqSteps }}" as="st" hint-placeholder-count="4">
+                      <div style="display:flex;gap:12px">
+                        <div style="display:flex;flex-direction:column;align-items:center;width:16px;flex:none"><div style="width:12px;height:12px;border-radius:50%;flex:none;background:{{ st.dotBg }};border:1.5px solid {{ st.ring }};box-shadow:{{ st.glow }};margin-top:3px"></div><div style="flex:1;width:1px;min-height:22px;background:{{ st.lineColor }};visibility:{{ st.lineVis }}"></div></div>
+                        <div style="padding-bottom:14px;min-width:0"><div style="font-size:13px;color:{{ st.nameColor }}">{{ st.name }}</div><div class="text-muted" style="font-size:11px">{{ st.assignee }} · {{ st.stateLabel }} {{ st.dateF }}</div></div>
+                      </div>
+                    </sc-for>
+                  </div>
+                  <button type="button" class="btn btn-primary" onClick="{{ openReq }}" style="margin-top:6px">{{ t.open }}</button>
+                </sc-if>
+                <sc-if value="{{ noReq }}" hint-placeholder-val="{{ false }}">
+                  <p class="text-muted" style="margin:0 0 14px;font-size:13px">{{ t.no_workflow }}</p>
+                  <button type="button" class="btn btn-primary" onClick="{{ requestApproval }}">{{ t.request_approval }}</button>
+                </sc-if>
+              </sc-if>
+              <sc-if value="{{ tabHistory }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;flex-direction:column;gap:12px">
+                  <sc-for list="{{ docHist }}" as="h" hint-placeholder-count="4">
+                    <div style="display:flex;gap:12px;align-items:baseline"><span class="text-muted" style="font-size:11px;flex:none;width:78px;font-variant-numeric:tabular-nums">{{ h.when }}</span><div style="min-width:0"><div style="font-size:13px">{{ h.actionLabel }} <span class="text-muted">· {{ h.detail }}</span></div><div class="text-muted" style="font-size:11px">{{ h.user }}</div></div></div>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </div>
+          </aside>
+        </div>
+      </div></sc-if>
+      <sc-if value="{{ isSearch }}" hint-placeholder-val="{{ false }}"><div data-screen-label="Recherche" style="position:absolute;inset:0;display:flex;min-width:0">
+        <aside style="width:264px;flex:none;border-right:1px solid var(--color-divider);overflow:auto;padding:16px 16px 20px;display:flex;flex-direction:column;gap:22px">
+          <section>
+            <h6 style="margin:0 0 8px;opacity:.7">{{ t.saved }}</h6>
+            <div style="display:flex;flex-direction:column;gap:2px">
+              <sc-for list="{{ saved }}" as="x" hint-placeholder-count="3"><button type="button" onClick="{{ x.pick }}" style="display:flex;align-items:center;gap:8px;text-align:left;border:0;background:transparent;color:inherit;font:inherit;font-size:13px;padding:6px 8px;border-radius:var(--radius-md);cursor:pointer" style-hover="background:color-mix(in srgb,var(--color-text) 6%,transparent)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="flex:none;color:var(--color-accent)"><path d="M6 3h12v18l-6-4-6 4z"></path></svg><span>{{ x.label }}</span></button></sc-for>
+            </div>
+          </section>
+          <section>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><h6 style="margin:0;opacity:.7">{{ t.filters }}</h6><sc-if value="{{ hasActive }}" hint-placeholder-val="{{ false }}"><button type="button" class="btn btn-ghost" onClick="{{ clearAll }}" style="font-size:11px;padding:2px 6px">{{ t.clear }}</button></sc-if></div>
+            <div style="display:flex;flex-direction:column;gap:16px">
+              <sc-for list="{{ facets }}" as="g" hint-placeholder-count="4">
+                <div><div class="text-muted" style="font-size:11px;margin-bottom:6px">{{ g.label }}</div>
+                  <div style="display:flex;flex-direction:column;gap:3px">
+                    <sc-for list="{{ g.opts }}" as="o" hint-placeholder-count="4"><label style="display:flex;align-items:center;gap:8px;font-size:12.5px;cursor:pointer;padding:2px 0"><input type="checkbox" checked="{{ o.checked }}" onChange="{{ o.toggle }}" style="margin:0"><span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ o.label }}</span><span class="text-muted" style="font-size:11px">{{ o.count }}</span></label></sc-for>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </section>
+        </aside>
+        <section style="flex:1;min-width:0;display:flex;flex-direction:column;min-height:0">
+          <div style="padding:18px 24px 10px;display:flex;flex-direction:column;gap:12px">
+            <div style="position:relative;max-width:720px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="position:absolute;left:12px;top:12px;opacity:.6"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4"></path></svg><input class="input" value="{{ q }}" onChange="{{ setQ }}" placeholder="{{ t.search_ph }}" style="padding-left:36px;min-height:40px;font-size:15px"></div>
+            <div style="display:flex;align-items:center;gap:12px"><span class="text-muted" style="font-size:12px">{{ resultCount }}</span><span style="flex:1"></span><button type="button" class="btn btn-secondary" style="font-size:12px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12M7 11l5 5 5-5M4 20h16"></path></svg>{{ t.export_list }}</button></div>
+          </div>
+          <div style="flex:1;overflow:auto;padding:0 24px 24px">
+            <sc-if value="{{ noResults }}" hint-placeholder-val="{{ false }}"><p class="text-muted" style="padding:20px 8px">{{ t.no_results }}</p></sc-if>
+            <div style="display:flex;flex-direction:column">
+              <sc-for list="{{ results }}" as="d" hint-placeholder-count="6">
+                <div onClick="{{ d.open }}" style="display:flex;gap:14px;align-items:flex-start;padding:12px 8px;border-bottom:1px solid color-mix(in srgb,var(--color-text) 8%,transparent);cursor:pointer" style-hover="background:color-mix(in srgb,var(--color-text) 4%,transparent)">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="flex:none;opacity:.55;margin-top:2px"><path d="M6 3h9l4 4v14H6zM15 3v4h4M9 12h6M9 16h6"></path></svg>
+                  <div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:14px">{{ d.name }}</span><sc-if value="{{ d.hasAff }}" hint-placeholder-val="{{ false }}"><span class="tag tag-accent">{{ d.aff }}</span></sc-if><span class="{{ d.tagClass }}">{{ d.statusLabel }}</span></div><div class="text-muted" style="font-size:12px;margin-top:2px">{{ d.id }} · {{ d.typeLabel }} · v{{ d.version }} · {{ d.path }}</div></div>
+                  <div class="text-muted" style="font-size:12px;flex:none;white-space:nowrap">{{ d.modifiedF }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </section>
+      </div></sc-if>
+      <sc-if value="{{ isWorkflow }}" hint-placeholder-val="{{ false }}"><div data-screen-label="Validations" style="position:absolute;inset:0;display:flex;min-width:0">
+        <aside style="width:316px;flex:none;border-right:1px solid var(--color-divider);display:flex;flex-direction:column;min-height:0">
+          <div style="padding:14px 12px 10px"><div class="seg" role="radiogroup" style="display:flex;width:100%"><sc-for list="{{ wfFilters }}" as="o" hint-placeholder-count="3"><label class="seg-opt" style="flex:1;justify-content:center;padding:6px 4px;font-size:12px;gap:5px;white-space:nowrap"><input type="radio" name="wfFilter" checked="{{ o.checked }}" onChange="{{ o.pick }}">{{ o.label }}<span class="text-muted" style="font-size:11px">{{ o.count }}</span></label></sc-for></div></div>
+          <div style="flex:1;overflow:auto;padding:0 10px 14px;display:flex;flex-direction:column;gap:4px">
+            <sc-if value="{{ wfEmpty }}" hint-placeholder-val="{{ false }}"><p class="text-muted" style="padding:16px 8px;font-size:12.5px;margin:0">{{ t.wf_empty }}</p></sc-if>
+            <sc-for list="{{ wfList }}" as="r" hint-placeholder-count="3">
+              <button type="button" onClick="{{ r.pick }}" style="text-align:left;border:0;background:{{ r.bg }};color:inherit;font:inherit;padding:10px 12px;border-radius:var(--radius-md);cursor:pointer;display:flex;flex-direction:column;gap:4px;width:100%" style-hover="background:color-mix(in srgb,var(--color-text) 6%,transparent)">
+                <div style="display:flex;justify-content:space-between;gap:8px;width:100%;min-width:0"><span class="text-muted" style="font-size:11px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.id }} · {{ r.circuitLabel }}</span><span class="text-muted" style="font-size:11px;white-space:nowrap;font-variant-numeric:tabular-nums">{{ r.progress }}</span></div>
+                <div style="font-size:13px;line-height:1.3">{{ r.docName }}</div>
+                <div class="text-muted" style="font-size:11px">{{ t.step }} : {{ r.stepName }} · {{ t.due }} {{ r.dueF }}</div>
+              </button>
+            </sc-for>
+          </div>
+        </aside>
+        <section style="flex:1;min-width:0;overflow:auto;padding:20px 28px 28px">
+          <div style="max-width:880px;display:flex;flex-direction:column;gap:24px">
+            <div>
+              <div class="text-muted" style="font-size:11px">{{ r.id }} · {{ r.circuitLabel }} · {{ t.requested_by }} {{ r.requester }}</div>
+              <h3 style="font-size:20px;margin:2px 0 8px;line-height:1.25">{{ r.docName }}</h3>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><span class="tag tag-neutral">{{ r.typeLabel }}</span><span class="tag tag-neutral">v{{ r.version }}</span><span class="tag tag-neutral">{{ r.entityL }}</span><span class="text-muted" style="font-size:12px;margin-left:4px">{{ t.due }} {{ r.dueF }}</span><a href="#" onClick="{{ r.docOpen }}" style="font-size:12px;text-decoration:none;margin-left:auto;white-space:nowrap">{{ t.open_record }}</a></div>
+            </div>
+            <section>
+              <h6 style="margin:0 0 14px;opacity:.7">{{ t.steps }}</h6>
+              <div style="display:flex;flex-wrap:wrap;row-gap:18px">
+                <sc-for list="{{ wfSteps }}" as="st" hint-placeholder-count="4">
+                  <div style="flex:1;min-width:150px;display:flex;flex-direction:column;gap:10px">
+                    <div style="display:flex;align-items:center"><div style="width:14px;height:14px;border-radius:50%;flex:none;background:{{ st.dotBg }};border:1.5px solid {{ st.ring }};box-shadow:{{ st.glow }}"></div><div style="flex:1;height:1px;background:{{ st.lineColor }};visibility:{{ st.lineVis }}"></div></div>
+                    <div style="padding-right:16px"><div style="font-size:13px;color:{{ st.nameColor }}">{{ st.name }}</div><div class="text-muted" style="font-size:11px">{{ st.assignee }}</div><div class="text-muted" style="font-size:11px">{{ st.stateLabel }} {{ st.dateF }}</div></div>
+                  </div>
+                </sc-for>
+              </div>
+            </section>
+            <sc-if value="{{ canAct }}" hint-placeholder-val="{{ true }}">
+              <div class="card elev-sm" style="padding:14px 16px;gap:12px">
+                <sc-if value="{{ isSignStep }}" hint-placeholder-val="{{ false }}"><div style="display:flex;gap:8px;align-items:center;font-size:12.5px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-accent)"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"></path></svg>{{ t.sign_note }}</div></sc-if>
+                <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn btn-primary" onClick="{{ approve }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"></path></svg>{{ t.approve }}</button><button type="button" class="btn btn-secondary" onClick="{{ reject }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>{{ t.reject }}</button><button type="button" class="btn btn-ghost">{{ t.delegate }}</button></div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ wfDone }}" hint-placeholder-val="{{ false }}"><div class="card" style="padding:12px 16px;flex-direction:row;gap:10px;align-items:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="color:var(--color-accent)"><path d="M5 12l5 5L20 7"></path></svg><span style="font-size:13px">{{ t.wf_finished }}</span></div></sc-if>
+            <section>
+              <h6 style="margin:0 0 12px;opacity:.7">{{ t.comments }}</h6>
+              <div style="display:flex;flex-direction:column;gap:14px">
+                <sc-for list="{{ wfComments }}" as="c" hint-placeholder-count="1">
+                  <div style="display:flex;gap:12px"><div style="width:28px;height:28px;flex:none;border-radius:50%;background:var(--color-neutral-800);color:var(--color-neutral-100);display:grid;place-items:center;font-size:10px">{{ c.initials }}</div><div style="min-width:0"><div class="text-muted" style="font-size:11px">{{ c.who }} · {{ c.whenF }}</div><div style="font-size:13px;margin-top:2px">{{ c.text }}</div></div></div>
+                </sc-for>
+                <div style="display:flex;gap:8px"><input class="input" placeholder="{{ t.add_comment }}" style="flex:1"><button type="button" class="btn btn-secondary">{{ t.send }}</button></div>
+              </div>
+            </section>
+          </div>
+        </section>
+      </div></sc-if>
+      <sc-if value="{{ isRetention }}" hint-placeholder-val="{{ false }}"><div data-screen-label="Archivage" style="position:absolute;inset:0;display:flex;flex-direction:column;min-width:0">
+        <div style="display:flex;align-items:center;gap:12px;padding:14px 24px 10px;flex-wrap:wrap">
+          <div class="seg" role="radiogroup" style="flex:none"><sc-for list="{{ retTabs }}" as="o" hint-placeholder-count="3"><label class="seg-opt" style="padding:6px 14px;font-size:12.5px"><input type="radio" name="retTab" checked="{{ o.checked }}" onChange="{{ o.pick }}">{{ o.label }}</label></sc-for></div>
+          <span style="flex:1"></span>
+          <sc-if value="{{ retDue }}" hint-placeholder-val="{{ true }}">
+            <span class="text-muted" style="font-size:12px">{{ selLabel }}</span>
+            <button type="button" class="btn btn-secondary" onClick="{{ clearRetSel }}" disabled="{{ noSel }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18v4H3zM5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9M10 13h4"></path></svg>{{ t.archive_sel }}</button>
+            <button type="button" class="btn btn-primary" onClick="{{ clearRetSel }}" disabled="{{ noSel }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11V8a5 5 0 0 1 10 0v3M5 11h14v10H5z"></path></svg>{{ t.hold_sel }}</button>
+          </sc-if>
+          <sc-if value="{{ retRules }}" hint-placeholder-val="{{ false }}"><button type="button" class="btn btn-primary"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>{{ t.new_rule }}</button></sc-if>
+        </div>
+        <div style="flex:1;overflow:auto;padding:0 24px 24px">
+          <sc-if value="{{ retDue }}" hint-placeholder-val="{{ true }}">
+            <table class="table" style="font-size:13px">
+              <thead><tr><th style="width:36px"><input type="checkbox" checked="{{ allChecked }}" onChange="{{ toggleAll }}" style="margin:0;display:block"></th><th>{{ t.document }}</th><th>{{ t.type }}</th><th>{{ t.rule }}</th><th>{{ t.end_date }}</th><th>{{ t.proposed }}</th><th></th></tr></thead>
+              <tbody>
+                <sc-for list="{{ due }}" as="x" hint-placeholder-count="5">
+                  <tr><td><input type="checkbox" checked="{{ x.checked }}" onChange="{{ x.toggle }}" style="margin:0;display:block"></td><td><div>{{ x.name }}</div><div class="text-muted" style="font-size:11px">{{ x.ref }} · {{ x.entityL }}</div></td><td class="text-muted">{{ x.typeLabel }}</td><td class="text-muted">{{ x.rule }} · {{ x.ruleName }}</td><td style="white-space:nowrap"><div>{{ x.endF }}</div><div class="text-muted" style="font-size:11px">{{ x.days }} {{ t.days_left }}</div></td><td><span class="tag tag-outline">{{ x.actionLabel }}</span></td><td style="text-align:right"><button type="button" class="btn btn-ghost" onClick="{{ x.open }}" style="font-size:12px">{{ t.open }}</button></td></tr>
+                </sc-for>
+              </tbody>
+            </table>
+          </sc-if>
+          <sc-if value="{{ retRules }}" hint-placeholder-val="{{ false }}">
+            <table class="table" style="font-size:13px">
+              <thead><tr><th>{{ t.rule }}</th><th>{{ t.types_covered }}</th><th>{{ t.duration }}</th><th>{{ t.trigger }}</th><th>{{ t.outcome }}</th><th>{{ t.responsible }}</th><th style="text-align:right">{{ t.count }}</th></tr></thead>
+              <tbody>
+                <sc-for list="{{ rules }}" as="r" hint-placeholder-count="5">
+                  <tr><td><div>{{ r.nameL }}</div><div class="text-muted" style="font-size:11px">{{ r.id }}</div></td><td class="text-muted" style="max-width:280px">{{ r.typesL }}</td><td style="white-space:nowrap">{{ r.durationL }}</td><td class="text-muted">{{ r.triggerL }}</td><td class="text-muted">{{ r.outcomeL }}</td><td>{{ r.owner }}</td><td style="text-align:right;font-variant-numeric:tabular-nums">{{ r.count }}</td></tr>
+                </sc-for>
+              </tbody>
+            </table>
+          </sc-if>
+          <sc-if value="{{ retArchives }}" hint-placeholder-val="{{ false }}">
+            <table class="table" style="font-size:13px">
+              <thead><tr><th>{{ t.name }}</th><th>{{ t.type }}</th><th>{{ t.version }}</th><th>{{ t.archived_on }}</th><th>{{ t.until }}</th><th></th></tr></thead>
+              <tbody>
+                <sc-for list="{{ archives }}" as="d" hint-placeholder-count="1">
+                  <tr><td><div>{{ d.name }}</div><div class="text-muted" style="font-size:11px">{{ d.id }} · {{ d.entityL }}</div></td><td class="text-muted">{{ d.typeLabel }}</td><td class="text-muted">v{{ d.version }}</td><td class="text-muted">{{ d.modifiedF }}</td><td class="text-muted">{{ d.untilF }}</td><td style="text-align:right"><div style="display:flex;gap:6px;justify-content:flex-end"><button type="button" class="btn btn-ghost" onClick="{{ d.open }}" style="font-size:12px">{{ t.consult }}</button><button type="button" class="btn btn-ghost" style="font-size:12px">{{ t.restore }}</button></div></td></tr>
+                </sc-for>
+              </tbody>
+            </table>
+          </sc-if>
+        </div>
+      </div></sc-if>
+      <sc-if value="{{ isAdmin }}" hint-placeholder-val="{{ false }}"><div data-screen-label="Administration" style="position:absolute;inset:0;display:flex;flex-direction:column;min-width:0">
+        <div style="display:flex;align-items:center;gap:12px;padding:14px 24px 10px;flex-wrap:wrap">
+          <div class="seg" role="radiogroup" style="flex:none"><sc-for list="{{ adminTabs }}" as="o" hint-placeholder-count="5"><label class="seg-opt" style="padding:6px 12px;font-size:12.5px"><input type="radio" name="adminTab" checked="{{ o.checked }}" onChange="{{ o.pick }}">{{ o.label }}</label></sc-for></div>
+          <span style="flex:1"></span>
+          <sc-if value="{{ adSpaces }}" hint-placeholder-val="{{ true }}"><button type="button" class="btn btn-primary"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>{{ t.new_space }}</button></sc-if>
+          <sc-if value="{{ adTemplates }}" hint-placeholder-val="{{ false }}"><button type="button" class="btn btn-primary"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>{{ t.new_template }}</button></sc-if>
+          <sc-if value="{{ adAudit }}" hint-placeholder-val="{{ false }}"><button type="button" class="btn btn-secondary"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12M7 11l5 5 5-5M4 20h16"></path></svg>{{ t.export_csv }}</button></sc-if>
+        </div>
+        <div style="flex:1;overflow:auto;padding:4px 24px 24px">
+          <sc-if value="{{ adSpaces }}" hint-placeholder-val="{{ true }}">
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">
+              <sc-for list="{{ spaces }}" as="x" hint-placeholder-count="6">
+                <div class="card" style="gap:6px;padding:14px 16px"><div class="card-kicker">{{ x.accessL }}</div><div class="card-title">{{ x.name }}</div><div class="text-muted" style="font-size:12px">{{ t.manager }} : {{ x.manager }}</div><div class="text-muted" style="font-size:12px">{{ x.count }} {{ t.docs }}</div></div>
+              </sc-for>
+            </div>
+          </sc-if>
+          <sc-if value="{{ adRoles }}" hint-placeholder-val="{{ false }}">
+            <p class="text-muted" style="font-size:12px;margin:0 0 10px">{{ t.matrix_hint }}</p>
+            <table class="table" style="font-size:13px">
+              <thead><tr><th>{{ t.role }}</th><sc-for list="{{ perms }}" as="p" hint-placeholder-count="8"><th style="text-align:center">{{ p.label }}</th></sc-for></tr></thead>
+              <tbody>
+                <sc-for list="{{ roles }}" as="r" hint-placeholder-count="6">
+                  <tr><td style="white-space:nowrap">{{ r.name }}</td><sc-for list="{{ r.cells }}" as="c" hint-placeholder-count="8"><td style="text-align:center"><button type="button" onClick="{{ c.toggle }}" style="border:0;background:transparent;cursor:pointer;color:{{ c.color }};padding:4px;border-radius:var(--radius-sm);display:inline-flex" style-hover="background:color-mix(in srgb,var(--color-accent) 12%,transparent)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="{{ c.mark }}"></path></svg></button></td></sc-for></tr>
+                </sc-for>
+              </tbody>
+            </table>
+          </sc-if>
+          <sc-if value="{{ adTemplates }}" hint-placeholder-val="{{ false }}">
+            <table class="table" style="font-size:13px">
+              <thead><tr><th>{{ t.name }}</th><th>{{ t.doc_type }}</th><th>{{ t.version }}</th><th>{{ t.responsible }}</th><th>{{ t.updated }}</th><th style="text-align:right">{{ t.uses }}</th></tr></thead>
+              <tbody>
+                <sc-for list="{{ tpls2 }}" as="x" hint-placeholder-count="6">
+                  <tr><td>{{ x.label }}</td><td class="text-muted">{{ x.typeLabel }}</td><td class="text-muted">v{{ x.version }}</td><td>{{ x.owner }}</td><td class="text-muted">{{ x.updatedF }}</td><td style="text-align:right;font-variant-numeric:tabular-nums">{{ x.uses }}</td></tr>
+                </sc-for>
+              </tbody>
+            </table>
+          </sc-if>
+          <sc-if value="{{ adPlan }}" hint-placeholder-val="{{ false }}">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px">
+              <sc-for list="{{ plan }}" as="a" hint-placeholder-count="4">
+                <section><h6 style="margin:0 0 10px;opacity:.7">{{ a.label }}</h6><div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center"><sc-for list="{{ a.items }}" as="i" hint-placeholder-count="6"><span class="tag tag-neutral">{{ i.v }}</span></sc-for><button type="button" class="btn btn-ghost" style="font-size:11px;padding:2px 8px">+ {{ t.add_value }}</button></div></section>
+              </sc-for>
+            </div>
+          </sc-if>
+          <sc-if value="{{ adAudit }}" hint-placeholder-val="{{ false }}">
+            <table class="table" style="font-size:13px">
+              <thead><tr><th>{{ t.when }}</th><th>{{ t.user }}</th><th>{{ t.action }}</th><th>{{ t.document }}</th><th>{{ t.detail }}</th></tr></thead>
+              <tbody>
+                <sc-for list="{{ auditRows }}" as="a" hint-placeholder-count="10">
+                  <tr><td class="text-muted" style="white-space:nowrap;font-variant-numeric:tabular-nums">{{ a.when }}</td><td>{{ a.user }}</td><td>{{ a.actionLabel }}</td><td><a href="#" onClick="{{ a.open }}" style="text-decoration:none">{{ a.ref }}</a></td><td class="text-muted">{{ a.detail }}</td></tr>
+                </sc-for>
+              </tbody>
+            </table>
+          </sc-if>
+        </div>
+      </div></sc-if>
+    </main>
+  </div>
+</div>
+<sc-if value="{{ dialogNew }}" hint-placeholder-val="{{ false }}"><div class="dialog-backdrop" onClick="{{ closeDialog }}" style="z-index:10">
+  <div class="dialog" role="dialog" aria-modal="true" style="width:min(520px,100%)">
+    <div class="dialog-title">{{ t.new_doc }}</div>
+    <div class="field"><label>{{ t.choose_tpl }}</label>
+      <div style="display:flex;flex-direction:column;gap:2px">
+        <sc-for list="{{ tpls }}" as="x" hint-placeholder-count="6">
+          <label class="radio" style="padding:7px 8px;border-radius:var(--radius-md);gap:10px" style-hover="background:color-mix(in srgb,var(--color-text) 6%,transparent)"><input type="radio" name="tpl" checked="{{ x.checked }}" onChange="{{ x.pick }}"><span class="dot"></span><span style="flex:1">{{ x.label }}</span><span class="text-muted" style="font-size:11px">v{{ x.version }} · {{ x.owner }} · {{ x.uses }} {{ t.tpl_uses }}</span></label>
+        </sc-for>
+      </div>
+    </div>
+    <div class="field"><label>{{ t.target_space }}</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <sc-for list="{{ spaceOpts }}" as="o" hint-placeholder-count="6"><label class="radio" style="font-size:12px;gap:6px"><input type="radio" name="tplEntity" checked="{{ o.checked }}" onChange="{{ o.pick }}"><span class="dot" style="width:13px;height:13px"></span>{{ o.label }}</label></sc-for>
+      </div>
+    </div>
+    <div class="dialog-actions"><button type="button" class="btn btn-secondary" onClick="{{ closeDialog }}">{{ t.cancel }}</button><button type="button" class="btn btn-primary" onClick="{{ createDraft }}">{{ t.create_draft }}</button></div>
+  </div>
+</div></sc-if>
+<sc-if value="{{ dialogNotes }}" hint-placeholder-val="{{ false }}"><div class="dialog-backdrop" onClick="{{ closeDialog }}" style="z-index:10">
+  <div class="dialog" role="dialog" aria-modal="true" style="width:min(560px,100%);max-height:90vh;overflow:auto">
+    <div class="dialog-title">Notes de conception</div>
+    <div class="dialog-body" style="display:flex;flex-direction:column;gap:10px">
+      <p style="margin:0"><strong style="font-weight:500">Hypothèses.</strong> Codex est le coffre-fort documentaire du groupe (administratif, affaires, achats, qualité, HSE, finance, juridique, commercial, production, direction) : un seul référentiel, plan de classement à quatre axes (entité/site, service, processus, type) plutôt qu’une arborescence unique — l’explorateur pivote d’un axe à l’autre. Utilisatrice de référence : Claire Bardet, HSE.</p>
+      <p style="margin:0"><strong style="font-weight:500">Lien Keystone.</strong> Keystone gère les affaires ; Codex garde les pièces. Pas de dossier d’affaire : les documents portent le code partagé (AFF-2026-0142-DOC-017) et se regroupent dynamiquement. La fiche document expose l’onglet Affaire (client, étape, chef de projet, site, tiers synchronisés), la checklist des pièces attendues par Keystone, le fil d’événements et le lien « Ouvrir dans Keystone » ; Keystone pointe en retour vers la fiche Codex.</p>
+      <p style="margin:0"><strong style="font-weight:500">Priorités métier.</strong> Traçabilité (registre, journal d’audit), versions avec version courante explicite, circuits de validation avec étape de signature électronique, rétention légale avec échéances et gel juridique, modèles de documents pour les procédures HSE.</p>
+      <p style="margin:0"><strong style="font-weight:500">Interface.</strong> Bilingue FR/EN (commutateur en haut à droite) ; les noms de documents restent dans leur langue. Rôle simulable via les Tweaks (collaborateur, validateur, auditeur, gestionnaire) : la navigation s’adapte aux droits.</p>
+      <p style="margin:0"><strong style="font-weight:500">À valider avec vous.</strong> Durées de rétention (valeurs de maquette à confirmer avec le Juridique), libellés des circuits, et le découpage des entités.</p>
+    </div>
+    <div class="dialog-actions"><button type="button" class="btn btn-primary" onClick="{{ closeDialog }}">{{ t.close }}</button></div>
+  </div>
+</div></sc-if>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;lang&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;fr&quot;,&quot;options&quot;:[&quot;fr&quot;,&quot;en&quot;],&quot;tsType&quot;:&quot;'fr' | 'en'&quot;,&quot;section&quot;:&quot;Interface&quot;},&quot;role&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;gestionnaire&quot;,&quot;options&quot;:[&quot;collaborateur&quot;,&quot;validateur&quot;,&quot;auditeur&quot;,&quot;gestionnaire&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Interface&quot;},&quot;startScreen&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;home&quot;,&quot;options&quot;:[&quot;home&quot;,&quot;explorer&quot;,&quot;document&quot;,&quot;search&quot;,&quot;workflow&quot;,&quot;retention&quot;,&quot;admin&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Prototype&quot;}}">
+const T = {
+fr: {
+brand_sub:'GED Groupe', nav_home:'Accueil', nav_explorer:'Explorateur', nav_search:'Recherche', nav_workflow:'Validations', nav_retention:'Archivage & rétention', nav_admin:'Administration',
+search_ph:'Rechercher un document, une référence, un mot-clé…', notes:'Notes de conception', notif:'Notifications',
+role_collaborateur:'Collaboratrice', role_validateur:'Manager validatrice', role_auditeur:'Audit & conformité', role_gestionnaire:'Gestionnaire documentaire',
+hello:'Bonjour', home_sub:'Voici ce qui demande votre attention.', new_from_tpl:'Nouveau depuis un modèle', upload:'Déposer un fichier', adv_search:'Recherche avancée',
+kpi_todo:'À valider', kpi_todo_sub:'circuits en attente de votre décision', kpi_exp:'Échéances sous 90 jours', kpi_exp_sub:'documents en fin de conservation', kpi_pub:'Publiés cette semaine', kpi_pub_sub:'nouvelles versions diffusées au groupe',
+todo:'À traiter', recents:'Documents récents', expiring:'Échéances de rétention', activity:'Activité du groupe', see_all:'Tout voir', open:'Ouvrir', due:'Échéance', requested_by:'Demandé par', step:'Étape', until:'Conservation jusqu’au',
+name:'Nom', type:'Type', version:'Version', status:'Statut', owner:'Propriétaire', modified:'Modifié', retention:'Rétention', entity:'Entité / site', service:'Service', process:'Processus', doc_type:'Type de document', all:'Tous', docs:'documents', cancel:'Annuler', create:'Créer', close:'Fermer', ref:'Référence', conf:'Confidentialité',
+act_upload:'Dépôt', act_edit:'Modification', act_request:'Demande de validation', act_view:'Consultation', act_version:'Nouvelle version', act_publish:'Publication', act_sign:'Signature', act_download:'Téléchargement', act_approve:'Approbation', act_archive:'Archivage', act_link:'Rattachement affaire',
+x_renew:'Renouveler', x_review:'Réviser', x_archive:'Archiver', x_destroy:'Détruire',
+sc_home:'Tableau de bord', sc_explorer:'Explorateur documentaire', sc_search:'Recherche avancée', sc_document:'Fiche document', sc_workflow:'Circuits de validation', sc_retention:'Archivage & rétention', sc_admin:'Administration'
+},
+en: {
+brand_sub:'Group DMS', nav_home:'Home', nav_explorer:'Browse', nav_search:'Search', nav_workflow:'Approvals', nav_retention:'Archiving & retention', nav_admin:'Administration',
+search_ph:'Search documents, references, keywords…', notes:'Design notes', notif:'Notifications',
+role_collaborateur:'Employee', role_validateur:'Approving manager', role_auditeur:'Audit & compliance', role_gestionnaire:'Records manager',
+hello:'Good morning', home_sub:'Here is what needs your attention.', new_from_tpl:'New from template', upload:'Upload a file', adv_search:'Advanced search',
+kpi_todo:'To approve', kpi_todo_sub:'workflows waiting for your decision', kpi_exp:'Due within 90 days', kpi_exp_sub:'documents reaching end of retention', kpi_pub:'Published this week', kpi_pub_sub:'new versions released to the group',
+todo:'To do', recents:'Recent documents', expiring:'Retention deadlines', activity:'Group activity', see_all:'See all', open:'Open', due:'Due', requested_by:'Requested by', step:'Step', until:'Retained until',
+name:'Name', type:'Type', version:'Version', status:'Status', owner:'Owner', modified:'Modified', retention:'Retention', entity:'Entity / site', service:'Department', process:'Process', doc_type:'Document type', all:'All', docs:'documents', cancel:'Cancel', create:'Create', close:'Close', ref:'Reference', conf:'Confidentiality',
+act_upload:'Upload', act_edit:'Edit', act_request:'Approval request', act_view:'Viewed', act_version:'New version', act_publish:'Published', act_sign:'Signed', act_download:'Download', act_approve:'Approved', act_archive:'Archived', act_link:'Project link',
+x_renew:'Renew', x_review:'Review', x_archive:'Archive', x_destroy:'Destroy',
+sc_home:'Dashboard', sc_explorer:'Document browser', sc_search:'Advanced search', sc_document:'Document record', sc_workflow:'Approval workflows', sc_retention:'Archiving & retention', sc_admin:'Administration'
+}};
+const TYPES = { fds:['Fiche de données de sécurité','Safety data sheet'], procedure:['Procédure','Procedure'], pv:['Procès-verbal','Minutes'], certificat:['Certificat CE','CE certificate'], autorisation:['Autorisation préfectorale','Prefectural permit'], contrat:['Contrat','Contract'], facture:['Facture','Invoice'], rapport:['Rapport d’incident','Incident report'], plan:['Plan de prévention','Prevention plan'], registre:['Registre des explosifs','Explosives register'], habilitation:['Habilitation (CPT)','Blaster certificate'], instruction:['Instruction de tir','Blasting instruction'], maintenance:['Rapport de maintenance','Maintenance report'], devis:['Devis','Quotation'], offre:['Offre commerciale','Commercial offer'], commande:['Commande','Order'], cahier:['Cahier des charges','Specification'], plan_tir:['Plan de tir','Blast design'], reception:['PV de réception','Acceptance report'], ncr:['Fiche de non-conformité','Non-conformity report'], audit:['Rapport d’audit','Audit report'], note:['Note de service','Internal memo'] };
+const STATUS = { draft:['Brouillon','Draft'], review:['En validation','In review'], published:['Publié','Published'], archived:['Archivé','Archived'] };
+const TAGCLS = { draft:'tag tag-neutral', review:'tag tag-outline', published:'tag tag-accent', archived:'tag tag-neutral' };
+const ENT = { lyon:'Siège — Lyon', cugny:'Usine de Cugny', nord:'Dépôt Nord — Douai', sud:'Dépôt Sud — Alès', uk:'Filiale UK — Sheffield', ma:'Agence Maroc — Casablanca' };
+const SVC = { dir:['Direction','Executive'], com:['Commercial','Sales'], proj:['Bureau d’études & projets','Engineering & projects'], prod:['Production','Production'], maint:['Maintenance','Maintenance'], log:['Logistique & Transport','Logistics & Transport'], achats:['Achats','Purchasing'], qual:['Qualité','Quality'], hse:['HSE','HSE'], rh:['RH','HR'], fin:['Finance','Finance'], jur:['Juridique','Legal'] };
+const PRC = { affaires:['Affaires & chantiers','Projects & worksites'], achats:['Achats','Purchasing'], contrats:['Contrats','Contracts'], stock:['Stockage','Storage'], adr:['Transport ADR','ADR transport'], audit:['Audit & inspections','Audit & inspections'], form:['Formation & habilitations','Training & certifications'], incid:['Incidents & non-conformités','Incidents & non-conformities'], maint:['Maintenance','Maintenance'], compta:['Comptabilité','Accounting'], perso:['Administration du personnel','HR administration'], gouv:['Gouvernance','Governance'] };
+const CONF = { public:['Public','Public'], interne:['Interne','Internal'], restreint:['Restreint','Restricted'], confidentiel:['Confidentiel','Confidential'] };
+const ICONS = { home:'M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z', folder:'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', search:'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4', check:'M9 12l2 2 4-4M5 4h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z', archive:'M3 5h18v4H3zM5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9M10 13h4', shield:'M12 3l8 3v6c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V6zM9 12l2 2 4-4' };
+const DOCS = [
+{ id:'AFF-2026-0142-DOC-017', aff:'AFF-2026-0142', name:'Plan de tir n°17 — Front nord, gradin 12 m', type:'plan_tir', entity:'sud', service:'proj', process:'affaires', version:'0.2', status:'draft', owner:'Paul Marchal', modified:'2026-10-05', rule:'R-5', until:'2031-10-05', conf:'restreint', kw:['plan de tir','Montcel','front nord'] },
+{ id:'AFF-2026-0142-DOC-009', aff:'AFF-2026-0142', name:'Plan de prévention — Chantier carrière de Montcel', type:'plan', entity:'sud', service:'hse', process:'affaires', version:'2.0', status:'review', owner:'Claire Bardet', modified:'2026-10-03', rule:'R-5', until:'2031-10-03', conf:'interne', kw:['carrière','coactivité','chantier'] },
+{ id:'AFF-2026-0142-DOC-012', aff:'AFF-2026-0142', name:'Instruction de tir — Abattage gradin 12 m', type:'instruction', entity:'sud', service:'prod', process:'affaires', version:'4.1', status:'published', owner:'Paul Marchal', modified:'2026-08-30', rule:'R-5', until:'2031-08-30', conf:'interne', kw:['tir','gradin','amorçage'] },
+{ id:'AFF-2026-0142-DOC-003', aff:'AFF-2026-0142', name:'Devis signé DEV-26-0877 — Campagne de tirs 2026', type:'devis', entity:'sud', service:'com', process:'affaires', version:'1.0', status:'published', owner:'Hélène Costa', modified:'2026-09-22', rule:'R-5c', until:'2033-12-31', conf:'confidentiel', kw:['devis','Granulats du Centre'] },
+{ id:'AFF-2026-0158-DOC-006', aff:'AFF-2026-0158', name:'Cahier des charges minage — Lot 2, tunnel de Bramefond', type:'cahier', entity:'lyon', service:'proj', process:'affaires', version:'1.1', status:'review', owner:'Karim Haddad', modified:'2026-10-04', rule:'R-5c', until:'2033-12-31', conf:'confidentiel', kw:['tunnel','minage','lot 2'] },
+{ id:'AFF-2026-0158-DOC-005', aff:'AFF-2026-0158', name:'Commande client EGC-44871 — Fourniture et minage', type:'commande', entity:'lyon', service:'com', process:'affaires', version:'1.0', status:'published', owner:'Karim Haddad', modified:'2026-10-04', rule:'R-fin', until:'2036-12-31', conf:'confidentiel', kw:['commande','Eiffage'] },
+{ id:'AFF-2026-0158-DOC-002', aff:'AFF-2026-0158', name:'Offre technique et commerciale — Tunnel de Bramefond', type:'offre', entity:'lyon', service:'com', process:'affaires', version:'3.0', status:'published', owner:'Hélène Costa', modified:'2026-09-18', rule:'R-5c', until:'2033-12-31', conf:'confidentiel', kw:['offre','tunnel','Bramefond'] },
+{ id:'AFF-2025-0097-DOC-031', aff:'AFF-2025-0097', name:'PV de réception — Fin de campagne, mine de Salsigne', type:'reception', entity:'sud', service:'proj', process:'affaires', version:'1.0', status:'published', owner:'Sofiane Keller', modified:'2026-09-26', rule:'R-10', until:'2036-09-26', conf:'interne', kw:['réception','Salsigne'] },
+{ id:'AFF-2025-0097-DOC-002', aff:'AFF-2025-0097', name:'Devis signé DEV-25-0412 — Reprise des fronts', type:'devis', entity:'sud', service:'com', process:'affaires', version:'1.0', status:'published', owner:'Hélène Costa', modified:'2025-06-02', rule:'R-5c', until:'2032-12-31', conf:'confidentiel', kw:['devis','Salsigne'] },
+{ id:'D-1042', name:'Procédure de stockage des produits explosifs — Dépôt Nord', type:'procedure', entity:'nord', service:'hse', process:'stock', version:'3.2', status:'published', owner:'Claire Bardet', modified:'2026-10-02', rule:'R-10', until:'2036-10-02', conf:'interne', kw:['stockage','magasin','ATEX','dépôt'] },
+{ id:'D-1187', name:'FDS — Émulsion encartouchée NX-80', type:'fds', entity:'cugny', service:'qual', process:'stock', version:'7.0', status:'published', owner:'Marc Delorme', modified:'2026-09-28', rule:'R-10', until:'2036-09-28', conf:'public', kw:['FDS','émulsion','REACH'] },
+{ id:'D-1203', name:'Autorisation préfectorale — Dépôt Sud (renouvellement 2026)', type:'autorisation', entity:'sud', service:'jur', process:'audit', version:'1.0', status:'review', owner:'Inès Rahmani', modified:'2026-10-04', rule:'R-perm', until:'2029-11-15', conf:'confidentiel', kw:['préfecture','ICPE','renouvellement'] },
+{ id:'D-0988', name:'Registre des explosifs — Dépôt Nord — T3 2026', type:'registre', entity:'nord', service:'log', process:'stock', version:'1.4', status:'published', owner:'Paul Marchal', modified:'2026-10-01', rule:'R-10', until:'2036-10-01', conf:'confidentiel', kw:['registre','traçabilité','entrées','sorties'] },
+{ id:'D-1211', name:'Contrat cadre — Transport ADR Sud-Ouest 2026-2028', type:'contrat', entity:'lyon', service:'jur', process:'contrats', version:'0.3', status:'draft', owner:'Inès Rahmani', modified:'2026-10-05', rule:'R-5c', until:'2033-12-31', conf:'confidentiel', kw:['ADR','transporteur','contrat cadre'] },
+{ id:'D-1218', name:'Bon de commande BC-26-1184 — Nitrate d’ammonium — Nitrochimie SA', type:'commande', entity:'cugny', service:'achats', process:'achats', version:'1.0', status:'published', owner:'Thomas Weil', modified:'2026-10-02', rule:'R-fin', until:'2036-12-31', conf:'confidentiel', kw:['commande','nitrate','fournisseur'] },
+{ id:'D-1215', name:'Facture — Nitrochimie SA — FA-26-0931', type:'facture', entity:'lyon', service:'fin', process:'compta', version:'1.0', status:'published', owner:'Thomas Weil', modified:'2026-10-05', rule:'R-fin', until:'2036-12-31', conf:'confidentiel', kw:['facture','fournisseur'] },
+{ id:'D-1221', name:'Fiche de non-conformité NC-26-058 — Lot 2609 détonateurs DX-4', type:'ncr', entity:'cugny', service:'qual', process:'incid', version:'1.0', status:'review', owner:'Marc Delorme', modified:'2026-10-05', rule:'R-10', until:'2036-10-05', conf:'interne', kw:['non-conformité','lot 2609','détonateur'] },
+{ id:'D-1227', name:'Rapport d’audit interne ISO 9001 — Usine de Cugny', type:'audit', entity:'cugny', service:'qual', process:'audit', version:'1.0', status:'published', owner:'Marc Delorme', modified:'2026-09-30', rule:'R-10', until:'2036-09-30', conf:'interne', kw:['audit interne','ISO 9001'] },
+{ id:'D-1176', name:'Certificat CE — Détonateur électronique DX-4', type:'certificat', entity:'cugny', service:'qual', process:'audit', version:'2.1', status:'published', owner:'Marc Delorme', modified:'2026-09-12', rule:'R-10', until:'2036-09-12', conf:'public', kw:['CE','détonateur','conformité'] },
+{ id:'D-1098', name:'Rapport d’incident — Dérive de température, magasin M2', type:'rapport', entity:'cugny', service:'hse', process:'incid', version:'1.0', status:'published', owner:'Sofiane Keller', modified:'2026-09-19', rule:'R-10', until:'2036-09-19', conf:'restreint', kw:['incident','température','magasin'] },
+{ id:'D-1192', name:'PV de revue de direction — S1 2026', type:'pv', entity:'lyon', service:'dir', process:'gouv', version:'1.0', status:'published', owner:'Hélène Costa', modified:'2026-07-10', rule:'R-10', until:'2036-07-10', conf:'interne', kw:['revue de direction','ISO 9001'] },
+{ id:'D-1224', name:'Note de service — Organisation des astreintes dépôts, hiver 2026', type:'note', entity:'lyon', service:'rh', process:'perso', version:'1.0', status:'published', owner:'Nadia Benali', modified:'2026-10-01', rule:'R-5', until:'2031-10-01', conf:'interne', kw:['astreinte','note de service'] },
+{ id:'D-1066', name:'Habilitations CPT — Renouvellements 2026 — Dépôt Nord', type:'habilitation', entity:'nord', service:'rh', process:'form', version:'1.2', status:'published', owner:'Nadia Benali', modified:'2026-06-18', rule:'R-5', until:'2026-12-01', conf:'restreint', kw:['CPT','préposé au tir','habilitation'] },
+{ id:'D-1158', name:'Rapport de maintenance — Magasin M1, portes blindées', type:'maintenance', entity:'cugny', service:'maint', process:'maint', version:'1.0', status:'published', owner:'Lucas Ferry', modified:'2026-09-25', rule:'R-5', until:'2031-09-25', conf:'interne', kw:['maintenance','portes','M1'] },
+{ id:'D-1204', name:'Procédure de chargement ADR — Quai 3', type:'procedure', entity:'nord', service:'log', process:'adr', version:'2.3', status:'review', owner:'Paul Marchal', modified:'2026-10-04', rule:'R-10', until:'2036-10-04', conf:'interne', kw:['ADR','chargement','quai'] },
+{ id:'D-1199', name:'Procédure HSE — Transport interne (Casablanca)', type:'procedure', entity:'ma', service:'hse', process:'adr', version:'1.1', status:'review', owner:'Youssef Amrani', modified:'2026-10-03', rule:'R-10', until:'2036-10-03', conf:'interne', kw:['transport interne','site'] },
+{ id:'D-1120', name:'Safety data sheet — Bulk emulsion UK-E2', type:'fds', entity:'uk', service:'qual', process:'stock', version:'3.0', status:'published', owner:'James Holt', modified:'2026-09-02', rule:'R-10', until:'2036-09-02', conf:'public', kw:['SDS','emulsion','bulk'] },
+{ id:'D-0871', name:'Procédure de stockage — Dépôt Nord (v2, remplacée)', type:'procedure', entity:'nord', service:'hse', process:'stock', version:'2.4', status:'archived', owner:'Claire Bardet', modified:'2024-03-11', rule:'R-10', until:'2026-11-30', conf:'interne', kw:['stockage','obsolète'] }
+];
+const AFFAIRES = {
+'AFF-2026-0142': { name:'Carrière de Montcel — campagne de tirs 2026', client:'Granulats du Centre', stage:'realisation', manager:'Paul Marchal', site:'Carrière de Montcel (Alès)', tiers:'Transports Vidal (ADR)', synced:'09:41',
+  expected:[ { label:['Devis signé','Signed quotation'], doc:'AFF-2026-0142-DOC-003' }, { label:['Commande client','Customer order'], doc:null }, { label:['Plan de prévention','Prevention plan'], doc:'AFF-2026-0142-DOC-009' }, { label:['Instruction de tir','Blasting instruction'], doc:'AFF-2026-0142-DOC-012' }, { label:['Plan de tir','Blast design'], doc:'AFF-2026-0142-DOC-017' }, { label:['Attestation d’assurance chantier','Worksite insurance certificate'], doc:null }, { label:['PV de réception','Acceptance report'], doc:null, later:true } ],
+  events:[ { when:'05/10 09:41', text:['Étape passée à « Réalisation » par Paul Marchal','Stage moved to “Execution” by Paul Marchal'] }, { when:'03/10 15:40', text:['Pièce « Plan de prévention » rattachée (v2.0)','“Prevention plan” attached (v2.0)'] }, { when:'30/09 11:05', text:['Relance Keystone : commande client attendue','Keystone reminder: customer order expected'] }, { when:'22/09 08:30', text:['Affaire créée depuis le devis DEV-26-0877','Project created from quotation DEV-26-0877'] } ] },
+'AFF-2026-0158': { name:'Tunnel de Bramefond — fourniture et minage', client:'Eiffage Génie Civil', stage:'commande', manager:'Karim Haddad', site:'Bramefond (Aveyron)', tiers:'Forasol (forage)', synced:'09:12',
+  expected:[ { label:['Offre technique et commerciale','Technical & commercial offer'], doc:'AFF-2026-0158-DOC-002' }, { label:['Commande client','Customer order'], doc:'AFF-2026-0158-DOC-005' }, { label:['Cahier des charges minage','Blasting specification'], doc:'AFF-2026-0158-DOC-006' }, { label:['Plan de prévention','Prevention plan'], doc:null }, { label:['Instruction de tir','Blasting instruction'], doc:null, later:true } ],
+  events:[ { when:'04/10 16:20', text:['Commande client EGC-44871 enregistrée','Customer order EGC-44871 recorded'] }, { when:'01/10 10:00', text:['Étape passée à « Commande »','Stage moved to “Order”'] }, { when:'15/09 14:30', text:['Affaire créée par Karim Haddad','Project created by Karim Haddad'] } ] },
+'AFF-2025-0097': { name:'Mine de Salsigne — reprise des fronts', client:'Orano Mining', stage:'cloture', manager:'Sofiane Keller', site:'Salsigne (Aude)', tiers:'—', synced:'08:00',
+  expected:[ { label:['Devis signé','Signed quotation'], doc:'AFF-2025-0097-DOC-002' }, { label:['PV de réception','Acceptance report'], doc:'AFF-2025-0097-DOC-031' } ],
+  events:[ { when:'29/09 17:00', text:['Affaire clôturée','Project closed'] }, { when:'26/09 09:15', text:['Pièce « PV de réception » rattachée','“Acceptance report” attached'] } ] }
+};
+const STAGES = { devis:['Devis','Quotation'], commande:['Commande','Order'], realisation:['Réalisation','Execution'], cloture:['Clôture','Closed'] };
+const REQUESTS = [
+{ id:'W-301', doc:'D-1203', docName:'Autorisation préfectorale — Dépôt Sud (renouvellement 2026)', circuit:'sign', requester:'Inès Rahmani', due:'2026-10-10', step:1, steps:[
+  { name:['Rédaction','Drafting'], assignee:'Inès Rahmani', date:'2026-09-30' }, { name:['Vérification HSE','HSE check'], assignee:'Claire Bardet' }, { name:['Approbation Direction','Executive approval'], assignee:'Hélène Costa' }, { name:['Signature électronique','Electronic signature'], assignee:'Hélène Costa', sign:true }, { name:['Publication','Publication'], assignee:'Codex' } ],
+  comments:[ { who:'Inès Rahmani', when:'2026-10-04', text:['Dossier complet, arrêté préfectoral joint en annexe 3. Merci de vérifier les prescriptions ICPE p. 12.','Complete file, prefectural order attached as annex 3. Please check the ICPE requirements p. 12.'] } ] },
+{ id:'W-305', doc:'D-1204', docName:'Procédure de chargement ADR — Quai 3', circuit:'simple', requester:'Paul Marchal', due:'2026-10-12', step:1, steps:[
+  { name:['Rédaction','Drafting'], assignee:'Paul Marchal', date:'2026-10-04' }, { name:['Vérification HSE','HSE check'], assignee:'Claire Bardet' }, { name:['Approbation Logistique','Logistics approval'], assignee:'Karim Haddad' }, { name:['Publication','Publication'], assignee:'Codex' } ],
+  comments:[ { who:'Paul Marchal', when:'2026-10-04', text:['Mise à jour suite à l’audit ADR du 22/09 : nouveau plan de circulation quai 3.','Updated after the ADR audit of 22/09: new traffic plan for dock 3.'] } ] },
+{ id:'W-307', doc:'D-1199', docName:'Procédure HSE — Transport interne (Casablanca)', circuit:'review', requester:'Youssef Amrani', due:'2026-10-15', step:1, steps:[
+  { name:['Relecture site','Site review'], assignee:'Youssef Amrani', date:'2026-10-03' }, { name:['Vérification HSE Groupe','Group HSE check'], assignee:'Claire Bardet' }, { name:['Publication','Publication'], assignee:'Codex' } ],
+  comments:[] },
+{ id:'W-298', doc:'AFF-2026-0142-DOC-009', docName:'Plan de prévention — Chantier carrière de Montcel', circuit:'simple', requester:'Claire Bardet', due:'2026-10-08', step:1, steps:[
+  { name:['Rédaction','Drafting'], assignee:'Claire Bardet', date:'2026-10-03' }, { name:['Vérification HSE site','Site HSE check'], assignee:'Sofiane Keller' }, { name:['Approbation site','Site approval'], assignee:'Paul Marchal' }, { name:['Publication','Publication'], assignee:'Codex' } ],
+  comments:[ { who:'Sofiane Keller', when:'2026-10-04', text:['Je relis la partie coactivité demain matin.','Reviewing the co-activity section tomorrow morning.'] } ] },
+{ id:'W-290', doc:'D-1187', docName:'FDS — Émulsion encartouchée NX-80', circuit:'sign', requester:'Marc Delorme', due:'2026-09-30', step:5, steps:[
+  { name:['Rédaction','Drafting'], assignee:'Marc Delorme', date:'2026-09-20' }, { name:['Vérification Qualité','Quality check'], assignee:'Claire Bardet', date:'2026-09-24' }, { name:['Approbation Direction','Executive approval'], assignee:'Hélène Costa', date:'2026-09-27' }, { name:['Signature électronique','Electronic signature'], assignee:'Hélène Costa', date:'2026-09-28', sign:true }, { name:['Publication','Publication'], assignee:'Codex', date:'2026-09-28' } ],
+  comments:[] },
+{ id:'W-284', doc:'D-1176', docName:'Certificat CE — Détonateur électronique DX-4', circuit:'simple', requester:'Marc Delorme', due:'2026-09-15', step:3, steps:[
+  { name:['Dépôt','Upload'], assignee:'Marc Delorme', date:'2026-09-10' }, { name:['Vérification Qualité','Quality check'], assignee:'Marc Delorme', date:'2026-09-11' }, { name:['Publication','Publication'], assignee:'Codex', date:'2026-09-12' } ],
+  comments:[] }
+];
+const EXPIRING = [
+{ ref:'D-1203', name:'Autorisation préfectorale — Dépôt Sud', type:'autorisation', entity:'sud', rule:'R-perm', end:'2026-11-15', action:'renew' },
+{ ref:'D-1066', name:'Habilitations CPT — Renouvellements 2026 — Dépôt Nord', type:'habilitation', entity:'nord', rule:'R-5', end:'2026-12-01', action:'review' },
+{ ref:'D-0871', name:'Procédure de stockage — Dépôt Nord (v2, remplacée)', type:'procedure', entity:'nord', rule:'R-10', end:'2026-11-30', action:'destroy' },
+{ ref:'D-0712', name:'Contrat de maintenance — Portes blindées M1 (2021)', type:'contrat', entity:'cugny', rule:'R-5c', end:'2026-10-20', action:'archive' },
+{ ref:'D-0655', name:'FDS — Émulsion NX-60 (remplacée par NX-80)', type:'fds', entity:'cugny', rule:'R-10', end:'2026-12-15', action:'destroy' }
+];
+const AUDIT = [
+{ when:'05/10 09:45', user:'Keystone', action:'link', ref:'AFF-2026-0142-DOC-017', detail:'AFF-2026-0142' },
+{ when:'05/10 09:40', user:'Paul Marchal', action:'upload', ref:'AFF-2026-0142-DOC-017', detail:'v0.2 · 3,4 Mo' },
+{ when:'05/10 09:12', user:'Thomas Weil', action:'upload', ref:'D-1215', detail:'v1.0 · 1,2 Mo' },
+{ when:'05/10 08:47', user:'Inès Rahmani', action:'edit', ref:'D-1211', detail:'v0.3' },
+{ when:'04/10 17:30', user:'Paul Marchal', action:'request', ref:'D-1204', detail:'W-305' },
+{ when:'04/10 16:05', user:'Inès Rahmani', action:'request', ref:'D-1203', detail:'W-301' },
+{ when:'04/10 11:20', user:'James Holt', action:'view', ref:'D-1120', detail:'Sheffield · VPN' },
+{ when:'03/10 15:40', user:'Claire Bardet', action:'version', ref:'AFF-2026-0142-DOC-009', detail:'v2.0' },
+{ when:'03/10 10:02', user:'Youssef Amrani', action:'edit', ref:'D-1199', detail:'v1.1' },
+{ when:'02/10 14:15', user:'Claire Bardet', action:'publish', ref:'D-1042', detail:'v3.2' },
+{ when:'02/10 14:10', user:'Hélène Costa', action:'approve', ref:'D-1042', detail:'W-295' },
+{ when:'01/10 09:30', user:'Paul Marchal', action:'version', ref:'D-0988', detail:'v1.4' },
+{ when:'28/09 16:50', user:'Hélène Costa', action:'sign', ref:'D-1187', detail:'eIDAS · W-290' },
+{ when:'25/09 08:05', user:'Lucas Ferry', action:'download', ref:'D-1158', detail:'PDF' }
+];
+const RULES = [
+{ id:'R-10', name:['Documents réglementaires','Regulatory documents'], types:['registre','fds','rapport','certificat','procedure'], duration:['10 ans','10 years'], trigger:['Remplacement ou dernière écriture','Replacement or last entry'], outcome:['Archivage puis destruction contrôlée','Archive, then controlled destruction'], owner:'HSE' },
+{ id:'R-5', name:['Documents opérationnels','Operational documents'], types:['plan','instruction','habilitation','maintenance'], duration:['5 ans','5 years'], trigger:['Fin de validité','End of validity'], outcome:['Destruction après revue','Destruction after review'], owner:'HSE' },
+{ id:'R-5c', name:['Contrats','Contracts'], types:['contrat'], duration:['Échéance + 5 ans','Expiry + 5 years'], trigger:['Fin du contrat','Contract end'], outcome:['Archivage','Archive'], owner:'Juridique' },
+{ id:'R-perm', name:['Autorisations administratives','Administrative permits'], types:['autorisation'], duration:['Validité + 3 ans','Validity + 3 years'], trigger:['Expiration de l’autorisation','Permit expiry'], outcome:['Archivage définitif','Permanent archive'], owner:'Juridique' },
+{ id:'R-fin', name:['Pièces comptables','Accounting records'], types:['facture'], duration:['10 ans','10 years'], trigger:['Clôture de l’exercice','Fiscal year close'], outcome:['Archivage','Archive'], owner:'Finance' }
+];
+const TEMPLATES = [
+{ id:'procedure', name:['Procédure HSE','HSE procedure'], type:'procedure', version:'4', owner:'HSE', updated:'2026-09-12', uses:38 },
+{ id:'plan', name:['Plan de prévention','Prevention plan'], type:'plan', version:'2', owner:'HSE', updated:'2026-06-03', uses:21 },
+{ id:'rapport', name:['Rapport d’incident','Incident report'], type:'rapport', version:'3', owner:'HSE', updated:'2026-01-15', uses:54 },
+{ id:'pv', name:['PV de réunion','Meeting minutes'], type:'pv', version:'1', owner:'Direction', updated:'2025-02-10', uses:113 },
+{ id:'instruction', name:['Instruction de tir','Blasting instruction'], type:'instruction', version:'5', owner:'Production', updated:'2026-08-30', uses:27 },
+{ id:'contrat', name:['Contrat cadre fournisseur','Supplier framework contract'], type:'contrat', version:'2', owner:'Juridique', updated:'2026-04-22', uses:9 }
+];
+const SPACES = [
+{ key:'lyon', manager:'Hélène Costa', count:'4 812', access:['Lecture : Groupe','Read: Group'] },
+{ key:'cugny', manager:'Marc Delorme', count:'6 137', access:['Lecture : Site','Read: Site'] },
+{ key:'nord', manager:'Paul Marchal', count:'2 904', access:['Lecture : Site','Read: Site'] },
+{ key:'sud', manager:'Claire Bardet', count:'2 311', access:['Lecture : Site','Read: Site'] },
+{ key:'uk', manager:'James Holt', count:'1 760', access:['Lecture : Entité','Read: Entity'] },
+{ key:'ma', manager:'Youssef Amrani', count:'642', access:['Lecture : Entité','Read: Entity'] }
+];
+const ROLES = [ ['Lecteur','Reader'], ['Contributeur','Contributor'], ['Gestionnaire documentaire','Records manager'], ['Validateur','Approver'], ['Auditeur','Auditor'], ['Administrateur','Administrator'] ];
+const PERMS = [ ['Lire','Read'], ['Déposer','Upload'], ['Modifier','Edit'], ['Valider','Approve'], ['Publier','Publish'], ['Archiver','Archive'], ['Détruire','Destroy'], ['Administrer','Administer'] ];
+const MATRIX = [
+[1,0,0,0,0,0,0,0],
+[1,1,1,0,0,0,0,0],
+[1,1,1,0,1,1,0,0],
+[1,0,0,1,1,0,0,0],
+[1,0,0,0,0,0,0,0],
+[1,1,1,1,1,1,1,1]
+];
+Object.assign(T.fr, {
+classification:'Plan de classement', all_docs:'Tous les documents', new_doc_btn:'Nouveau', f_all:'Tous', f_published:'Publiés', f_review:'En validation', f_draft:'Brouillons', f_archived:'Archivés', open_record:'Ouvrir la fiche', download:'Télécharger', quick_view:'Aperçu rapide', no_selection:'Sélectionnez une ligne pour afficher l’aperçu rapide.', rule:'Règle',
+back:'Explorateur', new_version:'Nouvelle version', request_approval:'Demander une validation', share:'Partager', tab_meta:'Fiche', tab_affaire:'Affaire', tab_versions:'Versions', tab_approval:'Validation', tab_history:'Historique', page:'Page', of:'sur', preview_note:'Aperçu PDF généré par le service de conversion', keywords:'Mots-clés', language:'Langue', lang_fr:'Français', lang_en:'Anglais', edit_meta:'Modifier les métadonnées', current:'Courante', compare:'Comparer', restore:'Restaurer', no_workflow:'Aucun circuit en cours pour ce document.', by:'par', hold:'Gel juridique', hold_off:'Aucun', created:'Créé le',
+saved:'Recherches enregistrées', filters:'Filtres', clear:'Effacer', results:'résultats', export_list:'Exporter la liste', no_results:'Aucun document ne correspond à ces critères.', in_path:'dans',
+wf_mine:'À valider', wf_active:'En cours', wf_done:'Terminées', wf_finished:'Terminé', circuit_simple:'Validation simple', circuit_sign:'Validation + signature', circuit_review:'Revue annuelle', approve:'Approuver', reject:'Rejeter', delegate:'Déléguer', comments:'Commentaires', add_comment:'Ajouter un commentaire…', steps:'Étapes du circuit', sign_note:'Signature électronique avancée (eIDAS) requise à cette étape.', st_done:'Fait', st_current:'En cours', st_todo:'À venir', wf_empty:'Aucun circuit dans cette vue.', document:'Document', send:'Envoyer',
+ret_due:'Échéances', ret_rules:'Règles de rétention', ret_archives:'Archives', end_date:'Fin de conservation', proposed:'Action proposée', archive_sel:'Archiver la sélection', hold_sel:'Appliquer un gel juridique', selected:'sélectionné(s)', duration:'Durée', trigger:'Déclencheur', outcome:'Sort final', responsible:'Responsable', types_covered:'Types couverts', new_rule:'Nouvelle règle', archived_on:'Archivé le', consult:'Consulter', days_left:'j restants',
+ad_spaces:'Espaces', ad_roles:'Rôles & droits', ad_templates:'Modèles', ad_plan:'Plan de classement', ad_audit:'Journal d’audit', manager:'Responsable', default_access:'Accès par défaut', count:'Documents', new_space:'Nouvel espace', role:'Rôle', new_template:'Nouveau modèle', uses:'Utilisations', updated:'Mis à jour', add_value:'Ajouter une valeur', export_csv:'Exporter (CSV)', when:'Horodatage', user:'Utilisateur', action:'Action', detail:'Détail', matrix_hint:'Cliquez une cellule pour accorder ou retirer le droit.',
+new_doc:'Nouveau document', choose_tpl:'Choisissez un modèle', target_space:'Espace de destination', create_draft:'Créer le brouillon', tpl_uses:'utilisations',
+affaire:'Affaire', open_keystone:'Ouvrir dans Keystone', client:'Client', pm:'Chef de projet', site:'Site d’intervention', tiers:'Tiers', expected_pieces:'Pièces attendues par Keystone', missing:'Manquante', later:'Attendue plus tard', provided:'Déposée', ks_feed:'Événements Keystone', no_aff:'Ce document n’est rattaché à aucune affaire.', attach_aff:'Rattacher à une affaire', aff_docs:'Documents de l’affaire', synced:'Synchronisé depuis Keystone à', deposit:'Déposer', linked_app:'Application liée'
+});
+Object.assign(T.en, {
+classification:'Classification plan', all_docs:'All documents', new_doc_btn:'New', f_all:'All', f_published:'Published', f_review:'In review', f_draft:'Drafts', f_archived:'Archived', open_record:'Open record', download:'Download', quick_view:'Quick view', no_selection:'Select a row to show the quick view.', rule:'Rule',
+back:'Browser', new_version:'New version', request_approval:'Request approval', share:'Share', tab_meta:'Record', tab_affaire:'Project', tab_versions:'Versions', tab_approval:'Approval', tab_history:'History', page:'Page', of:'of', preview_note:'PDF preview generated by the conversion service', keywords:'Keywords', language:'Language', lang_fr:'French', lang_en:'English', edit_meta:'Edit metadata', current:'Current', compare:'Compare', restore:'Restore', no_workflow:'No approval workflow in progress for this document.', by:'by', hold:'Legal hold', hold_off:'None', created:'Created',
+saved:'Saved searches', filters:'Filters', clear:'Clear', results:'results', export_list:'Export list', no_results:'No document matches these criteria.', in_path:'in',
+wf_mine:'For me', wf_active:'In progress', wf_done:'Completed', wf_finished:'Completed', circuit_simple:'Simple approval', circuit_sign:'Approval + signature', circuit_review:'Annual review', approve:'Approve', reject:'Reject', delegate:'Delegate', comments:'Comments', add_comment:'Add a comment…', steps:'Workflow steps', sign_note:'Advanced electronic signature (eIDAS) required at this step.', st_done:'Done', st_current:'In progress', st_todo:'Upcoming', wf_empty:'No workflow in this view.', document:'Document', send:'Send',
+ret_due:'Deadlines', ret_rules:'Retention rules', ret_archives:'Archives', end_date:'Retention end', proposed:'Proposed action', archive_sel:'Archive selection', hold_sel:'Apply legal hold', selected:'selected', duration:'Duration', trigger:'Trigger', outcome:'Final outcome', responsible:'Owner', types_covered:'Document types', new_rule:'New rule', archived_on:'Archived on', consult:'View', days_left:'days left',
+ad_spaces:'Spaces', ad_roles:'Roles & permissions', ad_templates:'Templates', ad_plan:'Classification plan', ad_audit:'Audit log', manager:'Manager', default_access:'Default access', count:'Documents', new_space:'New space', role:'Role', new_template:'New template', uses:'Uses', updated:'Updated', add_value:'Add a value', export_csv:'Export (CSV)', when:'Timestamp', user:'User', action:'Action', detail:'Detail', matrix_hint:'Click a cell to grant or revoke the permission.',
+new_doc:'New document', choose_tpl:'Choose a template', target_space:'Target space', create_draft:'Create draft', tpl_uses:'uses',
+affaire:'Project', open_keystone:'Open in Keystone', client:'Customer', pm:'Project manager', site:'Worksite', tiers:'Third parties', expected_pieces:'Documents expected by Keystone', missing:'Missing', later:'Expected later', provided:'Filed', ks_feed:'Keystone events', no_aff:'This document is not linked to a project.', attach_aff:'Link to a project', aff_docs:'Project documents', synced:'Synced from Keystone at', deposit:'Upload', linked_app:'Linked app'
+});
+const SAVED = [
+{ label:['FDS arrivant à échéance','SDS reaching expiry'], q:'FDS', facets:{ type:['fds'] } },
+{ label:['Procédures HSE en validation','HSE procedures in review'], q:'', facets:{ type:['procedure'], status:['review'] } },
+{ label:['Documents du Dépôt Nord','Dépôt Nord documents'], q:'', facets:{ entity:['nord'] } }
+];
+const VCOMMENTS = [ ['Mise à jour réglementaire et relecture HSE','Regulatory update and HSE review'], ['Corrections mineures après audit','Minor fixes after audit'], ['Refonte du plan et des annexes','Rework of the layout and annexes'], ['Version initiale publiée','Initial published version'] ];
+// DATA-END
+class Component extends DCLogic {
+  state = { screen:null, lang:null, dialog:null, q:'', axis:'service', node:null, sub:null, statusF:'all', expl:null, docId:'AFF-2026-0142-DOC-009', docTab:'affaire', wfFilter:'mine', reqId:'W-301', requests:null, retTab:'due', retSel:{}, adminTab:'spaces', perms:null, facets:{}, docs:null, tplId:'procedure', tplEntity:'nord' };
+  get lang(){ return this.state.lang ?? this.props.lang ?? 'fr'; }
+  get L(){ return this.lang === 'fr' ? 0 : 1; }
+  get t(){ return T[this.lang]; }
+  get screen(){ return this.state.screen ?? this.props.startScreen ?? 'home'; }
+  get docs(){ return this.state.docs ?? DOCS; }
+  get requests(){ return this.state.requests ?? REQUESTS; }
+  go(screen, extra){ return (e) => { if (e && e.preventDefault) e.preventDefault(); this.setState({ screen, ...(extra || {}) }); }; }
+  fmt(iso){ if (!iso) return '—'; const [y,m,d] = iso.split('-'); if (this.lang === 'fr') return `${d}/${m}/${y}`; const M = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return `${+d} ${M[+m-1]} ${y}`; }
+  openDoc(id){ const d = this.docs.find(x => x.id === id); this.setState({ docId:id, screen:'document', docTab: d && d.aff ? 'affaire' : 'meta' }); }
+  view(doc){
+    const L = this.L, t = this.t;
+    return { ...doc, typeLabel:TYPES[doc.type][L], statusLabel:STATUS[doc.status][L], tagClass:TAGCLS[doc.status], entityL:ENT[doc.entity], serviceL:SVC[doc.service][L], processL:PRC[doc.process][L], confL:CONF[doc.conf][L], hasAff: !!doc.aff, affName: doc.aff && AFFAIRES[doc.aff] ? AFFAIRES[doc.aff].name : '', modifiedF:this.fmt(doc.modified), untilF:this.fmt(doc.until), path:`${ENT[doc.entity]} › ${SVC[doc.service][L]} › ${PRC[doc.process][L]}`, open:(e) => { if (e && e.preventDefault) e.preventDefault(); this.openDoc(doc.id); }, select:() => this.setState({ expl: this.state.expl === doc.id ? null : doc.id }), selected: this.state.expl === doc.id };
+  }
+  reqView(r){
+    const t = this.t, L = this.L; const cur = r.steps[r.step];
+    return { ...r, stepName: cur ? cur.name[L] : t.wf_finished, dueF:this.fmt(r.due), done: r.step >= r.steps.length, mine: !!cur && cur.assignee === 'Claire Bardet', open:(e) => { if (e && e.preventDefault) e.preventDefault(); this.setState({ screen:'workflow', reqId:r.id }); } };
+  }
+  renderVals(){
+    const t = this.t, L = this.L, s = this.state, sc = this.screen;
+    const role = this.props.role ?? 'gestionnaire';
+    const vis = { home:true, explorer:true, search:true, workflow: role !== 'auditeur', retention: role !== 'collaborateur', admin: role === 'gestionnaire' };
+    const reqs = this.requests.map(r => this.reqView(r));
+    const mine = reqs.filter(r => r.mine);
+    const icons = { home:'home', explorer:'folder', search:'search', workflow:'check', retention:'archive', admin:'shield' };
+    const navItems = ['home','explorer','search','workflow','retention','admin'].filter(k => vis[k]).map(k => ({ key:k, label:t['nav_'+k], d:ICONS[icons[k]], current: (sc === k || (sc === 'document' && k === 'explorer')) ? 'page' : undefined, bar: (sc === k || (sc === 'document' && k === 'explorer')) ? 'var(--color-accent)' : 'transparent', badge: k === 'workflow' && mine.length ? String(mine.length) : null, go:this.go(k) }));
+    const docsV = this.docs.map(d => this.view(d));
+    const recents = [...docsV].sort((a,b) => b.modified.localeCompare(a.modified)).slice(0,5);
+    const expiring = EXPIRING.map(x => ({ ...x, typeLabel:TYPES[x.type][L], endF:this.fmt(x.end), actionLabel:t['x_'+x.action] }));
+    const audit = AUDIT.map(a => ({ ...a, actionLabel:t['act_'+a.action], open:(e) => { if (e) e.preventDefault(); const d = this.docs.find(d => d.id === a.ref); if (d) this.openDoc(d.id); } }));
+    const today = new Date().toLocaleDateString(this.lang === 'fr' ? 'fr-FR' : 'en-GB', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+    const base = {
+      t, navItems, roleTitle:t['role_'+role], screenTitle:t['sc_'+sc], today: today.charAt(0).toUpperCase() + today.slice(1),
+      q:s.q, setQ:(e) => this.setState({ q:e.target.value }), qKey:(e) => { if (e.key === 'Enter') this.setState({ screen:'search' }); },
+      isFr: this.lang === 'fr', isEn: this.lang === 'en', setFr:() => this.setState({ lang:'fr' }), setEn:() => this.setState({ lang:'en' }),
+      isHome: sc === 'home', isExplorer: sc === 'explorer', isDocument: sc === 'document', isSearch: sc === 'search', isWorkflow: sc === 'workflow', isRetention: sc === 'retention', isAdmin: sc === 'admin',
+      goSearch:this.go('search'), goWorkflow:this.go('workflow'), goExplorer:this.go('explorer'), goRetention:this.go('retention'), goAdmin:this.go('admin', { adminTab:'audit' }),
+      openNew:() => this.setState({ dialog:'new' }), openNotes:() => this.setState({ dialog:'notes' }), closeDialog:(e) => { if (!e || e.target === e.currentTarget) this.setState({ dialog:null }); }, stop:(e) => e.stopPropagation(),
+      dialogNew: s.dialog === 'new', dialogNotes: s.dialog === 'notes',
+      kpiTodo: mine.length, kpiExp: expiring.length, kpiPub: docsV.filter(d => d.status === 'published' && d.modified >= '2026-09-29').length,
+      homeTodo: mine, recents, homeExpiring: expiring.slice(0,4), homeActivity: audit.slice(0,6),
+      docsV, reqs, expiring, audit
+    };
+    return Object.assign(base, this.moreVals(base));
+  }
+  moreVals(b){ return Object.assign({}, this.explorerVals && this.explorerVals(b), this.documentVals && this.documentVals(b), this.searchVals && this.searchVals(b), this.workflowVals && this.workflowVals(b), this.retentionVals && this.retentionVals(b), this.adminVals && this.adminVals(b), this.dialogVals && this.dialogVals(b)); }
+  labelOf(axis, key){ const L = this.L; return axis === 'entity' ? ENT[key] : axis === 'service' ? SVC[key][L] : axis === 'process' ? PRC[key][L] : TYPES[key][L]; }
+  explorerVals(b){
+    const t = this.t, L = this.L, s = this.state, axis = s.axis, all = b.docsV;
+    const hov = 'color-mix(in srgb,var(--color-accent) 10%,transparent)';
+    const counts = {}; all.forEach(d => { counts[d[axis]] = (counts[d[axis]] || 0) + 1; });
+    const treeNodes = Object.keys(counts).sort((a, c) => this.labelOf(axis, a).localeCompare(this.labelOf(axis, c))).map(k => {
+      const sel = s.node === k; const children = [];
+      if (sel && axis !== 'type') { const tc = {}; all.filter(d => d[axis] === k).forEach(d => { tc[d.type] = (tc[d.type] || 0) + 1; }); Object.keys(tc).forEach(tk => children.push({ key:tk, label:TYPES[tk][L], count:tc[tk], color: s.sub === tk ? 'var(--color-accent)' : 'inherit', pick:() => this.setState({ sub: s.sub === tk ? null : tk, expl:null }) })); }
+      return { key:k, label:this.labelOf(axis, k), count:counts[k], color: sel ? 'var(--color-accent)' : 'inherit', bg: sel ? hov : 'transparent', caret: sel ? 'M6 9l6 6 6-6' : 'M9 6l6 6-6 6', children, pick:() => this.setState({ node: sel ? null : k, sub:null, expl:null }) };
+    });
+    const rows = all.filter(d => (!s.node || d[axis] === s.node) && (!s.sub || d.type === s.sub) && (s.statusF === 'all' || d.status === s.statusF)).sort((a, c) => c.modified.localeCompare(a.modified)).map(d => ({ ...d, rowShadow: d.selected ? 'inset 2px 0 0 var(--color-accent)' : 'none', rowColor: d.selected ? 'var(--color-accent-300)' : 'inherit' }));
+    const parts = [t.all_docs]; if (s.node) parts.push(this.labelOf(axis, s.node)); if (s.sub) parts.push(TYPES[s.sub][L]);
+    const sel = s.expl ? all.find(d => d.id === s.expl) : null;
+    return {
+      axisOpts: ['entity','service','process','type'].map(k => ({ key:k, label: k === 'entity' ? (L ? 'Entity' : 'Entité') : k === 'service' ? (L ? 'Dept.' : 'Service') : t[k], checked: axis === k, pick:() => this.setState({ axis:k, node:null, sub:null, expl:null }) })),
+      treeNodes, totalCount: all.length, rootBg: s.node ? 'transparent' : hov, rootColor: s.node ? 'inherit' : 'var(--color-accent)', pickRoot:() => this.setState({ node:null, sub:null, expl:null }),
+      rows, rowCount: `${rows.length} ${t.docs}`, crumb: parts.slice(0, -1).join(' › ') || t.classification, crumbLast: parts[parts.length - 1],
+      statusOpts: ['all','published','review','draft','archived'].map(k => ({ key:k, label:t['f_' + k], checked: s.statusF === k, pick:() => this.setState({ statusF:k }) })),
+      sel, hasSel: !!sel, clearSel:() => this.setState({ expl:null })
+    };
+  }
+  stepsView(r){
+    const L = this.L, t = this.t;
+    return r.steps.map((st, i) => { const k = i < r.step ? 'done' : i === r.step ? 'current' : 'todo'; return { ...st, name:st.name[L], state:k, stateLabel:t['st_' + k], dateF: st.date ? this.fmt(st.date) : '', isDone: k === 'done', isCurrent: k === 'current', dotBg: k === 'done' ? 'var(--color-accent)' : 'transparent', ring: k === 'todo' ? 'var(--color-neutral-700)' : 'var(--color-accent)', glow: k === 'current' ? '0 0 12px color-mix(in srgb,var(--color-accent) 55%,transparent)' : 'none', lineColor: k === 'done' ? 'var(--color-accent)' : 'var(--color-neutral-800)', lineVis: i === r.steps.length - 1 ? 'hidden' : 'visible', nameColor: k === 'todo' ? 'color-mix(in srgb,var(--color-text) 55%,transparent)' : 'inherit' }; });
+  }
+  documentVals(b){
+    const t = this.t, L = this.L, s = this.state;
+    const doc = b.docsV.find(d => d.id === s.docId) || b.docsV[0];
+    const docTabs = ['affaire','meta','versions','approval','history'].map(k => ({ key:k, label:t['tab_' + k], checked: s.docTab === k, pick:() => this.setState({ docTab:k }) }));
+    const A = doc.aff ? AFFAIRES[doc.aff] : null, stageKeys = Object.keys(STAGES), stageIdx = A ? stageKeys.indexOf(A.stage) : -1;
+    const affPieces = A ? A.expected.map(p => { const d = p.doc ? b.docsV.find(x => x.id === p.doc) : null; const st = d ? (d.status === 'published' || d.status === 'archived' ? 'ok' : 'wip') : (p.later ? 'later' : 'missing');
+      return { label:p.label[L], has: !!d, isOk: st === 'ok', isMissing: st === 'missing', stateLabel: d ? (st === 'ok' ? t.provided : d.statusLabel) + ' · ' + d.id : (st === 'later' ? t.later : t.missing), borderStyle: st === 'ok' || st === 'wip' ? 'solid' : 'dashed', ring: st === 'ok' || st === 'wip' ? 'var(--color-accent)' : st === 'missing' ? 'var(--color-neutral-400)' : 'var(--color-neutral-700)', bg: st === 'ok' ? 'var(--color-accent)' : 'transparent', color: d && d.id === doc.id ? 'var(--color-accent-300)' : st === 'later' ? 'color-mix(in srgb,var(--color-text) 60%,transparent)' : 'inherit', open: d ? d.open : null }; }) : [];
+    const authors = [doc.owner, 'Marc Delorme', 'Sofiane Keller', 'Paul Marchal'], dates = [doc.modified, '2026-03-14', '2025-11-02', '2025-04-18'];
+    const versions = []; let cur = doc.version.split('.').map(Number), i = 0;
+    while (versions.length < 4) { versions.push({ v:`${cur[0]}.${cur[1]}`, dateF:this.fmt(dates[i] || '2024-01-10'), author:authors[i % authors.length], comment:VCOMMENTS[Math.min(i, 3)][L], current: i === 0 }); i++; if (cur[1] > 0) cur = [cur[0], cur[1] - 1]; else if (cur[0] > 1) cur = [cur[0] - 1, 2]; else break; }
+    const req = this.requests.find(r => r.doc === doc.id);
+    const hist = b.audit.filter(x => x.ref === doc.id);
+    return {
+      doc, docTabs, noReq: !req, tabAffaire: s.docTab === 'affaire', hasAff: !!A, noAff: !A,
+      aff: A ? { code:doc.aff, name:A.name, client:A.client, manager:A.manager, site:A.site, tiers:A.tiers, synced:A.synced } : null,
+      affStages: stageKeys.map((k, i) => { const st = i < stageIdx ? 'done' : i === stageIdx ? 'current' : 'todo'; return { label:STAGES[k][L], color: st === 'todo' ? 'color-mix(in srgb,var(--color-text) 50%,transparent)' : 'inherit', dotBg: st === 'done' ? 'var(--color-accent)' : 'transparent', ring: st === 'todo' ? 'var(--color-neutral-700)' : 'var(--color-accent)', glow: st === 'current' ? '0 0 10px color-mix(in srgb,var(--color-accent) 55%,transparent)' : 'none', lineColor: st === 'done' ? 'var(--color-accent)' : 'var(--color-neutral-800)', lineVis: i === stageKeys.length - 1 ? 'hidden' : 'visible' }; }),
+      affPieces, affProgress: A ? `${A.expected.filter(p => p.doc).length}/${A.expected.length}` : '', affEvents: A ? A.events.map(e => ({ when:e.when, text:e.text[L] })) : [],
+      affSearch:() => this.setState({ screen:'search', q:'', facets:{ aff:[doc.aff] } }),
+      tabMeta: s.docTab === 'meta', tabVersions: s.docTab === 'versions', tabApproval: s.docTab === 'approval', tabHistory: s.docTab === 'history',
+      versions, hasReq: !!req, reqSteps: req ? this.stepsView(req) : [], reqCircuit: req ? t['circuit_' + req.circuit] : '', reqId: req ? req.id : '', openReq:() => this.setState({ screen:'workflow', reqId: req ? req.id : s.reqId }),
+      docHist: hist.length ? hist : [{ when:this.fmt(doc.modified), user:doc.owner, actionLabel:t.act_publish, detail:'v' + doc.version }],
+      kw: doc.kw.map(k => ({ k })), docLang: doc.entity === 'uk' ? t.lang_en : t.lang_fr, createdF: this.fmt('2024-0' + ((doc.id.charCodeAt(3) % 9) + 1) + '-1' + (doc.id.charCodeAt(5) % 9)),
+      backToExplorer:this.go('explorer'), requestApproval:() => this.setState({ screen:'workflow', reqId: req ? req.id : s.reqId })
+    };
+  }
+  dialogVals(b){
+    const t = this.t, L = this.L, s = this.state;
+    return {
+      tpls: TEMPLATES.map(x => ({ ...x, label:x.name[L], typeLabel:TYPES[x.type][L], checked: s.tplId === x.id, pick:() => this.setState({ tplId:x.id }) })),
+      spaceOpts: Object.keys(ENT).map(k => ({ key:k, label:ENT[k], checked: s.tplEntity === k, pick:() => this.setState({ tplEntity:k }) })),
+      createDraft:() => { const tp = TEMPLATES.find(x => x.id === s.tplId) || TEMPLATES[0]; const id = 'D-' + (1216 + this.docs.length - DOCS.length); const d = { id, name:(L ? 'Untitled — ' : 'Sans titre — ') + tp.name[L], type:tp.type, entity:s.tplEntity, service:tp.type === 'contrat' ? 'jur' : tp.type === 'pv' ? 'dir' : tp.type === 'instruction' ? 'prod' : 'hse', process:tp.type === 'contrat' ? 'contrats' : tp.type === 'pv' ? 'gouv' : tp.type === 'instruction' ? 'affaires' : 'stock', version:'0.1', status:'draft', owner:'Claire Bardet', modified:'2026-10-05', rule:'R-10', until:'2036-10-05', conf:'interne', kw:[] }; this.setState({ docs:[d, ...this.docs], dialog:null, screen:'document', docId:id, docTab:'meta' }); }
+    };
+  }
+  searchVals(b){
+    const t = this.t, L = this.L, s = this.state, q = (s.q || '').trim().toLowerCase(), f = s.facets;
+    const has = (k, v) => (f[k] || []).includes(v);
+    const toggle = (k, v) => () => { const cur = f[k] || []; this.setState({ facets: { ...f, [k]: has(k, v) ? cur.filter(x => x !== v) : [...cur, v] } }); };
+    const match = d => !q || d.name.toLowerCase().includes(q) || d.id.toLowerCase().includes(q) || d.kw.some(k => k.toLowerCase().includes(q)) || d.typeLabel.toLowerCase().includes(q);
+    const pass = (d, skip) => ['aff','type','entity','service','status'].every(k => k === skip || !(f[k] || []).length || f[k].includes(d[k]));
+    const results = b.docsV.filter(d => match(d) && pass(d)).sort((a, c) => c.modified.localeCompare(a.modified));
+    const group = (k, keys, lab) => ({ key:k, label: t[k === 'type' ? 'doc_type' : k === 'aff' ? 'affaire' : k], opts: keys.map(v => ({ v, label:lab(v), count: b.docsV.filter(d => match(d) && pass(d, k) && d[k] === v).length, checked:has(k, v), toggle:toggle(k, v) })).filter(o => o.count || o.checked) });
+    const facets = [group('aff', Object.keys(AFFAIRES), v => v + ' · ' + AFFAIRES[v].name), group('type', Object.keys(TYPES), v => TYPES[v][L]), group('entity', Object.keys(ENT), v => ENT[v]), group('service', Object.keys(SVC), v => SVC[v][L]), group('status', Object.keys(STATUS), v => STATUS[v][L])];
+    const active = Object.values(f).reduce((n, a) => n + a.length, 0);
+    return { results, resultCount:`${results.length} ${t.results}`, noResults: results.length === 0, facets, hasActive: active > 0 || !!q, clearAll:() => this.setState({ facets:{}, q:'' }), saved: SAVED.map(x => ({ label:x.label[L], pick:() => this.setState({ q:x.q, facets:x.facets }) })) };
+  }
+  workflowVals(b){
+    const t = this.t, L = this.L, s = this.state, reqs = b.reqs, filt = s.wfFilter;
+    const sel = k => x => k === 'mine' ? x.mine : k === 'active' ? !x.done : x.done;
+    const list = reqs.filter(sel(filt)).map(r => ({ ...r, circuitLabel:t['circuit_' + r.circuit], bg: r.id === s.reqId ? 'color-mix(in srgb,var(--color-accent) 10%,transparent)' : 'transparent', pick:() => this.setState({ reqId:r.id }), progress:`${Math.min(r.step, r.steps.length)}/${r.steps.length}` }));
+    const r = reqs.find(x => x.id === s.reqId) || list[0] || reqs[0];
+    const cur = r.steps[r.step], doc = b.docsV.find(d => d.id === r.doc);
+    const act = approve => () => this.setState({ requests: this.requests.map(x => x.id !== r.id ? x : approve ? { ...x, step:x.step + 1, steps:x.steps.map((st, i) => i === x.step ? { ...st, date:'2026-10-05' } : st) } : { ...x, step:0, steps:x.steps.map((st, i) => i === 0 ? st : { ...st, date:undefined }), comments:[...x.comments, { who:'Claire Bardet', when:'2026-10-05', text:['Rejeté — document renvoyé en rédaction.', 'Rejected — document sent back to drafting.'] }] }) });
+    return {
+      wfFilters: ['mine','active','done'].map(k => ({ key:k, label:t['wf_' + k], checked: filt === k, count: reqs.filter(sel(k)).length, pick:() => this.setState({ wfFilter:k }) })),
+      wfList:list, wfEmpty: list.length === 0,
+      r: { ...r, circuitLabel:t['circuit_' + r.circuit], dueF:this.fmt(r.due), docOpen:(e) => { e.preventDefault(); this.openDoc(r.doc); }, typeLabel: doc ? doc.typeLabel : '', entityL: doc ? doc.entityL : '', version: doc ? doc.version : '' },
+      wfSteps: this.stepsView(r), canAct: !!cur && cur.assignee === 'Claire Bardet', isSignStep: !!cur && !!cur.sign, wfDone: r.step >= r.steps.length, approve:act(true), reject:act(false),
+      wfComments: r.comments.map(c => ({ who:c.who, whenF:this.fmt(c.when), text:c.text[L], initials:c.who.split(' ').map(w => w[0]).join('') }))
+    };
+  }
+  retentionVals(b){
+    const t = this.t, L = this.L, s = this.state, today = new Date('2026-10-05');
+    const due = b.expiring.map(x => ({ ...x, entityL:ENT[x.entity], ruleName:(RULES.find(r => r.id === x.rule) || { name:['',''] }).name[L], days:Math.round((new Date(x.end) - today) / 86400000), checked: !!s.retSel[x.ref], toggle:() => this.setState({ retSel:{ ...s.retSel, [x.ref]: !s.retSel[x.ref] } }), open:() => { const d = this.docs.find(d => d.id === x.ref); if (d) this.openDoc(d.id); } }));
+    const nSel = due.filter(x => x.checked).length;
+    return {
+      retTabs: ['due','rules','archives'].map(k => ({ key:k, label:t['ret_' + k], checked: s.retTab === k, pick:() => this.setState({ retTab:k }) })),
+      retDue: s.retTab === 'due', retRules: s.retTab === 'rules', retArchives: s.retTab === 'archives',
+      due, selLabel:`${nSel} ${t.selected}`, noSel: nSel === 0, allChecked: nSel === due.length, toggleAll:() => { const m = {}; due.forEach(x => { m[x.ref] = nSel !== due.length; }); this.setState({ retSel:m }); }, clearRetSel:() => this.setState({ retSel:{} }),
+      rules: RULES.map(r => ({ ...r, nameL:r.name[L], typesL:r.types.map(k => TYPES[k][L]).join(', '), durationL:r.duration[L], triggerL:r.trigger[L], outcomeL:r.outcome[L], count:b.docsV.filter(d => d.rule === r.id).length })),
+      archives: b.docsV.filter(d => d.status === 'archived')
+    };
+  }
+  adminVals(b){
+    const t = this.t, L = this.L, s = this.state, matrix = s.perms || MATRIX;
+    return {
+      adminTabs: ['spaces','roles','templates','plan','audit'].map(k => ({ key:k, label:t['ad_' + k], checked: s.adminTab === k, pick:() => this.setState({ adminTab:k }) })),
+      adSpaces: s.adminTab === 'spaces', adRoles: s.adminTab === 'roles', adTemplates: s.adminTab === 'templates', adPlan: s.adminTab === 'plan', adAudit: s.adminTab === 'audit',
+      spaces: SPACES.map(x => ({ ...x, name:ENT[x.key], accessL:x.access[L] })),
+      perms: PERMS.map(p => ({ label:p[L] })),
+      roles: ROLES.map((r, i) => ({ name:r[L], cells:PERMS.map((p, j) => ({ mark: matrix[i][j] ? 'M5 12l5 5L20 7' : 'M8 12h8', color: matrix[i][j] ? 'var(--color-accent)' : 'var(--color-neutral-700)', toggle:() => { const m = matrix.map(row => row.slice()); m[i][j] = m[i][j] ? 0 : 1; this.setState({ perms:m }); } })) })),
+      tpls2: TEMPLATES.map(x => ({ ...x, label:x.name[L], typeLabel:TYPES[x.type][L], updatedF:this.fmt(x.updated) })),
+      plan: [{ label:t.entity, vals:Object.values(ENT) }, { label:t.service, vals:Object.values(SVC).map(v => v[L]) }, { label:t.process, vals:Object.values(PRC).map(v => v[L]) }, { label:t.doc_type, vals:Object.values(TYPES).map(v => v[L]) }].map(a => ({ label:a.label, items:a.vals.map(v => ({ v })) })),
+      auditRows: b.audit
+    };
+  }
+  // METHODS-END
+}
+</script>
+</body>
+</html>

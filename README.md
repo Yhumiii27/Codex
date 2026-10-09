@@ -1,0 +1,113 @@
+# Codex — GED Groupe
+
+Gestion électronique des documents du groupe, construite d'après la maquette Claude Design
+(`design/GED Groupe.dc.html`, design system Nocturne dans `design/_ds/`).
+
+Même socle que Keystone : **Next.js 16 (App Router) · React 19 · PGlite (Postgres embarqué) + Drizzle**.
+
+## Démarrer
+
+```bash
+npm install
+npm run dev        # http://localhost:3100
+```
+
+Au premier lancement, la base locale est créée dans `.data/` (migrations `drizzle/`) et remplie avec les
+données de démonstration (registre des types, organisation provisoire, projets Keystone, documents). Les fichiers
+déposés sont stockés dans `.data/files/` (ou dans SharePoint, voir `src/lib/storage.ts`).
+
+- Repartir de zéro : arrêter le serveur, `npm run db:reset`, relancer. **Obligatoire après le passage au modèle v2** :
+  une base créée avec l'ancien modèle ne peut pas recevoir la nouvelle migration.
+- Après une modification de `src/db/schema.ts` : `npm run db:generate` (nouvelle migration SQL).
+- Contrôles : `npm run typecheck`, `npm run lint`, `npm run build`.
+
+Variables : voir `.env.example` (Keystone, Vigie, dossier de données, jetons de l'API d'intégration).
+
+Le modèle fonctionnel fait foi dans `docs/modele-cible.md` ; l'API d'intégration est décrite dans `docs/api.md`.
+
+## Application Mac
+
+```bash
+npm run app
+```
+
+Construit `Codex.app` (fenêtre native macOS, sans Electron), l'installe dans `~/Applications` et dépose un alias
+« Codex » sur le bureau. L'app :
+- lance le serveur de production de ce projet sur `http://127.0.0.1:3110` (recompilé automatiquement si le code a
+  changé depuis la dernière build) et l'arrête quand on quitte l'app — y compris si l'app plante ;
+- garde ses données à part du serveur de développement : `~/Library/Application Support/Codex` (base et fichiers),
+  journal dans `~/Library/Logs/Codex/server.log` (menu Présentation › Afficher le journal du serveur) ;
+- ouvre les liens Keystone / Vigie dans le navigateur, enregistre les téléchargements dans `~/Téléchargements`.
+
+L'app pointe vers ce dossier de projet et vers le Node.js présents au moment de la construction : relancer
+`npm run app` après un déplacement du projet ou un changement de Node. Pour repartir d'une base de démo neuve :
+quitter l'app et supprimer `~/Library/Application Support/Codex/data`.
+
+## Écrans
+
+| Route | Écran |
+| --- | --- |
+| `/` | Tableau de bord : à valider, documents récents, échéances (conservation, expiration, revue), activité |
+| `/explorateur` | Classement par famille, département, projet / programme, type ou origine ; filtres de statut ; aperçu rapide |
+| `/documents/[id]` | Fiche document : aperçu, onglets Projet · Fiche · Révisions · Validation · Demandes · Historique |
+| `/recherche` | Recherche plein texte + facettes (projet, famille, type, origine, rattachement, département, statut, confidentialité), export CSV |
+| `/validations` | Circuits de validation : à valider, mes demandes, en cours, terminées ; approuver / rejeter / déléguer, commentaires |
+| `/archivage` | Échéances (archivage, gel juridique), règles de conservation du registre, archives |
+| `/administration` | Registre des types, fonctions & circuits, rôles & droits, organisation, modèles (QMS), journal d'audit (CSV) |
+
+API : `/api/registry` (lu par Keystone), `/api/import` (outil de migration), `/api/integrations/vigie` (décisions
+Vigie), `/api/documents/[id]/file` (fichier d'une version de travail), `/api/export/*` (CSV).
+
+Tout l'état d'écran est dans l'URL (onglets, filtres, sélection) : les liens sont partageables.
+
+## Ce qui est réel / simulé
+
+- **Persisté** : création codifiée (`TYPE-CONTEXTE-SEQ`, depuis un modèle, un fichier ou sans fichier), versions de
+  travail (A.1, A.2…), métadonnées et reclassement (nouvel identifiant tant qu'aucune révision n'a été approuvée),
+  lecteurs désignés, demandes de validation et décisions (mise en vigueur à l'approbation ou à la date d'effet),
+  délégation, commentaires, demandes de modification et de retrait, archivage, gel juridique, matrice des droits,
+  registre des types (circuit, confidentialité, conservation), titulaires des fonctions, départements et sites.
+  Chaque action alimente le journal d'audit.
+- **Utilisateur et rôle simulés** (pas d'authentification pour l'instant) : cliquer sur le profil en bas de la
+  barre latérale. La navigation suit les règles de la maquette (validations masquées pour l'auditeur, archivage
+  masqué pour le collaborateur, administration réservée au gestionnaire), les actions vérifient la matrice des
+  droits côté serveur et la visibilité suit `src/lib/access.ts` (confidentialité, cercle de rédaction).
+- **Keystone simulé** : les projets (phase, client, pièces attendues, événements) viennent de tables locales, lues
+  par `src/lib/keystone.ts`, seul fichier à remplacer par des appels API quand Keystone exposera les siennes.
+- **Vigie simulé** : les demandes de modification (ECR) et de retrait sont enregistrées par `src/lib/vigie.ts` ; tant
+  que `VIGIE_API_URL` n'est pas défini, un gestionnaire documentaire simule la décision depuis l'onglet Demandes.
+  Le webhook `/api/integrations/vigie` applique les décisions réelles.
+- **Aperçu** : un PDF ou une image déposés s'affichent dans la fiche ; les documents de démonstration (sans
+  fichier) gardent la page maquette et se téléchargent sous forme d'un PDF généré.
+
+## Organisation du code
+
+```
+src/
+  app/                 routes (pages serveur) + styles par écran (*.module.css)
+    nocturne.css       design system Nocturne (copie de design/_ds/…/styles.css)
+    globals.css        règles d'application communes
+    api/               fichiers, exports CSV, registre, import, webhook Vigie
+  components/
+    shell/             barre latérale, en-tête, contexte client (dialogues, toasts)
+    dialogs/           toutes les boîtes de dialogue
+    ui/                icônes de la maquette, contrôle segmenté, steppers, boutons d'action
+  db/                  schéma Drizzle, connexion PGlite, données de démonstration
+  lib/
+    actions.ts         Server Actions (toutes les mutations + contrôles de droits)
+    queries.ts         lectures et modèles de vue
+    context.ts         langue, utilisateur et rôle simulés, registre, libellés, droits
+    access.ts          visibilité (confidentialité, cercle de rédaction)
+    lifecycle.ts       révisions : mise en vigueur, remplacement, décisions Vigie
+    codes.ts           identifiants TYPE-CONTEXTE-SEQ et lettres de révision
+    retention.ts       fin de conservation
+    storage.ts         stockage des fichiers (disque local ou SharePoint)
+    keystone.ts, vigie.ts  frontières d'intégration
+    importer.ts        API d'import (outil de migration)
+    i18n.ts            textes FR / EN
+```
+
+## À valider
+
+Voir `docs/registre-points-ouverts.md` (registre des types) et les points *provisoires* de `docs/modele-cible.md`
+(organisation, stockage SharePoint), ainsi que le choix du fournisseur d'authentification (Entra ID).

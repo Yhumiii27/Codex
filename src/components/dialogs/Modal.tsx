@@ -1,0 +1,133 @@
+'use client';
+
+import { Fragment, useEffect, useId, useRef, useState, useTransition, type CSSProperties, type ReactNode } from 'react';
+import { useRouter } from 'next/navigation';
+import type { ActionResult } from '@/lib/actions';
+import { fmtSize } from '@/lib/format';
+import { useApp } from '@/components/shell/AppProvider';
+
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/**
+ * `.dialog-backdrop` + `.dialog` from the design system; closes on Escape and on a click that starts and ends on the
+ * backdrop (a text selection released outside the dialog keeps it open). Named by its title; focus moves in on
+ * opening, stays inside while it is open, and returns to where it was on closing.
+ */
+export function Modal({ title, children, actions, width = 520, style }: { title: ReactNode; children: ReactNode; actions: ReactNode; width?: number; style?: CSSProperties }) {
+  const { close } = useApp();
+  const titleId = useId();
+  const box = useRef<HTMLDivElement>(null);
+  const downOnBackdrop = useRef(false);
+  useEffect(() => {
+    const before = document.activeElement as HTMLElement | null;
+    const el = box.current;
+    (el?.querySelector<HTMLElement>(FOCUSABLE) ?? el)?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { close(); return; }
+      if (e.key !== 'Tab' || !el) return;
+      const items = [...el.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((x) => x.offsetParent !== null || x === document.activeElement);
+      if (!items.length) { e.preventDefault(); el.focus(); return; }
+      const first = items[0], last = items[items.length - 1];
+      if (e.shiftKey && (document.activeElement === first || document.activeElement === el)) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      if (before?.isConnected) before.focus();
+    };
+  }, [close]);
+  return (
+    <div
+      className="dialog-backdrop"
+      style={{ zIndex: 10 }}
+      onPointerDown={(e) => { downOnBackdrop.current = e.target === e.currentTarget; }}
+      onClick={(e) => {
+        const ok = downOnBackdrop.current && e.target === e.currentTarget;
+        downOnBackdrop.current = false;
+        if (ok) close();
+      }}
+    >
+      <div ref={box} className="dialog" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} style={{ width: `min(${width}px, 100%)`, maxHeight: '90vh', overflow: 'auto', ...style }}>
+        <div className="dialog-title" id={titleId}>{title}</div>
+        {children}
+        <div className="dialog-actions">{actions}</div>
+      </div>
+    </div>
+  );
+}
+
+/** Runs a server action from a dialog: pending state, inline error, then close, navigate and toast. */
+export function useSubmit() {
+  const { t, close, toast } = useApp();
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  /** `staleError`: an error meaning the page is out of date (the step moved on): close, say so, refresh the page. */
+  const run = (fn: () => Promise<ActionResult>, opts: { keepOpen?: boolean; staleError?: string } = {}) =>
+    start(async () => {
+      setError(null);
+      try {
+        const r = await fn();
+        if (!r.ok) {
+          if (opts.staleError && r.error === opts.staleError) { close(); toast(r.error, true); router.refresh(); return; }
+          setError(r.error);
+          return;
+        }
+        if (!opts.keepOpen) close();
+        if (r.href) router.push(r.href);
+        if (r.message) toast(r.message);
+      } catch {
+        setError(t.error);
+      }
+    });
+  return { pending, error, run };
+}
+
+export type SelectOption = { key: string; label: string; group?: string };
+
+/**
+ * `.input` select. Options carrying a `group` are rendered in `<optgroup>`s (in order of first appearance);
+ * `empty` adds a first blank option (optional fields).
+ */
+export function Select({ id, name, value, onChange, options, defaultValue, required, empty, disabled, ariaLabel }: {
+  id?: string; name?: string; value?: string; onChange?: (v: string) => void; defaultValue?: string; options: SelectOption[]; required?: boolean; empty?: string; disabled?: boolean; ariaLabel?: string;
+}) {
+  const groups: { label: string | undefined; items: SelectOption[] }[] = [];
+  for (const o of options) {
+    const g = groups.find((x) => x.label === o.group);
+    if (g) g.items.push(o); else groups.push({ label: o.group, items: [o] });
+  }
+  const opt = (o: SelectOption) => <option key={o.key} value={o.key}>{o.label}</option>;
+  return (
+    <select
+      id={id}
+      className="input"
+      name={name}
+      value={value}
+      defaultValue={value === undefined ? defaultValue : undefined}
+      onChange={onChange ? (e) => onChange(e.target.value) : undefined}
+      required={required}
+      disabled={disabled}
+      aria-label={ariaLabel}
+    >
+      {empty !== undefined && <option value="">{empty}</option>}
+      {groups.map((g) => (g.label === undefined
+        ? <Fragment key="">{g.items.map(opt)}</Fragment>
+        : <optgroup key={g.label} label={g.label}>{g.items.map(opt)}</optgroup>))}
+    </select>
+  );
+}
+
+export function FilePicker({ label, required }: { label: string; required?: boolean }) {
+  const { lang } = useApp();
+  const [file, setFile] = useState<File | null>(null);
+  return (
+    <label className="file-drop" style={{ position: 'relative' }}>
+      <input type="file" name="file" required={required} onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--color-accent)', flex: 'none' }}><path d="M12 16V4M7 9l5-5 5 5M4 20h16" /></svg>
+      <span className="ellipsis" style={{ flex: 1 }}>{file ? file.name : label}</span>
+      {file && <span className="text-muted sub">{fmtSize(file.size, lang)}</span>}
+    </label>
+  );
+}

@@ -1,0 +1,15 @@
+.tree { width: 248px; flex: none; border-right: 1px solid var(--color-divider); display: flex; flex-direction: column; min-height: 0; }
+.treeBody { flex: 1; overflow: auto; padding: 0 8px 14px; display: flex; flex-direction: column; gap: 1px; }
+.node {
+  display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; border: 0;
+  font: inherit; font-size: 13px; padding: 6px 8px 6px 10px; border-radius: var(--radius-md);
+  cursor: pointer; text-decoration: none;
+}
+.node:hover { background: color-mix(in srgb, var(--color-text) 6%, transparent) !important; color: inherit; }
+.child { font-size: 12px; padding: 5px 8px 5px 30px; background: transparent; }
+.list { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.listHead { display: flex; align-items: center; gap: 12px; padding: 12px 20px 8px; flex-wrap: wrap; }
+.quick {
+  width: 300px; flex: none; border-left: 1px solid var(--color-divider); overflow: auto; padding: 16px 18px;
+  display: flex; flex-direction: column; gap: 14px; height: 100%; background: var(--color-bg); position: relative; z-index: 1;
+}

@@ -1,0 +1,9 @@
+/* 316px in the design, which had three filters; the fourth (« Mes demandes ») needs the extra width. */
+.side { width: 344px; flex: none; border-right: 1px solid var(--color-divider); display: flex; flex-direction: column; min-height: 0; }
+.list { flex: 1; overflow: auto; padding: 0 10px 14px; display: flex; flex-direction: column; gap: 4px; }
+.item {
+  text-align: left; border: 0; color: inherit; font: inherit; padding: 10px 12px; border-radius: var(--radius-md);
+  cursor: pointer; display: flex; flex-direction: column; gap: 4px; width: 100%; text-decoration: none;
+}
+.item:hover { color: inherit; background: color-mix(in srgb, var(--color-text) 6%, transparent) !important; }
+.avatar { width: 28px; height: 28px; flex: none; border-radius: 50%; background: var(--color-neutral-800); color: var(--color-neutral-100); display: grid; place-items: center; font-size: 10px; }

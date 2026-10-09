@@ -1,0 +1,77 @@
+/* Application layer on top of Nocturne (nocturne.css). Mirrors the design's <helmet> rules, then the
+   small patterns every screen repeats. Screen-specific layout lives in each screen's CSS module. */
+
+html, body { height: 100%; margin: 0; overflow: hidden; }
+:root { color-scheme: dark; }
+a { color: var(--color-accent); }
+a:hover { color: var(--color-accent-400); }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: var(--color-neutral-800); border-radius: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+input[type=checkbox] { accent-color: var(--color-accent); }
+select.input { appearance: none; background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%); background-position: calc(100% - 14px) 50%, calc(100% - 9px) 50%; background-size: 5px 5px; background-repeat: no-repeat; padding-right: 26px; }
+select.input option { background: var(--color-surface); color: var(--color-text); }
+
+.app {
+  display: grid; grid-template-columns: 224px minmax(0, 1fr); height: 100vh;
+  background: var(--color-bg); color: var(--color-text);
+  font-family: var(--font-body); font-size: 13px; line-height: 1.45;
+}
+.app-col { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.app-main { flex: 1; min-height: 0; position: relative; }
+
+/* — shared patterns — */
+.screen { position: absolute; inset: 0; }
+.ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tabnum { font-variant-numeric: tabular-nums; }
+.nowrap { white-space: nowrap; }
+.plain-btn { border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; text-align: left; padding: 0; }
+.hover-tint:hover { background: color-mix(in srgb, var(--color-text) 6%, transparent); }
+.sec-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }
+.sec-title { margin: 0; opacity: .7; }
+.sec-link { font-size: 12px; text-decoration: none; white-space: nowrap; flex: none; }
+.sub { font-size: 11px; }
+.hairline { border-bottom: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent); }
+.feed { display: flex; gap: 12px; align-items: baseline; }
+.feed-when { font-size: 11px; flex: none; width: 78px; font-variant-numeric: tabular-nums; }
+.dl { display: grid; grid-template-columns: auto minmax(0, 1fr); margin: 0; }
+.dl dd { margin: 0; }
+.link-plain { text-decoration: none; }
+.row-click { cursor: pointer; }
+/* Clickable rows are reached through the link in their title cell: show the row as focused. */
+.table tbody tr:has(a:focus-visible) { box-shadow: inset 2px 0 0 var(--color-accent); }
+.btn-sm { font-size: 12px; }
+.btn[aria-disabled='true'] { opacity: 0.45; cursor: not-allowed; }
+/* v2 statuses ("En vigueur", "En révision") are two words: a tag never breaks across lines. */
+.tag { white-space: nowrap; }
+
+/* — popovers & toasts — */
+.popover {
+  position: absolute; z-index: 20; min-width: 300px; max-width: 360px;
+  background: var(--color-surface); border-radius: var(--radius-lg); box-shadow: var(--shadow-md);
+  padding: 12px 14px; display: flex; flex-direction: column; gap: 10px;
+}
+.toasts { position: fixed; right: 20px; bottom: 20px; z-index: 50; display: flex; flex-direction: column; gap: 8px; }
+.toast {
+  background: var(--color-surface); box-shadow: var(--shadow-md); border-radius: var(--radius-md);
+  padding: 10px 14px; font-size: 13px; display: flex; align-items: center; gap: 10px; max-width: 380px;
+}
+.toast-error { box-shadow: 0 0 0 1px var(--color-accent-400), 0 6px 18px rgba(0,0,0,0.55); }
+
+/* — form helpers inside dialogs — */
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.form-grid .span-2 { grid-column: span 2; }
+.form-error { color: var(--color-accent-300); font-size: 12px; margin: 0; }
+.field-hint { font-size: 11px; margin-top: 4px; }
+/* Label of a field whose content is a group (segments, radios, read-only value): same look as `.field > label`. */
+.field > .field-label { display: block; font-size: 12px; margin-bottom: 5px; color: color-mix(in srgb, var(--color-text) 70%, transparent); }
+.file-drop {
+  display: flex; align-items: center; gap: 10px; padding: 12px 14px; cursor: pointer;
+  border: 1px dashed var(--color-divider); border-radius: var(--radius-md); font-size: 13px;
+}
+.file-drop:hover { border-color: var(--color-accent); }
+.file-drop input { position: absolute; opacity: 0; width: 0; height: 0; }
+
+/* Links rendered as buttons keep the button's own colour on hover. */
+a.btn:hover { color: var(--color-text); }
+a.btn-primary:hover, a.btn-ghost:hover { color: var(--color-accent); }

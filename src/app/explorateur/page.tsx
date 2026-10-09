@@ -1,0 +1,236 @@
+import Link from 'next/link';
+import { Icon } from '@/components/ui/Icon';
+import { Seg } from '@/components/ui/Seg';
+import { ClickRow, DialogButton } from '@/components/ui/client';
+import { getCtx, type Ctx } from '@/lib/context';
+import { listDocs, type DocView } from '@/lib/queries';
+import styles from './explorer.module.css';
+
+// Classification axes (docs/modele-cible.md §2) and status filters of the explorer.
+const AXES = ['family', 'department', 'project', 'type', 'origin'] as const;
+type Axis = (typeof AXES)[number];
+const DEFAULT_AXIS: Axis = 'family';
+const STATUSES = ['all', 'in_force', 'in_review', 'draft', 'obsolete', 'archived'] as const;
+type StatusF = (typeof STATUSES)[number];
+/** Node of the project axis for documents attached to neither a project nor a research programme. */
+const NONE = 'none';
+const HOV = 'color-mix(in srgb,var(--color-accent) 10%,transparent)';
+
+type Params = { axis?: string; node?: string; sub?: string; status?: string; sel?: string };
+
+function href(p: Params) {
+  const q = new URLSearchParams(Object.entries(p).filter(([, v]) => v) as [string, string][]);
+  return `/explorateur${q.size ? `?${q}` : ''}`;
+}
+
+function axisKey(d: DocView, axis: Axis): string {
+  switch (axis) {
+    case 'family': return d.family;
+    case 'department': return d.department;
+    case 'project': return d.attachedCode ?? NONE;
+    case 'type': return d.typeCode;
+    case 'origin': return d.origin;
+  }
+}
+
+/** "En révision" covers revisions under review and approved ones waiting for their effective date. */
+function statusMatches(d: DocView, f: StatusF): boolean {
+  if (f === 'all') return true;
+  if (f === 'in_review') return d.status === 'in_review' || d.status === 'approved';
+  return d.status === f;
+}
+
+/** Node values of an axis in reference order (registry, organisation, projects then programmes), with their labels. */
+function axisNodes(ctx: Ctx, axis: Axis): { key: string; label: string }[] {
+  const { t } = ctx;
+  switch (axis) {
+    case 'family': return ctx.families.map((f) => ({ key: f.key, label: ctx.label('family', f.key) }));
+    case 'department': return ctx.departments.map((d) => ({ key: d.code, label: ctx.label('department', d.code) }));
+    case 'project': return [
+      ...ctx.projects.map((p) => ({ key: p.code, label: `${p.code} · ${p.name}` })),
+      ...ctx.programs.map((p) => ({ key: p.code, label: `${p.code} · ${p.name}` })),
+      { key: NONE, label: t.no_attachment },
+    ];
+    case 'type': return ctx.types.map((ty) => ({ key: ty.code, label: ctx.label('type', ty.code) })).sort((a, b) => a.label.localeCompare(b.label, ctx.lang));
+    case 'origin': return [{ key: 'interne', label: t.or_interne }, { key: 'externe', label: t.or_externe }];
+  }
+}
+
+export default async function ExplorerPage({ searchParams }: PageProps<'/explorateur'>) {
+  const sp = (await searchParams) as Record<string, string | undefined>;
+  const ctx = await getCtx();
+  const { t, lang } = ctx;
+  const axis: Axis = (AXES as readonly string[]).includes(sp.axis ?? '') ? (sp.axis as Axis) : DEFAULT_AXIS;
+  const status: StatusF = (STATUSES as readonly string[]).includes(sp.status ?? '') ? (sp.status as StatusF) : 'all';
+  const node = sp.node || undefined, sub = sp.sub || undefined, sel = sp.sel || undefined;
+  const base: Params = { axis: axis === DEFAULT_AXIS ? undefined : axis, status: status === 'all' ? undefined : status };
+
+  // Only the documents the user may see (listDocs applies the visibility rules).
+  const all = await listDocs(ctx);
+  const counts = new Map<string, number>();
+  all.forEach((d) => { const k = axisKey(d, axis); counts.set(k, (counts.get(k) ?? 0) + 1); });
+  const known = axisNodes(ctx, axis);
+  // Values found on documents but missing from the reference data still get a node.
+  const nodes = [...known, ...[...counts.keys()].filter((k) => !known.some((n) => n.key === k)).map((k) => ({ key: k, label: k }))];
+  const nodeLabel = (k: string) => nodes.find((n) => n.key === k)?.label ?? k;
+  const treeNodes = nodes
+    .filter((n) => counts.has(n.key))
+    .map((n) => {
+      const selected = node === n.key;
+      const children: { key: string; label: string; count: number }[] = [];
+      if (selected && axis !== 'type') {
+        const tc = new Map<string, number>();
+        all.filter((d) => axisKey(d, axis) === n.key).forEach((d) => tc.set(d.typeCode, (tc.get(d.typeCode) ?? 0) + 1));
+        tc.forEach((count, key) => children.push({ key, label: ctx.label('type', key), count }));
+        children.sort((a, b) => a.label.localeCompare(b.label, lang));
+      }
+      return { ...n, count: counts.get(n.key)!, selected, children };
+    });
+
+  const rows = all.filter((d) => (!node || axisKey(d, axis) === node) && (!sub || d.typeCode === sub) && statusMatches(d, status));
+  const parts = [t.all_docs];
+  if (node) parts.push(nodeLabel(node));
+  if (sub) parts.push(ctx.label('type', sub));
+  const selDoc = sel ? all.find((d) => d.id === sel) : undefined;
+  // A file exists once a revision is in force or approved, or once the draft has a working version ("B.2" rather than "B").
+  const selHasFile = !!selDoc && (!!selDoc.revInForce || selDoc.status === 'approved' || selDoc.workingLabel !== selDoc.revWorking);
+  const here: Params = { ...base, node, sub };
+  const noUpload = ctx.can('upload') ? undefined : `${t.not_allowed} : ${t.perm_upload}`;
+  const axisLabel: Record<Axis, { short: string; full: string }> = {
+    family: { short: t.family, full: t.family },
+    department: { short: t.ax_department_short, full: t.department },
+    project: { short: t.project, full: t.project_program },
+    type: { short: t.type, full: t.doc_type },
+    origin: { short: t.origin, full: t.origin },
+  };
+
+  return (
+    <div className="screen" style={{ display: 'flex', minWidth: 0 }} data-screen-label="Explorateur">
+      <aside className={styles.tree}>
+        <div style={{ padding: '14px 14px 10px' }}>
+          <h6 className="sec-title" style={{ marginBottom: 8 }}>{t.classification}</h6>
+          <Seg
+            name="axis"
+            value={axis}
+            ariaLabel={t.classification}
+            style={{ display: 'flex', width: '100%' }}
+            optStyle={{ flex: 1, justifyContent: 'center', padding: '5px 1px', fontSize: 11, whiteSpace: 'nowrap', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}
+            options={AXES.map((k) => ({
+              key: k,
+              label: <span title={axisLabel[k].full}>{axisLabel[k].short}</span>,
+              href: href({ axis: k === DEFAULT_AXIS ? undefined : k, status: base.status }),
+            }))}
+          />
+        </div>
+        <div className={styles.treeBody}>
+          <Link href={href(base)} className={styles.node} style={{ background: node ? 'transparent' : HOV, color: node ? 'inherit' : 'var(--color-accent)', gap: 8, paddingLeft: 8 }}>
+            <Icon name="folder" size={15} style={{ flex: 'none' }} />
+            <span style={{ flex: 1 }}>{t.all_docs}</span>
+            <span className="text-muted" style={{ fontSize: 11 }}>{all.length}</span>
+          </Link>
+          {treeNodes.map((n) => (
+            <div key={n.key} style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              <Link href={href({ ...base, node: n.selected ? undefined : n.key })} className={styles.node} style={{ background: n.selected ? HOV : 'transparent', color: n.selected ? 'var(--color-accent)' : 'inherit' }} title={n.label}>
+                <Icon name={n.selected ? 'chevronDown' : 'chevronRight'} size={12} sw={1.8} style={{ flex: 'none', opacity: 0.7 }} />
+                <span className="ellipsis" style={{ flex: 1 }}>{n.label}</span>
+                <span className="text-muted" style={{ fontSize: 11 }}>{n.count}</span>
+              </Link>
+              {n.children.map((c) => (
+                <Link key={c.key} href={href({ ...base, node: n.key, sub: sub === c.key ? undefined : c.key })} className={`${styles.node} ${styles.child}`} style={{ color: sub === c.key ? 'var(--color-accent)' : 'inherit' }} title={c.label}>
+                  <span className="ellipsis" style={{ flex: 1 }}>{c.label}</span>
+                  <span className="text-muted" style={{ fontSize: 11 }}>{c.count}</span>
+                </Link>
+              ))}
+            </div>
+          ))}
+        </div>
+      </aside>
+
+      <section className={styles.list}>
+        <div className={styles.listHead}>
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <div className="text-muted" style={{ fontSize: 11 }}>{parts.slice(0, -1).join(' › ') || t.classification}</div>
+            <div style={{ fontSize: 16 }}>{parts[parts.length - 1]}</div>
+          </div>
+          <Seg
+            name="statusF"
+            value={status}
+            style={{ flex: 'none', maxWidth: '100%', overflow: 'auto' }}
+            optStyle={{ padding: '5px 10px', fontSize: 12, whiteSpace: 'nowrap' }}
+            options={STATUSES.map((k) => ({ key: k, label: t[`f_${k}`], href: href({ ...here, sel, status: k === 'all' ? undefined : k }) }))}
+          />
+          <DialogButton spec={{ kind: 'new' }} className="btn btn-primary" icon="plus" iconSw={1.8} deniedTitle={noUpload}>{t.new_doc_btn}</DialogButton>
+        </div>
+        <div style={{ flex: 1, overflow: 'auto', padding: '0 20px 20px' }}>
+          <table className="table" style={{ fontSize: 13 }}>
+            <thead><tr><th>{t.title_label}</th><th>{t.type}</th><th>{t.rev_short}</th><th>{t.status}</th><th>{t.owner}</th><th>{t.modified}</th><th>{t.retention_short}</th></tr></thead>
+            <tbody>
+              {rows.map((d) => {
+                const selected = d.id === sel;
+                return (
+                  <ClickRow key={d.id} href={d.href} onSelect={href({ ...here, sel: selected ? undefined : d.id })} style={{ boxShadow: selected ? 'inset 2px 0 0 var(--color-accent)' : 'none' }}>
+                    <td style={{ maxWidth: 0, width: '100%', minWidth: 200 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                        <Icon name="doc" size={15} style={{ flex: 'none', opacity: 0.55 }} />
+                        {/* The keyboard path: Enter selects the row and opens the quick view, whose link opens the record. */}
+                        <Link href={href({ ...here, sel: selected ? undefined : d.id })} scroll={false} aria-current={selected ? 'true' : undefined} className="ellipsis link-plain" style={{ color: selected ? 'var(--color-accent-300)' : 'inherit' }} title={d.title}>{d.title}</Link>
+                      </div>
+                      <div className="text-muted ellipsis" style={{ fontSize: 11, paddingLeft: 23 }}>{d.id} · {d.contextL}</div>
+                    </td>
+                    <td className="text-muted">{d.typeLabel}</td>
+                    <td className="text-muted nowrap">
+                      <div>{d.rev}</div>
+                      {d.revInForce && d.workingLabel && <div style={{ fontSize: 11 }}>{d.workingLabel} {t.in_progress}</div>}
+                    </td>
+                    <td><span className={d.tagClass}>{d.statusLabel}</span></td>
+                    <td>{d.owner}</td>
+                    <td className="text-muted nowrap">{d.modifiedF}</td>
+                    <td className="text-muted nowrap" title={d.retentionL}>{d.untilF}</td>
+                  </ClickRow>
+                );
+              })}
+            </tbody>
+          </table>
+          <div className="text-muted" style={{ fontSize: 11, padding: '10px 8px' }}>{rows.length} {t.docs}</div>
+        </div>
+      </section>
+
+      {selDoc && (
+        <aside className={styles.quick}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h6 className="sec-title">{t.quick_view}</h6>
+            <Link href={href(here)} className="btn btn-ghost btn-icon" style={{ width: 28, height: 28 }} aria-label={t.close} scroll={false}><Icon name="close" size={14} /></Link>
+          </div>
+          <div>
+            <div style={{ fontSize: 15, lineHeight: 1.3, marginBottom: 8 }}>{selDoc.title}</div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {selDoc.attachedCode && <span className="tag tag-accent">{selDoc.attachedCode}</span>}
+              <span className={selDoc.tagClass}>{selDoc.statusLabel}</span>
+              <span className="tag tag-neutral">{t.rev_short} {selDoc.rev}</span>
+              <span className="tag tag-neutral">{selDoc.confL}</span>
+            </div>
+          </div>
+          <dl className="dl" style={{ gap: '7px 14px', fontSize: 12 }}>
+            <dt className="text-muted">{t.ref}</dt><dd>{selDoc.id}</dd>
+            <dt className="text-muted">{t.type}</dt><dd>{selDoc.typeLabel}{selDoc.subtype ? ` · ${selDoc.subtype}` : ''}</dd>
+            <dt className="text-muted">{t.family}</dt><dd>{selDoc.familyLabel}</dd>
+            <dt className="text-muted">{t.origin}</dt><dd>{selDoc.originL}{selDoc.origin === 'externe' && selDoc.sourceOrg ? ` · ${selDoc.sourceOrg}` : ''}</dd>
+            <dt className="text-muted">{t.attachment}</dt><dd>{selDoc.attachment === 'none' ? selDoc.attachmentL : selDoc.contextL}</dd>
+            <dt className="text-muted">{t.department_short}</dt><dd>{selDoc.departmentL}</dd>
+            {selDoc.site && <><dt className="text-muted">{t.site_label}</dt><dd>{selDoc.siteL}</dd></>}
+            <dt className="text-muted">{t.owner}</dt><dd>{selDoc.owner}</dd>
+            <dt className="text-muted">{t.revision}</dt><dd>{[selDoc.revInForce, selDoc.workingLabel && `${selDoc.workingLabel} ${t.in_progress}`].filter(Boolean).join(' · ') || '—'}</dd>
+            <dt className="text-muted">{t.modified}</dt><dd>{selDoc.modifiedF}</dd>
+            <dt className="text-muted">{t.retention_short}</dt><dd>{selDoc.retentionL} · {selDoc.untilF}</dd>
+          </dl>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Link href={selDoc.href} className="btn btn-primary">{t.open_record}</Link>
+            {selHasFile
+              ? <a href={`/api/documents/${encodeURIComponent(selDoc.id)}/file?download=1`} className="btn btn-secondary"><Icon name="download" size={14} />{t.download}</a>
+              : <button type="button" className="btn btn-secondary" aria-disabled title={t.no_version}><Icon name="download" size={14} />{t.download}</button>}
+          </div>
+        </aside>
+      )}
+    </div>
+  );
+}
