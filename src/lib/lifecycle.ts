@@ -123,31 +123,27 @@ export async function defaultModifier(tx: Tx, requesterId: string, d: DocRow): P
   return perms.has('upload') && canRead(viewer, d, await buildAccessIndex(tx)) ? u.id : d.ownerId;
 }
 
-export type ChangeDecisionError = 'not_found' | LockKey | 'locked_working';
+export type ChangeDecisionError = 'not_found' | 'locked_working';
 
 /**
- * Applies Vigie's decision on a change request (webhook or simulation). An acceptance only applies to an active document
- * free of legal hold, and a change never opens a second revision beside one already open; a refusal always applies.
- * An accepted withdrawal closes the work in progress: running workflows end and open revisions are cancelled.
+ * What became of a decision: applied now ('rejected', 'implemented'), or an acceptance recorded while the document is
+ * locked ('accepted', with the state and hold that lock it), applied when the lock lifts (applyPendingDecision).
  */
-export async function applyChangeDecision(tx: Tx, id: string, decision: { accepted: boolean; ecoRef?: string | null; modifierId?: string | null; note?: string | null }, actorId: string): Promise<ChangeDecisionError | null> {
-  const [req] = await tx.select().from(s.changeRequests).where(eq(s.changeRequests.id, id));
-  if (!req || req.status !== 'submitted') return 'not_found';
+export type ChangeDecisionResult = { error: ChangeDecisionError } | { status: 'rejected' | 'implemented' } | ({ status: 'accepted' } & Pick<DocRow, 'state' | 'legalHold'>);
+
+type ChangeRow = typeof s.changeRequests.$inferSelect;
+
+/**
+ * Carries out an accepted request on an unlocked document: a change opens the next revision for the modifier (the one
+ * Vigie named, else the default one), a withdrawal closes the work in progress (running workflows end, open revisions are
+ * cancelled) and makes the document obsolete. The request becomes 'implemented'.
+ */
+async function implementChange(tx: Tx, req: ChangeRow, doc: DocRow, actorId: string) {
   const at = nowStamp();
-  if (!decision.accepted) {
-    await tx.update(s.changeRequests).set({ status: 'rejected', decidedAt: at, decisionNote: decision.note ?? null }).where(eq(s.changeRequests.id, id));
-    await audit(tx, actorId, req.kind === 'modification' ? 'ecr' : 'obsolete', req.docId, `${id} · ✕`);
-    return null;
-  }
-  const [doc] = await tx.select().from(s.documents).where(eq(s.documents.id, req.docId));
-  if (!doc) return 'not_found';
-  const lock = lockOf(doc);
-  if (lock) return lock;
-  const ref = decision.ecoRef ?? id;
+  const ref = req.ecoRef ?? req.id;
   let modifierId: string | null = null;
   if (req.kind === 'modification') {
-    if (doc.revWorking) return 'locked_working';
-    modifierId = decision.modifierId ?? (await defaultModifier(tx, req.requesterId, doc));
+    modifierId = req.modifierId ?? (await defaultModifier(tx, req.requesterId, doc));
     const rev = await openRevision(tx, req.docId, { modifierId, changeRef: ref });
     await audit(tx, actorId, 'ecr', req.docId, `${ref} → ${rev.letter}`, rev.id);
   } else {
@@ -162,6 +158,48 @@ export async function applyChangeDecision(tx: Tx, id: string, decision: { accept
     await refreshHeadline(tx, req.docId);
     await audit(tx, actorId, 'obsolete', req.docId, ref);
   }
-  await tx.update(s.changeRequests).set({ status: 'implemented', decidedAt: at, ecoRef: decision.ecoRef ?? null, modifierId, decisionNote: decision.note ?? null }).where(eq(s.changeRequests.id, id));
-  return null;
+  // decidedAt stays the date of Vigie's decision when it was recorded before it could apply.
+  await tx.update(s.changeRequests).set({ status: 'implemented', decidedAt: req.decidedAt ?? at, ecoRef: req.ecoRef, modifierId, decisionNote: req.decisionNote }).where(eq(s.changeRequests.id, req.id));
+}
+
+/**
+ * Applies Vigie's decision on a change request (webhook or simulation). A refusal always applies. An acceptance applies
+ * at once to an active document free of legal hold; on a locked one (archived, obsolete, frozen) it is recorded as
+ * 'accepted' with its change order, modifier and note, and applied when the lock lifts. A change never opens a second
+ * revision beside one already open.
+ */
+export async function applyChangeDecision(tx: Tx, id: string, decision: { accepted: boolean; ecoRef?: string | null; modifierId?: string | null; note?: string | null }, actorId: string): Promise<ChangeDecisionResult> {
+  const [req] = await tx.select().from(s.changeRequests).where(eq(s.changeRequests.id, id));
+  if (!req || req.status !== 'submitted') return { error: 'not_found' };
+  const at = nowStamp();
+  if (!decision.accepted) {
+    await tx.update(s.changeRequests).set({ status: 'rejected', decidedAt: at, decisionNote: decision.note ?? null }).where(eq(s.changeRequests.id, id));
+    await audit(tx, actorId, req.kind === 'modification' ? 'ecr' : 'obsolete', req.docId, `${id} · ✕`);
+    return { status: 'rejected' };
+  }
+  const [doc] = await tx.select().from(s.documents).where(eq(s.documents.id, req.docId));
+  if (!doc) return { error: 'not_found' };
+  const lock = lockOf(doc);
+  if (!lock && req.kind === 'modification' && doc.revWorking) return { error: 'locked_working' };
+  const accepted = { ecoRef: decision.ecoRef ?? null, modifierId: req.kind === 'modification' ? decision.modifierId ?? null : null, decisionNote: decision.note ?? null };
+  if (lock) {
+    await tx.update(s.changeRequests).set({ status: 'accepted', decidedAt: at, ...accepted }).where(eq(s.changeRequests.id, id));
+    await audit(tx, actorId, req.kind === 'modification' ? 'ecr' : 'obsolete', req.docId, `${id} · ✓`);
+    return { status: 'accepted', state: doc.state, legalHold: doc.legalHold };
+  }
+  await implementChange(tx, { ...req, ...accepted }, doc, actorId);
+  return { status: 'implemented' };
+}
+
+/**
+ * Applies the acceptance Vigie sent while the document was locked, once the lock has lifted (legal hold released,
+ * archive restored). Nothing happens while the document is still locked or, for a change, while a revision is open:
+ * the request stays 'accepted'.
+ */
+export async function applyPendingDecision(tx: Tx, docId: string) {
+  const [req] = await tx.select().from(s.changeRequests).where(and(eq(s.changeRequests.docId, docId), eq(s.changeRequests.status, 'accepted')));
+  if (!req) return;
+  const [doc] = await tx.select().from(s.documents).where(eq(s.documents.id, docId));
+  if (!doc || lockOf(doc) || (req.kind === 'modification' && doc.revWorking)) return;
+  await implementChange(tx, req, doc, 'vigie');
 }

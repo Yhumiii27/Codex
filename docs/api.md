@@ -260,7 +260,7 @@ gestionnaire documentaire peut aussi simuler la décision depuis la fiche docume
 | `requestId` | oui | Référence de la demande dans Vigie (`ECR-…`), telle que Codex l'a transmise. |
 | `accepted` | oui | `true` : acceptée ; `false` : refusée. |
 | `ecoRef` | non | Référence de l'ordre de modification (ECO) ; à défaut, la référence de la demande sert de référence de changement. |
-| `modifierId` | non | Utilisateur désigné pour rédiger la révision (modification acceptée). Défaut : le demandeur, s'il peut déposer et voit encore le document ; sinon le propriétaire. |
+| `modifierId` | non | Utilisateur désigné pour rédiger la révision (modification acceptée). Défaut : le demandeur, s'il peut déposer et voit encore le document ; sinon le propriétaire. Ce défaut est déterminé quand la révision s'ouvre : pour une acceptation mise en attente (document verrouillé), à la levée du verrou. |
 | `note` | non | Commentaire de décision (≤ 2000 caractères). |
 
 ### Effet
@@ -270,6 +270,18 @@ gestionnaire documentaire peut aussi simuler la décision depuis la fiche docume
 | Modification | Codex ouvre la révision suivante en **Brouillon**, attribuée au modificateur, avec la référence ECO ; la demande passe **Appliquée**. | La demande passe **Refusée**. |
 | Retrait | Le document passe **Obsolète** ; un circuit en cours est clos (commentaire « document retiré ») et les révisions ouvertes passent **Annulées** ; la demande passe **Appliquée**. | La demande passe **Refusée**. |
 
+**Document verrouillé.** Si le document est archivé, obsolète ou sous gel juridique quand l'acceptation arrive, elle ne
+peut pas s'appliquer tout de suite. Codex l'enregistre quand même : la demande passe **Acceptée**, avec la référence
+ECO, le modificateur désigné et la note, et le webhook répond **202**. La décision s'applique d'elle-même, avec les
+effets du tableau ci-dessus, dès que le verrou se lève : levée du gel juridique (`releaseHold`) ou restauration de
+l'archive (`restoreArchived`), via `applyPendingDecision` (`src/lib/lifecycle.ts`). Un document archivé et sous gel
+juridique ne peut être restauré qu'une fois le gel levé : la décision attend les deux. Sans `modifierId`, le modificateur
+par défaut (voir le tableau des champs) est déterminé au moment où la décision s'applique, à la levée du gel ou à la
+restauration, et non à sa réception. Le journal garde les deux temps :
+« ECR-… · ✓ » à la réception, puis l'ouverture de la révision ou le retrait à l'application. La fiche document signale
+la décision en attente (bandeau et onglet Demandes). Un refus, lui, s'applique toujours aussitôt. Un document obsolète
+ne redevient jamais actif : une acceptation reçue pour un tel document resterait en attente.
+
 Les mêmes règles s'appliquent à la décision simulée depuis la fiche document (`applyChangeDecision`).
 
 ### Réponses
@@ -278,10 +290,11 @@ Les mêmes règles s'appliquent à la décision simulée depuis la fiche documen
 |---|---|
 | **200** | `{"ok":true,"requestId","kind","docId","status":"implemented"\|"rejected","docStatus","revision"}` (`revision` : lettre ouverte par une modification acceptée) |
 | **200** | `{"ok":true,"alreadyApplied":true,…}` : la même décision a déjà été appliquée (renvoi du webhook sans effet) |
+| **202** | `{"ok":true,"pending":true,"requestId","kind","docId","status":"accepted","state","legalHold"}` : acceptation enregistrée sur un document verrouillé, appliquée à la levée du verrou (`state` et `legalHold` disent ce qui le verrouille). Un renvoi de la même acceptation reçoit la même réponse avec `"alreadyRecorded":true`, sans effet. |
 | **400** | `invalid_json`, `{"error":"invalid","field":"…"}`, `{"error":"unknown_user","field":"modifierId"}` |
 | **401** / **503** | jeton absent ou faux / webhook désactivé |
 | **404** | `{"error":"not_found"}` : demande inconnue de Codex |
-| **409** | `already_decided` (décision contraire déjà appliquée), `document_locked` (document archivé, obsolète ou sous gel juridique : une acceptation ne peut plus s'appliquer), `revision_in_progress` (une révision est déjà en cours sur le document) |
+| **409** | `already_decided` (décision contraire déjà appliquée ou enregistrée ; `status` donne l'état de la demande), `revision_in_progress` (une révision est déjà en cours sur le document) |
 
 ### Exemples
 
@@ -298,4 +311,12 @@ curl -s -X POST http://localhost:3100/api/integrations/vigie \
 curl -s -X POST http://localhost:3100/api/integrations/vigie \
   -H "Authorization: Bearer $VIGIE_WEBHOOK_TOKEN" -H 'Content-Type: application/json' \
   -d '{"requestId":"ECR-2026-003","accepted":false,"note":"Le modèle reste utilisé hors Keystone"}'
+
+# Variante sur une base neuve : PRO-QUA-0001 mis sous gel juridique (écran Archivage) avant l'acceptation d'ECR-2026-001.
+# La décision est enregistrée ; la révision F s'ouvre pour jwagner à la levée du gel.
+curl -s -X POST http://localhost:3100/api/integrations/vigie \
+  -H "Authorization: Bearer $VIGIE_WEBHOOK_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"requestId":"ECR-2026-001","accepted":true,"ecoRef":"ECO-2026-010","modifierId":"jwagner"}'
+# → 202 {"ok":true,"pending":true,"requestId":"ECR-2026-001","kind":"modification","docId":"PRO-QUA-0001","status":"accepted","state":"active","legalHold":true}
+# Le même envoi, rejoué avant la levée du gel : même réponse, avec "alreadyRecorded":true, sans effet.
 ```

@@ -455,6 +455,11 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
 - **Documents obsolètes ou archivés** (D-17) : bandeau d'avertissement sur la fiche et dans l'aperçu rapide de
   l'explorateur, suffixe `_OBSOLETE` ou `_ARCHIVE` dans le nom proposé au téléchargement (`docs/modele-cible.md` §4).
   Qui peut encore les consulter ou les télécharger n'est pas tranché (A13, P07) : rien n'a changé de ce côté.
+- **Décision Vigie sur un document verrouillé** (D-16, D-17) : une acceptation reçue pendant un gel juridique ou un
+  archivage est enregistrée (demande « Acceptée ») et s'applique à la levée du gel ou à la restauration ; le webhook
+  répond 202 au lieu de 409. La fiche signale la décision en attente ; hors du cercle de rédaction, elle ne nomme ni
+  l'ECO ni le modificateur d'une modification (même règle que pour une révision ouverte, D-14). Vigie n'est pas
+  prévenu quand la décision s'applique (O-10).
 - **Authentification cible Entra ID** : proposée le 7 octobre à 12:40 (« passer à l'authentification Entra ID ») et à
   17:33 (lot 4 « Authentification Entra ID et organigramme »). L'utilisateur n'en a jamais parlé (O-02).
   `docs/modele-cible.md` §1, `docs/api.md`, `docs/avancement-v2.md` et le commentaire de

@@ -5,7 +5,7 @@ import { canRead, getAccessIndex, inDraftingCircle, isUsableTemplate, readerMayS
 import { revLabel } from './codification';
 import type { Ctx } from './context';
 import { addDays, daysBetween, fmtDate, fmtSize, fmtWhen, loc, todayIso } from './format';
-import { TAGCLS, type TKey } from './i18n';
+import { TAGCLS, type T, type TKey } from './i18n';
 import { lockOf } from './lifecycle';
 import { retainUntil } from './retention';
 
@@ -245,6 +245,15 @@ export async function listChangeRequests(ctx: Ctx, opts: { docId?: string } = {}
   }));
 }
 export type ChangeRequestView = Awaited<ReturnType<typeof listChangeRequests>>[number];
+
+/**
+ * What an acceptance recorded on a locked document waits for (lib/lifecycle.ts applyPendingDecision). An archived
+ * document under legal hold cannot be restored before the hold is released: both are named.
+ */
+export function decisionWaitL(t: T, d: Pick<DocRow, 'state' | 'legalHold'>): string {
+  if (d.state === 'archived') return d.legalHold ? t.ecr_wait_hold_archived : t.ecr_wait_archived;
+  return d.state === 'active' && d.legalHold ? t.ecr_wait_hold : t.ecr_wait_lock;
+}
 
 /**
  * Warning shown on an obsolete or archived document (record, explorer quick view): since when and, when known, the

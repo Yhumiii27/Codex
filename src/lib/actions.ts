@@ -10,7 +10,8 @@ import { idMatches, nextDocId } from './codification';
 import { COOKIE_LANG, COOKIE_ROLE, COOKIE_USER, getCtx, type Ctx } from './context';
 import { addDays, fmtSize, loc, nowStamp, parseIsoDay, todayIso } from './format';
 import { ATTACHMENTS, CONF_LEVELS, ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLES, ORIGINS, PERMS, SIM_ROLES, SIMULATED_MATRIX_ROLES, type Perm, type SimRole, type TKey } from './i18n';
-import { applyChangeDecision, approveRevision, audit, catchUpEffectiveDates, lockOf, refreshHeadline, type Tx } from './lifecycle';
+import { applyChangeDecision, applyPendingDecision, approveRevision, audit, catchUpEffectiveDates, lockOf, refreshHeadline, type Tx } from './lifecycle';
+import { decisionWaitL } from './queries';
 import { discardFile, fileColumns, nameStoredFile, readStored, renameDocFiles, stageFile, stageUpload, type StagedFile } from './storage';
 import { submitChange, vigieSimulated } from './vigie';
 
@@ -593,17 +594,20 @@ export async function requestChange(docId: string, kind: 'modification' | 'obsol
   return { ok: true, message: `${ctx.t.ecr_sent} : ${res.id}` };
 }
 
-/** Simulates Vigie's decision while no Vigie endpoint is configured (records managers only); same rules as the webhook. */
+/**
+ * Simulates Vigie's decision while no Vigie endpoint is configured (records managers only); same rules as the webhook:
+ * an acceptance on a locked document is recorded and applies when the lock lifts.
+ */
 export async function simulateVigieDecision(id: string, accepted: boolean, modifierId: string | null): Promise<ActionResult> {
   const ctx = await getCtx();
   if (!vigieSimulated() || !ctx.seesAll) return fail(ctx, 'vigie_only');
   const modifier = modifierId ? ctx.users.get(modifierId) : null;
   if (modifierId && (!modifier || modifier.isSystem)) return fail(ctx);
   const db = await getDb();
-  const err = await db.transaction((tx) => applyChangeDecision(tx, id, { accepted, ecoRef: accepted ? id.replace(/^ECR/, 'ECO') : null, modifierId }, 'vigie'));
-  if (err) return fail(ctx, err);
+  const res = await db.transaction((tx) => applyChangeDecision(tx, id, { accepted, ecoRef: accepted ? id.replace(/^ECR/, 'ECO') : null, modifierId }, 'vigie'));
+  if ('error' in res) return fail(ctx, res.error);
   refresh();
-  return { ok: true };
+  return res.status === 'accepted' ? { ok: true, message: `${ctx.t.ecr_accepted_waiting} : ${decisionWaitL(ctx.t, res)}.` } : { ok: true };
 }
 
 // ── Retention ────────────────────────────────────────────────────────────
@@ -653,7 +657,10 @@ export async function holdDocuments(ids: string[]): Promise<ActionResult> {
   return { ok: true };
 }
 
-/** Lifts a legal hold: the document, its running circuit and an approved revision waiting for its date resume. */
+/**
+ * Lifts a legal hold: the document, its running circuit and an approved revision waiting for its date resume, and an
+ * acceptance Vigie sent during the hold applies.
+ */
 export async function releaseHold(docId: string): Promise<ActionResult> {
   const ctx = await getCtx();
   if (!ctx.can('archive') || !ctx.screens.retention) return denied(ctx, 'archive');
@@ -667,12 +674,16 @@ export async function releaseHold(docId: string): Promise<ActionResult> {
     // A revision approved during the hold enters into force today at the earliest, never on a date in the past.
     await catchUpEffectiveDates(tx, docId);
     await audit(tx, ctx.user.id, 'release', docId, cur.typeCode);
+    await applyPendingDecision(tx, docId);
   });
   refresh();
   return { ok: true };
 }
 
-/** Restores an archived document to the state it had before: obsolete if Vigie withdrew it, otherwise active. */
+/**
+ * Restores an archived document to the state it had before: obsolete if Vigie withdrew it, otherwise active. An
+ * acceptance Vigie sent while it was archived then applies.
+ */
 export async function restoreArchived(docId: string): Promise<ActionResult> {
   const ctx = await getCtx();
   if (!ctx.can('archive') || !ctx.screens.retention) return denied(ctx, 'archive');
@@ -688,6 +699,7 @@ export async function restoreArchived(docId: string): Promise<ActionResult> {
     await catchUpEffectiveDates(tx, docId);
     await refreshHeadline(tx, docId);
     await audit(tx, ctx.user.id, 'restore', docId, `${cur.revInForce ?? ''} → ${back}`.trim());
+    await applyPendingDecision(tx, docId);
   });
   refresh();
   return { ok: true };

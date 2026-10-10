@@ -67,8 +67,10 @@ Fichier stocké : `{ID}_{indice}.{ext}` (ex. `PRO-QHS-0012_B.2.pdf`).
 - Modifier un document en vigueur : demande ECR depuis Codex → décision dans Vigie → ECO accepté → Codex ouvre la
   révision suivante en brouillon, attribuée au modificateur désigné.
 - Verrous : un document archivé, obsolète ou sous gel juridique ne change plus (ni version de travail, ni décision de
-  circuit, ni mise en vigueur d'une révision approuvée, ni acceptation Vigie ; un refus Vigie reste possible). Un retrait
-  accepté clôt le travail en cours : circuit clos, révisions ouvertes **Annulées**. Une restauration d'archive rend au
+  circuit, ni mise en vigueur d'une révision approuvée). Une acceptation Vigie reçue pendant le verrou est enregistrée
+  (demande **Acceptée**, avec ECO, modificateur et note) et s'applique à sa levée : levée du gel ou restauration de
+  l'archive (*proposé, non confirmé*) ; un refus Vigie s'applique aussitôt. Un retrait accepté clôt le travail en
+  cours : circuit clos, révisions ouvertes **Annulées**. Une restauration d'archive rend au
   document son état d'avant (obsolète s'il avait été retiré). La date d'effet est aujourd'hui ou plus tard ; une
   révision approuvée après sa date d'effet prend effet le jour de sa mise en vigueur.
 

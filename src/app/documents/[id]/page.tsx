@@ -15,7 +15,7 @@ import { getCtx } from '@/lib/context';
 import { fmtDate, todayIso } from '@/lib/format';
 import { getProject } from '@/lib/keystone';
 import { defaultModifier } from '@/lib/lifecycle';
-import { getDoc, listAudit, listChangeRequests, listDocs, listRevisions, listWorkflows, stateNotice, typeView, type RevisionView } from '@/lib/queries';
+import { decisionWaitL, getDoc, listAudit, listChangeRequests, listDocs, listRevisions, listWorkflows, stateNotice, typeView, type RevisionView } from '@/lib/queries';
 import { normalizeMime } from '@/lib/storage';
 import { vigieSimulated, vigieUrl } from '@/lib/vigie';
 import { Preview, RevisionsTab, type RevItem } from './DocClient';
@@ -108,9 +108,14 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
   // Archived, obsolete or frozen records are read-only (same rule as lib/actions.ts).
   const lock = doc.state === 'archived' ? t.locked_archived : doc.state === 'obsolete' ? t.locked_obsolete : doc.legalHold ? t.locked_hold : undefined;
   const pending = requests.find((r) => r.status === 'submitted' || r.status === 'accepted');
-  // Outside the drafting circle, a change order whose revision is not in force yet names neither itself nor its author (D-14).
+  // Vigie's acceptance recorded while the document is locked: it applies when the lock lifts (lib/lifecycle.ts).
+  const awaiting = pending?.status === 'accepted' ? pending : null;
+  const waitL = decisionWaitL(t, doc);
+  // Outside the drafting circle, a change order whose revision is not in force yet, or not open yet (acceptance waiting
+  // for the lock to lift), names neither itself nor its author (D-14).
   const unseenRefs = new Set(revs.filter((r) => r.changeRef && !readerMaySeeRevision(circle, r.status)).map((r) => r.changeRef));
-  const shownRequests = requests.map((r) => (unseenRefs.has(r.ecoRef ?? r.id) ? { ...r, ecoRef: null, modifier: null } : r));
+  const unseen = (r: (typeof requests)[number]) => unseenRefs.has(r.ecoRef ?? r.id) || (!circle && r.status === 'accepted' && r.kind === 'modification');
+  const shownRequests = requests.map((r) => (unseen(r) ? { ...r, ecoRef: null, modifier: null } : r));
   const notice = stateNotice(ctx, doc, shownRequests);
   const changeLock = lock ?? (pending ? `${t.change_pending} : ${pending.id}` : undefined);
   const drafting = circle && working?.status === 'draft' ? working : null;
@@ -187,14 +192,16 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
   const showReaders = readersApply(doc.conf) || readerIds.length > 0;
   const simulateVigie = ctx.seesAll && vigieSimulated();
   // Simulated Vigie decision: the author proposed by default (requester if they may write and still see the document,
-  // else the owner) and, when an acceptance cannot apply, why (same rules as lib/lifecycle.ts applyChangeDecision).
+  // else the owner), why an acceptance cannot be given, or that it will wait for the lock to lift (same rules as
+  // lib/lifecycle.ts applyChangeDecision).
   const db = await getDb();
   const vigieSpecs = simulateVigie
     ? new Map(await Promise.all(requests.filter((r) => r.status === 'submitted').map(async (r) => [r.id, {
       modifierId: await defaultModifier(db, r.requesterId, doc),
-      locked: lock ?? (r.kind === 'modification' && doc.revWorking ? t.locked_working : undefined),
+      locked: !lock && r.kind === 'modification' && doc.revWorking ? t.locked_working : undefined,
+      deferred: lock ? `${lock} ${t.vigie_deferred} : ${waitL}.` : undefined,
     }] as const)))
-    : new Map<string, { modifierId: string; locked?: string }>();
+    : new Map<string, { modifierId: string; locked?: string; deferred?: string }>();
   const canRelease = doc.legalHold && ctx.can('archive') && ctx.screens.retention;
   const previewMime = current?.fileKey && current.mime ? normalizeMime(current.mime, current.fileName ?? '') : null;
 
@@ -235,6 +242,12 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
         <div className={styles.stateNotice} data-state={notice.state} role="note">
           <Icon name={notice.state === 'archived' ? 'archive' : 'info'} size={16} style={{ flex: 'none' }} />
           <span>{notice.text}</span>
+        </div>
+      )}
+      {awaiting && (
+        <div className={styles.stateNotice} data-state="pending" role="note">
+          <Icon name="lock" size={16} style={{ flex: 'none' }} />
+          <span>{t.ecr_accepted_waiting} ({awaiting.id}) : {waitL}.</span>
         </div>
       )}
 
@@ -451,6 +464,11 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
                           {r.modifier && ` · ${t.modifier} : ${r.modifier}`}
                         </div>
                         {r.decisionNote && <div className="text-muted" style={{ fontSize: 11, marginTop: 2 }}>{r.decisionNote}</div>}
+                        {r.status === 'accepted' && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, marginTop: 4 }}>
+                            <Icon name="lock" size={12} style={{ flex: 'none' }} />{t.ecr_pending_apply} : {waitL}.
+                          </div>
+                        )}
                         <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
                           <a href={vigieUrl(r.id)} target="_blank" rel="noreferrer" className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 8px' }}><Icon name="openExternal" size={12} />{t.open_vigie}</a>
                           {simulateVigie && r.status === 'submitted' && vigieSpecs.has(r.id) && (

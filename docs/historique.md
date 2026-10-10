@@ -470,3 +470,10 @@ Constats confirmés, dans la numérotation du workflow :
   - l'accès, les filtres par défaut et l'absence de filigrane ne changent pas (A13, P07, M12 non tranchés) ;
   - la règle est décrite dans `docs/modele-cible.md` §4 et listée parmi les choix de l'assistant non validés
     (`docs/decisions.md`).
+- **Étape 3 : décision Vigie acceptée sur un document verrouillé**, point 35 de [reste-a-faire.md](reste-a-faire.md) :
+  - une acceptation reçue pendant un gel juridique ou un archivage est enregistrée (demande « Acceptée », avec ECO,
+    modificateur et note) au lieu d'être perdue ; elle s'applique à la levée du gel ou à la restauration de l'archive
+    (`applyPendingDecision`, `src/lib/lifecycle.ts`) ; un refus s'applique toujours aussitôt ;
+  - le webhook Vigie répond 202 (`pending: true`) au lieu de 409 `document_locked`, et de même à un renvoi de la même
+    acceptation ; la simulation depuis la fiche suit les mêmes règles et le dit dans un message ;
+  - la fiche signale la décision en attente (bandeau, onglet Demandes) ; `docs/api.md` décrit ce comportement.

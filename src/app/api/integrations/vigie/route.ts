@@ -47,25 +47,33 @@ export async function POST(req: Request) {
     return await db.transaction(async (tx) => {
       const [r] = await tx.select().from(s.changeRequests).where(eq(s.changeRequests.id, d.requestId));
       if (!r) return json({ error: 'not_found' }, 404);
+      // An acceptance on a locked document is recorded and waits for the lock to lift: 202, also when Vigie resends it.
+      const pending = async (extra: Record<string, unknown> = {}) => {
+        const [doc] = await tx.select({ state: s.documents.state, legalHold: s.documents.legalHold }).from(s.documents).where(eq(s.documents.id, r.docId));
+        return json({ ok: true, pending: true, ...extra, requestId: r.id, kind: r.kind, docId: r.docId, status: 'accepted', state: doc?.state ?? null, legalHold: doc?.legalHold ?? false }, 202);
+      };
       if (r.status !== 'submitted') {
         // Vigie may resend a decision it did not see acknowledged: the same outcome is not an error.
         const wasAccepted = r.status !== 'rejected';
-        return wasAccepted === d.accepted
-          ? json({ ok: true, alreadyApplied: true, requestId: r.id, docId: r.docId, status: r.status })
-          : json({ error: 'already_decided', status: r.status }, 409);
+        if (wasAccepted !== d.accepted) return json({ error: 'already_decided', status: r.status }, 409);
+        return r.status === 'accepted'
+          ? await pending({ alreadyRecorded: true })
+          : json({ ok: true, alreadyApplied: true, requestId: r.id, docId: r.docId, status: r.status });
       }
-      // Same rules as the simulation (lib/lifecycle.ts): an acceptance needs an active, unfrozen document and, for a
-      // change, no revision already open. Nothing is written when it is refused.
-      const err = await applyChangeDecision(tx, r.id, { accepted: d.accepted, ecoRef: d.ecoRef, modifierId: d.modifierId, note: d.note }, 'vigie');
-      if (err) {
-        const [doc] = await tx.select().from(s.documents).where(eq(s.documents.id, r.docId));
-        if (err === 'locked_working') return json({ error: 'revision_in_progress', docId: r.docId, revision: doc?.revWorking ?? null }, 409);
-        if (err !== 'not_found' || !doc) return json({ error: 'document_locked', docId: r.docId, state: doc?.state ?? null, legalHold: doc?.legalHold ?? false }, 409);
+      // Same rules as the simulation (lib/lifecycle.ts): a change never opens a revision beside one already open, and
+      // nothing is written when it is refused.
+      const res = await applyChangeDecision(tx, r.id, { accepted: d.accepted, ecoRef: d.ecoRef, modifierId: d.modifierId, note: d.note }, 'vigie');
+      if ('error' in res) {
+        if (res.error === 'locked_working') {
+          const [doc] = await tx.select({ revWorking: s.documents.revWorking }).from(s.documents).where(eq(s.documents.id, r.docId));
+          return json({ error: 'revision_in_progress', docId: r.docId, revision: doc?.revWorking ?? null }, 409);
+        }
         return json({ error: 'already_decided' }, 409);
       }
+      if (res.status === 'accepted') return await pending();
       const [after] = await tx.select({ status: s.documents.status, revWorking: s.documents.revWorking }).from(s.documents).where(eq(s.documents.id, r.docId));
       return json({
-        ok: true, requestId: r.id, kind: r.kind, docId: r.docId, status: d.accepted ? 'implemented' : 'rejected',
+        ok: true, requestId: r.id, kind: r.kind, docId: r.docId, status: res.status,
         docStatus: after?.status ?? null, revision: d.accepted && r.kind === 'modification' ? after?.revWorking ?? null : null,
       });
     });

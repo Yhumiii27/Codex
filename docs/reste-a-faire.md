@@ -35,7 +35,7 @@ Le manque est confirmé. Il reste à :
 - ajouter un filtre `requesterId` à `listChangeRequests` (le filtrage par visibilité est déjà fait depuis 44bd1b8) ;
 - l'afficher dans un onglet ou un filtre « Mes demandes Vigie » de Validations, ou dans un encart de l'Accueil, avec le type (modification ou retrait), le statut, la référence ECO, le modificateur désigné, la date et le lien Vigie (`vigieUrl`).
 
-Correction sur les statuts : Codex n'écrit jamais `accepted`. `applyChangeDecision` passe directement de `submitted` à `implemented` ou à `rejected` (src/lib/lifecycle.ts:137 et 164). En pratique, la liste montrera donc « Transmise à Vigie », « Refusée » et « Appliquée ».
+Statuts à afficher : « Transmise à Vigie », « Refusée », « Appliquée » et « Acceptée ». Depuis le point 35, `applyChangeDecision` (src/lib/lifecycle.ts) écrit `accepted` quand Vigie accepte une demande sur un document archivé ou sous gel juridique ; la demande passe `implemented` à la levée du verrou (`applyPendingDecision`). La liste devra donc afficher « Acceptée » avec la mention d'attente (`decisionWaitL`, src/lib/queries.ts) et, comme la fiche, masquer l'ECO et le modificateur d'une modification hors du cercle de rédaction.
 
 <details><summary>Constat dans le code</summary>
 
@@ -613,6 +613,7 @@ Constaté. Le webhook (src/app/api/integrations/vigie/route.ts:43-45) ne vérifi
 </details>
 
 #### 35. Décision Vigie acceptée mais inapplicable : réponse 409 et décision perdue
+- **Fait le 10 octobre 2026** : une acceptation de Vigie reçue pour un document archivé ou sous gel juridique est enregistrée (statut `accepted`, avec ECO, modificateur et note) et s'applique à la levée du gel ou à la restauration (`applyPendingDecision`, src/lib/lifecycle.ts), le webhook répond 202 au lieu de 409 (rejeu idempotent), la simulation fait de même avec un message traduit, la fiche signale la décision en attente et `docs/api.md` décrit ce comportement ; restent à prévenir Vigie quand la décision s'applique (O-10) et le cas théorique d'un document obsolète, où l'acceptation resterait en attente.
 
 - **Effort** : moyen · **Références** : D-16, D-17, T-01
 
