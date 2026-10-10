@@ -5,12 +5,12 @@ import { cookies } from 'next/headers';
 import { refresh } from 'next/cache';
 import { getDb, schema as s } from '@/db';
 import type { Attachment, Conf, Disposition, Origin, RetentionTrigger } from '@/db/schema';
-import { canRead, getAccessIndex, inDraftingCircle, isUsableTemplate, readerMaySeeRevision, readersApply } from './access';
+import { buildAccessIndex, canRead, getAccessIndex, inDraftingCircle, isUsableTemplate, readerMaySeeRevision, readersApply } from './access';
 import { idMatches, nextDocId } from './codification';
 import { COOKIE_LANG, COOKIE_ROLE, COOKIE_USER, getCtx, type Ctx } from './context';
 import { addDays, fmtSize, loc, nowStamp, parseIsoDay, todayIso } from './format';
 import { ATTACHMENTS, CONF_LEVELS, ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLES, ORIGINS, PERMS, SIM_ROLES, SIMULATED_MATRIX_ROLES, type Perm, type SimRole, type TKey } from './i18n';
-import { applyChangeDecision, applyPendingDecision, approveRevision, audit, catchUpEffectiveDates, lockOf, refreshHeadline, type Tx } from './lifecycle';
+import { applyChangeDecision, applyPendingDecision, approveRevision, audit, catchUpEffectiveDates, lockOf, refreshHeadline, type ModifierSwap, type Tx } from './lifecycle';
 import { decisionWaitL } from './queries';
 import { discardFile, fileColumns, nameStoredFile, readStored, renameDocFiles, stageFile, stageUpload, type StagedFile } from './storage';
 import { submitChange, vigieSimulated } from './vigie';
@@ -596,7 +596,8 @@ export async function requestChange(docId: string, kind: 'modification' | 'obsol
 
 /**
  * Simulates Vigie's decision while no Vigie endpoint is configured (records managers only); same rules as the webhook:
- * an acceptance on a locked document is recorded and applies when the lock lifts.
+ * an acceptance on a locked document is recorded and applies when the lock lifts, and the designated author must be
+ * able to draft the document.
  */
 export async function simulateVigieDecision(id: string, accepted: boolean, modifierId: string | null): Promise<ActionResult> {
   const ctx = await getCtx();
@@ -605,7 +606,7 @@ export async function simulateVigieDecision(id: string, accepted: boolean, modif
   if (modifierId && (!modifier || modifier.isSystem)) return fail(ctx);
   const db = await getDb();
   const res = await db.transaction((tx) => applyChangeDecision(tx, id, { accepted, ecoRef: accepted ? id.replace(/^ECR/, 'ECO') : null, modifierId }, 'vigie'));
-  if ('error' in res) return fail(ctx, res.error);
+  if ('error' in res) return fail(ctx, res.error, res.error === 'modifier_not_allowed' ? modifier?.name : undefined);
   refresh();
   return res.status === 'accepted' ? { ok: true, message: `${ctx.t.ecr_accepted_waiting} : ${decisionWaitL(ctx.t, res)}.` } : { ok: true };
 }
@@ -658,6 +659,17 @@ export async function holdDocuments(ids: string[]): Promise<ActionResult> {
 }
 
 /**
+ * Tells the person who lifted a lock that the author Vigie named could no longer draft and the default one took over,
+ * and whether the latter can draft the document (applyPendingDecision). Designated authors stay within the drafting
+ * circle (D-14): nobody outside it is told.
+ */
+async function pendingApplied(ctx: Ctx, d: DocRow, swap: ModifierSwap | null): Promise<ActionResult> {
+  if (!swap || !inDraftingCircle(ctx, d, await buildAccessIndex(await getDb()))) return { ok: true };
+  const who = swap.setAside === swap.modifierId ? ctx.userName(swap.modifierId) : `${ctx.userName(swap.setAside)} → ${ctx.userName(swap.modifierId)}`;
+  return { ok: true, message: `${swap.mayDraft ? ctx.t.modifier_set_aside : ctx.t.modifier_none_allowed} : ${who}` };
+}
+
+/**
  * Lifts a legal hold: the document, its running circuit and an approved revision waiting for its date resume, and an
  * acceptance Vigie sent during the hold applies.
  */
@@ -667,17 +679,17 @@ export async function releaseHold(docId: string): Promise<ActionResult> {
   const db = await getDb();
   const [d] = await visibleDocs(db, ctx, [docId]);
   if (!d) return fail(ctx, 'not_found');
-  await db.transaction(async (tx) => {
+  const swap = await db.transaction(async (tx) => {
     const [cur] = await tx.select().from(s.documents).where(eq(s.documents.id, docId));
-    if (!cur?.legalHold) return;
+    if (!cur?.legalHold) return null;
     await tx.update(s.documents).set({ legalHold: false, legalHoldAt: null }).where(eq(s.documents.id, docId));
     // A revision approved during the hold enters into force today at the earliest, never on a date in the past.
     await catchUpEffectiveDates(tx, docId);
     await audit(tx, ctx.user.id, 'release', docId, cur.typeCode);
-    await applyPendingDecision(tx, docId);
+    return applyPendingDecision(tx, docId);
   });
   refresh();
-  return { ok: true };
+  return pendingApplied(ctx, d, swap);
 }
 
 /**
@@ -690,19 +702,19 @@ export async function restoreArchived(docId: string): Promise<ActionResult> {
   const db = await getDb();
   const [d] = await visibleDocs(db, ctx, [docId]);
   if (!d) return fail(ctx, 'not_found');
-  await db.transaction(async (tx) => {
+  const swap = await db.transaction(async (tx) => {
     const [cur] = await tx.select().from(s.documents).where(eq(s.documents.id, docId));
-    if (!cur || cur.state !== 'archived' || cur.legalHold) return;
+    if (!cur || cur.state !== 'archived' || cur.legalHold) return null;
     // obsoleteAt is only written by an accepted withdrawal (lib/lifecycle.ts) and never cleared.
     const back = cur.obsoleteAt ? 'obsolete' : 'active';
     await tx.update(s.documents).set({ state: back, archivedAt: null, modifiedAt: todayIso() }).where(eq(s.documents.id, docId));
     await catchUpEffectiveDates(tx, docId);
     await refreshHeadline(tx, docId);
     await audit(tx, ctx.user.id, 'restore', docId, `${cur.revInForce ?? ''} → ${back}`.trim());
-    await applyPendingDecision(tx, docId);
+    return applyPendingDecision(tx, docId);
   });
   refresh();
-  return { ok: true };
+  return pendingApplied(ctx, d, swap);
 }
 
 // ── Administration ───────────────────────────────────────────────────────

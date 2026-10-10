@@ -260,7 +260,7 @@ gestionnaire documentaire peut aussi simuler la décision depuis la fiche docume
 | `requestId` | oui | Référence de la demande dans Vigie (`ECR-…`), telle que Codex l'a transmise. |
 | `accepted` | oui | `true` : acceptée ; `false` : refusée. |
 | `ecoRef` | non | Référence de l'ordre de modification (ECO) ; à défaut, la référence de la demande sert de référence de changement. |
-| `modifierId` | non | Utilisateur désigné pour rédiger la révision (modification acceptée). Défaut : le demandeur, s'il peut déposer et voit encore le document ; sinon le propriétaire. Ce défaut est déterminé quand la révision s'ouvre : pour une acceptation mise en attente (document verrouillé), à la levée du verrou. |
+| `modifierId` | non | Utilisateur désigné pour rédiger la révision (modification acceptée). Pour un refus ou un retrait, il est sans effet, mais s'il est fourni il doit désigner un utilisateur existant et non système (sinon 400 `unknown_user`, comme pour une acceptation). Pour une modification acceptée, il doit en outre pouvoir rédiger le document : droit **Déposer** (`upload`) de son rôle par défaut dans la matrice des droits (Administration › Rôles), et accès en lecture au document (confidentialité, lecteurs désignés). Sinon : 400 `modifier_not_allowed`, rien n'est enregistré, et Codex ne lui substitue pas le modificateur par défaut. Défaut : le demandeur, s'il peut rédiger le document (même contrôle) ; sinon le propriétaire. Ce défaut est déterminé quand la révision s'ouvre : pour une acceptation mise en attente (document verrouillé), à la levée du verrou. |
 | `note` | non | Commentaire de décision (≤ 2000 caractères). |
 
 ### Effet
@@ -282,7 +282,32 @@ restauration, et non à sa réception. Le journal garde les deux temps :
 la décision en attente (bandeau et onglet Demandes). Un refus, lui, s'applique toujours aussitôt. Un document obsolète
 ne redevient jamais actif : une acceptation reçue pour un tel document resterait en attente.
 
-Les mêmes règles s'appliquent à la décision simulée depuis la fiche document (`applyChangeDecision`).
+**Modificateur désigné qui perd le droit de rédiger.** Avec `modifierId`, le droit de rédiger est contrôlé à la
+réception de la décision (400 `modifier_not_allowed` sinon), puis de nouveau quand une acceptation mise en attente
+s'applique, car les droits ont pu changer entre-temps (matrice des droits, confidentialité, lecteurs désignés). Si le
+modificateur désigné ne peut plus rédiger le document à ce moment-là, la décision s'applique quand même, pour le
+modificateur par défaut (voir le tableau des champs) : la levée du gel ou la restauration n'est pas bloquée et la
+décision ne reste pas en attente sans issue. Le modificateur par défaut est contrôlé à son tour. S'il ne peut pas
+rédiger non plus (le propriétaire, à défaut du demandeur, sans droit de dépôt), la révision s'ouvre quand même pour lui,
+comme pour toute acceptation sans `modifierId` ; c'est aussi le cas quand le propriétaire est la personne écartée. Un
+gestionnaire documentaire peut encore y déposer des versions de travail, si son rôle a le droit Déposer. Ce
+remplacement n'est jamais silencieux, y compris dans ces deux cas :
+- le journal du document l'inscrit, au nom de `codex` : « ECO-… · modificateur écarté → modificateur effectif », suivi
+  de « (Droit requis : Déposer) » si le modificateur effectif ne peut pas rédiger le document non plus. La ligne est
+  rattachée à la révision ouverte et suit sa visibilité, comme l'ouverture de la révision (`readerMaySeeEntry`,
+  `src/lib/access.ts`) : réservée au cercle de rédaction tant que la révision n'est pas en vigueur, elle est ensuite
+  visible de tous les lecteurs du document, avec le nom de la personne écartée ;
+- la demande indique le modificateur effectif ;
+- la personne qui lève le gel ou restaure l'archive en est avertie par un message, si elle fait partie du cercle de
+  rédaction (c'est le cas d'un gestionnaire documentaire). Le message est différent quand le modificateur effectif ne
+  peut pas rédiger le document : il dit que ni le modificateur désigné ni le modificateur par défaut ne le peuvent.
+
+Vigie n'en est pas prévenu (O-10). Appliquer la décision plutôt que la laisser en attente est un choix proposé, non
+confirmé (`docs/decisions.md`).
+
+Les mêmes règles s'appliquent à la décision simulée depuis la fiche document (`applyChangeDecision`). Le contrôle du
+modificateur est le même pour les deux (`mayDraft`, `src/lib/lifecycle.ts`) ; le dialogue de simulation ne propose que
+les personnes qui peuvent rédiger le document, et un refus y est affiché comme erreur, sans repli sur le défaut.
 
 ### Réponses
 
@@ -291,7 +316,7 @@ Les mêmes règles s'appliquent à la décision simulée depuis la fiche documen
 | **200** | `{"ok":true,"requestId","kind","docId","status":"implemented"\|"rejected","docStatus","revision"}` (`revision` : lettre ouverte par une modification acceptée) |
 | **200** | `{"ok":true,"alreadyApplied":true,…}` : la même décision a déjà été appliquée (renvoi du webhook sans effet) |
 | **202** | `{"ok":true,"pending":true,"requestId","kind","docId","status":"accepted","state","legalHold"}` : acceptation enregistrée sur un document verrouillé, appliquée à la levée du verrou (`state` et `legalHold` disent ce qui le verrouille). Un renvoi de la même acceptation reçoit la même réponse avec `"alreadyRecorded":true`, sans effet. |
-| **400** | `invalid_json`, `{"error":"invalid","field":"…"}`, `{"error":"unknown_user","field":"modifierId"}` |
+| **400** | `invalid_json`, `{"error":"invalid","field":"…"}`, `{"error":"unknown_user","field":"modifierId"}` (utilisateur inconnu ou compte système, quelle que soit la décision), `{"error":"modifier_not_allowed","field":"modifierId","docId"}` (le modificateur désigné ne peut pas rédiger le document : pas de droit Déposer avec son rôle, ou pas d'accès au document ; rien n'est enregistré) |
 | **401** / **503** | jeton absent ou faux / webhook désactivé |
 | **404** | `{"error":"not_found"}` : demande inconnue de Codex |
 | **409** | `already_decided` (décision contraire déjà appliquée ou enregistrée ; `status` donne l'état de la demande), `revision_in_progress` (une révision est déjà en cours sur le document) |
@@ -306,6 +331,12 @@ curl -s -X POST http://localhost:3100/api/integrations/vigie \
   -H "Authorization: Bearer $VIGIE_WEBHOOK_TOKEN" -H 'Content-Type: application/json' \
   -d '{"requestId":"ECR-2026-001","accepted":true,"ecoRef":"ECO-2026-010","modifierId":"jwagner"}'
 # → 200 {"ok":true,"requestId":"ECR-2026-001","kind":"modification","docId":"PRO-QUA-0001","status":"implemented","docStatus":"in_force","revision":"F"}
+
+# Sur une base neuve : modificateur sans droit de dépôt (jholt, auditeur) → refus, la demande reste « Transmise à Vigie »
+curl -s -X POST http://localhost:3100/api/integrations/vigie \
+  -H "Authorization: Bearer $VIGIE_WEBHOOK_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"requestId":"ECR-2026-001","accepted":true,"ecoRef":"ECO-2026-010","modifierId":"jholt"}'
+# → 400 {"error":"modifier_not_allowed","field":"modifierId","docId":"PRO-QUA-0001"}
 
 # Demande de retrait refusée
 curl -s -X POST http://localhost:3100/api/integrations/vigie \

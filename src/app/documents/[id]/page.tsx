@@ -14,7 +14,7 @@ import { isFinalStatus } from '@/lib/codes';
 import { getCtx } from '@/lib/context';
 import { fmtDate, todayIso } from '@/lib/format';
 import { getProject } from '@/lib/keystone';
-import { defaultModifier } from '@/lib/lifecycle';
+import { defaultModifier, draftersOf } from '@/lib/lifecycle';
 import { decisionWaitL, getDoc, listAudit, listChangeRequests, listDocs, listRevisions, listWorkflows, stateNotice, typeView, type RevisionView } from '@/lib/queries';
 import { normalizeMime } from '@/lib/storage';
 import { vigieSimulated, vigieUrl } from '@/lib/vigie';
@@ -191,17 +191,18 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
   // Named readers count for confidential levels; leftovers on a lower level stay listed so they can be removed.
   const showReaders = readersApply(doc.conf) || readerIds.length > 0;
   const simulateVigie = ctx.seesAll && vigieSimulated();
-  // Simulated Vigie decision: the author proposed by default (requester if they may write and still see the document,
-  // else the owner), why an acceptance cannot be given, or that it will wait for the lock to lift (same rules as
-  // lib/lifecycle.ts applyChangeDecision).
+  // Simulated Vigie decision: the author proposed by default (requester if they may draft the document, else the
+  // owner), the people who may draft it, why an acceptance cannot be given, or that it will wait for the lock to lift
+  // (same rules as lib/lifecycle.ts applyChangeDecision).
   const db = await getDb();
-  const vigieSpecs = simulateVigie
-    ? new Map(await Promise.all(requests.filter((r) => r.status === 'submitted').map(async (r) => [r.id, {
-      modifierId: await defaultModifier(db, r.requesterId, doc),
-      locked: !lock && r.kind === 'modification' && doc.revWorking ? t.locked_working : undefined,
-      deferred: lock ? `${lock} ${t.vigie_deferred} : ${waitL}.` : undefined,
-    }] as const)))
-    : new Map<string, { modifierId: string; locked?: string; deferred?: string }>();
+  const submitted = simulateVigie ? requests.filter((r) => r.status === 'submitted') : [];
+  const drafters = submitted.some((r) => r.kind === 'modification') ? await draftersOf(db, doc) : [];
+  const vigieSpecs = new Map(await Promise.all(submitted.map(async (r) => [r.id, {
+    modifierId: await defaultModifier(db, r.requesterId, doc),
+    drafters,
+    locked: !lock && r.kind === 'modification' && doc.revWorking ? t.locked_working : undefined,
+    deferred: lock ? `${lock} ${t.vigie_deferred} : ${waitL}.` : undefined,
+  }] as const)));
   const canRelease = doc.legalHold && ctx.can('archive') && ctx.screens.retention;
   const previewMime = current?.fileKey && current.mime ? normalizeMime(current.mime, current.fileName ?? '') : null;
 

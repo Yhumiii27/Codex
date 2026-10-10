@@ -460,6 +460,13 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
   répond 202 au lieu de 409. La fiche signale la décision en attente ; hors du cercle de rédaction, elle ne nomme ni
   l'ECO ni le modificateur d'une modification (même règle que pour une révision ouverte, D-14). Vigie n'est pas
   prévenu quand la décision s'applique (O-10).
+- **Modificateur désigné par Vigie** (D-16) : il doit pouvoir rédiger le document (droit de dépôt de son rôle par
+  défaut, accès au document), comme le modificateur par défaut ; sinon la décision est refusée (webhook 400
+  `modifier_not_allowed`, erreur dans la simulation). S'il perd ce droit pendant qu'une acceptation attend la levée
+  d'un verrou, la révision s'ouvre pour le modificateur par défaut, avec une ligne de journal et un message à qui lève
+  le verrou, plutôt que de laisser la décision en attente sans issue. C'est vrai même si le modificateur par défaut ne
+  peut pas rédiger non plus (ou s'il est la personne écartée) : le journal et le message le signalent alors
+  (`docs/api.md`).
 - **Authentification cible Entra ID** : proposée le 7 octobre à 12:40 (« passer à l'authentification Entra ID ») et à
   17:33 (lot 4 « Authentification Entra ID et organigramme »). L'utilisateur n'en a jamais parlé (O-02).
   `docs/modele-cible.md` §1, `docs/api.md`, `docs/avancement-v2.md` et le commentaire de

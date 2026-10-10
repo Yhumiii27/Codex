@@ -65,7 +65,10 @@ Fichier stocké : `{ID}_{indice}.{ext}` (ex. `PRO-QHS-0012_B.2.pdf`).
   sous `{ID}_{indice}_OBSOLETE.{ext}` ou `{ID}_{indice}_ARCHIVE.{ext}`. Son contenu et son nom de stockage (§3) ne
   changent pas. Les filtres par défaut et l'absence de filigrane (M12) restent inchangés. *Proposé, non confirmé.*
 - Modifier un document en vigueur : demande ECR depuis Codex → décision dans Vigie → ECO accepté → Codex ouvre la
-  révision suivante en brouillon, attribuée au modificateur désigné.
+  révision suivante en brouillon, attribuée au modificateur désigné. Celui-ci doit pouvoir rédiger le document (droit
+  de dépôt de son rôle, accès au document), sinon la décision est refusée ; s'il perd ce droit pendant qu'une
+  acceptation attend la levée d'un verrou, la révision s'ouvre pour le modificateur par défaut et le journal le note,
+  même si ce dernier ne peut pas rédiger non plus (*proposé, non confirmé*).
 - Verrous : un document archivé, obsolète ou sous gel juridique ne change plus (ni version de travail, ni décision de
   circuit, ni mise en vigueur d'une révision approuvée). Une acceptation Vigie reçue pendant le verrou est enregistrée
   (demande **Acceptée**, avec ECO, modificateur et note) et s'applique à sa levée : levée du gel ou restauration de

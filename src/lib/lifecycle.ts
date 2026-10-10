@@ -1,10 +1,10 @@
 import 'server-only';
 import { and, asc, eq, inArray, isNull, lt, lte, ne, or } from 'drizzle-orm';
 import { schema as s, type Db } from '@/db';
-import { buildAccessIndex, canRead } from './access';
+import { buildAccessIndex, canRead, type AccessIndex } from './access';
 import { nextLetter } from './codification';
 import { nowStamp, todayIso } from './format';
-import { MATRIX_ROLE, type Perm, type SimRole } from './i18n';
+import { DICT, MATRIX_ROLE, type Perm, type SimRole } from './i18n';
 
 // Revision lifecycle (docs/modele-cible.md §4): draft → in_review → approved → in_force, previous in force → superseded.
 
@@ -12,6 +12,7 @@ export type Tx = Db | Parameters<Parameters<Db['transaction']>[0]>[0];
 
 type DocRow = typeof s.documents.$inferSelect;
 type RevRow = typeof s.revisions.$inferSelect;
+type UserRow = typeof s.users.$inferSelect;
 
 /** `revisionId`: the revision the entry is about, which decides who reads it (lib/access.ts, readerMaySeeEntry). */
 export async function audit(tx: Tx, userId: string, action: string, docId: string, detail = '', revisionId: number | null = null) {
@@ -112,18 +113,37 @@ export async function defaultPerms(tx: Tx, role: string): Promise<Set<Perm>> {
 }
 
 /**
- * Author of a revision opened by an ECO when Vigie names nobody: the requester, if their default role may write and
- * they can still read the document; otherwise its owner.
+ * Whether a person may draft a revision of the document opened by an ECO: not a system account, their default role may
+ * upload (rights matrix in base, `perms` from defaultPerms), and they can read the document.
  */
-export async function defaultModifier(tx: Tx, requesterId: string, d: DocRow): Promise<string> {
-  const [u] = await tx.select().from(s.users).where(eq(s.users.id, requesterId));
-  if (!u || u.isSystem) return d.ownerId;
-  const perms = await defaultPerms(tx, u.role);
-  const viewer = { user: u, seesAll: u.role === 'gestionnaire', can: (p: Perm) => perms.has(p) };
-  return perms.has('upload') && canRead(viewer, d, await buildAccessIndex(tx)) ? u.id : d.ownerId;
+function draftsFor(u: UserRow, perms: Set<Perm>, d: DocRow, ix: AccessIndex): boolean {
+  if (u.isSystem || !perms.has('upload')) return false;
+  return canRead({ user: u, seesAll: u.role === 'gestionnaire', can: (p: Perm) => perms.has(p) }, d, ix);
 }
 
-export type ChangeDecisionError = 'not_found' | 'locked_working';
+/** Can the person draft the document (draftsFor)? The rule for the author Vigie names and for the default one. */
+export async function mayDraft(tx: Tx, userId: string, d: DocRow): Promise<boolean> {
+  const [u] = await tx.select().from(s.users).where(eq(s.users.id, userId));
+  return !!u && draftsFor(u, await defaultPerms(tx, u.role), d, await buildAccessIndex(tx));
+}
+
+/** People who may draft the document (draftsFor): the authors a simulated Vigie decision may designate. */
+export async function draftersOf(tx: Tx, d: DocRow): Promise<string[]> {
+  const [users, ix] = await Promise.all([tx.select().from(s.users).where(eq(s.users.isSystem, false)), buildAccessIndex(tx)]);
+  const perms = new Map<string, Set<Perm>>();
+  for (const role of new Set(users.map((u) => u.role))) perms.set(role, await defaultPerms(tx, role));
+  return users.filter((u) => draftsFor(u, perms.get(u.role) ?? new Set(), d, ix)).map((u) => u.id);
+}
+
+/**
+ * Author of a revision opened by an ECO when Vigie names nobody: the requester, if they may draft the document
+ * (mayDraft); otherwise its owner.
+ */
+export async function defaultModifier(tx: Tx, requesterId: string, d: DocRow): Promise<string> {
+  return (await mayDraft(tx, requesterId, d)) ? requesterId : d.ownerId;
+}
+
+export type ChangeDecisionError = 'not_found' | 'locked_working' | 'modifier_not_allowed';
 
 /**
  * What became of a decision: applied now ('rejected', 'implemented'), or an acceptance recorded while the document is
@@ -134,11 +154,19 @@ export type ChangeDecisionResult = { error: ChangeDecisionError } | { status: 'r
 type ChangeRow = typeof s.changeRequests.$inferSelect;
 
 /**
+ * A pending acceptance whose designated author could no longer draft the document when it applied: `setAside` is that
+ * author, `modifierId` the default one who took over (possibly the same person, the owner), and `mayDraft` whether the
+ * latter can draft it.
+ */
+export type ModifierSwap = { setAside: string; modifierId: string; mayDraft: boolean };
+
+/**
  * Carries out an accepted request on an unlocked document: a change opens the next revision for the modifier (the one
  * Vigie named, else the default one), a withdrawal closes the work in progress (running workflows end, open revisions are
- * cancelled) and makes the document obsolete. The request becomes 'implemented'.
+ * cancelled) and makes the document obsolete. The request becomes 'implemented'. `swap`: the designated author was set
+ * aside for the default one (applyPendingDecision), which the journal records.
  */
-async function implementChange(tx: Tx, req: ChangeRow, doc: DocRow, actorId: string) {
+async function implementChange(tx: Tx, req: ChangeRow, doc: DocRow, actorId: string, swap: ModifierSwap | null = null) {
   const at = nowStamp();
   const ref = req.ecoRef ?? req.id;
   let modifierId: string | null = null;
@@ -146,6 +174,12 @@ async function implementChange(tx: Tx, req: ChangeRow, doc: DocRow, actorId: str
     modifierId = req.modifierId ?? (await defaultModifier(tx, req.requesterId, doc));
     const rev = await openRevision(tx, req.docId, { modifierId, changeRef: ref });
     await audit(tx, actorId, 'ecr', req.docId, `${ref} → ${rev.letter}`, rev.id);
+    if (swap) {
+      const names = new Map((await tx.select({ id: s.users.id, name: s.users.name }).from(s.users).where(inArray(s.users.id, [swap.setAside, swap.modifierId]))).map((u) => [u.id, u.name]));
+      // Also written when the default author is the one set aside or cannot draft either: the substitution is never silent.
+      const denied = swap.mayDraft ? '' : ` (${DICT.fr.not_allowed} : ${DICT.fr.perm_upload})`;
+      await audit(tx, 'codex', 'ecr', req.docId, `${ref} · ${names.get(swap.setAside) ?? swap.setAside} → ${names.get(swap.modifierId) ?? swap.modifierId}${denied}`, rev.id);
+    }
   } else {
     const running = await tx.select().from(s.workflows).where(and(eq(s.workflows.docId, doc.id), isNull(s.workflows.outcome)));
     for (const w of running) {
@@ -166,7 +200,8 @@ async function implementChange(tx: Tx, req: ChangeRow, doc: DocRow, actorId: str
  * Applies Vigie's decision on a change request (webhook or simulation). A refusal always applies. An acceptance applies
  * at once to an active document free of legal hold; on a locked one (archived, obsolete, frozen) it is recorded as
  * 'accepted' with its change order, modifier and note, and applied when the lock lifts. A change never opens a second
- * revision beside one already open.
+ * revision beside one already open, and the author Vigie names must be able to draft the document (mayDraft): nothing
+ * is written otherwise.
  */
 export async function applyChangeDecision(tx: Tx, id: string, decision: { accepted: boolean; ecoRef?: string | null; modifierId?: string | null; note?: string | null }, actorId: string): Promise<ChangeDecisionResult> {
   const [req] = await tx.select().from(s.changeRequests).where(eq(s.changeRequests.id, id));
@@ -179,6 +214,7 @@ export async function applyChangeDecision(tx: Tx, id: string, decision: { accept
   }
   const [doc] = await tx.select().from(s.documents).where(eq(s.documents.id, req.docId));
   if (!doc) return { error: 'not_found' };
+  if (req.kind === 'modification' && decision.modifierId && !(await mayDraft(tx, decision.modifierId, doc))) return { error: 'modifier_not_allowed' };
   const lock = lockOf(doc);
   if (!lock && req.kind === 'modification' && doc.revWorking) return { error: 'locked_working' };
   const accepted = { ecoRef: decision.ecoRef ?? null, modifierId: req.kind === 'modification' ? decision.modifierId ?? null : null, decisionNote: decision.note ?? null };
@@ -194,12 +230,22 @@ export async function applyChangeDecision(tx: Tx, id: string, decision: { accept
 /**
  * Applies the acceptance Vigie sent while the document was locked, once the lock has lifted (legal hold released,
  * archive restored). Nothing happens while the document is still locked or, for a change, while a revision is open:
- * the request stays 'accepted'.
+ * the request stays 'accepted'. Rights may have changed since Vigie named the author: one who can no longer draft the
+ * document gives way to the default author rather than leave the decision stuck. The default author is checked in turn;
+ * the revision opens for them even when they cannot draft it either (a records manager may still upload to it), but the
+ * journal records the substitution in every case. Returns it, for the person who lifted the lock.
  */
-export async function applyPendingDecision(tx: Tx, docId: string) {
+export async function applyPendingDecision(tx: Tx, docId: string): Promise<ModifierSwap | null> {
   const [req] = await tx.select().from(s.changeRequests).where(and(eq(s.changeRequests.docId, docId), eq(s.changeRequests.status, 'accepted')));
-  if (!req) return;
+  if (!req) return null;
   const [doc] = await tx.select().from(s.documents).where(eq(s.documents.id, docId));
-  if (!doc || lockOf(doc) || (req.kind === 'modification' && doc.revWorking)) return;
-  await implementChange(tx, req, doc, 'vigie');
+  if (!doc || lockOf(doc) || (req.kind === 'modification' && doc.revWorking)) return null;
+  if (req.kind !== 'modification' || !req.modifierId || (await mayDraft(tx, req.modifierId, doc))) {
+    await implementChange(tx, req, doc, 'vigie');
+    return null;
+  }
+  const modifierId = await defaultModifier(tx, req.requesterId, doc);
+  const swap = { setAside: req.modifierId, modifierId, mayDraft: modifierId !== req.modifierId && (await mayDraft(tx, modifierId, doc)) };
+  await implementChange(tx, { ...req, modifierId }, doc, 'vigie', swap);
+  return swap;
 }

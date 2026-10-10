@@ -477,3 +477,14 @@ Constats confirmés, dans la numérotation du workflow :
   - le webhook Vigie répond 202 (`pending: true`) au lieu de 409 `document_locked`, et de même à un renvoi de la même
     acceptation ; la simulation depuis la fiche suit les mêmes règles et le dit dans un message ;
   - la fiche signale la décision en attente (bandeau, onglet Demandes) ; `docs/api.md` décrit ce comportement.
+- **Étape 4 : droit de rédiger du modificateur désigné par Vigie**, point 34 de [reste-a-faire.md](reste-a-faire.md) :
+  - le modificateur que nomme Vigie passe le même contrôle que le défaut (droit de dépôt de son rôle dans la matrice,
+    document lisible), à un seul endroit pour le webhook et la simulation (`mayDraft`, `src/lib/lifecycle.ts`) ;
+  - en cas d'échec, le webhook répond 400 `modifier_not_allowed` et la simulation affiche une erreur traduite ; rien
+    n'est enregistré et le défaut ne prend pas sa place ;
+  - le dialogue de simulation ne propose que les personnes qui peuvent rédiger le document ;
+  - une acceptation en attente dont le modificateur a perdu ce droit s'applique pour le modificateur par défaut, avec
+    une ligne de journal et un message à qui lève le gel ou restaure l'archive, y compris quand le défaut ne peut pas
+    rédiger non plus ou retombe sur la personne écartée (message distinct) ; `docs/api.md` décrit ce comportement ;
+  - `docs/api.md` précise aussi qu'un `modifierId` inconnu fait échouer un refus ou un retrait (400 `unknown_user`) et
+    que la ligne de journal du remplacement devient visible de tous les lecteurs une fois la révision en vigueur.

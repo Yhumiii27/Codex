@@ -597,6 +597,7 @@ Constaté : src/lib/actions.ts:542-555 (addComment : insert sans audit) ; :694-7
 ### Intégrations (2)
 
 #### 34. Modificateur désigné par Vigie : son droit de rédiger n'est pas contrôlé
+- **Fait le 10 octobre 2026** : le modificateur désigné par Vigie passe, pour le webhook comme pour la simulation, le même contrôle que le défaut (`mayDraft`, src/lib/lifecycle.ts : droit `upload` de son rôle par défaut dans la matrice en base et document lisible), faute de quoi le webhook répond 400 `modifier_not_allowed` et la simulation affiche une erreur traduite sans repli sur le défaut, le dialogue de simulation ne propose que les personnes qui peuvent rédiger, et une acceptation en attente dont le modificateur a perdu ce droit s'applique pour le modificateur par défaut avec une ligne de journal et un message, distinct si ce dernier ne peut pas rédiger non plus ; reste : quand Vigie ne désigne personne, le repli du défaut sur le propriétaire n'est toujours ni contrôlé ni signalé.
 
 - **Effort** : faible · **Références** : D-16, T-01
 

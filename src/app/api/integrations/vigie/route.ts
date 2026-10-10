@@ -60,10 +60,11 @@ export async function POST(req: Request) {
           ? await pending({ alreadyRecorded: true })
           : json({ ok: true, alreadyApplied: true, requestId: r.id, docId: r.docId, status: r.status });
       }
-      // Same rules as the simulation (lib/lifecycle.ts): a change never opens a revision beside one already open, and
-      // nothing is written when it is refused.
+      // Same rules as the simulation (lib/lifecycle.ts): a change never opens a revision beside one already open, the
+      // designated author must be able to draft the document, and nothing is written when it is refused.
       const res = await applyChangeDecision(tx, r.id, { accepted: d.accepted, ecoRef: d.ecoRef, modifierId: d.modifierId, note: d.note }, 'vigie');
       if ('error' in res) {
+        if (res.error === 'modifier_not_allowed') return json({ error: 'modifier_not_allowed', field: 'modifierId', docId: r.docId }, 400);
         if (res.error === 'locked_working') {
           const [doc] = await tx.select({ revWorking: s.documents.revWorking }).from(s.documents).where(eq(s.documents.id, r.docId));
           return json({ error: 'revision_in_progress', docId: r.docId, revision: doc?.revWorking ?? null }, 409);
