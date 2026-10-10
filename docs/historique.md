@@ -520,3 +520,31 @@ Constats confirmés, dans la numérotation du workflow :
   - la base refuse UPDATE, DELETE et TRUNCATE sur `audit_log` : déclencheurs posés à chaque démarrage, après les
     migrations (`src/db/index.ts`), pour survivre à la régénération de la migration unique ;
   - la migration unique `0000_init` a été régénérée ; une base existante doit repartir de zéro (`npm run db:reset`).
+
+## 11. Lots 1 et 2 de la session cloud (10 oct.)
+
+- **Demande** : « vas y, a chaque etape qui est validée fait un commit du code », en réponse à la proposition de
+  commencer par les six écarts entre le code et les décisions, puis les tests et l'intégration continue.
+- **Méthode** : chaque étape a été implémentée par un agent, relue par deux autres (correction et régressions,
+  conformité aux décisions), finalisée puis commitée ; vérification d'ensemble sur base neuve avant chaque push.
+- **Lot 1** (écarts au modèle) :
+  - `94bc399` D-14 : rien du travail en cours hors du cercle de rédaction (fiche, historique, explorateur, accueil,
+    export, validations) ; colonne `audit_log.revision_id` ;
+  - `7de5e60` bandeau et suffixe de nom de fichier pour un document obsolète ou archivé (accès inchangé) ;
+  - `f7edfa6` décision Vigie acceptée sur un document verrouillé : enregistrée (`accepted`, réponse 202) puis appliquée
+    à la levée du gel ou à la restauration ;
+  - `c69bf4b` droit de rédiger exigé du modificateur désigné par Vigie (webhook 400 `modifier_not_allowed`) ;
+  - `d7a37ed` identifiants, circuits et ECR attribués par une table de compteurs atomique ;
+  - `5e15449` journal d'audit en ajout seul (trigger posé au démarrage de la base), cibles sans document, actions
+    d'administration, commentaires, exports et détail des modifications journalisés, horodatage en UTC.
+- **Lot 2** (tests et CI) : `4706989` Vitest et tests unitaires, `1644339` tests d'intégration sur PGlite en mémoire
+  (242 tests, environ 20 s), `d5c3680` workflow GitHub Actions (npm ci, typecheck, lint, tests, build), premier
+  passage vert sur `679e167`.
+- **Écarts révélés par les tests, marqués `it.fails`, non corrigés** :
+  - `idMatches` confond un code client de projet et un code de département identiques (D-10, latent tant que les
+    codes ne se recouvrent pas, O-04) ;
+  - `normalizeMime` garde `text/plain` pour une extension inconnue : un fichier binaire importé sans type peut être
+    servi comme du texte ;
+  - l'import traite une référence d'origine égale à l'ancien ID d'un document reclassé comme un rejeu.
+- **Point à arbitrer** : une modification acceptée pendant un gel, alors qu'une révision est déjà ouverte, reste
+  « acceptée » après la levée du gel, et rien ne l'applique ensuite.
