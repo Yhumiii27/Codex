@@ -70,6 +70,7 @@ numéro, sans les trancher à la place de l'utilisateur.
 ```bash
 npm install
 npm run dev          # http://localhost:3100
+npm test             # Vitest : tests unitaires de tests/unit/, quelques secondes, sans serveur ni base
 npm run typecheck && npm run lint && npm run build
 ```
 
@@ -81,6 +82,10 @@ npm run typecheck && npm run lint && npm run build
   cliquer sur le profil en bas de la barre latérale.
 - **Pas de secrets dans le dépôt.** Les variables sont décrites dans `.env.example`, et `.gitignore` exclut `.env*`,
   les clés et les dossiers de build.
+- **Tests.** Vitest (`vitest.config.ts`), fichiers `tests/**/*.test.ts` ; `tests/unit/` teste les règles pures de
+  `src/lib`. Un test encode `docs/decisions.md` et `docs/modele-cible.md`, pas le comportement du code : si le code
+  les contredit, on le signale au lieu d'adapter le test. `server-only` y est remplacé par un module vide. Vitest
+  demande Node 20.19+ ou 22.12+ (Vite 7).
 
 ## Limites en session cloud (conteneur Linux)
 

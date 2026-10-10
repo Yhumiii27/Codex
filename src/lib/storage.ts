@@ -168,7 +168,7 @@ export function normalizeMime(raw: string | null | undefined, name: string, buf?
  * Page count of a PDF: the largest /Count of a /Pages node (the root's), looked up in the plain objects and inside
  * compressed object streams (PDF ≥ 1.5). Falls back to counting /Page objects, then to null when unknown.
  */
-function countPdfPages(buf: Buffer, mime: string): number | null {
+export function countPdfPages(buf: Buffer, mime: string): number | null {
   if (mime !== 'application/pdf') return null;
   const raw = buf.toString('latin1');
   const parts = [raw];

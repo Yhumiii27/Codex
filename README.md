@@ -20,7 +20,10 @@ déposés sont stockés dans `.data/files/` (ou dans SharePoint, voir `src/lib/s
   une base créée avec l'ancien modèle ne peut pas recevoir la nouvelle migration.
 - Après une modification de `src/db/schema.ts` : tant qu'il n'y a pas de base de production, régénérer la migration
   unique (`rm -rf drizzle && npx drizzle-kit generate --name init`) puis `npm run db:reset`.
-- Contrôles : `npm run typecheck`, `npm run lint`, `npm run build`.
+- Contrôles : `npm test`, `npm run typecheck`, `npm run lint`, `npm run build`.
+- Tests : `npm test` lance Vitest une fois (`npm run test:watch` en continu). Les tests unitaires (`tests/unit/`)
+  couvrent les règles pures (identifiants, révisions, visibilité, conservation, recherche, dates, types de fichiers)
+  et tournent en quelques secondes, sans serveur, sans base ni réseau.
 
 Variables : voir `.env.example` (Keystone, Vigie, dossier de données, jetons de l'API d'intégration).
 
@@ -110,6 +113,9 @@ src/
     keystone.ts, vigie.ts  frontières d'intégration
     importer.ts        API d'import (outil de migration)
     i18n.ts            textes FR / EN
+tests/
+  unit/                tests unitaires des règles pures de src/lib (Vitest, vitest.config.ts)
+  support/             modules de remplacement pour les tests (server-only)
 ```
 
 ## Décisions et points ouverts

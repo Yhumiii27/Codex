@@ -8,6 +8,8 @@
     "start": "next start --port 3100",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",
     "db:reset": "rm -rf .data",
     "app": "bash desktop/build-app.sh"
@@ -27,6 +29,8 @@
     "drizzle-kit": "^0.31.11",
     "eslint": "^9",
     "eslint-config-next": "16.4.0",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vite": "7.3.6",
+    "vitest": "4.1.11"
   }
 }
