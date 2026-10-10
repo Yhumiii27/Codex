@@ -5,7 +5,7 @@ import { cookies } from 'next/headers';
 import { refresh } from 'next/cache';
 import { getDb, schema as s } from '@/db';
 import type { Attachment, Conf, Disposition, Origin, RetentionTrigger } from '@/db/schema';
-import { canRead, getAccessIndex, inDraftingCircle, isUsableTemplate, readersApply } from './access';
+import { canRead, getAccessIndex, inDraftingCircle, isUsableTemplate, readerMaySeeRevision, readersApply } from './access';
 import { idMatches, nextDocId } from './codification';
 import { COOKIE_LANG, COOKIE_ROLE, COOKIE_USER, getCtx, type Ctx } from './context';
 import { addDays, fmtSize, loc, nowStamp, parseIsoDay, todayIso } from './format';
@@ -195,7 +195,7 @@ export async function createDocument(fd: FormData): Promise<ActionResult> {
       const comment = template ? { fr: `Créé depuis le modèle ${templateId} « ${template.title} »`, en: `Created from template ${templateId} “${template.title}”` } : { fr: 'Dépôt initial', en: 'Initial upload' };
       await tx.insert(s.workingVersions).values({ revisionId: rev.id, docId: id, n: 1, comment, authorId: ctx.user.id, date: today, ...(staged ? fileColumns(staged) : {}) });
     }
-    await audit(tx, ctx.user.id, 'upload', id, `A.1${staged ? ` · ${fmtSize(staged.size, 'fr')}` : ''}${templateId ? ` · ${templateId}` : ''}`);
+    await audit(tx, ctx.user.id, 'upload', id, `A.1${staged ? ` · ${fmtSize(staged.size, 'fr')}` : ''}${templateId ? ` · ${templateId}` : ''}`, rev.id);
     if (f.attachment === 'project' && f.projectCode && expectedId) {
       // A document filed for a piece Keystone expects fills that piece (only if it is still missing).
       const [exp] = await tx.select().from(s.projectExpected).where(and(eq(s.projectExpected.id, expectedId), eq(s.projectExpected.projectCode, f.projectCode)));
@@ -245,7 +245,7 @@ export async function addWorkingVersion(fd: FormData): Promise<ActionResult> {
     const n = max + 1;
     await tx.insert(s.workingVersions).values({ revisionId: rev.id, docId, n, comment: comment || { fr: 'Nouvelle version de travail', en: 'New working version' }, authorId: ctx.user.id, date: todayIso(), ...fileColumns(staged) });
     await tx.update(s.documents).set({ modifiedAt: todayIso() }).where(eq(s.documents.id, docId));
-    await audit(tx, ctx.user.id, 'working', docId, `${rev.letter}.${n} · ${fmtSize(staged.size, 'fr')}`);
+    await audit(tx, ctx.user.id, 'working', docId, `${rev.letter}.${n} · ${fmtSize(staged.size, 'fr')}`, rev.id);
     return { label: `${rev.letter}.${n}` };
   }));
   if ('err' in res) {
@@ -300,7 +300,8 @@ export async function updateMeta(fd: FormData): Promise<ActionResult> {
       // documents.id cascades to every table that references it; the audit trail follows by hand.
       await tx.update(s.documents).set({ id, aliases: [...d.aliases, docId] }).where(eq(s.documents.id, docId));
       await tx.update(s.auditLog).set({ docId: id }).where(eq(s.auditLog.docId, docId));
-      await audit(tx, ctx.user.id, 'reclass', id, `${docId} → ${id}`);
+      // Before any approval, the reclassification belongs to the revision being drafted.
+      await audit(tx, ctx.user.id, 'reclass', id, `${docId} → ${id}`, revs.find((r) => r.status === 'draft' || r.status === 'in_review')?.id ?? null);
     }
     const retention = f.typeCode !== d.typeCode ? { retentionYears: type.retentionYears, retentionTrigger: type.retentionTrigger, retentionDisposition: type.retentionDisposition } : {};
     await tx.update(s.documents).set({ ...f, family: type.family, ...retention, modifiedAt: todayIso() }).where(eq(s.documents.id, id));
@@ -437,7 +438,7 @@ export async function requestValidation(docId: string, effectiveAt: string | nul
     await tx.insert(s.workflows).values({ id, docId, revisionId: rev.id, requesterId: ctx.user.id, due: addDays(today, 7), step: 1, createdAt: today });
     await tx.insert(s.workflowSteps).values(steps.map((st, idx) => ({ workflowId: id, idx, ...st, sign: false, date: idx === 0 ? today : null })));
     await tx.update(s.revisions).set({ status: 'in_review', effectiveAt: effective }).where(eq(s.revisions.id, rev.id));
-    await audit(tx, ctx.user.id, 'request', docId, `${id} · ${rev.letter}`);
+    await audit(tx, ctx.user.id, 'request', docId, `${id} · ${rev.letter}`, rev.id);
     if (steps.length === 1) {
       // Circuit without approval (correspondence, photos…): approved as soon as it is requested.
       await tx.update(s.workflows).set({ outcome: 'approved' }).where(eq(s.workflows.id, id));
@@ -490,7 +491,7 @@ export async function decideStep(workflowId: string, approve: boolean, expectedS
       await tx.update(s.workflows).set({ outcome: 'rejected' }).where(eq(s.workflows.id, w.id));
       await tx.update(s.revisions).set({ status: 'draft' }).where(and(eq(s.revisions.id, w.revisionId), eq(s.revisions.status, 'in_review')));
       await tx.insert(s.workflowComments).values({ workflowId: w.id, authorId: ctx.user.id, at: today, text: { fr: 'Rejeté — révision renvoyée en rédaction.', en: 'Rejected — revision sent back to drafting.' } });
-      await audit(tx, ctx.user.id, 'reject', w.docId, w.id);
+      await audit(tx, ctx.user.id, 'reject', w.docId, w.id, w.revisionId);
       await refreshHeadline(tx, w.docId);
       return null;
     }
@@ -499,7 +500,7 @@ export async function decideStep(workflowId: string, approve: boolean, expectedS
     // The last approval puts the revision in force (or schedules it): the matrix's "publish" permission.
     if (last && !ctx.can('publish')) return 'perm_publish';
     await tx.update(s.workflowSteps).set({ date: today }).where(and(eq(s.workflowSteps.workflowId, w.id), eq(s.workflowSteps.idx, cur.idx)));
-    await audit(tx, ctx.user.id, cur.sign ? 'sign' : 'approve', w.docId, w.id);
+    await audit(tx, ctx.user.id, cur.sign ? 'sign' : 'approve', w.docId, w.id, w.revisionId);
     await tx.update(s.workflows).set({ step, outcome: last ? 'approved' : null }).where(eq(s.workflows.id, w.id));
     if (last) await approveRevision(tx, w.revisionId);
     return null;
@@ -531,7 +532,7 @@ export async function delegateStep(workflowId: string, toUserId: string, expecte
     if ((await circuitExclusions(tx, doc, rev, wf.w.requesterId)).has(to.id)) return 'no_self_approval';
     if (!(await approverCheck(tx, ctx))(to.id)) return 'delegate_no_approve';
     await tx.update(s.workflowSteps).set({ assigneeId: to.id }).where(and(eq(s.workflowSteps.workflowId, workflowId), eq(s.workflowSteps.idx, cur.idx)));
-    await audit(tx, ctx.user.id, 'delegate', wf.w.docId, `${workflowId} · ${loc(cur.name, 'fr')} → ${to.name}`);
+    await audit(tx, ctx.user.id, 'delegate', wf.w.docId, `${workflowId} · ${loc(cur.name, 'fr')} → ${to.name}`, rev.id);
     return null;
   });
   if (err) return fail(ctx, err);
@@ -547,6 +548,13 @@ export async function addComment(workflowId: string, text: string): Promise<Acti
   const db = await getDb();
   const wf = await loadWorkflow(db, workflowId);
   if (!wf) return fail(ctx, 'not_found');
+  // Same rule as listWorkflows: a document the user cannot read, or a revision outside their view (D-14), gives nothing away.
+  const [[d], [rev], ix] = await Promise.all([
+    db.select().from(s.documents).where(eq(s.documents.id, wf.w.docId)),
+    db.select({ status: s.revisions.status }).from(s.revisions).where(eq(s.revisions.id, wf.w.revisionId)),
+    getAccessIndex(),
+  ]);
+  if (!d || !canRead(ctx, d, ix) || !readerMaySeeRevision(inDraftingCircle(ctx, d, ix), rev?.status)) return fail(ctx, 'not_found');
   const involved = wf.w.requesterId === ctx.user.id || wf.steps.some((x) => x.assigneeId === ctx.user.id);
   if (!(ctx.seesAll || involved)) return fail(ctx, 'not_allowed');
   await db.insert(s.workflowComments).values({ workflowId, authorId: ctx.user.id, at: todayIso(), text: body.slice(0, 2000) });

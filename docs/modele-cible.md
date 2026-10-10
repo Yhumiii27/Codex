@@ -73,7 +73,22 @@ externe désigné ; minimum pour tout document non public) < **Interne** < **Con
 
 Brouillons et versions de travail visibles par : le propriétaire, le modificateur désigné, les valideurs du circuit en
 cours et les gestionnaires documentaires. Hors de ce cercle, un lecteur n'obtient que le fichier final de la révision
-en vigueur. Les lecteurs désignés s'ajoutent au département ou à l'équipe projet d'un document confidentiel et sont les
+en vigueur, et ne voit que les révisions en vigueur et remplacées. Une révision en rédaction, en revue, approuvée en
+attente de sa date d'effet, ou annulée n'existe pas pour lui, ni rien de ce qui s'y rapporte :
+- l'étiquette « en cours » et le libellé de travail (« B.2 ») sur la fiche, dans l'explorateur, la recherche et
+  l'export CSV ;
+- le modificateur désigné et la référence ECO de cette révision ;
+- ses circuits, en cours ou terminés, avec leurs commentaires. Un valideur sort du cercle quand le circuit se termine :
+  s'il ne voit pas la révision, le circuit disparaît de son écran Validations, et un commentaire lui est refusé ;
+- les entrées du journal qui la concernent. Chaque entrée porte la révision dont elle parle (`audit_log.revision_id`)
+  et suit son statut : elle apparaît quand la révision entre en vigueur. Une entrée sans révision concerne le document
+  entier (métadonnées, lecteurs, demandes, retrait, gel, archivage) et reste visible ; une action propre à une
+  révision (dépôt, demande de validation, visa…) dont la révision est inconnue reste masquée. Cette règle vaut pour
+  l'historique de la fiche, l'activité de l'accueil, les notifications, l'onglet Journal et son export CSV ;
+- la date de modification due au travail en cours : la fiche et les listes datent le document de son dernier
+  changement visible (mise en vigueur, ou modification de la fiche elle-même).
+
+Les lecteurs désignés s'ajoutent au département ou à l'équipe projet d'un document confidentiel et sont les
 seuls lecteurs d'un document très confidentiel ; en dessous de « Confidentiel », ils n'ont pas d'effet et sont retirés.
 Le droit « Lire » de la matrice conditionne toute lecture hors du cercle de rédaction.
 

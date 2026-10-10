@@ -451,6 +451,8 @@ Constaté : next.config.ts:3-9 ne contient que serverExternalPackages et experim
 </details>
 
 #### 26. Brouillons : leur existence et leur activité restent visibles hors du cercle de rédaction
+- **Fait le 10 octobre 2026** : hors du cercle de rédaction, la fiche, l'historique, l'accueil, les notifications, l'explorateur, la recherche, le journal et les exports CSV ne montrent plus rien d'une révision ouverte ou annulée (règle par `audit_log.revision_id`, `readerMaySeeRevision` et `readerMaySeeEntry` dans `src/lib/access.ts`).
+- **Indices résiduels, à arbitrer** : hors du cercle, le bouton « Demander une modification » reste absent et `requestChange` répond `locked_working` quand une révision est ouverte (règle « une seule révision ouverte ») ; une ECR de modification s'affiche « Appliquée » dans l'onglet Demandes ; les pièces attendues de Keystone affichent « en cours » pour un brouillon, et le fil du projet reçoit « Pièce … déposée » ou « … de nouveau attendue » (src/lib/actions.ts, `createDocument` et `releasePieces`), sans ID de document. Ils sont laissés en l'état en attendant une décision.
 
 - **Effort** : faible · **Références** : ACC-03, D-14, G13
 
@@ -507,6 +509,7 @@ Le manque est confirmé dans le code. Dans src/app/api/documents/[id]/file/route
 </details>
 
 #### 29. Validations : circuits, titres et commentaires visibles après la perte d'accès au document
+- **Fait le 10 octobre 2026** : un circuit n'est plus visible d'un participant qui ne peut plus lire le document ou la révision (il disparaît de Validations, un lien vers lui ramène à la liste), et `addComment` répond `not_found` dans ce cas.
 
 - **Effort** : faible · **Références** : D-14, ACC-02, ACC-03
 

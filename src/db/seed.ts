@@ -132,7 +132,7 @@ export async function seed(db: Db) {
       const lastInForce = demo.working ? later(addDays(demo.modified, -(2 * demo.working.n + 4)), demo.issued ?? '') : demo.modified;
       const dates = !demo.inForce ? [] : inForceLetters.length === 1 ? [demo.issued ?? lastInForce] : spread(demo.issued ?? lastInForce, lastInForce, inForceLetters.length);
       const createdAt = demo.issued ? addDays(demo.issued, -12) : addDays(demo.modified, -(5 + (hash(id) % 20)));
-      const revRows: { letter: string; status: RevStatus; inForceAt?: string; supersededAt?: string; approvedAt?: string; versions: number; date: string; createdAt?: string; modifierId?: string | null; changeRef?: string | null }[] = [];
+      const revRows: { letter: string; status: RevStatus; inForceAt?: string; supersededAt?: string; approvedAt?: string; versions: number; date: string; createdAt?: string; modifierId?: string | null; changeRef?: string | null; decided?: string }[] = [];
       inForceLetters.forEach((letter, i) => {
         const last = i === inForceLetters.length - 1;
         revRows.push({ letter, status: last ? 'in_force' : 'superseded', approvedAt: dates[i], inForceAt: dates[i], supersededAt: last ? undefined : dates[i + 1], versions: 1 + (hash(id + letter) % 2), date: dates[i] });
@@ -141,8 +141,7 @@ export async function seed(db: Db) {
         // A revision opened by an ECO exists from Vigie's decision on (lifecycle.applyChangeDecision).
         const change = demo.working.changeRef ? CHANGES.find((c) => c.eco === demo.working!.changeRef) : undefined;
         const letter = nextLetter(demo.inForce);
-        revRows.push({ letter, status: demo.working.status, versions: demo.working.n, date: demo.modified, createdAt: change?.decided?.slice(0, 10), modifierId: demo.working.modifier ?? null, changeRef: demo.working.changeRef ?? null });
-        if (change?.decided) audit.push({ at: change.decided, userId: 'vigie', action: 'ecr', docId: id, detail: `${change.eco} → ${letter}` });
+        revRows.push({ letter, status: demo.working.status, versions: demo.working.n, date: demo.modified, createdAt: change?.decided?.slice(0, 10), modifierId: demo.working.modifier ?? null, changeRef: demo.working.changeRef ?? null, decided: change?.decided });
       }
       const inForce = revRows.find((r) => r.status === 'in_force');
       const working = revRows.find((r) => r.status === 'draft' || r.status === 'in_review');
@@ -164,15 +163,17 @@ export async function seed(db: Db) {
         createdAt, modifiedAt: demo.modified,
       });
       if (demo.readers?.length) await tx.insert(s.documentReaders).values(demo.readers.map((userId) => ({ docId: id, userId })));
-      audit.push({ at: stamp(createdAt, `${id}c`), userId: demo.owner, action: 'upload', docId: id, detail: 'A.1' });
 
-      for (const r of revRows) {
+      for (const [ri, r] of revRows.entries()) {
         // A revision exists before its first working version.
         const revCreated = r.approvedAt ? addDays(r.approvedAt, -10) : r.createdAt ?? addDays(r.date, -2 * r.versions - 1);
         const [rev] = await tx.insert(s.revisions).values({
           docId: id, letter: r.letter, status: r.status, approvedAt: r.approvedAt ?? null, inForceAt: r.inForceAt ?? null, supersededAt: r.supersededAt ?? null,
           modifierId: r.modifierId ?? null, changeRef: r.changeRef ?? null, createdAt: revCreated,
         }).returning();
+        // Journal entries carry the revision they are about (lib/access.ts, readerMaySeeEntry).
+        if (ri === 0) audit.push({ at: stamp(createdAt, `${id}c`), userId: demo.owner, action: 'upload', docId: id, detail: 'A.1', revisionId: rev.id });
+        if (r.decided) audit.push({ at: r.decided, userId: 'vigie', action: 'ecr', docId: id, detail: `${r.changeRef} → ${r.letter}`, revisionId: rev.id });
         const vdates = spread(later(addDays(r.date, -2 * r.versions), revCreated), r.date, r.versions);
         await tx.insert(s.workingVersions).values(Array.from({ length: r.versions }, (_, i) => ({
           revisionId: rev.id, docId: id, n: i + 1, authorId: r.modifierId ?? demo.owner, date: vdates[i],
@@ -180,7 +181,7 @@ export async function seed(db: Db) {
           pages: 2 + (hash(id + r.letter) % 14),
         })));
         // Entry into force closes the day, after any approval stamped that day (stamp() stays before 18:00).
-        if (r.inForceAt) audit.push({ at: `${r.inForceAt} 18:00:00`, userId: 'codex', action: 'in_force', docId: id, detail: r.letter });
+        if (r.inForceAt) audit.push({ at: `${r.inForceAt} 18:00:00`, userId: 'codex', action: 'in_force', docId: id, detail: r.letter, revisionId: rev.id });
 
         if (r.status === 'in_review' && demo.working) {
           // Running workflow: the type's circuit, resolved as the app would; `done` steps already signed off.
@@ -192,8 +193,8 @@ export async function seed(db: Db) {
           const sdates = spread(addDays(r.date, -4), r.date, done);
           await tx.insert(s.workflows).values({ id: wid, docId: id, revisionId: rev.id, requesterId: requester, due: addDays(r.date, 10), step: done, createdAt: sdates[0] });
           await tx.insert(s.workflowSteps).values(steps.map((st, idx) => ({ workflowId: wid, idx, ...st, date: idx < done ? sdates[Math.min(idx, sdates.length - 1)] : null })));
-          audit.push({ at: stamp(sdates[0], `${wid}r`), userId: requester, action: 'request', docId: id, detail: `${wid} · ${r.letter}` });
-          for (let i = 1; i < done; i++) audit.push({ at: stamp(sdates[i], `${wid}${i}`), userId: steps[i].assigneeId, action: 'approve', docId: id, detail: wid });
+          audit.push({ at: stamp(sdates[0], `${wid}r`), userId: requester, action: 'request', docId: id, detail: `${wid} · ${r.letter}`, revisionId: rev.id });
+          for (let i = 1; i < done; i++) audit.push({ at: stamp(sdates[i], `${wid}${i}`), userId: steps[i].assigneeId, action: 'approve', docId: id, detail: wid, revisionId: rev.id });
           if (hash(wid) % 2 === 0) {
             await tx.insert(s.workflowComments).values({ workflowId: wid, authorId: requester, at: sdates[0], text: { fr: 'Révision prête pour vérification, modifications surlignées en jaune.', en: 'Revision ready for review, changes highlighted in yellow.' } });
           }
@@ -213,8 +214,8 @@ export async function seed(db: Db) {
       const sdates = spread(addDays(rev.inForceAt!, -6), rev.inForceAt!, steps.length);
       await tx.insert(s.workflows).values({ id: wid, docId: id, revisionId: rev.id, requesterId: demo.owner, due: addDays(rev.inForceAt!, 3), step: steps.length, outcome: 'approved', createdAt: sdates[0] });
       await tx.insert(s.workflowSteps).values(steps.map((st, idx) => ({ workflowId: wid, idx, ...st, date: sdates[idx] })));
-      audit.push({ at: stamp(sdates[0], `${wid}r`), userId: demo.owner, action: 'request', docId: id, detail: `${wid} · ${rev.letter}` });
-      steps.slice(1).forEach((st, i) => audit.push({ at: stamp(sdates[i + 1], `${wid}${i}`), userId: st.assigneeId, action: 'approve', docId: id, detail: wid }));
+      audit.push({ at: stamp(sdates[0], `${wid}r`), userId: demo.owner, action: 'request', docId: id, detail: `${wid} · ${rev.letter}`, revisionId: rev.id });
+      steps.slice(1).forEach((st, i) => audit.push({ at: stamp(sdates[i + 1], `${wid}${i}`), userId: st.assigneeId, action: 'approve', docId: id, detail: wid, revisionId: rev.id }));
     }
 
     await tx.insert(s.changeRequests).values(CHANGES.map((c) => ({

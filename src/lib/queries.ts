@@ -1,7 +1,7 @@
 import 'server-only';
-import { and, asc, desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { getDb, schema as s } from '@/db';
-import { canRead, getAccessIndex, inDraftingCircle, isUsableTemplate, type AccessIndex } from './access';
+import { canRead, getAccessIndex, inDraftingCircle, isUsableTemplate, readerMaySeeEntry, readerMaySeeRevision, type AccessIndex } from './access';
 import { revLabel } from './codification';
 import type { Ctx } from './context';
 import { addDays, daysBetween, fmtDate, fmtSize, fmtWhen, loc, todayIso } from './format';
@@ -11,15 +11,23 @@ import { retainUntil } from './retention';
 
 type DocRow = typeof s.documents.$inferSelect;
 
-/** `workingL`: label of the revision being drafted with its last working version ("B.2"), see workingLabels(). */
-export function docView(ctx: Ctx, d: DocRow, workingL?: string | null) {
+/**
+ * `workingL`: label of the revision being drafted with its last working version ("B.2"), see workingLabels().
+ * `circle`: whether the user belongs to the document's drafting circle; outside it, no revision is being drafted (D-14).
+ * `shownModified`: outside the circle, the date of the last change the user may see (visibleModified), when it differs.
+ */
+export function docView(ctx: Ctx, d: DocRow, workingL: string | null | undefined, circle: boolean, shownModified?: string) {
   const { t, lang, label } = ctx;
+  const revWorking = circle ? d.revWorking : null;
+  const modifiedAt = (!circle && shownModified) || d.modifiedAt;
   const typeLabel = label('type', d.typeCode), familyLabel = label('family', d.family);
   const contextL = d.attachment === 'project' ? `${d.projectCode} · ${label('project', d.projectCode)}` : d.attachment === 'research' ? `${d.programCode} · ${label('program', d.programCode)}` : label('department', d.department);
   const until = retainUntil(d);
   const years = d.retentionYears != null ? `${d.retentionYears} ${t.years_short} · ` : '';
   return {
     ...d,
+    revWorking,
+    modifiedAt,
     typeLabel, familyLabel, contextL,
     departmentL: label('department', d.department),
     siteL: d.site ? label('site', d.site) : '—',
@@ -31,12 +39,12 @@ export function docView(ctx: Ctx, d: DocRow, workingL?: string | null) {
     owner: ctx.userName(d.ownerId),
     author: d.authorText || ctx.userName(d.authorId ?? d.ownerId),
     /** Revision being drafted or reviewed, with its last working version ("B.2"); null when none. */
-    workingLabel: d.revWorking ? workingL ?? d.revWorking : null,
+    workingLabel: revWorking ? workingL ?? revWorking : null,
     /** Revision shown in lists: the one in force, else the one being drafted. */
-    rev: d.revInForce ?? (d.revWorking ? workingL ?? d.revWorking : '—'),
+    rev: d.revInForce ?? (revWorking ? workingL ?? revWorking : '—'),
     /** Project or research programme code the document is attached to. */
     attachedCode: d.attachment === 'project' ? d.projectCode : d.attachment === 'research' ? d.programCode : null,
-    modifiedF: fmtDate(d.modifiedAt, lang),
+    modifiedF: fmtDate(modifiedAt, lang),
     createdF: fmtDate(d.createdAt, lang),
     issuedF: fmtDate(d.issuedAt, lang),
     expiresF: fmtDate(d.expiresAt, lang),
@@ -63,11 +71,38 @@ async function workingLabels(docId?: string): Promise<Map<string, string>> {
   return new Map(revs.map((r) => [r.docId, maxN.has(r.id) ? revLabel(r.letter, r.status, maxN.get(r.id)) : r.letter]));
 }
 
-/** Documents the current user may see (records managers: all). */
+/** Journal actions on the record itself (no revision) that move documents.modified_at. */
+const RECORD_ACTIONS = ['edit', 'archive', 'restore'];
+
+/**
+ * documents.modified_at also moves with drafting work (working versions, validation requests). Outside the drafting
+ * circle (D-14), a document with an open revision is dated by the last change its readers see instead: the entry into
+ * force of its current revision, or a later change of the record itself (metadata, readers, archiving, restoration).
+ */
+async function visibleModified(ids: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (!ids.length) return out;
+  const db = await getDb();
+  const [revs, entries] = await Promise.all([
+    db.select({ docId: s.revisions.docId, at: s.revisions.inForceAt }).from(s.revisions).where(and(inArray(s.revisions.docId, ids), eq(s.revisions.status, 'in_force'))),
+    db.select({ docId: s.auditLog.docId, at: s.auditLog.at }).from(s.auditLog).where(and(inArray(s.auditLog.docId, ids), isNull(s.auditLog.revisionId), inArray(s.auditLog.action, RECORD_ACTIONS))),
+  ]);
+  const later = (docId: string, at: string | null) => { if (at && at > (out.get(docId) ?? '')) out.set(docId, at); };
+  revs.forEach((r) => later(r.docId, r.at));
+  entries.forEach((e) => later(e.docId, e.at.slice(0, 10)));
+  return out;
+}
+
+/** Documents the current user may see (records managers: all), most recently modified first. */
 export async function listDocs(ctx: Ctx, opts: { includeHidden?: boolean } = {}): Promise<DocView[]> {
   const db = await getDb();
   const [rows, ix, wl] = await Promise.all([db.select().from(s.documents).orderBy(desc(s.documents.modifiedAt), desc(s.documents.id)), getAccessIndex(), workingLabels()]);
-  return rows.filter((d) => opts.includeHidden || canRead(ctx, d, ix)).map((d) => docView(ctx, d, wl.get(d.id)));
+  const shown = rows.filter((d) => opts.includeHidden || canRead(ctx, d, ix)).map((d) => ({ d, circle: inDraftingCircle(ctx, d, ix) }));
+  const vm = await visibleModified(shown.filter((x) => !x.circle && x.d.revWorking).map((x) => x.d.id));
+  const docs = shown.map((x) => docView(ctx, x.d, wl.get(x.d.id), x.circle, vm.get(x.d.id)));
+  // Dates shown outside the drafting circle may differ from modified_at: sort again on what the user sees.
+  if (vm.size) docs.sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));
+  return docs;
 }
 
 /** One document, with what the user may do with its drafts. Returns `hidden` when it exists but is not visible. */
@@ -82,8 +117,9 @@ export async function getDoc(ctx: Ctx, id: string): Promise<{ doc: DocView; circ
   }
   const ix = await getAccessIndex();
   if (!canRead(ctx, d, ix)) return 'hidden';
-  const wl = await workingLabels(d.id);
-  return { doc: docView(ctx, d, wl.get(d.id)), circle: inDraftingCircle(ctx, d, ix), ix };
+  const circle = inDraftingCircle(ctx, d, ix);
+  const [wl, vm] = await Promise.all([workingLabels(d.id), visibleModified(!circle && d.revWorking ? [d.id] : [])]);
+  return { doc: docView(ctx, d, wl.get(d.id), circle, vm.get(d.id)), circle, ix };
 }
 
 /** Revisions (newest first) with their working versions (newest first). */
@@ -126,15 +162,16 @@ export type RevisionView = Awaited<ReturnType<typeof listRevisions>>[number];
 
 export async function listWorkflows(ctx: Ctx) {
   const db = await getDb();
-  const [wfs, steps, comments, docs, revs] = await Promise.all([
+  const [wfs, steps, comments, docs, revs, ix] = await Promise.all([
     db.select().from(s.workflows).orderBy(asc(s.workflows.due), asc(s.workflows.id)),
     db.select().from(s.workflowSteps).orderBy(asc(s.workflowSteps.idx)),
     db.select().from(s.workflowComments).orderBy(asc(s.workflowComments.id)),
-    db.select({ id: s.documents.id, title: s.documents.title, typeCode: s.documents.typeCode, state: s.documents.state, legalHold: s.documents.legalHold }).from(s.documents),
-    db.select({ id: s.revisions.id, letter: s.revisions.letter }).from(s.revisions),
+    db.select().from(s.documents),
+    db.select({ id: s.revisions.id, letter: s.revisions.letter, status: s.revisions.status }).from(s.revisions),
+    getAccessIndex(),
   ]);
   const docBy = new Map(docs.map((d) => [d.id, d]));
-  const letterBy = new Map(revs.map((r) => [r.id, r.letter]));
+  const revBy = new Map(revs.map((r) => [r.id, r]));
   const { t, lang } = ctx;
   return wfs.map((w) => {
     const ws = steps.filter((x) => x.workflowId === w.id).map((st) => {
@@ -151,13 +188,15 @@ export async function listWorkflows(ctx: Ctx) {
     const cur = ws[w.step];
     const involved = w.requesterId === ctx.user.id || ws.some((x) => x.assigneeId === ctx.user.id);
     const doc = docBy.get(w.docId);
+    const rev = revBy.get(w.revisionId);
     return {
       ...w,
       docTitle: doc?.title ?? w.docId,
       typeCode: doc?.typeCode ?? '',
       /** Why nobody can decide right now (document archived, obsolete or under legal hold), or null. */
       locked: doc ? lockOf(doc) : null,
-      letter: letterBy.get(w.revisionId) ?? '',
+      letter: rev?.letter ?? '',
+      revStatus: rev?.status ?? null,
       requester: ctx.userName(w.requesterId),
       dueF: fmtDate(w.due, lang),
       steps: ws,
@@ -168,8 +207,11 @@ export async function listWorkflows(ctx: Ctx) {
       /** Running and waiting for the current user's decision. */
       mine: !w.outcome && !!cur && cur.assigneeId === ctx.user.id,
       requested: w.requesterId === ctx.user.id,
-      /** Records managers follow every workflow; others the ones they take part in. */
-      visible: ctx.seesAll || involved,
+      /**
+       * Records managers follow every workflow; others the ones they take part in, as long as they may read the
+       * document and see the revision (D-14: once the circuit is over, its approvers leave the drafting circle).
+       */
+      visible: ctx.seesAll || (involved && !!doc && canRead(ctx, doc, ix) && readerMaySeeRevision(inDraftingCircle(ctx, doc, ix), rev?.status)),
       progress: `${Math.min(w.step, ws.length)}/${ws.length}`,
       comments: comments.filter((c) => c.workflowId === w.id).map((c) => {
         const who = ctx.userName(c.authorId);
@@ -230,10 +272,32 @@ export type DeadlineView = ReturnType<typeof deadlines>[number];
 
 // ── Audit ────────────────────────────────────────────────────────────────
 
+type AuditRow = typeof s.auditLog.$inferSelect;
+
+/**
+ * Journal entries the user may read: all of them for records managers; otherwise, outside a document's drafting
+ * circle, its work in progress stays hidden (access.ts, readerMaySeeEntry). Shared by the screens and the CSV export.
+ */
+export async function auditForReader(ctx: Ctx, all: AuditRow[]): Promise<AuditRow[]> {
+  if (ctx.seesAll || !all.length) return all;
+  const db = await getDb();
+  const docIds = [...new Set(all.map((a) => a.docId))];
+  const revIds = [...new Set(all.flatMap((a) => (a.revisionId == null ? [] : [a.revisionId])))];
+  const [docs, revs, ix] = await Promise.all([
+    db.select().from(s.documents).where(inArray(s.documents.id, docIds)),
+    revIds.length ? db.select({ id: s.revisions.id, status: s.revisions.status }).from(s.revisions).where(inArray(s.revisions.id, revIds)) : [],
+    getAccessIndex(),
+  ]);
+  const circle = new Set(docs.filter((d) => inDraftingCircle(ctx, d, ix)).map((d) => d.id));
+  const statusBy = new Map(revs.map((r) => [r.id, r.status]));
+  return all.filter((a) => readerMaySeeEntry(circle.has(a.docId), a, a.revisionId == null ? undefined : statusBy.get(a.revisionId)));
+}
+
+/** Journal entries, newest first, as auditForReader lets the user read them. */
 export async function listAudit(ctx: Ctx, opts: { docId?: string; limit?: number } = {}) {
   const db = await getDb();
   const q = db.select().from(s.auditLog).orderBy(desc(s.auditLog.at), desc(s.auditLog.id));
-  const rows = await (opts.docId ? q.where(eq(s.auditLog.docId, opts.docId)) : q).limit(opts.limit ?? 500);
+  const rows = await auditForReader(ctx, await (opts.docId ? q.where(eq(s.auditLog.docId, opts.docId)) : q).limit(opts.limit ?? 500));
   return rows.map((a) => ({
     ...a,
     when: fmtWhen(a.at),

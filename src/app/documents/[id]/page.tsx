@@ -8,7 +8,7 @@ import { Seg } from '@/components/ui/Seg';
 import { VStepper } from '@/components/ui/Stepper';
 import { getDb } from '@/db';
 import { ActionButton, DialogButton, ShareButton } from '@/components/ui/client';
-import { canRead, readerMaySeeVersion, readersApply } from '@/lib/access';
+import { canRead, readerMaySeeRevision, readerMaySeeVersion, readersApply } from '@/lib/access';
 import { releaseHold } from '@/lib/actions';
 import { isFinalStatus } from '@/lib/codes';
 import { getCtx } from '@/lib/context';
@@ -101,19 +101,25 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
   const docWfs = workflows.filter((w) => w.docId === doc.id);
   const runningAny = docWfs.find((w) => !w.outcome) ?? null;
   const running = circle ? runningAny : null;
-  const finished = docWfs.filter((w) => w.outcome).sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
+  // Outside the drafting circle, only circuits of revisions every reader sees (D-14).
+  const finished = docWfs.filter((w) => w.outcome && readerMaySeeRevision(circle, w.revStatus)).sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
 
   const deny = (p: 'upload' | 'edit' | 'publish') => (ctx.can(p) ? undefined : `${t.not_allowed} : ${t[`perm_${p}`]}`);
   // Archived, obsolete or frozen records are read-only (same rule as lib/actions.ts).
   const lock = doc.state === 'archived' ? t.locked_archived : doc.state === 'obsolete' ? t.locked_obsolete : doc.legalHold ? t.locked_hold : undefined;
   const pending = requests.find((r) => r.status === 'submitted' || r.status === 'accepted');
+  // Outside the drafting circle, a change order whose revision is not in force yet names neither itself nor its author (D-14).
+  const unseenRefs = new Set(revs.filter((r) => r.changeRef && !readerMaySeeRevision(circle, r.status)).map((r) => r.changeRef));
+  const shownRequests = requests.map((r) => (unseenRefs.has(r.ecoRef ?? r.id) ? { ...r, ecoRef: null, modifier: null } : r));
   const changeLock = lock ?? (pending ? `${t.change_pending} : ${pending.id}` : undefined);
   const drafting = circle && working?.status === 'draft' ? working : null;
   const isOwner = ctx.seesAll || doc.ownerId === ctx.user.id;
   const type = ctx.typeByCode.get(doc.typeCode);
   const circuitL = type ? typeView(ctx, type).circuitL : '';
+  // Outside the drafting circle, the date (docView) and the person both come from what the user sees (D-14).
   const modifiedBy = history.find((h) => MODIFYING.has(h.action))?.user ?? doc.owner;
-  const wip = working ? `${t.rev_short} ${working.label} ${t.in_progress}` : null;
+  // The revision being drafted exists for its drafting circle only (D-14).
+  const wip = circle && working ? `${t.rev_short} ${working.label} ${t.in_progress}` : null;
 
   const workingBtn = drafting && (
     <DialogButton spec={{ kind: 'working', docId: doc.id, nextLabel: `${drafting.letter}.${(drafting.file?.n ?? 0) + 1}` }} icon="upload" deniedTitle={lock ?? deny('upload')}>
@@ -146,7 +152,8 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
     return { ...p, d, st, visible: !!d && canRead(ctx, d, ix) };
   }) : [];
 
-  const revItems: RevItem[] = revs.map((r) => {
+  // Outside the drafting circle: the revision in force and those it replaced, nothing of a revision open or cancelled.
+  const revItems: RevItem[] = revs.filter((r) => readerMaySeeRevision(circle, r.status)).map((r) => {
     const dates = [
       r.effectiveAt && `${t.effective_at} : ${r.effectiveF}`,
       r.status === 'approved' && r.approvedAt && `${t.st_approved} : ${r.approvedF}`,
@@ -172,7 +179,7 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
     projectPhase: doc.projectPhase, workPackage: doc.workPackage, discipline: doc.discipline,
     researchTheme: doc.researchTheme, studyId: doc.studyId, ipStatus: doc.ipStatus, processOwnerId: doc.processOwnerId,
     idMayChange: !revs.some((r) => r.approvedAt),
-    classificationLocked: !!runningAny,
+    classificationLocked: circle && !!runningAny,
   };
   const readerIds = [...ix.readers(doc.id)];
   // Named readers count for confidential levels; leftovers on a lower level stay listed so they can be removed.
@@ -419,9 +426,9 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
 
             {tab === 'requests' && (
               <>
-                {requests.length ? (
+                {shownRequests.length ? (
                   <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    {requests.map((r) => (
+                    {shownRequests.map((r) => (
                       <div key={r.id} className={`hairline ${styles.requestRow}`}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                           <span className="tabnum" style={{ fontSize: 13 }}>{r.id}</span>

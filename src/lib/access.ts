@@ -94,3 +94,29 @@ export function isUsableTemplate(ctx: Viewer, d: AccessDoc & { typeCode: string 
 export function readerMaySeeVersion(circle: boolean, revStatus: string, isFinal: boolean): boolean {
   return circle || (revStatus === 'in_force' && isFinal);
 }
+
+/**
+ * Revisions every reader of the document sees: the one in force and those it replaced. A draft, a revision under review
+ * or waiting for its effective date, and a cancelled one belong to the drafting circle (D-14): outside it, they do not
+ * exist, nor do their workflows, comments, designated author or change order.
+ */
+export function readerMaySeeRevision(circle: boolean, revStatus: string | null | undefined): boolean {
+  return circle || revStatus === 'in_force' || revStatus === 'superseded';
+}
+
+/** Journal actions that only ever concern one revision (working versions, circuits, entry into force, files). */
+const REVISION_ACTIONS = new Set(['upload', 'working', 'import', 'reclass', 'request', 'approve', 'sign', 'reject', 'delegate', 'in_force', 'download']);
+
+/**
+ * Journal entries outside the drafting circle (D-14). An entry about a revision records it (audit_log.revision_id) and
+ * follows it: shown once that revision is in force or superseded (readerMaySeeRevision), hidden while it is drafted,
+ * reviewed, waiting for its effective date, or after it was cancelled. An entry without a revision concerns the document
+ * as a whole (metadata, readers, change requests and their refusal, withdrawal, hold, archiving) and is shown, unless
+ * its action only ever concerns a revision: the revision is then unknown, and the entry stays hidden.
+ * `revStatus` is the status of the entry's revision, undefined when that revision cannot be found.
+ */
+export function readerMaySeeEntry(circle: boolean, e: { action: string; revisionId: number | null }, revStatus: string | undefined): boolean {
+  if (circle) return true;
+  if (e.revisionId == null) return !REVISION_ACTIONS.has(e.action);
+  return readerMaySeeRevision(false, revStatus);
+}

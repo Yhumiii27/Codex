@@ -7,6 +7,8 @@ import { fmtClock, fmtWhen, loc } from './format';
 // Keystone integration boundary. Keystone owns projects; Codex keeps the documents and the type register that
 // Keystone reads (GET /api/registry). Until Keystone exposes an API, project data comes from Codex's local mirror
 // tables. Swap the bodies of these functions for API calls when the integration exists.
+// The project feed is shown to every reader of the project's documents: it never names a revision being drafted, its
+// change order or its author (D-14, docs/modele-cible.md §5).
 
 export function keystoneUrl(code?: string): string {
   const base = (process.env.NEXT_PUBLIC_KEYSTONE_URL ?? 'http://localhost:3000').replace(/\/$/, '');

@@ -29,6 +29,8 @@ Conventions :
 | 8 oct., 06:21 → 07:36 | App Mac, relecture (12 constats), corrections partielles | 7 |
 | 8 oct., 07:44 → 9 oct., 14:22 | Premier commit, `.gitignore`, dépôt GitHub privé | 8 |
 | 9 oct., 15:00 | Passage en session cloud : ce qui n'existait qu'en local est versé dans le dépôt | 9 |
+| 9 oct. | Reprise en session cloud : corrections T-03, inventaire du reste à faire | 10 |
+| 10 oct. | Développement par étapes, un commit par étape validée. Étape 1 : brouillons invisibles hors du cercle (D-14) | 11 |
 
 La session a été coupée plusieurs fois par une limite d'usage ou de dépense :
 - le 7 octobre à 13:38, reprise à 17:31 sur « Try again » ;
@@ -445,3 +447,19 @@ Constats confirmés, dans la numérotation du workflow :
   Résultat : [reste-a-faire.md](reste-a-faire.md), 129 points ouverts (69 sans blocage, 49 en attente de décision,
   2 en attente de données, 9 sur macOS). Deux points relevés ont été corrigés aussitôt : l'extension perdue au
   renommage SharePoint après un reclassement (régression de `44bd1b8`, `renameDocFiles`), et le script `typecheck`.
+
+## 11. Développement par étapes en session cloud (10 oct.)
+
+- **Demande** : « vas y, a chaque etape qui est validée fait un commit du code ».
+- **Étape 1 : brouillons invisibles hors du cercle de rédaction (D-14)**, points 26 et 29 de
+  [reste-a-faire.md](reste-a-faire.md) :
+  - le journal rattache chaque entrée à sa révision (`audit_log.revision_id`) ; hors du cercle, une entrée suit le
+    statut de sa révision (`readerMaySeeEntry`), pour l'historique, l'accueil, les notifications, l'onglet Journal et
+    son export CSV ;
+  - la fiche ne montre plus que les révisions en vigueur et remplacées, sans « en cours », ECO ni modificateur de la
+    révision ouverte ; la date « Modifié » est celle du dernier changement visible ;
+  - l'explorateur, la recherche et leur export n'ont plus de libellé de travail hors du cercle ;
+  - un circuit dont le participant ne voit plus la révision disparaît de Validations (retour à la liste après un rejet,
+    au lieu d'une page de refus) ; `addComment` refuse un document illisible ;
+  - l'événement Keystone de démonstration qui citait ECO-2026-002 et la révision C a été remplacé ;
+  - les indices résiduels, laissés en attendant une décision, sont listés au point 26.

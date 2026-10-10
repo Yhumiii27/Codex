@@ -4,7 +4,8 @@ CREATE TABLE "audit_log" (
 	"user_id" text NOT NULL,
 	"action" text NOT NULL,
 	"doc_id" text NOT NULL,
-	"detail" text DEFAULT '' NOT NULL
+	"detail" text DEFAULT '' NOT NULL,
+	"revision_id" integer
 );
 --> statement-breakpoint
 CREATE TABLE "change_requests" (

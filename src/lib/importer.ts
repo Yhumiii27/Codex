@@ -365,7 +365,7 @@ export async function importDocument(raw: unknown, file: ImportFile | null): Pro
     }
     if (v.readers.length) await tx.insert(s.documentReaders).values(v.readers.map((userId) => ({ docId: id, userId })));
     await refreshHeadline(tx, id);
-    await audit(tx, IMPORT_ACTOR, 'import', id, `${v.legacyRef} → ${withVersion ? label : v.letter}${stored ? ` · ${fmtSize(stored.size, 'fr')}` : ''}`);
+    await audit(tx, IMPORT_ACTOR, 'import', id, `${v.legacyRef} → ${withVersion ? label : v.letter}${stored ? ` · ${fmtSize(stored.size, 'fr')}` : ''}`, rev.id);
     return { kind: 'created', id, revision: v.letter, version: withVersion ? `${v.letter}.1` : null, revStatus, file: !!stored, warnings };
     });
   } catch (err) {

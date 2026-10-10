@@ -1,5 +1,5 @@
 {
-  "id": "ec8aa783-a4a2-4063-a706-f6c12bf7f682",
+  "id": "e860f326-921c-4f95-af55-a8b9b508b86b",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -44,6 +44,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "''"
+        },
+        "revision_id": {
+          "name": "revision_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},

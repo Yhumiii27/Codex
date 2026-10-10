@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { Forbidden } from '@/components/ui/Forbidden';
 import { Icon } from '@/components/ui/Icon';
 import { Seg } from '@/components/ui/Seg';
@@ -30,9 +31,15 @@ export default async function WorkflowPage({ searchParams }: PageProps<'/validat
   const every = await listWorkflows(ctx);
   const all = every.filter((w) => w.visible);
   const requested = sp.r ? all.find((w) => w.id === sp.r) : undefined;
-  // A workflow that exists but is not one the user follows: say so rather than silently showing another one.
-  if (sp.r && !requested && every.some((w) => w.id === sp.r)) return <Forbidden text={t.no_access} back={t.back_home} />;
   const explicit = (FILTERS as readonly string[]).includes(sp.f ?? '') ? (sp.f as Filter) : null;
+  const hidden = sp.r && !requested ? every.find((w) => w.id === sp.r) : undefined;
+  if (hidden) {
+    // A circuit the user took part in but no longer sees: once it is over, its approvers leave the drafting circle
+    // (D-14), right after their own rejection or final approval for instance. Back to the list, without it.
+    if (hidden.requested || hidden.steps.some((st) => st.assigneeId === ctx.user.id)) redirect(`/validations${explicit ? `?f=${explicit}` : ''}`);
+    // Any other existing circuit: say so rather than silently showing another one.
+    return <Forbidden text={t.no_access} back={t.back_home} />;
+  }
   // Without an explicit filter: land on "mine", unless the requested workflow is elsewhere or nothing waits for me.
   const filter: Filter =
     explicit ??

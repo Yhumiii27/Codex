@@ -13,8 +13,9 @@ export type Tx = Db | Parameters<Parameters<Db['transaction']>[0]>[0];
 type DocRow = typeof s.documents.$inferSelect;
 type RevRow = typeof s.revisions.$inferSelect;
 
-export async function audit(tx: Tx, userId: string, action: string, docId: string, detail = '') {
-  await tx.insert(s.auditLog).values({ at: nowStamp(), userId, action, docId, detail });
+/** `revisionId`: the revision the entry is about, which decides who reads it (lib/access.ts, readerMaySeeEntry). */
+export async function audit(tx: Tx, userId: string, action: string, docId: string, detail = '', revisionId: number | null = null) {
+  await tx.insert(s.auditLog).values({ at: nowStamp(), userId, action, docId, detail, revisionId });
 }
 
 export type LockKey = 'locked_archived' | 'locked_obsolete' | 'locked_hold';
@@ -49,7 +50,7 @@ export async function putInForce(tx: Tx, rev: RevRow, date: string) {
   await tx.update(s.revisions).set({ status: 'in_force', inForceAt: date, effectiveAt: cur.effectiveAt && cur.effectiveAt < date ? date : cur.effectiveAt }).where(eq(s.revisions.id, rev.id));
   const [d] = await tx.select().from(s.documents).where(eq(s.documents.id, rev.docId));
   await tx.update(s.documents).set({ issuedAt: d?.issuedAt ?? date, modifiedAt: date }).where(eq(s.documents.id, rev.docId));
-  await audit(tx, 'codex', 'in_force', rev.docId, rev.letter);
+  await audit(tx, 'codex', 'in_force', rev.docId, rev.letter, rev.id);
   await refreshHeadline(tx, rev.docId);
 }
 
@@ -148,13 +149,13 @@ export async function applyChangeDecision(tx: Tx, id: string, decision: { accept
     if (doc.revWorking) return 'locked_working';
     modifierId = decision.modifierId ?? (await defaultModifier(tx, req.requesterId, doc));
     const rev = await openRevision(tx, req.docId, { modifierId, changeRef: ref });
-    await audit(tx, actorId, 'ecr', req.docId, `${ref} → ${rev.letter}`);
+    await audit(tx, actorId, 'ecr', req.docId, `${ref} → ${rev.letter}`, rev.id);
   } else {
     const running = await tx.select().from(s.workflows).where(and(eq(s.workflows.docId, doc.id), isNull(s.workflows.outcome)));
     for (const w of running) {
       await tx.update(s.workflows).set({ outcome: 'rejected' }).where(eq(s.workflows.id, w.id));
       await tx.insert(s.workflowComments).values({ workflowId: w.id, authorId: actorId, at: at.slice(0, 10), text: { fr: `Circuit clos — document retiré (${ref}).`, en: `Workflow closed — document withdrawn (${ref}).` } });
-      await audit(tx, actorId, 'reject', doc.id, w.id);
+      await audit(tx, actorId, 'reject', doc.id, w.id, w.revisionId);
     }
     await tx.update(s.revisions).set({ status: 'cancelled' }).where(and(eq(s.revisions.docId, doc.id), inArray(s.revisions.status, ['draft', 'in_review', 'approved'])));
     await tx.update(s.documents).set({ state: 'obsolete', obsoleteAt: at.slice(0, 10), modifiedAt: at.slice(0, 10) }).where(eq(s.documents.id, req.docId));

@@ -108,7 +108,7 @@ export const EXPECTED: { project: string; label: [string, string]; type: string;
 
 export const EVENTS: { project: string; at: string; text: [string, string] }[] = [
   { project: HLT, at: '2026-10-07 08:40', text: ['Étape « Chantier » confirmée par Romain Aubert', 'Stage “Site” confirmed by Romain Aubert'] },
-  { project: HLT, at: '2026-10-02 10:15', text: ['ECO-2026-002 accepté : révision C du plan de prévention ouverte', 'ECO-2026-002 accepted: revision C of the prevention plan opened'] },
+  { project: HLT, at: '2026-10-02 10:15', text: ['Lot « Levage » attribué à Levage Ouest', 'Lifting work package awarded to Levage Ouest'] },
   { project: HLT, at: '2026-09-26 16:05', text: ['Relance Keystone : attestation d’assurance chantier attendue', 'Keystone reminder: worksite insurance certificate expected'] },
   { project: HLT, at: '2026-09-12 11:30', text: ['Pièce « PV de réception des fondations » déposée', '“Foundations acceptance minutes” filed'] },
   { project: 'NDC-031', at: '2026-09-04 09:00', text: ['P&ID de la boucle de refroidissement en vigueur (rév. B)', 'Cooling loop P&ID in force (rev. B)'] },

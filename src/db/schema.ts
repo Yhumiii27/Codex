@@ -324,6 +324,8 @@ export const auditLog = pgTable('audit_log', {
   action: text('action').notNull(),
   docId: text('doc_id').notNull(),
   detail: text('detail').notNull().default(''),
+  /** Revision the entry is about (working version, circuit, entry into force…); null for the document as a whole (lib/access.ts). */
+  revisionId: integer('revision_id'),
 });
 
 export const rolePermissions = pgTable(

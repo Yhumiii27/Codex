@@ -111,7 +111,7 @@ export async function GET(req: Request, { params }: RouteContext<'/api/documents
   }
   if (x.download) {
     const db = await getDb();
-    await audit(db, ctx.user.id, 'download', doc.id, `${x.label} · ${x.mime === 'application/pdf' ? 'PDF' : x.ext.slice(1).toUpperCase() || 'Fichier'}`);
+    await audit(db, ctx.user.id, 'download', doc.id, `${x.label} · ${x.mime === 'application/pdf' ? 'PDF' : x.ext.slice(1).toUpperCase() || 'Fichier'}`, version.revisionId);
   }
   return new Response(new Uint8Array(body), { headers: headers(x, body.length) });
 }

@@ -260,8 +260,12 @@ Règles de lecture :
 - **Décision retenue** : brouillons et versions de travail sont visibles par le propriétaire, le modificateur
   désigné, les valideurs du circuit en cours et les gestionnaires documentaires ; les autres lecteurs ne voient que la
   révision en vigueur.
-- **Mise en œuvre** : `inDraftingCircle`, `canRead` et `readerMaySeeVersion` dans `src/lib/access.ts`,
-  `docs/modele-cible.md` §5.
+- **Mise en œuvre** : `inDraftingCircle`, `canRead`, `readerMaySeeVersion`, `readerMaySeeRevision` et
+  `readerMaySeeEntry` dans `src/lib/access.ts` ; colonne `audit_log.revision_id`, qui rattache une entrée du journal
+  à sa révision ; `auditForReader` (écrans et export CSV du journal) et `visibleModified` (date « Modifié ») dans
+  `src/lib/queries.ts` ; `docs/modele-cible.md` §5. Fait le 10 octobre 2026 (étape 1). Quelques indices de l'existence
+  d'une révision ouverte restent visibles hors du cercle ; ils sont listés au point 26 de `docs/reste-a-faire.md` et
+  attendent un arbitrage de l'utilisateur.
 
 ### D-15 — Circuits par fonction et par type, sans « autorité d'approbation »
 - **Date** : question le 7 octobre à 12:40 (question 7 de l'audit), réponse à 13:38.
