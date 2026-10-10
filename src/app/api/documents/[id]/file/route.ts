@@ -13,6 +13,8 @@ import { EXT_BY_MIME, FileNotFoundError, normalizeMime, readStored } from '@/lib
 // Uploaded files are only rendered inline for types the browser displays without running scripts.
 const INLINE_SAFE = new Set(['application/pdf', 'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'text/plain']);
 const WORKING = new Set(['draft', 'in_review', 'approved']);
+/** Suffix of the proposed name for a document withdrawn or archived; the file itself is served unchanged. */
+const STATE_SUFFIX: Record<string, string> = { obsolete: '_OBSOLETE', archived: '_ARCHIVE' };
 
 const notFound = (text = 'Not found') => new Response(text, { status: 404 });
 
@@ -77,7 +79,7 @@ function headers(x: Target, size: number | null): HeadersInit {
   return {
     'Content-Type': inline || x.download ? x.mime : 'application/octet-stream',
     ...(size != null ? { 'Content-Length': String(size) } : {}),
-    'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(`${x.doc.id}_${x.label}${x.ext}`)}`,
+    'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(`${x.doc.id}_${x.label}${STATE_SUFFIX[x.doc.state] ?? ''}${x.ext}`)}`,
     'Cache-Control': 'private, no-store',
     'X-Content-Type-Options': 'nosniff',
   };

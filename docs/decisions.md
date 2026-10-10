@@ -452,6 +452,9 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
 - **Circuits** (D-15) : le demandeur du circuit, le modificateur désigné et les auteurs des versions de travail sont
   écartés de la validation.
 - **Retrait** (D-17) : effets d'un retrait accepté sur le travail en cours (circuit clos, révisions ouvertes annulées).
+- **Documents obsolètes ou archivés** (D-17) : bandeau d'avertissement sur la fiche et dans l'aperçu rapide de
+  l'explorateur, suffixe `_OBSOLETE` ou `_ARCHIVE` dans le nom proposé au téléchargement (`docs/modele-cible.md` §4).
+  Qui peut encore les consulter ou les télécharger n'est pas tranché (A13, P07) : rien n'a changé de ce côté.
 - **Authentification cible Entra ID** : proposée le 7 octobre à 12:40 (« passer à l'authentification Entra ID ») et à
   17:33 (lot 4 « Authentification Entra ID et organigramme »). L'utilisateur n'en a jamais parlé (O-02).
   `docs/modele-cible.md` §1, `docs/api.md`, `docs/avancement-v2.md` et le commentaire de

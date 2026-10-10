@@ -152,6 +152,7 @@ src/lib/retention.ts:12-27 : `triggerDate` renvoie null par défaut (ligne 25) p
 </details>
 
 #### 8. Documents obsolètes ou archivés : aucun avertissement, et le fichier reste servi à tous
+- **Fait le 10 octobre 2026** : un bandeau « Obsolète depuis le {date} ({ECO}) — ne plus appliquer » ou « Archivé le {date} » s'affiche au-dessus de l'aperçu de la fiche et, en plus court, dans l'aperçu rapide de l'explorateur (`stateNotice`, src/lib/queries.ts) ; le nom proposé par la route fichier prend le suffixe `_OBSOLETE` ou `_ARCHIVE` (`{ID}_{lettre}_OBSOLETE.ext`), sans modifier le contenu ; qui consulte et télécharge ces documents, les filtres par défaut et le filigrane restent inchangés en attendant A13, P07 et M12 (règle décrite dans `docs/modele-cible.md` §4).
 
 - **Effort** : faible · **Références** : A13, P07, D-17, M12
 

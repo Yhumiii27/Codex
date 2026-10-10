@@ -30,7 +30,7 @@ Conventions :
 | 8 oct., 07:44 → 9 oct., 14:22 | Premier commit, `.gitignore`, dépôt GitHub privé | 8 |
 | 9 oct., 15:00 | Passage en session cloud : ce qui n'existait qu'en local est versé dans le dépôt | 9 |
 | 9 oct. | Reprise en session cloud : corrections T-03, inventaire du reste à faire | 10 |
-| 10 oct. | Développement par étapes, un commit par étape validée. Étape 1 : brouillons invisibles hors du cercle (D-14) | 11 |
+| 10 oct. | Développement par étapes, un commit par étape validée. Étape 1 : brouillons invisibles hors du cercle (D-14). Étape 2 : avertissement sur les documents obsolètes ou archivés | 11 |
 
 La session a été coupée plusieurs fois par une limite d'usage ou de dépense :
 - le 7 octobre à 13:38, reprise à 17:31 sur « Try again » ;
@@ -463,3 +463,10 @@ Constats confirmés, dans la numérotation du workflow :
     au lieu d'une page de refus) ; `addComment` refuse un document illisible ;
   - l'événement Keystone de démonstration qui citait ECO-2026-002 et la révision C a été remplacé ;
   - les indices résiduels, laissés en attendant une décision, sont listés au point 26.
+- **Étape 2 : avertissement sur les documents obsolètes ou archivés**, point 8 de [reste-a-faire.md](reste-a-faire.md) :
+  - un bandeau « Obsolète depuis le {date} ({ECO}) — ne plus appliquer » ou « Archivé le {date} » au-dessus de
+    l'aperçu de la fiche, et sa forme courte dans l'aperçu rapide de l'explorateur ;
+  - le fichier servi ou téléchargé est proposé sous `{ID}_{lettre}_OBSOLETE.ext` ou `_ARCHIVE.ext`, contenu inchangé ;
+  - l'accès, les filtres par défaut et l'absence de filigrane ne changent pas (A13, P07, M12 non tranchés) ;
+  - la règle est décrite dans `docs/modele-cible.md` §4 et listée parmi les choix de l'assistant non validés
+    (`docs/decisions.md`).

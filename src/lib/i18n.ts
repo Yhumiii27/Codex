@@ -93,6 +93,7 @@ const fr = {
   conf_hint_conf:'Visible du département ou de l’équipe projet ; des lecteurs désignés peuvent s’ajouter sur la fiche du document.',
   wf_closed_hint:'Document verrouillé : le circuit reprendra une fois le verrou levé.',
   piece_type_mismatch:'Cette pièce attend un document de type',
+  obsolete_since:'Obsolète depuis le', do_not_apply:'ne plus appliquer',
 };
 
 type Dict = Record<keyof typeof fr, string>;
@@ -187,6 +188,7 @@ const en: Dict = {
   conf_hint_conf:'Visible to the department or project team; named readers can be added on the document record.',
   wf_closed_hint:'Locked document: the workflow resumes once the lock is lifted.',
   piece_type_mismatch:'This piece expects a document of type',
+  obsolete_since:'Obsolete since', do_not_apply:'no longer applicable',
 };
 
 export const DICT: Record<Lang, Dict> = { fr, en };

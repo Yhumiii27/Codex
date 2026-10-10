@@ -246,6 +246,23 @@ export async function listChangeRequests(ctx: Ctx, opts: { docId?: string } = {}
 }
 export type ChangeRequestView = Awaited<ReturnType<typeof listChangeRequests>>[number];
 
+/**
+ * Warning shown on an obsolete or archived document (record, explorer quick view): since when and, when known, the
+ * change order that withdrew it. Who may still read or download such a document is not settled (A13, P07): it only informs.
+ */
+export function stateNotice(ctx: Ctx, d: DocView, requests: ChangeRequestView[]): { state: 'obsolete' | 'archived'; text: string } | null {
+  if (d.state === 'active') return null;
+  const { t, lang } = ctx;
+  // An accepted withdrawal carries Vigie's change order, else the request itself (lib/lifecycle.ts applyChangeDecision).
+  const w = requests.find((r) => r.docId === d.id && r.kind === 'obsolescence' && r.status === 'implemented');
+  const ref = w ? w.ecoRef ?? w.id : null;
+  const obsolete = `${d.obsoleteAt ? `${t.obsolete_since} ${fmtDate(d.obsoleteAt, lang)}` : t.st_obsolete}${ref ? ` (${ref})` : ''} — ${t.do_not_apply}`;
+  if (d.state === 'obsolete') return { state: 'obsolete', text: obsolete };
+  const archived = d.archivedAt ? `${t.archived_on} ${fmtDate(d.archivedAt, lang)}` : t.st_archived;
+  // An obsolete document archived later keeps both facts (obsoleteAt is never cleared).
+  return { state: 'archived', text: d.obsoleteAt ? `${archived} · ${obsolete}` : archived };
+}
+
 // ── Deadlines ────────────────────────────────────────────────────────────
 
 export const DEADLINE_WINDOW_DAYS = 90;

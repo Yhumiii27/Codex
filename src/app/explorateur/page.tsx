@@ -3,7 +3,7 @@ import { Icon } from '@/components/ui/Icon';
 import { Seg } from '@/components/ui/Seg';
 import { ClickRow, DialogButton } from '@/components/ui/client';
 import { getCtx, type Ctx } from '@/lib/context';
-import { listDocs, type DocView } from '@/lib/queries';
+import { listChangeRequests, listDocs, stateNotice, type DocView } from '@/lib/queries';
 import styles from './explorer.module.css';
 
 // Classification axes (docs/modele-cible.md §2) and status filters of the explorer.
@@ -94,6 +94,8 @@ export default async function ExplorerPage({ searchParams }: PageProps<'/explora
   const selDoc = sel ? all.find((d) => d.id === sel) : undefined;
   // A file exists once a revision is in force or approved, or once the draft has a working version ("B.2" rather than "B").
   const selHasFile = !!selDoc && (!!selDoc.revInForce || selDoc.status === 'approved' || selDoc.workingLabel !== selDoc.revWorking);
+  // Obsolete or archived: the same warning as on the record; the withdrawal's change order is only looked up then.
+  const notice = selDoc && selDoc.state !== 'active' ? stateNotice(ctx, selDoc, selDoc.obsoleteAt ? await listChangeRequests(ctx, { docId: selDoc.id }) : []) : null;
   const here: Params = { ...base, node, sub };
   const noUpload = ctx.can('upload') ? undefined : `${t.not_allowed} : ${t.perm_upload}`;
   const axisLabel: Record<Axis, { short: string; full: string }> = {
@@ -210,6 +212,12 @@ export default async function ExplorerPage({ searchParams }: PageProps<'/explora
               <span className="tag tag-neutral">{selDoc.confL}</span>
             </div>
           </div>
+          {notice && (
+            <div className={styles.stateNotice} data-state={notice.state} role="note">
+              <Icon name={notice.state === 'archived' ? 'archive' : 'info'} size={14} style={{ flex: 'none', marginTop: 1 }} />
+              <span>{notice.text}</span>
+            </div>
+          )}
           <dl className="dl" style={{ gap: '7px 14px', fontSize: 12 }}>
             <dt className="text-muted">{t.ref}</dt><dd>{selDoc.id}</dd>
             <dt className="text-muted">{t.type}</dt><dd>{selDoc.typeLabel}{selDoc.subtype ? ` · ${selDoc.subtype}` : ''}</dd>

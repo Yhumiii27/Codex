@@ -5,8 +5,9 @@ et des arbitrages du 7 octobre 2026. Ce document fait foi pour l'implémentation
 
 Certaines règles ci-dessous sont des propositions de l'assistant, implémentées mais **non confirmées par l'utilisateur** :
 authentification Entra ID (§1), code département hors rattachement, largeur et portée du compteur, ID attribué au
-brouillon, alias et nom de fichier (§3), « Remplacé » et mise en vigueur automatique (§4). Elles sont listées dans
-`docs/decisions.md` (« Choix de l'assistant non validés explicitement », question O-09), qui prévaut en cas de doute.
+brouillon, alias et nom de fichier (§3), « Remplacé », mise en vigueur automatique, bandeau et nom de téléchargement
+d'un document obsolète ou archivé (§4). Elles sont listées dans `docs/decisions.md` (« Choix de l'assistant non validés
+explicitement », question O-09), qui prévaut en cas de doute.
 
 ## 1. Architecture
 
@@ -57,6 +58,12 @@ Fichier stocké : `{ID}_{indice}.{ext}` (ex. `PRO-QHS-0012_B.2.pdf`).
 - Statuts de révision : **Brouillon** → **En révision** (circuit lancé) → **Approuvé** → **En vigueur** (à la date
   d'effet, ou immédiatement sans date) ; la révision précédente passe **Remplacé**.
 - Statuts de document : **Obsolète** (retrait décidé dans Vigie) et **Archivé** (fin de vie active, conservation).
+  Un document obsolète ou archivé reste consultable et téléchargeable par les mêmes lecteurs qu'avant (A13 et P07 non
+  tranchés), mais il est signalé : un bandeau au-dessus de l'aperçu de la fiche, et en plus court dans l'aperçu rapide
+  de l'explorateur, indique « Obsolète depuis le {date} ({ECO du retrait, sinon ECR}) — ne plus appliquer » ou
+  « Archivé le {date} » (les deux pour un document retiré puis archivé) ; le fichier servi ou téléchargé est proposé
+  sous `{ID}_{indice}_OBSOLETE.{ext}` ou `{ID}_{indice}_ARCHIVE.{ext}`. Son contenu et son nom de stockage (§3) ne
+  changent pas. Les filtres par défaut et l'absence de filigrane (M12) restent inchangés. *Proposé, non confirmé.*
 - Modifier un document en vigueur : demande ECR depuis Codex → décision dans Vigie → ECO accepté → Codex ouvre la
   révision suivante en brouillon, attribuée au modificateur désigné.
 - Verrous : un document archivé, obsolète ou sous gel juridique ne change plus (ni version de travail, ni décision de

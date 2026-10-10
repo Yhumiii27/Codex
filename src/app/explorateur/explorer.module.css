@@ -13,3 +13,10 @@
   width: 300px; flex: none; border-left: 1px solid var(--color-divider); overflow: auto; padding: 16px 18px;
   display: flex; flex-direction: column; gap: 14px; height: 100%; background: var(--color-bg); position: relative; z-index: 1;
 }
+/* Obsolete or archived document in the quick view: the record's band, compact. */
+.stateNotice {
+  display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; font-size: 12px; font-weight: 500; line-height: 1.4;
+  color: var(--color-accent-200); background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+  border-radius: var(--radius-md); box-shadow: inset 3px 0 0 var(--color-accent);
+}
+.stateNotice[data-state='archived'] { color: var(--color-neutral-100); background: color-mix(in srgb, var(--color-text) 9%, transparent); box-shadow: inset 3px 0 0 var(--color-neutral-400); }

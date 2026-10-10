@@ -15,7 +15,7 @@ import { getCtx } from '@/lib/context';
 import { fmtDate, todayIso } from '@/lib/format';
 import { getProject } from '@/lib/keystone';
 import { defaultModifier } from '@/lib/lifecycle';
-import { getDoc, listAudit, listChangeRequests, listDocs, listRevisions, listWorkflows, typeView, type RevisionView } from '@/lib/queries';
+import { getDoc, listAudit, listChangeRequests, listDocs, listRevisions, listWorkflows, stateNotice, typeView, type RevisionView } from '@/lib/queries';
 import { normalizeMime } from '@/lib/storage';
 import { vigieSimulated, vigieUrl } from '@/lib/vigie';
 import { Preview, RevisionsTab, type RevItem } from './DocClient';
@@ -111,6 +111,7 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
   // Outside the drafting circle, a change order whose revision is not in force yet names neither itself nor its author (D-14).
   const unseenRefs = new Set(revs.filter((r) => r.changeRef && !readerMaySeeRevision(circle, r.status)).map((r) => r.changeRef));
   const shownRequests = requests.map((r) => (unseenRefs.has(r.ecoRef ?? r.id) ? { ...r, ecoRef: null, modifier: null } : r));
+  const notice = stateNotice(ctx, doc, shownRequests);
   const changeLock = lock ?? (pending ? `${t.change_pending} : ${pending.id}` : undefined);
   const drafting = circle && working?.status === 'draft' ? working : null;
   const isOwner = ctx.seesAll || doc.ownerId === ctx.user.id;
@@ -229,6 +230,13 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
           <ShareButton />
         </div>
       </div>
+
+      {notice && (
+        <div className={styles.stateNotice} data-state={notice.state} role="note">
+          <Icon name={notice.state === 'archived' ? 'archive' : 'info'} size={16} style={{ flex: 'none' }} />
+          <span>{notice.text}</span>
+        </div>
+      )}
 
       <div className={styles.body}>
         <Preview
