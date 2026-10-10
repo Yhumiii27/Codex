@@ -1,6 +1,7 @@
 import 'server-only';
-import { like } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { schema as s } from '@/db';
+import { nextNumber } from './codification';
 import { nowStamp } from './format';
 import type { Tx } from './lifecycle';
 
@@ -24,8 +25,8 @@ export type ChangeInput = { kind: 'modification' | 'obsolescence'; docId: string
 export async function submitChange(tx: Tx, input: ChangeInput): Promise<string> {
   const at = nowStamp();
   const year = at.slice(0, 4);
-  const rows = await tx.select({ id: s.changeRequests.id }).from(s.changeRequests).where(like(s.changeRequests.id, `ECR-${year}-%`));
-  const id = `ECR-${year}-${String(rows.reduce((m, r) => Math.max(m, Number(r.id.split('-')[2]) || 0), 0) + 1).padStart(3, '0')}`;
+  const seq = await nextNumber(tx, `ecr:${year}`, `ECR-${year}-`, sql`select ${s.changeRequests.id} from ${s.changeRequests}`);
+  const id = `ECR-${year}-${String(seq).padStart(3, '0')}`;
   // Real integration: POST {VIGIE_API_URL}/change-requests and use the id Vigie returns.
   await tx.insert(s.changeRequests).values({ id, ...input, source: input.source ?? 'codex', status: 'submitted', createdAt: at });
   return id;

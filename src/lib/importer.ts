@@ -4,7 +4,7 @@ import { eq, or, sql } from 'drizzle-orm';
 import { getDb, schema as s, type Db } from '@/db';
 import type { Attachment, Conf, Origin, RevStatus } from '@/db/schema';
 import { readersApply } from './access';
-import { contextOf, nextDocId, seqWidth } from './codification';
+import { contextOf, nextDocId, reserveDocId, seqWidth } from './codification';
 import { fmtSize, parseIsoDay, todayIso } from './format';
 import { ATTACHMENTS, CONF_LEVELS, DICT, ORIGINS } from './i18n';
 import { audit, refreshHeadline, type Tx } from './lifecycle';
@@ -330,7 +330,14 @@ export async function importDocument(raw: unknown, file: ImportFile | null): Pro
   let res: ImportResult;
   try {
     res = await db.transaction(async (tx): Promise<ImportResult> => {
-      // Checked again inside the transaction: two imports of the same reference may run at once.
+      // Imports run one at a time (a no-op on PGlite's single connection): two imports of the same reference cannot both
+      // find it free, and the two counter rows an import may lock (its legacy reference's scope, its own) are never
+      // taken in crossed order by another import.
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext('codex:import'))`);
+      // The legacy reference stays as an alias, and may become the ID: its number is reserved before the checks below,
+      // which then see any document that drew it from the counter, and no counter hands it out again.
+      await reserveDocId(tx, v.legacyRef);
+      // Checked again inside the transaction: a concurrent import of the same reference has committed by now.
       const existing = await findByRef(tx, v.legacyRef);
       if (existing) return existing;
       const id = await importId(tx, v);

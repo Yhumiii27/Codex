@@ -697,6 +697,7 @@ Vérifié : la migration ne crée que 5 index uniques (drizzle/0000_init.sql:295
 </details>
 
 #### 40. Compteurs d'identifiants (max+1) non sûrs en concurrence
+- **Fait le 10 octobre 2026** : les ID de document par couple (type, contexte), les circuits `W-n` et les références `ECR-AAAA-NNN` par année viennent d'une table `id_counters` incrémentée par une seule instruction `INSERT … ON CONFLICT (scope) DO UPDATE … RETURNING` dans la transaction appelante (`src/lib/codification.ts`), qui part à sa première utilisation du plus grand numéro existant (anciennes références comprises, si bien qu'un numéro gardé en alias n'est jamais réattribué), tandis que l'import passe un par un (verrou consultatif `pg_advisory_xact_lock`) et réserve le numéro de sa `legacyRef` au format `TYPE-CONTEXTE-SEQ` avant de vérifier qu'il est libre, sans changer les formats, les largeurs ni l'attribution dès le brouillon ; vérifié sur un Postgres 16 en READ COMMITTED (créations simultanées sans doublon ni trou, imports simultanés de la même référence réduits à un document et un 409, imports aux portées croisées sans interblocage).
 
 - **Effort** : faible · **Références** : G21, T-01
 
@@ -883,7 +884,7 @@ Point confirmé. À faire :
 - choisir le pilote selon `DATABASE_URL` : node-postgres avec un pool, et PGlite pour le développement, la démo et l'app Mac ;
 - ne plus lancer de remplissage de démo en production ;
 - lancer les migrations au déploiement et non au premier appel ;
-- revoir les compteurs max+1 (point dédié) et le niveau d'isolation des transactions qui relisent avant d'écrire ;
+- revoir le niveau d'isolation des transactions qui relisent avant d'écrire (les compteurs d'ID sont faits, point 40) ;
 - déclarer `DATABASE_URL` dans .env.example.
 La cible dépend de l'hébergement (audit §6.6 q3, M22). Une base partagée avec Keystone, si O-03 la retient, imposerait aussi ce passage. L'abstraction du pilote peut se faire dès maintenant.
 

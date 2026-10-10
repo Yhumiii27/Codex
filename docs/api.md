@@ -176,7 +176,8 @@ renvoyées ensemble.
 
 - le document, avec l'identifiant suivant libre pour le couple (type, contexte), la classe de conservation du type et
   `legacyRef` en ancienne référence. Une `legacyRef` déjà au format `TYPE-CONTEXTE-SEQ` du document (même type, même
-  contexte, même largeur de numéro) et libre devient son identifiant ;
+  contexte, même largeur de numéro) et libre devient son identifiant. Le numéro d'une `legacyRef` de la forme
+  `TYPE-CONTEXTE-SEQ`, quel que soit le type, n'est ensuite jamais attribué à un autre document ;
 - **une** révision avec la lettre demandée (les révisions antérieures restent dans l'ancien système ; la prochaine
   révision ouverte dans Codex prendra la lettre suivante) :
   - `status: in_force` → révision **En vigueur** à `inForceAt` ; si cette date est future, la révision est **Approuvée**
@@ -206,7 +207,8 @@ Codes de `issues[].code` : `required`, `invalid_type`, `too_long`, `invalid_date
 `project_required`, `program_required`, `source_required`, `readers_conf`. Avertissement (`warnings[].code`) : `ignored`.
 
 Le 409 `duplicate` rend l'outil de migration rejouable : un document déjà repris renvoie son identifiant Codex sans être
-recréé. Seul ce code vaut « déjà migré ».
+recréé. Seul ce code vaut « déjà migré ». Les imports s'enregistrent un par un, même envoyés en parallèle : deux envois
+simultanés de la même `legacyRef` créent un seul document, l'autre reçoit ce 409.
 
 ### Exemples
 

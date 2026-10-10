@@ -6,7 +6,7 @@ import { refresh } from 'next/cache';
 import { getDb, schema as s } from '@/db';
 import type { Attachment, Conf, Disposition, Origin, RetentionTrigger } from '@/db/schema';
 import { buildAccessIndex, canRead, getAccessIndex, inDraftingCircle, isUsableTemplate, readerMaySeeRevision, readersApply } from './access';
-import { idMatches, nextDocId } from './codification';
+import { idMatches, nextDocId, nextWorkflowId } from './codification';
 import { COOKIE_LANG, COOKIE_ROLE, COOKIE_USER, getCtx, type Ctx } from './context';
 import { addDays, fmtSize, loc, nowStamp, parseIsoDay, todayIso } from './format';
 import { ATTACHMENTS, CONF_LEVELS, ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLES, ORIGINS, PERMS, SIM_ROLES, SIMULATED_MATRIX_ROLES, type Perm, type SimRole, type TKey } from './i18n';
@@ -433,8 +433,7 @@ export async function requestValidation(docId: string, effectiveAt: string | nul
       taken.add(who);
       steps.push({ functionKey: key, name: { fr: fn.labelFr, en: fn.labelEn }, assigneeId: who });
     }
-    const all = await tx.select({ id: s.workflows.id }).from(s.workflows);
-    const id = `W-${all.reduce((m, w) => Math.max(m, Number(w.id.slice(2)) || 0), 0) + 1}`;
+    const id = await nextWorkflowId(tx);
     const today = todayIso();
     await tx.insert(s.workflows).values({ id, docId, revisionId: rev.id, requesterId: ctx.user.id, due: addDays(today, 7), step: 1, createdAt: today });
     await tx.insert(s.workflowSteps).values(steps.map((st, idx) => ({ workflowId: id, idx, ...st, sign: false, date: idx === 0 ? today : null })));

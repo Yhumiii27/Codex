@@ -777,7 +777,7 @@ par les décisions D-06 à D-21 et par le modèle v2.
 
 - **Constat sur la v1** : ID clé primaire, généré automatiquement, jamais modifié.
 - **Vérification** : « Couvert », confirmé. Format incohérent quand le rattachement à une affaire venait après coup ; compteur max+1 sans séquence.
-- **Aujourd'hui — intégré.** `TYPE-CONTEXTE-SEQ`, figé dès la première approbation : `updateMeta` ne change l'ID que si aucune révision n'a encore été approuvée. Les anciens ID sont gardés en alias (`documents.aliases`) et restent résolus (`getDoc`, `src/lib/queries.ts`). Réserve technique : le compteur reste un max+1 (`nextDocId`), suffisant avec PGlite dans un seul processus.
+- **Aujourd'hui — intégré.** `TYPE-CONTEXTE-SEQ`, figé dès la première approbation : `updateMeta` ne change l'ID que si aucune révision n'a encore été approuvée. Les anciens ID sont gardés en alias (`documents.aliases`) et restent résolus (`getDoc`, `src/lib/queries.ts`). Depuis le 10 octobre 2026, le numéro vient d'un compteur par couple (type, contexte), incrémenté atomiquement (`id_counters`, `nextDocId`), et les imports passent un par un (verrou consultatif) : l'attribution est sûre aussi avec un Postgres serveur en READ COMMITTED, imports compris.
 
 <a id="g22"></a>
 #### G22 — Tronc commun : Titre

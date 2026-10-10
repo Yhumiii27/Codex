@@ -315,6 +315,14 @@ export const changeRequests = pgTable(
   (t) => [uniqueIndex('change_requests_pending').on(t.docId).where(sql`${t.status} in ('submitted', 'accepted')`)],
 );
 
+// ── Identifier counters ─────────────────────────────────────────────────
+
+/** Last number handed out per sequence (lib/codification.ts): document IDs per type and context, W-n circuits, ECR references per year. */
+export const idCounters = pgTable('id_counters', {
+  scope: text('scope').primaryKey(),
+  last: integer('last').notNull(),
+});
+
 // ── Audit, rights, saved searches ───────────────────────────────────────
 
 export const auditLog = pgTable('audit_log', {

@@ -488,3 +488,16 @@ Constats confirmés, dans la numérotation du workflow :
     rédiger non plus ou retombe sur la personne écartée (message distinct) ; `docs/api.md` décrit ce comportement ;
   - `docs/api.md` précise aussi qu'un `modifierId` inconnu fait échouer un refus ou un retrait (400 `unknown_user`) et
     que la ligne de journal du remplacement devient visible de tous les lecteurs une fois la révision en vigueur.
+- **Étape 5 : attribution des identifiants sûre en concurrence**, point 40 de [reste-a-faire.md](reste-a-faire.md) :
+  - une table `id_counters` remplace les max+1 relus dans les tables : ID de document par couple (type, contexte),
+    numéros de circuit `W-n`, références `ECR-AAAA-NNN` par année ; une seule instruction
+    `INSERT … ON CONFLICT … RETURNING` dans la transaction appelante (`src/lib/codification.ts`) ;
+  - à sa première utilisation, un compteur part du plus grand numéro existant, anciennes références comprises : la base
+    de démo, le seed et les imports restent cohérents, et un numéro gardé en alias n'est jamais réattribué ;
+  - l'import fait monter le compteur jusqu'à sa `legacyRef` quand elle a la forme `TYPE-CONTEXTE-SEQ`, avant de vérifier
+    qu'elle est libre ;
+  - après revue, les imports passent un par un (`pg_advisory_xact_lock` en tête de transaction) : deux imports
+    simultanés de la même `legacyRef` ne créent plus deux documents, et deux imports aux portées croisées ne
+    s'interbloquent plus ; vérifié sur un Postgres 16 en READ COMMITTED, où la version d'avant revue reproduisait les
+    trois défauts (doublon, interblocage, collision de clé) ;
+  - formats, largeurs et attribution dès le brouillon inchangés ; la migration unique `0000_init` a été régénérée.

@@ -129,6 +129,11 @@ CREATE TABLE "functions" (
 	"sort" integer DEFAULT 0 NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "id_counters" (
+	"scope" text PRIMARY KEY NOT NULL,
+	"last" integer NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "project_events" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"project_code" text NOT NULL,
