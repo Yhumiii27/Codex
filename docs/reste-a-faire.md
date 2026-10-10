@@ -741,6 +741,7 @@ Vérifié : `import { Inter } from 'next/font/google'` (src/app/layout.tsx:2) et
 
 #### 43. Version de Node non déclarée
 
+- **Fait en partie le 10 octobre 2026** : package.json déclare `"engines": { "node": "^20.19.0 || >=22.12.0" }` et non `>=20.9`, car Vitest 4 s'appuie sur Vite 7, qui demande Node 20.19+ ou 22.12+ (Next seul accepterait 20.9) ; la CI tourne sous Node 22. Restent `.nvmrc`, l'alignement de `@types/node` (^20) et la vérification de version dans desktop/build-app.sh.
 - **Effort** : faible
 
 À faire : déclarer `"engines": { "node": ">=20.9" }`, choisir une version de référence (LTS) dans `.nvmrc`, aligner `@types/node` sur cette version et faire vérifier la version minimale par desktop/build-app.sh.
@@ -905,6 +906,7 @@ Vérifié :
 
 #### 52. Intégration continue
 
+- **Fait en partie le 10 octobre 2026** : `.github/workflows/ci.yml` (GitHub Actions, Node 22) lance `npm ci`, `npm run typecheck`, `npm run lint`, `npm test` et `npm run build` à chaque push et pull request, sur toutes les branches. Restent `drizzle-kit check` et `npm audit` (`npm ci` signale 9 vulnérabilités le 10 octobre : 4 modérées, 5 élevées).
 - **Effort** : faible
 
 Il faut un workflow GitHub Actions sur les pull requests vers main : npm ci, `next typegen` puis tsc (voir le point suivant), eslint, tests (dès que le point « Tests automatisés » existe), next build, `drizzle-kit check`, npm audit.
