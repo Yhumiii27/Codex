@@ -467,6 +467,19 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
   le verrou, plutôt que de laisser la décision en attente sans issue. C'est vrai même si le modificateur par défaut ne
   peut pas rédiger non plus (ou s'il est la personne écartée) : le journal et le message le signalent alors
   (`docs/api.md`).
+- **Journal d'audit** (étape 6, G48) :
+  - les entrées sans document (droits, organisation, titulaires de fonction, registre des types, exports) ne se
+    lisent que depuis l'écran d'administration : un auditeur sans le droit « Administrer » n'en voit aucune ;
+  - un commentaire de circuit est journalisé par l'ID du circuit, sans son texte, qui reste dans le circuit ;
+  - l'avant et l'après sont stockés en codes (`audit_log.data`) et affichés dans la langue du lecteur ; hors du
+    cercle de rédaction, les valeurs d'une modification de métadonnées sont retenues quand elles datent d'un
+    brouillon ou d'un niveau de confidentialité plus strict, et le détail d'une entrée sur un document illisible est
+    retiré (`docs/modele-cible.md` §5) ;
+  - l'export du journal est inscrit à la fin du téléchargement (ou à son interruption, avec le nombre de lignes
+    envoyées) : un arrêt brutal du serveur pendant l'export ne laisse pas de trace. Une requête HEAD sur un export
+    ne journalise rien ;
+  - le déclencheur qui rend le journal en ajout seul est posé à chaque démarrage (`src/db/index.ts`), pas dans la
+    migration, que l'on régénère tant qu'il n'y a pas de base de production.
 - **Authentification cible Entra ID** : proposée le 7 octobre à 12:40 (« passer à l'authentification Entra ID ») et à
   17:33 (lot 4 « Authentification Entra ID et organigramme »). L'utilisateur n'en a jamais parlé (O-02).
   `docs/modele-cible.md` §1, `docs/api.md`, `docs/avancement-v2.md` et le commentaire de

@@ -1,5 +1,6 @@
 import { and, eq } from 'drizzle-orm';
 import { contextOf, formatId, lettersUpTo, nextLetter } from '@/lib/codes';
+import { parisToUtc } from '@/lib/format';
 import { MATRIX_ROLE, type SimRole } from '@/lib/i18n';
 import type { Db } from './index';
 import * as s from './schema';
@@ -226,6 +227,7 @@ export async function seed(db: Db) {
 
     await tx.insert(s.projectExpected).values(EXPECTED.map((x, sort) => ({ projectCode: x.project, label: loc(x.label), typeCode: x.type, docId: x.doc ? idByKey.get(x.doc)! : null, later: !!x.later, sort })));
     await tx.insert(s.projectEvents).values(EVENTS.map((e) => ({ projectCode: e.project, at: `${e.at}:00`, text: loc(e.text) })));
-    await tx.insert(s.auditLog).values(audit.sort((a, b) => a.at.localeCompare(b.at)));
+    // Demo entries are written in Paris time; the journal stores UTC instants.
+    await tx.insert(s.auditLog).values(audit.sort((a, b) => a.at.localeCompare(b.at)).map((a) => ({ ...a, at: parisToUtc(a.at) })));
   });
 }

@@ -30,7 +30,7 @@ Conventions :
 | 8 oct., 07:44 → 9 oct., 14:22 | Premier commit, `.gitignore`, dépôt GitHub privé | 8 |
 | 9 oct., 15:00 | Passage en session cloud : ce qui n'existait qu'en local est versé dans le dépôt | 9 |
 | 9 oct. | Reprise en session cloud : corrections T-03, inventaire du reste à faire | 10 |
-| 10 oct. | Développement par étapes, un commit par étape validée. Étape 1 : brouillons invisibles hors du cercle (D-14). Étape 2 : avertissement sur les documents obsolètes ou archivés | 11 |
+| 10 oct. | Développement par étapes, un commit par étape validée. Étape 1 : brouillons invisibles hors du cercle (D-14). Étape 2 : avertissement sur les documents obsolètes ou archivés. Étape 3 : décision Vigie acceptée sur un document verrouillé. Étape 4 : droit de rédiger du modificateur désigné par Vigie. Étape 5 : identifiants sûrs en concurrence. Étape 6 : journal d'audit en ajout seul et complet | 11 |
 
 La session a été coupée plusieurs fois par une limite d'usage ou de dépense :
 - le 7 octobre à 13:38, reprise à 17:31 sur « Try again » ;
@@ -501,3 +501,22 @@ Constats confirmés, dans la numérotation du workflow :
     s'interbloquent plus ; vérifié sur un Postgres 16 en READ COMMITTED, où la version d'avant revue reproduisait les
     trois défauts (doublon, interblocage, collision de clé) ;
   - formats, largeurs et attribution dès le brouillon inchangés ; la migration unique `0000_init` a été régénérée.
+- **Étape 6 : journal d'audit en ajout seul et complet**, points 27, 30 et 33 de [reste-a-faire.md](reste-a-faire.md) :
+  - un reclassement ne réécrit plus le journal : les entrées gardent l'ID de leur époque, la fiche lit l'ID courant et
+    ses alias, l'accueil et les notifications ramènent chaque ligne à l'ID courant, l'onglet Journal et son export
+    gardent l'ID de l'époque ;
+  - `audit_log` accepte une cible sans document (`target_kind`, `target_id` : droit, département, site, fonction, type,
+    export) ; sont désormais journalisés les droits, l'organisation, les titulaires de fonction, le registre des types
+    (avant → après), les commentaires de circuit, les deux exports CSV (requête et facettes, ou journal complet, et
+    nombre de lignes) et, dans l'entrée « Modification », les champs modifiés ;
+  - l'avant et l'après sont stockés en codes (`audit_log.data`, JSON) et rendus dans la langue du lecteur, à l'écran
+    comme dans l'export ;
+  - lecture : un administrateur qui n'est pas gestionnaire ne reçoit pas le détail des entrées d'un document qu'il ne
+    peut pas lire, ni son ID courant ; hors du cercle, les valeurs d'une modification datant d'un brouillon ou d'un
+    niveau plus strict sont retenues (`docs/modele-cible.md` §5) ; les flux d'activité écartent en SQL les entrées
+    sans document, qui ne vident plus la fenêtre de l'accueil et des notifications ; HEAD sur un export ne journalise
+    rien ;
+  - l'horodatage est un `timestamptz` (UTC stocké, heure de Paris à l'affichage et dans l'export) ;
+  - la base refuse UPDATE, DELETE et TRUNCATE sur `audit_log` : déclencheurs posés à chaque démarrage, après les
+    migrations (`src/db/index.ts`), pour survivre à la régénération de la migration unique ;
+  - la migration unique `0000_init` a été régénérée ; une base existante doit repartir de zéro (`npm run db:reset`).

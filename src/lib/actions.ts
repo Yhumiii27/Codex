@@ -4,7 +4,7 @@ import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { cookies } from 'next/headers';
 import { refresh } from 'next/cache';
 import { getDb, schema as s } from '@/db';
-import type { Attachment, Conf, Disposition, Origin, RetentionTrigger } from '@/db/schema';
+import type { Attachment, AuditChange, AuditValue, Conf, Disposition, Origin, RetentionTrigger } from '@/db/schema';
 import { buildAccessIndex, canRead, getAccessIndex, inDraftingCircle, isUsableTemplate, readerMaySeeRevision, readersApply } from './access';
 import { idMatches, nextDocId, nextWorkflowId } from './codification';
 import { COOKIE_LANG, COOKIE_ROLE, COOKIE_USER, getCtx, type Ctx } from './context';
@@ -31,6 +31,23 @@ function fail(ctx: Ctx, key: TKey = 'error', extra?: string): ActionResult {
 
 function denied(ctx: Ctx, perm: Perm): ActionResult {
   return { ok: false, error: `${ctx.t.not_allowed} : ${ctx.t[`perm_${perm}` as TKey]}` };
+}
+
+/** A journal value with nothing in it (null, empty text or list) stored as null, so that "" and null are no change. */
+function auditValue(v: AuditValue | undefined): AuditValue {
+  return v == null || v === '' || (Array.isArray(v) && !v.length) ? null : v;
+}
+
+/** Journal changes, before → after, of the values that differ; stored as keys and codes (lib/queries.ts renders them). */
+function changes(parts: [field: string, before: AuditValue, after: AuditValue][]): AuditChange[] {
+  return parts
+    .map(([field, b, a]) => ({ field, before: auditValue(b), after: auditValue(a) }))
+    .filter((c) => JSON.stringify(c.before) !== JSON.stringify(c.after));
+}
+
+/** Retention class of a type or a document, as the journal stores it. */
+function retentionValue(x: { retentionYears: number | null; retentionTrigger: string; retentionDisposition: string }): AuditValue {
+  return { years: x.retentionYears, trigger: x.retentionTrigger, disposition: x.retentionDisposition };
 }
 
 function uploadedFile(fd: FormData, key = 'file'): File | null {
@@ -109,6 +126,14 @@ function readFields(ctx: Ctx, fd: FormData, base?: DocRow): Fields {
     ipStatus: attachment === 'research' ? opt(fd, 'ipStatus') : null,
     processOwnerId: origin === 'interne' ? opt(fd, 'processOwnerId') : null,
   };
+}
+
+/** Metadata fields an edit changes, with their values before and after (retention follows a change of type). */
+function metaChanges(d: DocRow, f: Fields, retention: Partial<Pick<DocRow, 'retentionYears' | 'retentionTrigger' | 'retentionDisposition'>>): AuditChange[] {
+  return changes([
+    ...(Object.keys(f) as (keyof Fields)[]).map((k): [string, AuditValue, AuditValue] => [k, d[k], f[k]]),
+    ['retention', retentionValue(d), retentionValue({ ...d, ...retention })],
+  ]);
 }
 
 /**
@@ -298,15 +323,19 @@ export async function updateMeta(fd: FormData): Promise<ActionResult> {
     let id = docId;
     if (!everApproved && !idMatches(docId, f)) {
       id = await nextDocId(tx, f);
-      // documents.id cascades to every table that references it; the audit trail follows by hand.
+      // documents.id cascades to every table that references it. The journal is append-only: its entries keep the
+      // former ID, kept as an alias, and this entry links it to the new one (listAudit reads both).
       await tx.update(s.documents).set({ id, aliases: [...d.aliases, docId] }).where(eq(s.documents.id, docId));
-      await tx.update(s.auditLog).set({ docId: id }).where(eq(s.auditLog.docId, docId));
       // Before any approval, the reclassification belongs to the revision being drafted.
       await audit(tx, ctx.user.id, 'reclass', id, `${docId} → ${id}`, revs.find((r) => r.status === 'draft' || r.status === 'in_review')?.id ?? null);
     }
     const retention = f.typeCode !== d.typeCode ? { retentionYears: type.retentionYears, retentionTrigger: type.retentionTrigger, retentionDisposition: type.retentionDisposition } : {};
     await tx.update(s.documents).set({ ...f, family: type.family, ...retention, modifiedAt: todayIso() }).where(eq(s.documents.id, id));
-    await audit(tx, ctx.user.id, 'edit', id, d.revInForce ?? d.revWorking ?? '');
+    // The values changed, with what decides who reads them: the strictest level across the change, and whether a
+    // revision was in force (work on a draft stays in its drafting circle, D-14).
+    const changed = metaChanges(d, f, retention);
+    const strictest = CONF_LEVELS[Math.max(CONF_LEVELS.indexOf(d.conf), CONF_LEVELS.indexOf(f.conf))] ?? f.conf;
+    await audit(tx, ctx.user.id, 'edit', id, d.revInForce ?? d.revWorking ?? '', null, changed.length ? { changes: changed, doc: { conf: strictest, inForce: !!d.revInForce } } : null);
     // Named readers only count for confidential levels (lib/access.ts): below, they are dropped rather than left unseen.
     if (!readersApply(f.conf)) {
       const dropped = await tx.delete(s.documentReaders).where(eq(s.documentReaders.docId, id)).returning();
@@ -557,7 +586,12 @@ export async function addComment(workflowId: string, text: string): Promise<Acti
   if (!d || !canRead(ctx, d, ix) || !readerMaySeeRevision(inDraftingCircle(ctx, d, ix), rev?.status)) return fail(ctx, 'not_found');
   const involved = wf.w.requesterId === ctx.user.id || wf.steps.some((x) => x.assigneeId === ctx.user.id);
   if (!(ctx.seesAll || involved)) return fail(ctx, 'not_allowed');
-  await db.insert(s.workflowComments).values({ workflowId, authorId: ctx.user.id, at: todayIso(), text: body.slice(0, 2000) });
+  await db.transaction(async (tx) => {
+    await tx.insert(s.workflowComments).values({ workflowId, authorId: ctx.user.id, at: todayIso(), text: body.slice(0, 2000) });
+    // The entry names the circuit, not the text: the comment stays readable where it was written. The circuit's
+    // revision decides who reads the entry (D-14).
+    await audit(tx, ctx.user.id, 'comment', wf.w.docId, workflowId, wf.w.revisionId);
+  });
   refresh();
   return { ok: true };
 }
@@ -732,9 +766,13 @@ export async function togglePermission(role: string, perm: string): Promise<Acti
   // Administration follows the matrix: the row of one's own role keeps its way back in.
   if (perm === 'admin' && role === MATRIX_ROLE[ctx.role]) return fail(ctx, 'admin_lockout');
   const db = await getDb();
-  const [row] = await db.select().from(s.rolePermissions).where(and(eq(s.rolePermissions.role, role), eq(s.rolePermissions.perm, perm)));
-  if (row) await db.update(s.rolePermissions).set({ granted: !row.granted }).where(and(eq(s.rolePermissions.role, role), eq(s.rolePermissions.perm, perm)));
-  else await db.insert(s.rolePermissions).values({ role, perm, granted: true });
+  await db.transaction(async (tx) => {
+    const [row] = await tx.select().from(s.rolePermissions).where(and(eq(s.rolePermissions.role, role), eq(s.rolePermissions.perm, perm)));
+    const before = row?.granted ?? false;
+    if (row) await tx.update(s.rolePermissions).set({ granted: !before }).where(and(eq(s.rolePermissions.role, role), eq(s.rolePermissions.perm, perm)));
+    else await tx.insert(s.rolePermissions).values({ role, perm, granted: true });
+    await audit(tx, ctx.user.id, 'perm', { kind: 'permission', id: `${role}:${perm}` }, '', null, { changes: [{ field: 'granted', before, after: !before }] });
+  });
   refresh();
   return { ok: true };
 }
@@ -750,11 +788,18 @@ export async function addOrgValue(kind: 'department' | 'site', code: string, lab
   if (kind === 'department') {
     const key = code.trim().toUpperCase();
     if (!/^[A-Z]{3}$/.test(key) || ctx.departments.some((d) => d.code === key) || key === 'QMS') return fail(ctx, 'error', key);
-    await db.insert(s.departments).values({ code: key, labelFr: fr, labelEn: labelEn.trim() || fr, sort: ctx.departments.length });
+    const en = labelEn.trim() || fr;
+    await db.transaction(async (tx) => {
+      await tx.insert(s.departments).values({ code: key, labelFr: fr, labelEn: en, sort: ctx.departments.length });
+      await audit(tx, ctx.user.id, 'org_add', { kind: 'department', id: key }, `— → ${key} · ${fr} / ${en}`);
+    });
   } else {
     const key = fr.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 32) || 'site';
     if (ctx.sites.some((x) => x.key === key)) return fail(ctx, 'error', key);
-    await db.insert(s.sites).values({ key, label: fr, sort: ctx.sites.length });
+    await db.transaction(async (tx) => {
+      await tx.insert(s.sites).values({ key, label: fr, sort: ctx.sites.length });
+      await audit(tx, ctx.user.id, 'org_add', { kind: 'site', id: key }, `— → ${fr}`);
+    });
   }
   refresh();
   return { ok: true };
@@ -771,7 +816,10 @@ export async function addFunctionHolder(functionKey: string, scopeValue: string 
   const db = await getDb();
   // A holder decides approval steps: their default role must be able to approve.
   if (!(await approverCheck(db, ctx))(u.id)) return fail(ctx, 'delegate_no_approve');
-  await db.insert(s.functionHolders).values({ functionKey, scopeValue: scope, userId });
+  await db.transaction(async (tx) => {
+    await tx.insert(s.functionHolders).values({ functionKey, scopeValue: scope, userId });
+    await audit(tx, ctx.user.id, 'holder_add', { kind: 'function', id: functionKey }, '', null, { changes: [{ field: 'holder', scope, before: null, after: u.id }] });
+  });
   refresh();
   return { ok: true };
 }
@@ -781,7 +829,10 @@ export async function removeFunctionHolder(id: number): Promise<ActionResult> {
   const no = adminOnly(ctx);
   if (no) return no;
   const db = await getDb();
-  await db.delete(s.functionHolders).where(eq(s.functionHolders.id, id));
+  await db.transaction(async (tx) => {
+    const [h] = await tx.delete(s.functionHolders).where(eq(s.functionHolders.id, id)).returning();
+    if (h) await audit(tx, ctx.user.id, 'holder_remove', { kind: 'function', id: h.functionKey }, '', null, { changes: [{ field: 'holder', scope: h.scopeValue, before: h.userId, after: null }] });
+  });
   refresh();
   return { ok: true };
 }
@@ -804,8 +855,22 @@ export async function updateType(fd: FormData): Promise<ActionResult> {
   const dispositions: Disposition[] = ['destroy', 'review', 'archive', 'permanent'];
   const trigger = triggers.find((x) => x === str(fd, 'retentionTrigger')) ?? type.retentionTrigger;
   const disposition = dispositions.find((x) => x === str(fd, 'retentionDisposition')) ?? type.retentionDisposition;
+  const next = { circuit, confAllowed, confDefault, retentionYears: years, retentionTrigger: trigger, retentionDisposition: disposition, active: fd.get('active') !== 'off' };
   const db = await getDb();
-  await db.update(s.docTypes).set({ circuit, confAllowed, confDefault, retentionYears: years, retentionTrigger: trigger, retentionDisposition: disposition, active: fd.get('active') !== 'off' }).where(eq(s.docTypes.code, code));
+  await db.transaction(async (tx) => {
+    const [cur] = await tx.select().from(s.docTypes).where(eq(s.docTypes.code, code));
+    if (!cur) return;
+    await tx.update(s.docTypes).set(next).where(eq(s.docTypes.code, code));
+    const changed = changes([
+      ['circuit', cur.circuit, next.circuit],
+      ['confAllowed', cur.confAllowed, next.confAllowed],
+      ['confDefault', cur.confDefault, next.confDefault],
+      ['retention', retentionValue(cur), retentionValue(next)],
+      ['active', cur.active, next.active],
+    ]);
+    // Saving without a change leaves no entry.
+    if (changed.length) await audit(tx, ctx.user.id, 'type', { kind: 'type', id: code }, '', null, { changes: changed });
+  });
   refresh();
   return { ok: true, message: ctx.t.saved_ok };
 }

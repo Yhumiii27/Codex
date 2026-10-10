@@ -97,6 +97,8 @@ const fr = {
   wf_closed_hint:'Document verrouillé : le circuit reprendra une fois le verrou levé.',
   piece_type_mismatch:'Cette pièce attend un document de type',
   obsolete_since:'Obsolète depuis le', do_not_apply:'ne plus appliquer',
+  act_perm:'Droit modifié', act_org_add:'Valeur d’organisation ajoutée', act_holder_add:'Titulaire ajouté', act_holder_remove:'Titulaire retiré', act_type:'Type modifié', act_comment:'Commentaire', act_export:'Export CSV',
+  target:'Objet', target_permission:'Droit', target_export:'Export', active_label:'Actif', export_rows:'lignes', export_full:'journal complet', export_unfiltered:'sans filtre', export_interrupted:'interrompu après',
 };
 
 type Dict = Record<keyof typeof fr, string>;
@@ -195,6 +197,8 @@ const en: Dict = {
   wf_closed_hint:'Locked document: the workflow resumes once the lock is lifted.',
   piece_type_mismatch:'This piece expects a document of type',
   obsolete_since:'Obsolete since', do_not_apply:'no longer applicable',
+  act_perm:'Permission changed', act_org_add:'Organisation value added', act_holder_add:'Holder added', act_holder_remove:'Holder removed', act_type:'Type changed', act_comment:'Comment', act_export:'CSV export',
+  target:'Target', target_permission:'Permission', target_export:'Export', active_label:'Active', export_rows:'rows', export_full:'full log', export_unfiltered:'no filter', export_interrupted:'interrupted after',
 };
 
 export const DICT: Record<Lang, Dict> = { fr, en };

@@ -16,7 +16,7 @@ function Kpi({ href, ok, children }: { href: string; ok: boolean; children: Reac
 export default async function HomePage() {
   const ctx = await getCtx();
   const { t, lang } = ctx;
-  const [docs, workflows, audit] = await Promise.all([listDocs(ctx), listWorkflows(ctx), listAudit(ctx, { limit: 500 })]);
+  const [docs, workflows, audit] = await Promise.all([listDocs(ctx), listWorkflows(ctx), listAudit(ctx, { limit: 500, docsOnly: true })]);
   const visible = new Map(docs.map((d) => [d.id, d]));
 
   // Running workflows waiting for my decision (none for a role without the Validations screen, none on a locked document).
@@ -25,11 +25,11 @@ export default async function HomePage() {
   // Revisions that entered into force in the last 7 days and are still the ones in force.
   const weekAgo = addDays(todayIso(), -7);
   const inForceWeek = new Set(
-    audit.filter((a) => a.action === 'in_force' && a.at.slice(0, 10) >= weekAgo && visible.get(a.docId)?.revInForce === a.detail).map((a) => a.docId),
+    audit.filter((a) => a.action === 'in_force' && a.local.slice(0, 10) >= weekAgo && !!a.currentId && visible.get(a.currentId)?.revInForce === a.detail).map((a) => a.currentId),
   ).size;
   const recents = docs.slice(0, 5);
-  // Activity of the group, limited to documents the user may see.
-  const activity = audit.filter((a) => visible.has(a.docId)).slice(0, 6);
+  // Activity of the group, limited to documents the user may see, each under its current ID.
+  const activity = audit.filter((a) => a.currentId && visible.has(a.currentId)).slice(0, 6);
   const noUpload = ctx.can('upload') ? undefined : `${t.not_allowed} : ${t.perm_upload}`;
   const kindLabel = (d: DeadlineView) => (d.kind === 'retention' ? t.until : d.kind === 'expiry' ? t.dl_expiry : t.dl_review);
 
@@ -111,7 +111,7 @@ export default async function HomePage() {
                 {activity.map((a) => (
                   <div key={a.id} className="feed">
                     <span className="text-muted feed-when">{a.when}</span>
-                    <span style={{ minWidth: 0 }}><span>{a.user}</span> <span className="text-muted">· {a.actionLabel} · </span><Link href={a.href} className="link-plain">{a.ref}</Link></span>
+                    <span style={{ minWidth: 0 }}><span>{a.user}</span> <span className="text-muted">· {a.actionLabel} · </span><Link href={a.href} className="link-plain">{a.currentId}</Link></span>
                   </div>
                 ))}
               </div>

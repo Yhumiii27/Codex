@@ -1,11 +1,15 @@
 CREATE TABLE "audit_log" (
 	"id" serial PRIMARY KEY NOT NULL,
-	"at" timestamp NOT NULL,
+	"at" timestamp with time zone NOT NULL,
 	"user_id" text NOT NULL,
 	"action" text NOT NULL,
-	"doc_id" text NOT NULL,
+	"doc_id" text,
+	"target_kind" text,
+	"target_id" text,
 	"detail" text DEFAULT '' NOT NULL,
-	"revision_id" integer
+	"data" jsonb,
+	"revision_id" integer,
+	CONSTRAINT "audit_log_subject" CHECK ("audit_log"."doc_id" is not null or ("audit_log"."target_kind" is not null and "audit_log"."target_id" is not null))
 );
 --> statement-breakpoint
 CREATE TABLE "change_requests" (

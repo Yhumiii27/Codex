@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { boolean, date, integer, jsonb, pgTable, primaryKey, serial, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { boolean, check, date, integer, jsonb, pgTable, primaryKey, serial, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 
 // Data model of the GED — see docs/modele-cible.md.
 
@@ -325,16 +325,50 @@ export const idCounters = pgTable('id_counters', {
 
 // ── Audit, rights, saved searches ───────────────────────────────────────
 
-export const auditLog = pgTable('audit_log', {
-  id: serial('id').primaryKey(),
-  at: timestamp('at', { mode: 'string' }).notNull(),
-  userId: text('user_id').notNull().references(() => users.id),
-  action: text('action').notNull(),
-  docId: text('doc_id').notNull(),
-  detail: text('detail').notNull().default(''),
-  /** Revision the entry is about (working version, circuit, entry into force…); null for the document as a whole (lib/access.ts). */
-  revisionId: integer('revision_id'),
-});
+/** What an entry without document is about: a cell of the rights matrix, an organisation value, a function, a register type, a CSV export. */
+export type AuditTargetKind = 'permission' | 'department' | 'site' | 'function' | 'type' | 'export';
+
+/** A value in a journal change, as stored: keys and codes, rendered in the reader's language (lib/queries.ts). */
+export type AuditValue = string | string[] | boolean | null | { years: number | null; trigger: string; disposition: string };
+
+/**
+ * One change, before → after. `field` names it (a metadata field, a register setting, `granted`, `holder`); `scope`
+ * is the scope of a function holder (null: the whole group). Without before and after, the values are withheld from
+ * the reader (lib/queries.ts, auditForReader).
+ */
+export type AuditChange = { field: string; before?: AuditValue; after?: AuditValue; scope?: string | null };
+
+/** Structured part of a journal entry, next to its free `detail`. */
+export type AuditData = {
+  changes?: AuditChange[];
+  /** CSV export: query and facets of a search export (none for the full journal), rows written, download cut short. */
+  export?: { q?: string; facets?: Partial<Record<string, string[]>>; rows: number; interrupted?: boolean };
+  /** Metadata edit: the document's strictest level across the change, and whether a revision was in force. */
+  doc?: { conf: Conf; inForce: boolean };
+};
+
+/** Append-only: the database refuses UPDATE, DELETE and TRUNCATE on it (src/db/index.ts). */
+export const auditLog = pgTable(
+  'audit_log',
+  {
+    id: serial('id').primaryKey(),
+    /** UTC instant, shown in Paris time (lib/format.ts, parisStamp). */
+    at: timestamp('at', { mode: 'string', withTimezone: true }).notNull(),
+    userId: text('user_id').notNull().references(() => users.id),
+    action: text('action').notNull(),
+    /** Document under its ID at the time: a later reclassification adds an alias and never rewrites the entry. */
+    docId: text('doc_id'),
+    /** Target of an entry without document (role:permission, department code, site key, function key, type code, export). */
+    targetKind: text('target_kind').$type<AuditTargetKind>(),
+    targetId: text('target_id'),
+    detail: text('detail').notNull().default(''),
+    /** Values before → after, export query and size: stored as keys, rendered in the reader's language. */
+    data: jsonb('data').$type<AuditData>(),
+    /** Revision the entry is about (working version, circuit, entry into force…); null for the document as a whole (lib/access.ts). */
+    revisionId: integer('revision_id'),
+  },
+  (t) => [check('audit_log_subject', sql`${t.docId} is not null or (${t.targetKind} is not null and ${t.targetId} is not null)`)],
+);
 
 export const rolePermissions = pgTable(
   'role_permissions',

@@ -1,6 +1,7 @@
 import 'server-only';
 import { and, asc, eq, inArray, isNull, lt, lte, ne, or } from 'drizzle-orm';
 import { schema as s, type Db } from '@/db';
+import type { AuditData, AuditTargetKind } from '@/db/schema';
 import { buildAccessIndex, canRead, type AccessIndex } from './access';
 import { nextLetter } from './codification';
 import { nowStamp, todayIso } from './format';
@@ -14,9 +15,17 @@ type DocRow = typeof s.documents.$inferSelect;
 type RevRow = typeof s.revisions.$inferSelect;
 type UserRow = typeof s.users.$inferSelect;
 
-/** `revisionId`: the revision the entry is about, which decides who reads it (lib/access.ts, readerMaySeeEntry). */
-export async function audit(tx: Tx, userId: string, action: string, docId: string, detail = '', revisionId: number | null = null) {
-  await tx.insert(s.auditLog).values({ at: nowStamp(), userId, action, docId, detail, revisionId });
+/** What a journal entry is about: a document (its current ID), or a target without document (administration, export). */
+export type AuditSubject = string | { kind: AuditTargetKind; id: string };
+
+/**
+ * Appends an entry to the journal, stamped with the UTC instant; the journal is append-only (src/db/index.ts).
+ * `revisionId`: the revision the entry is about, which decides who reads it (lib/access.ts, readerMaySeeEntry).
+ * `data`: values before → after or export figures, stored as keys and rendered in the reader's language.
+ */
+export async function audit(tx: Tx, userId: string, action: string, subject: AuditSubject, detail = '', revisionId: number | null = null, data: AuditData | null = null) {
+  const about = typeof subject === 'string' ? { docId: subject } : { targetKind: subject.kind, targetId: subject.id };
+  await tx.insert(s.auditLog).values({ at: new Date().toISOString(), userId, action, ...about, detail, data, revisionId });
 }
 
 export type LockKey = 'locked_archived' | 'locked_obsolete' | 'locked_hold';

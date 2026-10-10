@@ -478,6 +478,7 @@ Déjà protégés : les fichiers (`readerMaySeeVersion`, route fichier l.62) et 
 </details>
 
 #### 27. Journal d'audit en ajout seul : un reclassement réécrit l'historique
+- **Fait le 10 octobre 2026** : un reclassement ne réécrit plus `audit_log.doc_id` (la fiche lit l'ID courant et ses alias, l'accueil et les notifications ramènent chaque ligne à l'ID courant, l'onglet Journal et son export gardent l'ID de l'époque) et la base refuse UPDATE, DELETE et TRUNCATE sur `audit_log` par des déclencheurs posés à chaque démarrage dans `src/db/index.ts`.
 
 - **Effort** : faible · **Références** : G48
 
@@ -527,6 +528,7 @@ Constaté. listWorkflows (src/lib/queries.ts:152 et 172) calcule `visible: ctx.s
 </details>
 
 #### 30. Exports CSV non journalisés
+- **Fait le 10 octobre 2026** : chaque export CSV est journalisé (action `export`) avec sa requête et ses facettes, ou « journal complet », et le nombre de lignes envoyées, une requête HEAD ne journalisant rien.
 
 - **Effort** : faible · **Références** : G48, M05
 
@@ -576,6 +578,7 @@ Constaté : src/lib/storage.ts:195-205 (stageFile/stageUpload stockent tout fich
 </details>
 
 #### 33. Journal d'audit : actions d'administration et commentaires non journalisés, horodatage sans fuseau
+- **Fait le 10 octobre 2026** : `audit_log` accepte une cible sans document (`target_kind`, `target_id`), droits, organisation, titulaires, registre, commentaires de circuit et champs modifiés par `updateMeta` sont journalisés avec l'avant et l'après stockés en JSON (`audit_log.data`) et rendus dans la langue du lecteur selon les règles de lecture de `docs/modele-cible.md` §5, et `at` est un `timestamptz` affiché à l'heure de Paris (restent les consultations, point 28, et la valeur probante, O-02).
 
 - **Effort** : moyen · **Références** : G48, M05, ACC-05
 

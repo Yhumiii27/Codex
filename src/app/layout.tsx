@@ -21,13 +21,13 @@ export const metadata: Metadata = {
 export default async function RootLayout({ children }: LayoutProps<'/'>) {
   const ctx = await getCtx();
   const fr = ctx.lang === 'fr';
-  const [workflows, templates, visible, audit, matrix] = await Promise.all([listWorkflows(ctx), listTemplates(ctx), listDocs(ctx), listAudit(ctx, { limit: 60 }), getMatrix()]);
+  const [workflows, templates, visible, audit, matrix] = await Promise.all([listWorkflows(ctx), listTemplates(ctx), listDocs(ctx), listAudit(ctx, { limit: 60, docsOnly: true }), getMatrix()]);
   // Approvals waiting for me: running workflows whose current step is mine, on a document not locked, for a role that
   // reaches the Validations screen (the bell never points to a screen the role cannot open).
   const mine = ctx.screens.workflow ? workflows.filter((w) => w.mine && !w.locked) : [];
-  // Recent activity only on documents the simulated user may see.
+  // Recent activity only on documents the simulated user may see, each under its current ID.
   const seen = new Set(visible.map((d) => d.id));
-  const recent = audit.filter((a) => seen.has(a.docId)).slice(0, 5);
+  const recent = audit.filter((a) => a.currentId && seen.has(a.currentId)).slice(0, 5);
   const data: DialogData = {
     templates: templates.map((x) => ({ id: x.id, label: x.label, rev: x.rev, owner: x.owner })),
     types: ctx.types.map((x) => {
@@ -67,7 +67,7 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
             <div className="app-col">
               <Header notif={{
                 pending: mine.map((w) => ({ id: w.id, docId: w.docId, docTitle: w.docTitle, letter: w.letter, stepName: w.stepName, dueF: w.dueF, href: w.href })),
-                recent: recent.map((a) => ({ id: a.id, when: a.when, user: a.user, actionLabel: a.actionLabel, ref: a.ref, href: a.href })),
+                recent: recent.map((a) => ({ id: a.id, when: a.when, user: a.user, actionLabel: a.actionLabel, ref: a.currentId ?? a.ref, href: a.href })),
               }} />
               <main className="app-main">{children}</main>
             </div>

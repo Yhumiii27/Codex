@@ -68,7 +68,11 @@ Tout l'état d'écran est dans l'URL (onglets, filtres, sélection) : les liens 
   lecteurs désignés, demandes de validation et décisions (mise en vigueur à l'approbation ou à la date d'effet),
   délégation, commentaires, demandes de modification et de retrait, archivage, gel juridique, matrice des droits,
   registre des types (circuit, confidentialité, conservation), titulaires des fonctions, départements et sites.
-  Chaque action alimente le journal d'audit.
+  Chacune de ces actions alimente le journal d'audit, de même que les téléchargements et les deux exports CSV. Le
+  journal est en ajout seul : la base refuse toute modification ou suppression (déclencheur posé au démarrage,
+  `src/db/index.ts`), et un reclassement ne réécrit pas les entrées, qui gardent l'identifiant de leur époque.
+  L'horodatage est stocké en UTC et affiché à l'heure de Paris. Ne sont pas journalisés : les consultations (aperçu
+  sans téléchargement) et le changement d'utilisateur ou de langue simulé.
 - **Utilisateur et rôle simulés** (pas d'authentification pour l'instant) : cliquer sur le profil en bas de la
   barre latérale. La navigation suit les règles de la maquette (validations masquées pour l'auditeur, archivage
   masqué pour le collaborateur, administration réservée au gestionnaire), les actions vérifient la matrice des

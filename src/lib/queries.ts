@@ -1,13 +1,15 @@
 import 'server-only';
-import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { getDb, schema as s } from '@/db';
+import type { AuditChange, AuditData, AuditTargetKind, AuditValue, Conf } from '@/db/schema';
 import { canRead, getAccessIndex, inDraftingCircle, isUsableTemplate, readerMaySeeEntry, readerMaySeeRevision, type AccessIndex } from './access';
 import { revLabel } from './codification';
 import type { Ctx } from './context';
-import { addDays, daysBetween, fmtDate, fmtSize, fmtWhen, loc, todayIso } from './format';
-import { TAGCLS, type T, type TKey } from './i18n';
+import { addDays, daysBetween, fmtDate, fmtSize, fmtWhen, loc, parisStamp, todayIso } from './format';
+import { CONF_LEVELS, MATRIX_ROLE_LABEL, TAGCLS, type T, type TKey } from './i18n';
 import { lockOf } from './lifecycle';
 import { retainUntil } from './retention';
+import { FACET_KEYS, type FacetKey } from './search';
 
 type DocRow = typeof s.documents.$inferSelect;
 
@@ -89,7 +91,7 @@ async function visibleModified(ids: string[]): Promise<Map<string, string>> {
   ]);
   const later = (docId: string, at: string | null) => { if (at && at > (out.get(docId) ?? '')) out.set(docId, at); };
   revs.forEach((r) => later(r.docId, r.at));
-  entries.forEach((e) => later(e.docId, e.at.slice(0, 10)));
+  entries.forEach((e) => e.docId && later(e.docId, parisStamp(e.at).slice(0, 10)));
   return out;
 }
 
@@ -301,37 +303,185 @@ export type DeadlineView = ReturnType<typeof deadlines>[number];
 type AuditRow = typeof s.auditLog.$inferSelect;
 
 /**
- * Journal entries the user may read: all of them for records managers; otherwise, outside a document's drafting
- * circle, its work in progress stays hidden (access.ts, readerMaySeeEntry). Shared by the screens and the CSV export.
+ * Current ID of each former one (reclassification before the first approval, migrated reference). The journal keeps
+ * the ID an entry was written under; IDs are never handed out twice (lib/codification.ts), so the mapping is safe.
  */
-export async function auditForReader(ctx: Ctx, all: AuditRow[]): Promise<AuditRow[]> {
-  if (ctx.seesAll || !all.length) return all;
+async function currentIds(): Promise<Map<string, string>> {
   const db = await getDb();
-  const docIds = [...new Set(all.map((a) => a.docId))];
-  const revIds = [...new Set(all.flatMap((a) => (a.revisionId == null ? [] : [a.revisionId])))];
+  const rows = await db.select({ id: s.documents.id, aliases: s.documents.aliases }).from(s.documents).where(sql`jsonb_array_length(${s.documents.aliases}) > 0`);
+  return new Map(rows.flatMap((d) => d.aliases.map((a): [string, string] => [a, d.id])));
+}
+
+/** Entry as a reader gets it; `readable`: the reader may open the document it is about (always, for an entry without document). */
+export type AuditEntry = AuditRow & { readable: boolean };
+
+/**
+ * Do the values of a metadata edit reach a reader outside the drafting circle who reads the document now? Only when a
+ * revision was in force at the time (otherwise they were work on a draft, D-14) and the document was then no stricter
+ * than it is now (otherwise they were meant for a narrower audience, as before a lowering of its level).
+ */
+function editValuesShown(doc: AuditData['doc'], conf: string): boolean {
+  return !!doc && doc.inForce && CONF_LEVELS.indexOf(doc.conf) <= CONF_LEVELS.indexOf(conf as Conf);
+}
+
+/**
+ * Journal entries the user may read. Entries without a document (administration, exports) belong to the
+ * administration screen. Records managers read every entry about a document. Others, whatever ID the entry was
+ * written under: outside a document's drafting circle, its work in progress stays hidden (access.ts,
+ * readerMaySeeEntry); about a document they cannot read (canRead), an entry keeps its action and ID but loses its
+ * detail; outside the circle, the values of a metadata edit only show when editValuesShown says so (the fields
+ * changed still do). Shared by the screens and the CSV export.
+ */
+export async function auditForReader(ctx: Ctx, all: AuditRow[]): Promise<AuditEntry[]> {
+  const rows = ctx.screens.admin ? all : all.filter((a) => a.docId != null);
+  if (ctx.seesAll || !rows.length) return rows.map((a) => ({ ...a, readable: true }));
+  const db = await getDb();
+  const current = await currentIds();
+  const cur = (id: string) => current.get(id) ?? id;
+  const docIds = [...new Set(rows.flatMap((a) => (a.docId == null ? [] : [cur(a.docId)])))];
+  const revIds = [...new Set(rows.flatMap((a) => (a.revisionId == null ? [] : [a.revisionId])))];
   const [docs, revs, ix] = await Promise.all([
-    db.select().from(s.documents).where(inArray(s.documents.id, docIds)),
+    docIds.length ? db.select().from(s.documents).where(inArray(s.documents.id, docIds)) : [],
     revIds.length ? db.select({ id: s.revisions.id, status: s.revisions.status }).from(s.revisions).where(inArray(s.revisions.id, revIds)) : [],
     getAccessIndex(),
   ]);
-  const circle = new Set(docs.filter((d) => inDraftingCircle(ctx, d, ix)).map((d) => d.id));
+  const docBy = new Map(docs.map((d) => [d.id, d]));
   const statusBy = new Map(revs.map((r) => [r.id, r.status]));
-  return all.filter((a) => readerMaySeeEntry(circle.has(a.docId), a, a.revisionId == null ? undefined : statusBy.get(a.revisionId)));
+  return rows.flatMap((a): AuditEntry[] => {
+    if (a.docId == null) return [{ ...a, readable: true }];
+    const d = docBy.get(cur(a.docId));
+    const circle = !!d && inDraftingCircle(ctx, d, ix);
+    if (!readerMaySeeEntry(circle, a, a.revisionId == null ? undefined : statusBy.get(a.revisionId))) return [];
+    if (!d || !canRead(ctx, d, ix)) return [{ ...a, detail: '', data: null, readable: false }];
+    if (!circle && a.data?.changes && !editValuesShown(a.data.doc, d.conf)) {
+      return [{ ...a, data: { ...a.data, changes: a.data.changes.map(({ field, scope }) => ({ field, scope })) }, readable: true }];
+    }
+    return [{ ...a, readable: true }];
+  });
 }
 
-/** Journal entries, newest first, as auditForReader lets the user read them. */
-export async function listAudit(ctx: Ctx, opts: { docId?: string; limit?: number } = {}) {
+const TARGET_LABEL: Record<AuditTargetKind, TKey> = { permission: 'target_permission', department: 'department', site: 'site', function: 'function_label', type: 'type', export: 'target_export' };
+
+/** What an entry without document is about, as the Journal tab and its export name it: "Fonction · Responsable qualité". */
+export function auditTargetL(ctx: Ctx, kind: AuditTargetKind | null, id: string | null): string {
+  if (!kind || !id) return '—';
+  const { t } = ctx;
+  const [role, perm] = id.split(':');
+  const name =
+    kind === 'permission' ? `${t[MATRIX_ROLE_LABEL[role]] ?? role} · ${t[`perm_${perm}` as TKey] ?? perm}`
+    : kind === 'department' ? `${id} · ${ctx.label('department', id)}`
+    : kind === 'site' ? ctx.label('site', id)
+    : kind === 'function' ? ctx.label('function', id)
+    : kind === 'type' ? `${id} · ${ctx.label('type', id)}`
+    : id === 'search' ? t.adv_search : t.ad_audit;
+  return `${t[TARGET_LABEL[kind]]} · ${name}`;
+}
+
+/** Labels of the fields a journal change names; `granted` and `active` have none (the target, or the value, says it). */
+const CHANGE_LABEL: Record<string, TKey> = {
+  title: 'title_label', typeCode: 'type', subtype: 'subtype', origin: 'origin', attachment: 'attachment', projectCode: 'project', programCode: 'program',
+  department: 'department', site: 'site', ownerId: 'owner', authorText: 'author_text', conf: 'conf', keywords: 'keywords', lang: 'language',
+  reviewDueAt: 'review_due_at', expiresAt: 'expires_at', sourceOrg: 'source_org', externalRef: 'external_ref', receivedAt: 'received_at',
+  projectPhase: 'project_phase', workPackage: 'work_package', discipline: 'discipline', researchTheme: 'research_theme', studyId: 'study_id',
+  ipStatus: 'ip_status', processOwnerId: 'process_owner', retention: 'retention', circuit: 'circuit', confAllowed: 'conf_allowed', confDefault: 'conf_default',
+};
+
+/** One stored value of a change, in the reader's language. */
+function changeValueL(ctx: Ctx, field: string, v: AuditValue | undefined): string {
+  const { t } = ctx;
+  if (v == null || (Array.isArray(v) && !v.length)) return field === 'circuit' ? t.no_approval : '—';
+  if (typeof v === 'boolean') return field === 'granted' ? (v ? '✓' : '✕') : v ? t.active_label : t.inactive;
+  if (Array.isArray(v)) return v.map((x) => changeValueL(ctx, field, x)).join(field === 'circuit' ? ' → ' : ', ');
+  if (typeof v === 'object') {
+    return `${v.years != null ? `${v.years} ${t.years_short} · ` : ''}${t[`trig_${v.trigger}` as TKey] ?? v.trigger} · ${t[`disp_${v.disposition}` as TKey] ?? v.disposition}`;
+  }
+  const key = (prefix: string) => t[`${prefix}${v}` as TKey] ?? v;
+  switch (field) {
+    case 'title': return ctx.lang === 'fr' ? `« ${v} »` : `“${v}”`;
+    case 'ownerId': case 'processOwnerId': case 'holder': return ctx.userName(v);
+    case 'conf': case 'confAllowed': case 'confDefault': return key('conf_');
+    case 'origin': return key('or_');
+    case 'attachment': return key('att_');
+    case 'lang': return key('lang_');
+    case 'site': return ctx.label('site', v);
+    case 'circuit': return ctx.label('function', v);
+    default: return v;
+  }
+}
+
+/** "Label : before → after"; the label alone when the values are withheld. */
+function changeL(ctx: Ctx, c: AuditChange): string {
+  const label = c.field === 'holder' ? c.scope ?? ctx.t.scope_global : CHANGE_LABEL[c.field] ? ctx.t[CHANGE_LABEL[c.field]] : '';
+  if (!('before' in c) && !('after' in c)) return label || c.field;
+  return `${label ? `${label} : ` : ''}${changeValueL(ctx, c.field, c.before)} → ${changeValueL(ctx, c.field, c.after)}`;
+}
+
+const FACET_LABEL: Record<FacetKey, TKey> = { project: 'project_program', family: 'family', type: 'type', origin: 'origin', attachment: 'attachment', department: 'department', status: 'status', conf: 'conf' };
+const FACET_PREFIX: Partial<Record<FacetKey, string>> = { origin: 'or_', attachment: 'att_', status: 'st_', conf: 'conf_' };
+
+/** What an export wrote: "« béton » · Type : PRO, NCR · 12 lignes", or "journal complet · 830 lignes". */
+function exportL(ctx: Ctx, targetId: string | null, x: NonNullable<AuditData['export']>): string {
+  const { t } = ctx;
+  const value = (k: FacetKey, v: string) => (FACET_PREFIX[k] && t[`${FACET_PREFIX[k]}${v}` as TKey]) || (k === 'family' ? ctx.label('family', v) : v);
+  const filters = FACET_KEYS.filter((k) => x.facets?.[k]?.length).map((k) => `${t[FACET_LABEL[k]]} : ${x.facets![k]!.map((v) => value(k, v)).join(', ')}`);
+  const what = targetId === 'search' ? [...(x.q ? [ctx.lang === 'fr' ? `« ${x.q} »` : `“${x.q}”`] : []), ...filters] : [t.export_full];
+  return [...(what.length ? what : [t.export_unfiltered]), `${x.interrupted ? `${t.export_interrupted} ` : ''}${x.rows} ${t.export_rows}`].join(' · ');
+}
+
+/** Detail of an entry in the reader's language: its free detail, then its changes or export figures. */
+export function auditDetailL(ctx: Ctx, a: Pick<AuditRow, 'detail' | 'data' | 'targetId'>): string {
+  const x = a.data;
+  return [a.detail, x?.changes?.length ? x.changes.map((c) => changeL(ctx, c)).join(' ; ') : '', x?.export ? exportL(ctx, a.targetId, x.export) : ''].filter(Boolean).join(' · ');
+}
+
+/** Screen where the target of an entry without document is managed. */
+function auditTargetHref(ctx: Ctx, kind: AuditTargetKind | null, id: string | null): string {
+  switch (kind) {
+    case 'permission': return '/administration?tab=roles';
+    case 'department': case 'site': return '/administration?tab=org';
+    case 'function': return '/administration?tab=functions';
+    case 'type': {
+      const family = id ? ctx.typeByCode.get(id)?.family : undefined;
+      return `/administration${family ? `?family=${encodeURIComponent(family)}` : ''}`;
+    }
+    case 'export': return id === 'search' ? '/recherche' : '/administration?tab=audit';
+    default: return '/administration?tab=audit';
+  }
+}
+
+/**
+ * Journal entries, newest first, as auditForReader lets the user read them. For a document, its entries under its
+ * current ID and its former ones. Each entry keeps the ID it was written under (`ref`, Journal tab and export) and
+ * gives the document's current one (`currentId`, activity feeds) when the user may read it. `docsOnly` (activity
+ * feeds) leaves out, in the query itself, the entries without document, which would otherwise take up the `limit`;
+ * so does a user without the administration screen, who never reads them.
+ */
+export async function listAudit(ctx: Ctx, opts: { docId?: string; limit?: number; docsOnly?: boolean } = {}) {
   const db = await getDb();
-  const q = db.select().from(s.auditLog).orderBy(desc(s.auditLog.at), desc(s.auditLog.id));
-  const rows = await auditForReader(ctx, await (opts.docId ? q.where(eq(s.auditLog.docId, opts.docId)) : q).limit(opts.limit ?? 500));
-  return rows.map((a) => ({
-    ...a,
-    when: fmtWhen(a.at),
-    user: ctx.userName(a.userId),
-    actionLabel: ctx.t[`act_${a.action}` as TKey] ?? a.action,
-    ref: a.docId,
-    href: `/documents/${encodeURIComponent(a.docId)}`,
-  }));
+  const current = await currentIds();
+  const ids = opts.docId ? [opts.docId, ...[...current].filter(([, id]) => id === opts.docId).map(([former]) => former)] : [];
+  const where = opts.docId ? inArray(s.auditLog.docId, ids) : opts.docsOnly || !ctx.screens.admin ? isNotNull(s.auditLog.docId) : undefined;
+  const rows = await auditForReader(ctx, await db.select().from(s.auditLog).where(where).orderBy(desc(s.auditLog.at), desc(s.auditLog.id)).limit(opts.limit ?? 500));
+  return rows.map((a) => {
+    const local = parisStamp(a.at);
+    // An unreadable document is named by the ID of the time only: its current one would tell a reclassification apart.
+    const currentId = a.docId == null || !a.readable ? null : current.get(a.docId) ?? a.docId;
+    return {
+      ...a,
+      /** Paris time, "YYYY-MM-DD HH:mm:ss" (`at` is the UTC instant). */
+      local,
+      when: fmtWhen(local),
+      user: ctx.userName(a.userId),
+      actionLabel: ctx.t[`act_${a.action}` as TKey] ?? a.action,
+      /** Free detail, then the changes or export figures, in the user's language. */
+      detail: auditDetailL(ctx, a),
+      /** The document under its current ID; null for an entry without document, or about a document the user cannot read. */
+      currentId,
+      /** The document under the ID of the time, or the target of an entry without document. */
+      ref: a.docId ?? auditTargetL(ctx, a.targetKind, a.targetId),
+      href: a.docId != null ? `/documents/${encodeURIComponent(currentId ?? a.docId)}` : auditTargetHref(ctx, a.targetKind, a.targetId),
+    };
+  });
 }
 export type AuditView = Awaited<ReturnType<typeof listAudit>>[number];
 

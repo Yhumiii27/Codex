@@ -300,14 +300,15 @@ async function Audit({ ctx }: { ctx: Ctx }) {
   const rows = await listAudit(ctx, { limit: 500 });
   return (
     <table className="table" style={{ fontSize: 13 }}>
-      <thead><tr><th>{t.when}</th><th>{t.user}</th><th>{t.action}</th><th>{t.document}</th><th>{t.detail}</th></tr></thead>
+      <thead><tr><th>{t.when}</th><th>{t.user}</th><th>{t.action}</th><th>{t.target}</th><th>{t.detail}</th></tr></thead>
       <tbody>
         {rows.map((a) => (
           <tr key={a.id}>
             <td className="text-muted nowrap tabnum">{a.when}</td>
             <td>{a.user}</td>
             <td>{a.actionLabel}</td>
-            <td className="nowrap"><Link href={a.href} className="link-plain">{a.ref}</Link></td>
+            {/* The ID the entry was written under; the link opens the document under its current one. */}
+            <td className={a.docId ? 'nowrap' : undefined}><Link href={a.href} className="link-plain" title={a.currentId !== a.docId ? a.currentId ?? undefined : undefined}>{a.ref}</Link></td>
             <td className="text-muted">{a.detail}</td>
           </tr>
         ))}

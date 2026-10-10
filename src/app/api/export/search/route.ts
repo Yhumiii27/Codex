@@ -1,10 +1,14 @@
+import { getDb } from '@/db';
 import { getCtx } from '@/lib/context';
-import { csv, csvResponse } from '@/lib/csv';
+import { csv, csvHeaders, csvResponse } from '@/lib/csv';
 import { todayIso } from '@/lib/format';
+import { audit } from '@/lib/lifecycle';
 import { listDocs } from '@/lib/queries';
 import { parseSearch, runSearch } from '@/lib/search';
 
-/** CSV of the advanced search results, same query string as /recherche (visible documents only). */
+const filename = () => `codex-recherche-${todayIso()}.csv`;
+
+/** CSV of the advanced search results, same query string as /recherche (visible documents only); journaled with its query, facets and size. */
 export async function GET(req: Request) {
   const ctx = await getCtx();
   const { t } = ctx;
@@ -19,5 +23,11 @@ export async function GET(req: Request) {
       d.retainUntil ?? (d.untilF === '—' ? '' : d.untilF),
     ]),
   ];
-  return csvResponse(csv(rows), `codex-recherche-${todayIso()}.csv`);
+  await audit(await getDb(), ctx.user.id, 'export', { kind: 'export', id: 'search' }, '', null, { export: { q: q.slice(0, 500), facets, rows: results.length } });
+  return csvResponse(csv(rows), filename());
+}
+
+/** Headers only, without running the search nor journaling an export (link checkers, download managers). */
+export async function HEAD() {
+  return new Response(null, { headers: csvHeaders(filename()) });
 }

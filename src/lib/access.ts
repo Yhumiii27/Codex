@@ -104,8 +104,8 @@ export function readerMaySeeRevision(circle: boolean, revStatus: string | null |
   return circle || revStatus === 'in_force' || revStatus === 'superseded';
 }
 
-/** Journal actions that only ever concern one revision (working versions, circuits, entry into force, files). */
-const REVISION_ACTIONS = new Set(['upload', 'working', 'import', 'reclass', 'request', 'approve', 'sign', 'reject', 'delegate', 'in_force', 'download']);
+/** Journal actions that only ever concern one revision (working versions, circuits and their comments, entry into force, files). */
+const REVISION_ACTIONS = new Set(['upload', 'working', 'import', 'reclass', 'request', 'approve', 'sign', 'reject', 'delegate', 'comment', 'in_force', 'download']);
 
 /**
  * Journal entries outside the drafting circle (D-14). An entry about a revision records it (audit_log.revision_id) and

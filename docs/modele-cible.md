@@ -95,14 +95,28 @@ attente de sa date d'effet, ou annulée n'existe pas pour lui, ni rien de ce qui
 - les entrées du journal qui la concernent. Chaque entrée porte la révision dont elle parle (`audit_log.revision_id`)
   et suit son statut : elle apparaît quand la révision entre en vigueur. Une entrée sans révision concerne le document
   entier (métadonnées, lecteurs, demandes, retrait, gel, archivage) et reste visible ; une action propre à une
-  révision (dépôt, demande de validation, visa…) dont la révision est inconnue reste masquée. Cette règle vaut pour
-  l'historique de la fiche, l'activité de l'accueil, les notifications, l'onglet Journal et son export CSV ;
+  révision (dépôt, demande de validation, visa, commentaire de circuit…) dont la révision est inconnue reste masquée.
+  Cette règle vaut pour l'historique de la fiche, l'activité de l'accueil, les notifications, l'onglet Journal et son
+  export CSV ;
 - la date de modification due au travail en cours : la fiche et les listes datent le document de son dernier
   changement visible (mise en vigueur, ou modification de la fiche elle-même).
 
 Les lecteurs désignés s'ajoutent au département ou à l'équipe projet d'un document confidentiel et sont les
 seuls lecteurs d'un document très confidentiel ; en dessous de « Confidentiel », ils n'ont pas d'effet et sont retirés.
 Le droit « Lire » de la matrice conditionne toute lecture hors du cercle de rédaction.
+
+Le journal d'audit suit les mêmes règles, quel que soit l'identifiant sous lequel une entrée a été écrite (ancien ID
+d'un document reclassé compris) :
+- hors du cercle de rédaction, une entrée qui concerne une révision non visible est masquée (voir ci-dessus) ;
+- sur un document que le lecteur ne peut pas lire (confidentialité, brouillon jamais en vigueur, D-14), un
+  administrateur qui n'est pas gestionnaire documentaire voit dans l'onglet Journal et son export l'action, l'auteur,
+  la date et l'identifiant de l'époque, mais pas le détail ; l'identifiant courant n'est pas donné ;
+- les valeurs « avant → après » d'une modification de métadonnées ne sont montrées hors du cercle que si une révision
+  était en vigueur au moment de la modification et si le document n'était pas alors d'un niveau plus strict
+  qu'aujourd'hui (cas d'un abaissement de la confidentialité). Sinon, seuls les noms des champs modifiés apparaissent ;
+- les entrées sans document (droits, organisation, fonctions, registre, exports) ne se lisent que depuis l'écran
+  d'administration.
+Les gestionnaires documentaires lisent tout le journal.
 
 ## 6. Circuits de validation
 

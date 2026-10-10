@@ -38,6 +38,24 @@ export function nowStamp(): string {
   return stampFmt.format(new Date()).replace('T', ' ');
 }
 
+/** An instant as Postgres writes a timestamptz ("2026-10-05 07:45:00.123+00") or in ISO form → milliseconds since the epoch. */
+function instant(ts: string): number {
+  return Date.parse(ts.replace(' ', 'T').replace(/([+-]\d{2})$/, '$1:00'));
+}
+
+/** UTC instant (audit log) → Paris time "YYYY-MM-DD HH:mm:ss", as nowStamp writes it. */
+export function parisStamp(ts: string): string {
+  return stampFmt.format(instant(ts)).replace('T', ' ');
+}
+
+/** Paris time "YYYY-MM-DD HH:mm:ss" → UTC instant in ISO form (demo data written in local time). */
+export function parisToUtc(local: string): string {
+  const asUtc = instant(`${local}Z`);
+  const offset = (t: number) => instant(`${parisStamp(new Date(t).toISOString())}Z`) - t;
+  // Second pass for the hours around a change of daylight saving time.
+  return new Date(asUtc - offset(asUtc - offset(asUtc))).toISOString();
+}
+
 export function todayIso(): string {
   return nowStamp().slice(0, 10);
 }
