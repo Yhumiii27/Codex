@@ -74,6 +74,9 @@ npm test             # Vitest : tests/unit et tests/integration (PGlite en mémo
 npm run typecheck && npm run lint && npm run build
 ```
 
+- **Intégration continue** : `.github/workflows/ci.yml` rejoue `npm ci`, typecheck, lint, tests et build à chaque push
+  et pull request.
+
 - **Base de démo.** Au premier lancement, elle est créée dans `.data/` (non versionné) puis remplie par
   `src/db/seed*.ts`. Pour repartir de zéro : arrêter le serveur, `npm run db:reset`, relancer.
 - **Changement de `src/db/schema.ts`.** Tant qu'il n'y a pas de base de production, on régénère une migration
@@ -99,7 +102,8 @@ npm run typecheck && npm run lint && npm run build
 
 ## Limites en session cloud (conteneur Linux)
 
-- Node ≥ 20.9 est requis (Next 16.4 ; la session locale utilise Node 26). La police Inter est chargée par
+- Node 20.19+ ou 22.12+ est requis (`engines` de package.json : Next 16.4 et Vite 7 pour Vitest ; la session locale
+  utilise Node 26). La police Inter est chargée par
   `next/font/google` : sans accès réseau à Google Fonts, `npm run build` peut échouer, `npm run dev` se rabat sur une
   police de secours.
 - Une branche cloud créée avant le 9 octobre au soir ne contient pas ces documents : `git fetch origin && git merge
