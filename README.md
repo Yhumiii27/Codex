@@ -21,9 +21,19 @@ déposés sont stockés dans `.data/files/` (ou dans SharePoint, voir `src/lib/s
 - Après une modification de `src/db/schema.ts` : tant qu'il n'y a pas de base de production, régénérer la migration
   unique (`rm -rf drizzle && npx drizzle-kit generate --name init`) puis `npm run db:reset`.
 - Contrôles : `npm test`, `npm run typecheck`, `npm run lint`, `npm run build`.
-- Tests : `npm test` lance Vitest une fois (`npm run test:watch` en continu). Les tests unitaires (`tests/unit/`)
-  couvrent les règles pures (identifiants, révisions, visibilité, conservation, recherche, dates, types de fichiers)
-  et tournent en quelques secondes, sans serveur, sans base ni réseau.
+- Tests : `npm test` lance Vitest une fois (`npm run test:watch` en continu), en une vingtaine de secondes, sans
+  serveur ni réseau et sans toucher à `.data/`.
+  - `tests/unit/` : règles pures (identifiants, révisions, visibilité, conservation, recherche, dates, types de
+    fichiers).
+  - `tests/integration/` : règles métier sur une base PGlite en mémoire, migrée depuis `drizzle/` avec le déclencheur
+    du journal (`openDb` dans `src/db/index.ts`) et remplie de données minimales (`tests/support/fixtures.ts`), pas de
+    la base de démo. Identifiants et compteurs, révisions et dates d'effet, circuits, décisions Vigie et webhook,
+    journal en ajout seul, cercle de rédaction, import. Les Server Actions y tournent avec `next/headers` et
+    `next/cache` simulés (`tests/support/session.ts`) ; l'horloge est figée au 10 octobre 2026.
+  - Limite : PGlite n'a qu'une connexion et exécute les transactions l'une après l'autre. Les tests d'attributions
+    « simultanées » (`Promise.all`) vérifient l'absence de doublon sous cet entrelacement, pas l'atomicité des
+    compteurs entre connexions d'un vrai serveur Postgres (étape 5, O-03) : il faudra un Postgres serveur pour la
+    vérifier.
 
 Variables : voir `.env.example` (Keystone, Vigie, dossier de données, jetons de l'API d'intégration).
 
@@ -115,7 +125,8 @@ src/
     i18n.ts            textes FR / EN
 tests/
   unit/                tests unitaires des règles pures de src/lib (Vitest, vitest.config.ts)
-  support/             modules de remplacement pour les tests (server-only)
+  integration/         tests d'intégration sur PGlite en mémoire (règles métier de src/lib, Server Actions, webhook)
+  support/             base de test et données minimales, session simulée, remplacement de server-only
 ```
 
 ## Décisions et points ouverts

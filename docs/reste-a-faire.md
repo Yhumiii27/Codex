@@ -986,6 +986,7 @@ Constaté. src/db/seed-docs.ts contient 63 entrées `title:`. package.json n'a a
 
 #### 57. Tests automatisés
 
+- **Fait en partie le 10 octobre 2026** : Vitest (`npm test`) lance des tests unitaires des règles pures (`tests/unit/`) et des tests d'intégration des règles métier et des Server Actions sur un PGlite en mémoire (`tests/integration/`, base ouverte par `openDb` dans `src/db/index.ts`, `next/headers` et `next/cache` simulés), dont le handler du webhook `/api/integrations/vigie`. Restent : les routes `/api/import` et `/api/documents/[id]/file` appelées par leurs handlers (l'import est testé par `importDocument`), les parcours Playwright, et l'atomicité des compteurs entre connexions (PGlite n'a qu'une connexion : il faut un Postgres serveur).
 - **Effort** : important
 
 Le manque est réel. Il faut une base de tests, sans changer le périmètre :

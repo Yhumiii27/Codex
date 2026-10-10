@@ -29,18 +29,29 @@ create or replace trigger audit_log_no_change before update or delete on audit_l
 create or replace trigger audit_log_no_truncate before truncate on audit_log for each statement execute function audit_log_append_only();
 `;
 
-async function init(): Promise<Db> {
-  await mkdir(FILES_DIR, { recursive: true });
-  const client = new PGlite(path.join(DATA_DIR, 'pglite'));
+/**
+ * Opens a database with the schema of drizzle/ and the append-only journal, but no data: on disk under `dataDir`, or in
+ * memory without one. getDb() opens the application's database with it and seeds it; integration tests
+ * (tests/integration) open throwaway in-memory databases with it, so they run against the same schema and triggers.
+ */
+export async function openDb(dataDir?: string): Promise<Db> {
+  const client = new PGlite(dataDir);
   const db = drizzle(client, { schema });
   await migrate(db, { migrationsFolder: path.join(process.cwd(), 'drizzle') });
   await client.exec(AUDIT_APPEND_ONLY);
-  const [{ n }] = (await client.query<{ n: number }>('select count(*)::int as n from users')).rows;
+  return db;
+}
+
+async function init(): Promise<Db> {
+  await mkdir(FILES_DIR, { recursive: true });
+  const db = await openDb(path.join(DATA_DIR, 'pglite'));
+  const [{ n }] = (await db.$client.query<{ n: number }>('select count(*)::int as n from users')).rows;
   if (n === 0) await seed(db);
   return db;
 }
 
-// One embedded database per server process; kept on globalThis so dev hot reloads reuse it.
+// One embedded database per server process; kept on globalThis so dev hot reloads reuse it. Integration tests mock
+// getDb() to hand the code under test their in-memory database from openDb() (tests/support/db.ts, currentDb).
 const g = globalThis as unknown as { __codexDb?: Promise<Db> };
 
 export function getDb(): Promise<Db> {

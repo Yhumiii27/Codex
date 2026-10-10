@@ -70,7 +70,7 @@ numéro, sans les trancher à la place de l'utilisateur.
 ```bash
 npm install
 npm run dev          # http://localhost:3100
-npm test             # Vitest : tests unitaires de tests/unit/, quelques secondes, sans serveur ni base
+npm test             # Vitest : tests/unit et tests/integration (PGlite en mémoire), ~20 s, sans serveur ni .data/
 npm run typecheck && npm run lint && npm run build
 ```
 
@@ -86,6 +86,16 @@ npm run typecheck && npm run lint && npm run build
   `src/lib`. Un test encode `docs/decisions.md` et `docs/modele-cible.md`, pas le comportement du code : si le code
   les contredit, on le signale au lieu d'adapter le test. `server-only` y est remplacé par un module vide. Vitest
   demande Node 20.19+ ou 22.12+ (Vite 7).
+  - `tests/integration/` teste les règles métier sur une base PGlite en mémoire ouverte par `openDb()`
+    (`src/db/index.ts` : migrations de `drizzle/` et déclencheur du journal, sans données).
+  - `tests/support/db.ts` fournit `setupDb()` (une base par fichier, vidée et remplie des données minimales de
+    `fixtures.ts` avant chaque test), `currentDb()`, `fixClock()` et `setClock()`, et des aides (`addDoc`,
+    `addWorkflow`…).
+  - Un fichier qui appelle du code passant par `getDb()` doit simuler `@/db` pour lui rendre `currentDb()` ; sinon
+    `getDb()` ouvrirait `.data/pglite`. S'il appelle des Server Actions, il simule aussi `next/headers` et
+    `next/cache`, et choisit l'utilisateur avec `actAs()` (`tests/support/session.ts`). Les `vi.mock` à copier
+    sont en tête de `tests/integration/locks.test.ts`.
+  - PGlite sérialise les transactions : les tests « simultanés » ne prouvent pas l'atomicité entre connexions.
 
 ## Limites en session cloud (conteneur Linux)
 
