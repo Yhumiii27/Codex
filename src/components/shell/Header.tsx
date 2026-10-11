@@ -11,7 +11,7 @@ import { activeScreen } from './Sidebar';
 import { TODO_ICON } from './todo';
 import styles from './Header.module.css';
 
-const TITLE = { home: 'sc_home', explorer: 'sc_explorer', document: 'sc_document', search: 'sc_search', workflow: 'sc_workflow', retention: 'sc_retention', admin: 'sc_admin' } as const;
+const TITLE = { home: 'sc_home', explorer: 'sc_explorer', document: 'sc_document', search: 'sc_search', departments: 'sc_departments', workflow: 'sc_workflow', retention: 'sc_retention', admin: 'sc_admin' } as const;
 
 export type Notif = {
   recent: { id: number; when: string; user: string; actionLabel: string; ref: string; href: string }[];

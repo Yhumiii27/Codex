@@ -29,6 +29,11 @@ export const departments = pgTable('departments', {
   labelFr: text('label_fr').notNull(),
   labelEn: text('label_en').notNull(),
   sort: integer('sort').notNull().default(0),
+  /**
+   * Search facets the department's page puts forward (lib/departments.ts), in order; null for the default ones. Set in
+   * Administration › Organisation; the choice per department awaits the survey of each department's needs.
+   */
+  featured: jsonb('featured').$type<string[]>(),
 });
 
 export const sites = pgTable('sites', {

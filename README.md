@@ -24,14 +24,14 @@ déposés sont stockés dans `.data/files/` (ou dans SharePoint, voir `src/lib/s
 - Intégration continue GitHub Actions (`.github/workflows/ci.yml`) : `npm ci` puis ces contrôles, sous Node 22, à chaque push et PR.
 - Tests : `npm test` lance Vitest une fois (`npm run test:watch` en continu), en une vingtaine de secondes, sans
   serveur ni réseau et sans toucher à `.data/`.
-  - `tests/unit/` : règles pures (identifiants, révisions, visibilité, conservation, recherche, dates, types de
-    fichiers).
+  - `tests/unit/` : règles pures (identifiants, révisions, visibilité, conservation, recherche, filtres mis en avant
+    des départements, dates, types de fichiers).
   - `tests/integration/` : règles métier sur une base PGlite en mémoire, migrée depuis `drizzle/` avec le déclencheur
     du journal (`openDb` dans `src/db/index.ts`) et remplie de données minimales (`tests/support/fixtures.ts`), pas de
     la base de démo. Identifiants et compteurs, révisions et dates d'effet, circuits, décisions Vigie et webhook,
-    journal en ajout seul, cercle de rédaction, import, recherche et recherches enregistrées. Les Server Actions y
-    tournent avec `next/headers` et `next/cache` simulés (`tests/support/session.ts`) ; l'horloge est figée au
-    10 octobre 2026.
+    journal en ajout seul, cercle de rédaction, import, recherche, recherches enregistrées et pages par département.
+    Les Server Actions y tournent avec `next/headers` et `next/cache` simulés (`tests/support/session.ts`) ;
+    l'horloge est figée au 10 octobre 2026.
   - Limite : PGlite n'a qu'une connexion et exécute les transactions l'une après l'autre. Les tests d'attributions
     « simultanées » (`Promise.all`) vérifient l'absence de doublon sous cet entrelacement, pas l'atomicité des
     compteurs entre connexions d'un vrai serveur Postgres (étape 5, O-03) : il faudra un Postgres serveur pour la
@@ -67,9 +67,10 @@ quitter l'app et supprimer `~/Library/Application Support/Codex/data`.
 | `/explorateur` | Classement par famille, département, projet / programme, type ou origine ; filtres de statut ; aperçu rapide |
 | `/documents/[id]` | Fiche document : aperçu, onglets Projet · Fiche · Révisions · Validation · Demandes · Historique |
 | `/recherche` | Recherche plein texte classée par pertinence + facettes (projet, famille, type, sous-type, origine, rattachement, département, site, propriétaire, auteur, statut, confidentialité, langue, mots-clés, organisme source, phase, lot, discipline, thème), période sur une date (modification, émission, effet, révision, expiration), tri au choix, export CSV dans le même ordre ; recherches enregistrées (critères, période et tri) personnelles, ou partagées avec un département ou le groupe par un gestionnaire documentaire |
+| `/departements/[code]` | Page d'un département (`/departements` ouvre celui de l'utilisateur, un sélecteur passe aux autres) : documents en vigueur, échéances, circuits en cours qu'il suit, recherches partagées avec le département et le groupe, filtres mis en avant (valeurs les plus fréquentes, chacune un lien vers la recherche filtrée), le tout limité à ce que l'utilisateur peut lire. Départements provisoires (organigramme attendu) ; filtres par défaut (type, statut, projet), réglables par département dans Administration › Organisation, en attendant le recueil des besoins de chaque métier |
 | `/validations` | Circuits de validation : à valider, mes demandes, en cours, terminées ; approuver / rejeter (motif obligatoire) / déléguer, rappeler sa demande avant la dernière approbation, commentaires. Vue « Mes demandes Vigie » : demandes de modification et de retrait envoyées par l'utilisateur, avec leur statut |
 | `/archivage` | Échéances (archivage, gel juridique), règles de conservation du registre, archives |
-| `/administration` | Registre des types, fonctions & circuits, rôles & droits, organisation, modèles (QMS), journal d'audit (CSV) |
+| `/administration` | Registre des types, fonctions & circuits, rôles & droits, organisation (départements et leurs filtres mis en avant, sites), modèles (QMS), journal d'audit (CSV) |
 
 API : `/api/registry` (lu par Keystone), `/api/import` (outil de migration), `/api/integrations/vigie` (décisions
 Vigie), `/api/documents/[id]/file` (fichier d'une version de travail), `/api/export/*` (CSV).
@@ -82,7 +83,8 @@ Tout l'état d'écran est dans l'URL (onglets, filtres, sélection) : les liens 
   travail (A.1, A.2…), métadonnées et reclassement (nouvel identifiant tant qu'aucune révision n'a été approuvée),
   lecteurs désignés, demandes de validation et décisions (mise en vigueur à l'approbation ou à la date d'effet),
   délégation, commentaires, demandes de modification et de retrait, archivage, gel juridique, matrice des droits,
-  registre des types (circuit, confidentialité, conservation), titulaires des fonctions, départements et sites.
+  registre des types (circuit, confidentialité, conservation), titulaires des fonctions, départements (et filtres mis
+  en avant sur leur page) et sites.
   Chacune de ces actions alimente le journal d'audit, de même que les téléchargements et les deux exports CSV. Le
   journal est en ajout seul : la base refuse toute modification ou suppression (déclencheur posé au démarrage,
   `src/db/index.ts`), et un reclassement ne réécrit pas les entrées, qui gardent l'identifiant de leur époque.
@@ -122,6 +124,8 @@ src/
     lifecycle.ts       révisions : mise en vigueur, remplacement, décisions Vigie
     codes.ts           identifiants TYPE-CONTEXTE-SEQ et lettres de révision
     retention.ts       fin de conservation
+    search.ts          recherche : facettes, période, tri, pertinence
+    departments.ts     pages par département : filtres mis en avant
     storage.ts         stockage des fichiers (disque local ou SharePoint)
     filetypes.ts       types de fichier servis en ligne et affichés en aperçu
     keystone.ts, vigie.ts  frontières d'intégration

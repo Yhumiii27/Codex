@@ -134,6 +134,20 @@ const fr = {
   sort_by:'Trier par', sorted_by:'Tri', period:'Période', period_date:'Date', period_from:'du', period_to:'au',
   period_since:'depuis le', period_until:'jusqu’au', period_start:'Du', period_end:'Au', period_clear:'Effacer la période',
   facet_more:'de plus',
+  // Pages par département (G12)
+  nav_departments:'Départements', sc_departments:'Page du département',
+  dept_hint:'Départements provisoires, en attente de l’organigramme. Les filtres mis en avant suivent un réglage par défaut : le choix propre à chaque métier viendra du recueil des besoins par département.',
+  dept_search:'Rechercher dans le département', dept_unknown:'Ce département n’existe pas.',
+  dept_in_force:'Documents en vigueur', dept_in_force_sub:'que vous pouvez lire dans ce département', dept_wf:'Circuits en cours', dept_wf_sub:'que vous suivez sur ses documents',
+  dept_in_force_empty:'Aucun document en vigueur que vous puissiez lire dans ce département.', dept_wf_empty:'Aucun circuit en cours que vous suiviez sur les documents du département.',
+  dept_due_empty:'Aucune échéance dans les 90 jours.', dept_saved_empty:'Aucune recherche partagée avec ce département ou avec le groupe.',
+  featured_filters:'Filtres mis en avant', featured_set:'Régler', featured_default:'Filtres par défaut', featured_none:'Aucun',
+  dept_hint_set:'Départements provisoires, en attente de l’organigramme. Les filtres mis en avant ont été réglés pour ce département dans Administration ; le choix propre à chaque métier attend le recueil des besoins par département.',
+  featured_empty:'Aucune valeur à mettre en avant dans les documents que vous pouvez lire.', featured_none_set:'Aucun filtre mis en avant pour ce département.',
+  featured_follow_default:'Suivre les filtres par défaut',
+  featured_add:'Ajouter un filtre', featured_invalid:'Filtres non valides : 6 au plus, chacun une seule fois.',
+  featured_hint:'Sur la page du département, chaque filtre donne ses valeurs les plus fréquentes, avec un lien vers la recherche filtrée. Le choix propre à chaque métier viendra du recueil des besoins par département.',
+  act_dept_featured:'Filtres mis en avant modifiés',
 };
 
 type Dict = Record<keyof typeof fr, string>;
@@ -269,6 +283,20 @@ const en: Dict = {
   sort_by:'Sort by', sorted_by:'Sort', period:'Period', period_date:'Date', period_from:'from', period_to:'to',
   period_since:'since', period_until:'until', period_start:'From', period_end:'To', period_clear:'Clear the period',
   facet_more:'more',
+  // Department pages (G12)
+  nav_departments:'Departments', sc_departments:'Department page',
+  dept_hint:'Provisional departments, pending the organisation chart. The featured filters follow a default setting: the choice for each business will come from the survey of each department’s needs.',
+  dept_search:'Search the department', dept_unknown:'This department does not exist.',
+  dept_in_force:'Documents in force', dept_in_force_sub:'you may read in this department', dept_wf:'Running workflows', dept_wf_sub:'you follow on its documents',
+  dept_in_force_empty:'No document in force you may read in this department.', dept_wf_empty:'No running workflow you follow on the department’s documents.',
+  dept_due_empty:'Nothing due within 90 days.', dept_saved_empty:'No search shared with this department or with the group.',
+  featured_filters:'Featured filters', featured_set:'Set', featured_default:'Default filters', featured_none:'None',
+  dept_hint_set:'Provisional departments, pending the organisation chart. The featured filters were set for this department in Administration; the choice for each business awaits the survey of each department’s needs.',
+  featured_empty:'No value to feature in the documents you may read.', featured_none_set:'No filter featured for this department.',
+  featured_follow_default:'Follow the default filters',
+  featured_add:'Add a filter', featured_invalid:'Invalid filters: 6 at most, each one once.',
+  featured_hint:'On the department page, each filter gives its most frequent values, with a link to the filtered search. The choice for each business will come from the survey of each department’s needs.',
+  act_dept_featured:'Featured filters changed',
 };
 
 export const DICT: Record<Lang, Dict> = { fr, en };

@@ -6,8 +6,8 @@ et des arbitrages du 7 octobre 2026. Ce document fait foi pour l'implémentation
 Certaines règles ci-dessous sont des propositions de l'assistant, implémentées mais **non confirmées par l'utilisateur** :
 authentification Entra ID (§1), code département hors rattachement, largeur et portée du compteur, ID attribué au
 brouillon, alias et nom de fichier (§3), « Remplacé », mise en vigueur automatique, bandeau et nom de téléchargement
-d'un document obsolète ou archivé (§4), partage des recherches enregistrées (§5), longueur du motif de rejet et droit
-de rappeler une demande de validation (§6).
+d'un document obsolète ou archivé (§4), partage des recherches enregistrées et pages par département (§5), longueur du
+motif de rejet et droit de rappeler une demande de validation (§6).
 Elles sont listées dans `docs/decisions.md` (« Choix de l'assistant non validés explicitement », question O-09), qui
 prévaut en cas de doute.
 
@@ -145,6 +145,14 @@ droit de lire. Sa portée dit qui la voit :
 Partager (département ou groupe) et supprimer une recherche partagée sont réservés aux gestionnaires documentaires et
 aux détenteurs du droit « Administrer », qui voient aussi les recherches des autres départements ; personne ne voit
 les recherches personnelles d'autrui. *Proposé, non confirmé* (`docs/decisions.md`).
+
+**Pages par département.** La page d'un département (`/departements/[code]`) ne montre que ce que les autres écrans
+montrent déjà à l'utilisateur, limité à ce département : ses documents en vigueur que l'utilisateur peut lire, leurs
+échéances, les circuits en cours qu'il suit, les recherches partagées avec le département et avec le groupe. Ses
+filtres mis en avant comptent les valeurs des seuls documents lisibles, et chaque lien mène à la recherche filtrée, dont
+les résultats sont ces documents. Hors du cercle de rédaction, un brouillon n'y apparaît ni n'y est compté ; un document
+confidentiel n'y apparaît que pour son département, l'équipe projet et ses lecteurs désignés. *Proposé, non confirmé* ;
+le choix des filtres par métier attend le recueil des besoins (`docs/decisions.md`).
 
 ## 6. Circuits de validation
 

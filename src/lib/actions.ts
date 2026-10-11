@@ -12,6 +12,7 @@ import { addDays, fmtSize, loc, nowStamp, parseIsoDay, todayIso } from './format
 import { ATTACHMENTS, CONF_LEVELS, ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLES, ORIGINS, PERMS, SEARCH_SCOPES, SIM_ROLES, SIMULATED_MATRIX_ROLES, type Perm, type SimRole, type TKey } from './i18n';
 import { applyChangeDecision, applyPendingDecision, approveRevision, audit, catchUpEffectiveDates, lockOf, refreshHeadline, type ModifierSwap, type Tx } from './lifecycle';
 import { decisionWaitL } from './queries';
+import { cleanFeatured } from './departments';
 import { beyondBounds, cleanCriteria, hasCriteria, type SearchInput } from './search';
 import { discardFile, fileColumns, nameStoredFile, readStored, renameDocFiles, stageFile, stageUpload, type StagedFile } from './storage';
 import { submitChange, vigieSimulated } from './vigie';
@@ -952,6 +953,33 @@ export async function addOrgValue(kind: 'department' | 'site', code: string, lab
   }
   refresh();
   return { ok: true };
+}
+
+/**
+ * Facets a department's page puts forward (/departements/[code]), in order: a list of facets of /recherche (at most
+ * MAX_FEATURED, none to put none forward), or null to follow the default ones again (lib/departments.ts). Which facets
+ * suit each department awaits the survey of their needs: the default stands until then.
+ */
+export async function setDepartmentFeatured(code: string, featured: string[] | null): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const no = adminOnly(ctx);
+  if (no) return no;
+  if (!ctx.departments.some((d) => d.code === code)) return fail(ctx);
+  const next = cleanFeatured(featured);
+  if (next === undefined) return fail(ctx, 'featured_invalid');
+  // Journal values: the facets, or 'default' for the default ones (an empty list is stored as none, lib/queries.ts).
+  const journal = (v: string[] | null): AuditValue => v ?? 'default';
+  const db = await getDb();
+  await db.transaction(async (tx) => {
+    const [cur] = await tx.select().from(s.departments).where(eq(s.departments.code, code));
+    if (!cur) return;
+    await tx.update(s.departments).set({ featured: next }).where(eq(s.departments.code, code));
+    const changed = changes([['featured', journal(cur.featured), journal(next)]]);
+    // Saving without a change leaves no entry.
+    if (changed.length) await audit(tx, ctx.user.id, 'dept_featured', { kind: 'department', id: code }, '', null, { changes: changed });
+  });
+  refresh();
+  return { ok: true, message: ctx.t.saved_ok };
 }
 
 export async function addFunctionHolder(functionKey: string, scopeValue: string | null, userId: string): Promise<ActionResult> {

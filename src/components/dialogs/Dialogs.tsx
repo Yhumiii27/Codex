@@ -7,10 +7,12 @@ import { Seg } from '@/components/ui/Seg';
 import type { Attachment, Conf, Origin } from '@/db/schema';
 import {
   addFunctionHolder, addOrgValue, addWorkingVersion, createDocument, decideStep, delegateStep, graftChange, recallValidation, requestChange,
-  requestValidation, saveSearch, setReaders, simulateUser, simulateVigieDecision, updateMeta, updateType,
+  requestValidation, saveSearch, setDepartmentFeatured, setReaders, simulateUser, simulateVigieDecision, updateMeta, updateType,
 } from '@/lib/actions';
 import { contextOf, idMatches, seqWidth } from '@/lib/codes';
+import { DEFAULT_FEATURED, FEATURABLE, MAX_FEATURED } from '@/lib/departments';
 import { ATTACHMENTS, CONF_LEVELS, ORIGINS, PROJECT_PHASES, SEARCH_SCOPES, SIM_ROLES, type T, type TKey } from '@/lib/i18n';
+import { FACET_LABEL, type FacetKey } from '@/lib/search';
 import { FilePicker, Modal, Select, useSubmit, type SelectOption } from './Modal';
 import type { DialogData, DialogSpec, MetaDoc, VersionLite } from './types';
 
@@ -32,6 +34,7 @@ export function Dialogs({ spec }: { spec: DialogSpec }) {
     case 'type': return <TypeEditor type={spec.type} />;
     case 'holder': return <AddHolder functionKey={spec.functionKey} functionLabel={spec.functionLabel} scope={spec.scope} />;
     case 'org': return <AddOrg what={spec.what} />;
+    case 'featured': return <FeaturedEditor spec={spec} />;
     case 'saveSearch': return <SaveSearch spec={spec} />;
   }
 }
@@ -933,6 +936,77 @@ function AddOrg({ what }: { what: 'department' | 'site' }) {
         )}
         <ErrorLine error={error} />
       </form>
+    </Modal>
+  );
+}
+
+/**
+ * Facets the page of a department puts forward, in order (Administration › Organisation): the default ones, or a list
+ * of its own, edited like the steps of a circuit (TypeEditor).
+ */
+function FeaturedEditor({ spec }: { spec: Extract<DialogSpec, { kind: 'featured' }> }) {
+  const { t, close } = useApp();
+  const { pending, error, run } = useSubmit();
+  const [useDefault, setUseDefault] = useState(spec.isDefault);
+  const [keys, setKeys] = useState<string[]>(spec.featured);
+  const label = (k: string) => t[FACET_LABEL[k as FacetKey]] ?? k;
+  const free = FEATURABLE.filter((k) => !keys.includes(k));
+  const [addKey, setAddKey] = useState<string>(free[0] ?? '');
+  const full = keys.length >= MAX_FEATURED;
+  const move = (i: number, d: -1 | 1) => setKeys((xs) => { const ys = [...xs]; [ys[i], ys[i + d]] = [ys[i + d], ys[i]]; return ys; });
+  const remove = (i: number) => setKeys((xs) => xs.filter((_, j) => j !== i));
+  const add = () => {
+    if (!addKey || keys.includes(addKey) || full) return;
+    const next = [...keys, addKey];
+    setKeys(next);
+    setAddKey(FEATURABLE.find((k) => !next.includes(k)) ?? '');
+  };
+  const iconBtn = { width: 26, height: 26 };
+  const shown = useDefault ? [...DEFAULT_FEATURED] : keys;
+  return (
+    <Modal
+      title={`${t.featured_filters} — ${spec.department.code} · ${spec.department.label}`}
+      width={560}
+      actions={<>
+        <button type="button" className="btn btn-secondary" onClick={close}>{t.cancel}</button>
+        <button type="button" className="btn btn-primary" disabled={pending} onClick={() => run(() => setDepartmentFeatured(spec.department.code, useDefault ? null : keys))}>{t.save}</button>
+      </>}
+    >
+      <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12.5, cursor: 'pointer' }}>
+        <input type="checkbox" checked={useDefault} onChange={(e) => setUseDefault(e.target.checked)} style={{ margin: 0 }} />{t.featured_follow_default}
+      </label>
+      <Field label={t.featured_filters}>
+        <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {shown.map((k, i) => (
+            <li key={k} className={useDefault ? 'text-muted' : 'hover-tint'} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '2px 4px 2px 8px', borderRadius: 'var(--radius-md)', fontSize: 13, minHeight: 30 }}>
+              <span className="text-muted tabnum" style={{ width: 14 }}>{i + 1}</span>
+              <span className="ellipsis" style={{ flex: 1 }}>{label(k)}</span>
+              {!useDefault && (
+                <>
+                  <button type="button" className="btn btn-ghost btn-icon" style={iconBtn} disabled={i === 0} onClick={() => move(i, -1)} aria-label={`${t.move_up} · ${label(k)}`} title={t.move_up}>
+                    <Icon name="chevronDown" size={14} style={{ transform: 'rotate(180deg)' }} />
+                  </button>
+                  <button type="button" className="btn btn-ghost btn-icon" style={iconBtn} disabled={i === keys.length - 1} onClick={() => move(i, 1)} aria-label={`${t.move_down} · ${label(k)}`} title={t.move_down}>
+                    <Icon name="chevronDown" size={14} />
+                  </button>
+                  <button type="button" className="btn btn-ghost btn-icon" style={iconBtn} onClick={() => remove(i)} aria-label={`${t.remove} · ${label(k)}`} title={t.remove}>
+                    <Icon name="close" size={14} />
+                  </button>
+                </>
+              )}
+            </li>
+          ))}
+        </ol>
+        {shown.length === 0 && <div className="text-muted field-hint" style={{ paddingLeft: 8 }}>{t.featured_none}</div>}
+        {!useDefault && free.length > 0 && (
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <Select value={addKey} onChange={setAddKey} options={free.map((k) => ({ key: k, label: label(k) }))} ariaLabel={t.featured_add} />
+            <button type="button" className="btn btn-secondary nowrap" onClick={add} disabled={!addKey || full} title={full ? t.featured_invalid : undefined}><Icon name="plus" size={14} />{t.featured_add}</button>
+          </div>
+        )}
+      </Field>
+      <p className="text-muted" style={{ margin: 0, fontSize: 12.5 }}>{t.featured_hint}</p>
+      <ErrorLine error={error} />
     </Modal>
   );
 }

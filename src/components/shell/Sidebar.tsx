@@ -11,6 +11,7 @@ const ITEMS: { key: Screen; href: string; icon: IconName }[] = [
   { key: 'home', href: '/', icon: 'home' },
   { key: 'explorer', href: '/explorateur', icon: 'folder' },
   { key: 'search', href: '/recherche', icon: 'search' },
+  { key: 'departments', href: '/departements', icon: 'building' },
   { key: 'workflow', href: '/validations', icon: 'check' },
   { key: 'retention', href: '/archivage', icon: 'archive' },
   { key: 'admin', href: '/administration', icon: 'shield' },

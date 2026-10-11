@@ -9,4 +9,7 @@
 .remove:hover { opacity: 1; color: var(--color-accent); }
 .remove:disabled { cursor: progress; }
 .split { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 28px; align-items: start; }
-@media (max-width: 1100px) { .split { grid-template-columns: minmax(0, 1fr); } }
+/* One column below the width where the departments table (with its featured filters) fits beside the sites. */
+@media (max-width: 1360px) { .split { grid-template-columns: minmax(0, 1fr); } }
+/* A wide table scrolls within its grid column instead of spilling over the next one. */
+.tableScroll { overflow-x: auto; min-width: 0; }

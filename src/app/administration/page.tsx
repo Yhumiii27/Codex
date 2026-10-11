@@ -5,8 +5,10 @@ import { Seg } from '@/components/ui/Seg';
 import { ActionButton, DialogButton } from '@/components/ui/client';
 import { removeFunctionHolder, togglePermission } from '@/lib/actions';
 import { getCtx, type Ctx } from '@/lib/context';
+import { featuredOf } from '@/lib/departments';
 import { ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLE_LABEL, MATRIX_ROLES, PERMS, SIMULATED_MATRIX_ROLES, type TKey } from '@/lib/i18n';
 import { getMatrix, listAudit, listDocs, listFunctionHolders, listTemplates, typeView } from '@/lib/queries';
+import { FACET_LABEL } from '@/lib/search';
 import { AddValue } from './AddValue';
 import { FamilyFilter } from './FamilyFilter';
 import { countBy, typeSpec } from './shared';
@@ -214,7 +216,10 @@ async function Roles({ ctx }: { ctx: Ctx }) {
   );
 }
 
-/** Departments (3-letter code used in document IDs) and sites — provisional until the organisation chart. */
+/**
+ * Departments (3-letter code used in document IDs) and sites — provisional until the organisation chart. Each department
+ * has the facets its page puts forward (/departements/[code]): the default ones until it has its own.
+ */
 async function Organisation({ ctx }: { ctx: Ctx }) {
   const { t } = ctx;
   const [docs, fns] = await Promise.all([listDocs(ctx, { includeHidden: true }), listFunctionHolders(ctx)]);
@@ -232,21 +237,40 @@ async function Organisation({ ctx }: { ctx: Ctx }) {
       <div className={styles.split}>
         <section>
           <h6 className="sec-title" style={{ marginBottom: 10 }}>{t.department}</h6>
-          <table className="table" style={{ fontSize: 13 }}>
-            <thead><tr><th>{t.rule_id}</th><th>{t.label_fr}</th><th>{t.label_en}</th><th>{t.manager}</th><th style={{ textAlign: 'right' }}>{t.people}</th><th style={{ textAlign: 'right' }}>{t.count}</th></tr></thead>
-            <tbody>
-              {ctx.departments.map((d) => (
-                <tr key={d.code}>
-                  <td className="nowrap tabnum">{d.code}</td>
-                  <td>{d.labelFr}</td>
-                  <td className="text-muted">{d.labelEn}</td>
-                  <td className="text-muted">{heads.filter((h) => h.scopeValue === d.code).map((h) => h.user).join(', ') || '—'}</td>
-                  <td className="tabnum" style={{ textAlign: 'right' }}>{peopleByDept.get(d.code) ?? 0}</td>
-                  <td className="tabnum" style={{ textAlign: 'right' }}>{byDept.get(d.code) ?? 0}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {/* The table scrolls within its column rather than spilling over the sites beside it. */}
+          <div className={styles.tableScroll}>
+            <table className="table" style={{ fontSize: 13 }}>
+              <thead><tr><th>{t.rule_id}</th><th>{t.label_fr}</th><th>{t.label_en}</th><th>{t.manager}</th><th style={{ textAlign: 'right' }}>{t.people}</th><th style={{ textAlign: 'right' }}>{t.count}</th><th>{t.featured_filters}</th></tr></thead>
+              <tbody>
+                {ctx.departments.map((d) => {
+                  const featured = featuredOf(d);
+                  const label = ctx.label('department', d.code);
+                  return (
+                    <tr key={d.code}>
+                      <td className="nowrap tabnum"><Link href={`/departements/${encodeURIComponent(d.code)}`} className="link-plain">{d.code}</Link></td>
+                      <td>{d.labelFr}</td>
+                      <td className="text-muted">{d.labelEn}</td>
+                      <td className="text-muted">{heads.filter((h) => h.scopeValue === d.code).map((h) => h.user).join(', ') || '—'}</td>
+                      <td className="tabnum" style={{ textAlign: 'right' }}>{peopleByDept.get(d.code) ?? 0}</td>
+                      <td className="tabnum" style={{ textAlign: 'right' }}>{byDept.get(d.code) ?? 0}</td>
+                      {/* The default facets are named on hover only: every department follows them until it has its own. */}
+                      <td style={{ paddingTop: 0, paddingBottom: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                          <span className={`ellipsis${d.featured == null ? ' text-muted' : ''}`} style={{ maxWidth: 180 }} title={featured.map((k) => t[FACET_LABEL[k]]).join(', ') || t.featured_none}>
+                            {d.featured == null ? t.featured_default : featured.map((k) => t[FACET_LABEL[k]]).join(', ') || t.featured_none}
+                          </span>
+                          <DialogButton
+                            spec={{ kind: 'featured', department: { code: d.code, label }, featured, isDefault: d.featured == null }}
+                            className="btn btn-ghost btn-icon" icon="pen" ariaLabel={`${t.featured_filters} · ${d.code}`} style={{ width: 28, height: 28, flex: 'none' }}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </section>
         <section>
           <h6 className="sec-title" style={{ marginBottom: 10 }}>{t.site_label}</h6>

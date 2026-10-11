@@ -33,7 +33,8 @@ CREATE TABLE "departments" (
 	"code" text PRIMARY KEY NOT NULL,
 	"label_fr" text NOT NULL,
 	"label_en" text NOT NULL,
-	"sort" integer DEFAULT 0 NOT NULL
+	"sort" integer DEFAULT 0 NOT NULL,
+	"featured" jsonb
 );
 --> statement-breakpoint
 CREATE TABLE "doc_types" (

@@ -501,6 +501,18 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     entier compte plus qu'un début de mot, qui compte plus qu'un morceau de mot ;
   - au-delà de 8 options, une facette replie les autres sous « N de plus » (écart avec la maquette, qui affiche
     tout) ; la période est en bas de la colonne des filtres.
+- **Pages par département** (G12, FON-06, 11 octobre ; point 11 de `docs/reste-a-faire.md`, question A19 de l'audit) :
+  un squelette, en attendant le recueil des besoins par département (slide 9) et l'organigramme (O-04) :
+  - une page par département provisoire, `/departements` ouvrant celle du département de l'utilisateur (la première
+    pour qui n'en a pas), chacun pouvant consulter les autres ; mise en page de l'Accueil, sans nouvelle identité ;
+  - elle montre ce que les autres écrans montrent déjà à l'utilisateur, limité au département : documents en vigueur
+    qu'il peut lire, échéances (règles de l'Accueil), circuits en cours qu'il suit (règle de Validations : tous pour un
+    gestionnaire, sinon ceux auxquels il prend part), recherches partagées avec le département puis avec le groupe ;
+  - les « filtres mis en avant » sont des facettes de la recherche, dont la page donne les valeurs les plus fréquentes
+    avec un lien vers la recherche filtrée ; par défaut type de document, statut, projet ou programme, pour tous les
+    départements ; 6 au plus par département ;
+  - les régler est réservé à qui a le droit « Administrer » (Administration › Organisation), comme le reste de
+    l'organisation ; aucun choix par métier n'est fait à la place des départements.
 - **Retrait** (D-17) : effets d'un retrait accepté sur le travail en cours (circuit clos, révisions ouvertes annulées).
 - **Documents obsolètes ou archivés** (D-17) : bandeau d'avertissement sur la fiche et dans l'aperçu rapide de
   l'explorateur, suffixe `_OBSOLETE` ou `_ARCHIVE` dans le nom proposé au téléchargement (`docs/modele-cible.md` §4).

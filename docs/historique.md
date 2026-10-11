@@ -33,8 +33,7 @@ Conventions :
 | 10 oct. | Développement par étapes, un commit par étape validée. Étape 1 : brouillons invisibles hors du cercle (D-14). Étape 2 : avertissement sur les documents obsolètes ou archivés. Étape 3 : décision Vigie acceptée sur un document verrouillé. Étape 4 : droit de rédiger du modificateur désigné par Vigie. Étape 5 : identifiants sûrs en concurrence. Étape 6 : journal d'audit en ajout seul et complet | 11 |
 | 10 oct. | Tests (Vitest, PGlite en mémoire) et intégration continue | 12 |
 | 11 oct. | Décision D-26 : greffe ou attente d'une modification acceptée pendant une révision ouverte. Étape 1 : couche métier. Étape 2 : fiche document | 13 |
-| 11 oct. | « Mes demandes Vigie » dans l'écran Validations | 14 |
-| 11 oct. | « À traiter » complet : toutes les actions qui attendent l'utilisateur | 15 |
+| 11 oct. | Fonctions du deck (lot 5), une étape par fonction : « Mes demandes Vigie », « À traiter » complet, rejet motivé et rappel, recherches enregistrées partagées, facettes et tri de la recherche, pages par département | 14 |
 
 La session a été coupée plusieurs fois par une limite d'usage ou de dépense :
 - le 7 octobre à 13:38, reprise à 17:31 sur « Try again » ;
@@ -636,7 +635,33 @@ Constats confirmés, dans la numérotation du workflow :
   qu'une modification attend (une seule demande en cours par document) ; le modificateur désigné écarté par une greffe
   n'en est averti que par le journal, qu'il ne lit plus une fois sorti du cercle.
 
-## 14. Mes demandes Vigie (11 oct.)
+## 14. Fonctions du deck (11 oct.)
+
+Lot 5 : six fonctions que le deck demande et que Codex n'avait pas (FON-04, FON-06, FON-08, FON-10, FON-11), prises
+dans les points « développables maintenant » de [reste-a-faire.md](reste-a-faire.md). Chaque étape a été relue, puis
+commitée à part. Aucune question ouverte n'a été tranchée : quand un choix en dépendait, l'option la plus prudente a été
+prise et consignée dans [decisions.md](decisions.md) (« Choix de l'assistant non validés explicitement »). Partout, rien
+du travail en cours ne sort du cercle de rédaction (D-14) : chaque liste passe par les règles de `src/lib/access.ts`.
+
+| Étape | Commit | Points | Ce qui change | Choix prudents |
+|---|---|---|---|---|
+| 1. « Mes demandes Vigie » (§14.1) | `e7c2a89` | 1 (G18, FON-10) | Vue de Validations qui suit les demandes de modification et de retrait envoyées à Vigie : statut, attente, révision ouverte ou greffée | Hors du cercle, ni ECO, ni modificateur, ni date de décision d'une modification dont la révision est masquée ; rien sur l'Accueil, que la maquette réserve à ce qui attend une décision |
+| 2. « À traiter » complet (§14.2) | `39976c0` | 10 (G19, FON-11) | Une seule liste pour l'encart de l'Accueil, la pastille et la cloche : étapes, révisions à rédiger ou à reprendre, greffes, revues et expirations | Un élément n'apparaît que si le serveur laisserait agir ; la fin de conservation reste aux gestionnaires ; pastille sur Accueil (écart avec la maquette, noté) |
+| 3. Rejet motivé et rappel (§14.3) | `a4a1c71` | 9 et 5 (G17, FON-08) | Motif obligatoire pour rejeter ; rappel d'un circuit en cours par son demandeur ou un gestionnaire, la révision revenant en rédaction | Motif de 2 000 caractères au plus ; le propriétaire qui n'a pas fait la demande ne la rappelle pas ; droit Modifier exigé |
+| 4. Recherches enregistrées (§14.4) | `ac089f4` | 2 (G12, G15, FON-06) | Création, suppression, partage avec un département ou avec le groupe | Partage réservé aux gestionnaires et au droit Administrer ; seuls les critères sont gardés, jamais de documents |
+| 5. Facettes et tri de la recherche (§14.5) | `f24bc43` | 12 (G15, G32, FON-04) | Onze facettes, une période sur une date, un tri au choix ; export et recherches enregistrées suivent | Une seule période ; auteur et échéance pris comme sur la fiche ; refus explicite au-delà des bornes plutôt qu'une recherche tronquée |
+| 6. Pages par département (§14.6) | commit de l'étape 6, après relecture | 11 (G12, FON-06) | `/departements/[code]` : documents en vigueur, échéances, circuits, recherches partagées, filtres mis en avant réglables dans Administration | Mêmes filtres par défaut pour tous les départements, aucun choix par métier (recueil des besoins à faire, O-04) ; la page ne montre que ce que les autres écrans montrent déjà |
+
+- **Schéma** : migration unique régénérée aux étapes 3 (`workflows.closed_by`, `closed_at`, `reason`), 4
+  (`saved_searches.owner_id`, `scope`, `department`), 5 (`saved_searches.period`, `order_by`) et 6
+  (`departments.featured`).
+- **Tests** : de 339 à la fin de l'étape 1 à 479 à la fin du lot, chacun écrit pour échouer si la règle était cassée
+  (voir chaque étape).
+- **Reste ouvert après le lot** : recueil des besoins par département et organigramme (O-04, A19) pour les pages
+  métiers ; filtrage de la recherche en mémoire (point 50) ; notifications hors de l'application (point 104) ; Vigie
+  n'est prévenu ni d'une greffe ni d'une application différée (O-10).
+
+### 14.1 Mes demandes Vigie
 
 Point 1 de [reste-a-faire.md](reste-a-faire.md) (G18, FON-10) : chacun suit les demandes de modification et de retrait
 qu'il a envoyées à Vigie, jusque-là visibles seulement document par document.
@@ -672,7 +697,7 @@ qu'il a envoyées à Vigie, jusque-là visibles seulement document par document.
   d'elles la ramène à sa liste vide ; le lien « Ouvrir dans Vigie » n'apparaît qu'avec `NEXT_PUBLIC_VIGIE_URL` ; la
   vue en anglais.
 
-## 15. « À traiter » complet (11 oct.)
+### 14.2 « À traiter » complet
 
 Point 10 de [reste-a-faire.md](reste-a-faire.md) (G19, FON-11) : l'encart « À traiter », la pastille et la cloche ne
 montraient que les étapes de circuit à décider ; une révision ouverte au nom de l'utilisateur par un ECO, un rejet ou
@@ -726,7 +751,7 @@ un brouillon jamais soumis n'étaient listés nulle part, et les échéances n'�
   rouge ; Antoine Girard, simulé en collaborateur, n'a plus d'étape à décider. Vue en anglais vérifiée.
 
 
-## 16. Rejet motivé et rappel d'une demande de validation (11 oct.)
+### 14.3 Rejet motivé et rappel d'une demande de validation
 
 Points 9 et 5 de [reste-a-faire.md](reste-a-faire.md) (G17, FON-08) : un valideur rejetait une étape d'un clic, sans
 dire pourquoi, et le demandeur restait bloqué jusqu'à la décision des valideurs, sans pouvoir rappeler sa demande.
@@ -780,7 +805,7 @@ dire pourquoi, et le demandeur restait bloqué jusqu'à la décision des valideu
   anglais vérifiée (« Recalled », « Reason », journal « Approval request recalled »).
 
 
-## 17. Recherches enregistrées personnelles et partagées (11 oct.)
+### 14.4 Recherches enregistrées personnelles et partagées
 
 Point 2 de [reste-a-faire.md](reste-a-faire.md) (G12, G15, FON-06) : les trois recherches enregistrées de l'écran
 Recherche venaient du jeu de démonstration, sans propriétaire ni portée, et personne ne pouvait en créer, en supprimer
@@ -831,7 +856,7 @@ ou en partager.
   « Criteria »).
 
 
-## 18. Recherche : facettes manquantes, période et tri (11 oct.)
+### 14.5 Recherche : facettes manquantes, période et tri
 
 Point 12 de [reste-a-faire.md](reste-a-faire.md) (G15, G32, FON-04) : la recherche n'avait que huit facettes, une
 valeur par document et par facette (pas de mots-clés), aucune date et un ordre fixe (date de modification).
@@ -899,3 +924,66 @@ valeur par document et par facette (pas de mots-clés), aucune date et un ordre 
   « Préfecture du Rhône, DDPP », chacun se coche dans la facette, s'exporte, s'enregistre et se rouvre avec le même
   résultat ; une valeur de 301 caractères est refusée avec son message. Vue en anglais vérifiée (« Sort by », « Issue
   date », dates en fin de ligne).
+
+
+### 14.6 Pages par département
+
+Point 11 de [reste-a-faire.md](reste-a-faire.md) (G12, FON-06) : le deck annonce « des pages dédiées métiers […] pour
+mettre en avant les filtres principaux » ; Codex n'avait que l'axe Département de l'explorateur et les recherches
+enregistrées.
+
+- **Écran** (`src/app/departements`) : entrée « Départements » de la barre latérale (icône ajoutée dans le trait de la
+  maquette, qui n'en prévoit pas) ; `/departements` ouvre le département de l'utilisateur, ou le premier pour qui n'en
+  a pas (`defaultDepartment`, `src/lib/departments.ts`) ; un sélecteur passe à un autre département
+  (`/departements/QUA`) ; un code inconnu donne « Ce département n'existe pas ». Mise en page de l'Accueil, sans
+  nouvelle identité : titre et code, phrase sur le caractère provisoire des départements et des filtres, trois
+  indicateurs (documents en vigueur, échéances sous 90 jours, circuits en cours), puis deux colonnes : documents en
+  vigueur (8 premiers, « Tout voir » vers `/recherche?department=QUA&status=in_force`) et circuits en cours ; filtres
+  mis en avant, recherches enregistrées et échéances. Un CSS module (`departments.module.css`), textes FR et EN.
+- **Lecture** (`departmentPage`, `src/lib/queries.ts`) : les listes des autres écrans, filtrées sur le département,
+  donc sous leurs règles (D-14) : documents que l'utilisateur peut lire (`listDocs`) ; échéances de l'Accueil
+  (`deadlines`) ; circuits en cours qu'il suit (`listWorkflows`, `visible` : tous pour un gestionnaire, sinon ceux
+  auxquels il prend part, jamais hors du cercle de rédaction) ; recherches partagées avec le département puis avec le
+  groupe (`listSavedSearches`), jamais les personnelles.
+- **Filtres mis en avant** (`featuredFilters`, `src/lib/departments.ts`) : des facettes de la recherche (toutes sauf le
+  département), dont la page donne les 6 valeurs les plus fréquentes dans les documents lisibles du département, avec
+  leur nombre ; chaque valeur mène à `/recherche?department=…&<facette>=<valeur>`, dont les résultats sont les
+  documents comptés ; une facette sans valeur est omise, comme dans la recherche. Par défaut : type de document,
+  statut, projet ou programme.
+- **Réglage** : Administration › Organisation gagne une colonne « Filtres mis en avant » (« Filtres par défaut », la
+  liste au survol, ou la liste du département, suivie du bouton de réglage) et un dialogue : suivre les filtres par défaut, ou une liste propre de
+  6 facettes au plus, ordonnée comme les étapes d'un circuit. `setDepartmentFeatured` (`src/lib/actions.ts`) est
+  réservé au droit Administrer, comme le reste de l'écran, refuse une liste invalide (`cleanFeatured`) et journalise
+  l'avant et l'après (« Filtres mis en avant : Filtres par défaut → Discipline, Type de document, Statut,
+  Mots-clés ») ; un enregistrement sans changement ne laisse pas d'entrée. Colonne `departments.featured` (null :
+  filtres par défaut) ; migration unique régénérée ; le seed laisse tous les départements sur les filtres par défaut.
+  La page dit si ses filtres suivent le réglage par défaut ou ont été réglés pour le département, et distingue une
+  liste réglée vide (« Aucun filtre mis en avant pour ce département ») de filtres sans valeur lisible.
+- **Relecture** : le tableau des départements, élargi par la nouvelle colonne, débordait sur celui des sites entre
+  1100 et 1366 px ; il défile désormais dans sa colonne, et les deux tableaux s'empilent sous 1360 px (vérifié à 900,
+  1100, 1200, 1280, 1366 et 1500 px). `listWorkflows` est chargé une fois par requête et partagé entre « À traiter » et
+  la page (`cache`, comme `listDocs`). Sous-titre « Département » au lieu de « Département / Fonction ». Le point 116
+  de reste-a-faire.md note que la page existe.
+- **Choix prudents** (`docs/decisions.md`, `docs/modele-cible.md` §5) : aucun choix par métier n'est fait à la place
+  des départements, faute de recueil des besoins (slide 9) et d'organigramme (O-04) ; la page ne montre rien que les
+  autres écrans ne montrent déjà à l'utilisateur ; chacun peut ouvrir la page de n'importe quel département, qui ne
+  lui montre que ce qu'il peut lire.
+- **Vérifié** : `npm test` (479 tests, dont les 10 de `tests/unit/departments.test.ts` et les 13 de
+  `tests/integration/departments.test.ts`), `npm run typecheck`, `npm run lint`. Les tests échouent si la page lit
+  les documents sans filtre de lecture ou montre les circuits sans la règle de Validations (vérifié en cassant
+  `departmentPage`), si un brouillon ou un document confidentiel d'un autre département est montré ou compté, si une
+  recherche d'un autre département ou personnelle apparaît, si un lien mène à d'autres résultats que ceux comptés, si
+  le réglage est ouvert à un collaborateur, un valideur ou un auditeur, ou s'il n'est pas journalisé. Dans le
+  navigateur, sur une base de démo neuve : Claire Bardet ouvre `/departements` et arrive sur HSE (3 documents en
+  vigueur, le circuit de `RSQ-HSE-0001`), puis choisit QUA (11 documents en vigueur, dont l'audit confidentiel
+  `AUD-QUA-0001`, 2 échéances) ; « Formulaire / modèle 3 » mène à `/recherche?type=FRM&department=QUA`, 3 résultats.
+  Julien Wagner (ING) arrive sur ING (7 documents, son circuit sur `BOM-HLT-026-001`) ; sur QUA, il en voit 10, sans
+  `AUD-QUA-0001` ni sa valeur « Rapport d'audit interne » ; sur RHU et DSI, ni la matrice de compétences ni le PRA,
+  confidentiels. James Holt (auditeur, QUA) arrive sur QUA, sans circuit. Claire Bardet règle ING dans Administration
+  (Discipline, Type de document, Statut, Mots-clés) : la page de Julien Wagner les montre dans cet ordre
+  (« Électricité 3 » mène à 3 résultats), QUA garde les filtres par défaut ; retour aux filtres par défaut, les deux
+  changements sont au journal ; Julien Wagner n'a pas accès à Administration. Après relecture : une liste propre
+  change le bandeau de la page (« ont été réglés pour ce département »), une liste vide donne « Aucun filtre mis en
+  avant pour ce département » (sur RHU, sans document lisible, Julien Wagner garde « Aucune valeur à mettre en
+  avant »), le retour aux filtres par défaut rétablit le bandeau ; trois entrées au journal. Vue en anglais vérifiée (« Department
+  page », « Departments », « Featured filters »).

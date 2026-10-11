@@ -10,6 +10,7 @@ import { addDays, clip, daysBetween, fmtDate, fmtDateTime, fmtSize, fmtWhen, loc
 import { CONF_LEVELS, MATRIX_ROLE_LABEL, TAGCLS, type T, type TKey } from './i18n';
 import { decisionWait, lockOf, type DecisionWait } from './lifecycle';
 import { retainUntil } from './retention';
+import { featuredFilters, featuredOf } from './departments';
 import { DATE_LABEL, FACET_KEYS, FACET_LABEL, searchHref, SORT_LABEL, type FacetKey, type Facets, type Period, type SearchDoc, type SearchInput, type SortKey } from './search';
 
 type DocRow = typeof s.documents.$inferSelect;
@@ -203,7 +204,11 @@ export type RevisionView = Awaited<ReturnType<typeof listRevisions>>[number];
 
 // ── Workflows ────────────────────────────────────────────────────────────
 
-export async function listWorkflows(ctx: Ctx) {
+/**
+ * Every workflow, with what the current user may see of it (`visible`). Loaded once per request and shared (the layout
+ * through « À traiter », the page): never sort or change the list or its items in place, filter or copy it first.
+ */
+export const listWorkflows = cache(async (ctx: Ctx) => {
   const db = await getDb();
   const [wfs, steps, comments, docs, revs, ix] = await Promise.all([
     db.select().from(s.workflows).orderBy(asc(s.workflows.due), asc(s.workflows.id)),
@@ -271,7 +276,7 @@ export async function listWorkflows(ctx: Ctx) {
       href: `/validations?r=${encodeURIComponent(w.id)}`,
     };
   });
-}
+});
 export type WorkflowView = Awaited<ReturnType<typeof listWorkflows>>[number];
 
 // ── Change requests (Vigie) ──────────────────────────────────────────────
@@ -600,12 +605,13 @@ const CHANGE_LABEL: Record<string, TKey> = {
   reviewDueAt: 'review_due_at', expiresAt: 'expires_at', sourceOrg: 'source_org', externalRef: 'external_ref', receivedAt: 'received_at',
   projectPhase: 'project_phase', workPackage: 'work_package', discipline: 'discipline', researchTheme: 'research_theme', studyId: 'study_id',
   ipStatus: 'ip_status', processOwnerId: 'process_owner', retention: 'retention', circuit: 'circuit', confAllowed: 'conf_allowed', confDefault: 'conf_default',
+  featured: 'featured_filters',
 };
 
 /** One stored value of a change, in the reader's language. */
 function changeValueL(ctx: Ctx, field: string, v: AuditValue | undefined): string {
   const { t } = ctx;
-  if (v == null || (Array.isArray(v) && !v.length)) return field === 'circuit' ? t.no_approval : '—';
+  if (v == null || (Array.isArray(v) && !v.length)) return field === 'circuit' ? t.no_approval : field === 'featured' ? t.featured_none : '—';
   if (typeof v === 'boolean') return field === 'granted' ? (v ? '✓' : '✕') : v ? t.active_label : t.inactive;
   if (Array.isArray(v)) return v.map((x) => changeValueL(ctx, field, x)).join(field === 'circuit' ? ' → ' : ', ');
   if (typeof v === 'object') {
@@ -621,6 +627,8 @@ function changeValueL(ctx: Ctx, field: string, v: AuditValue | undefined): strin
     case 'lang': return key('lang_');
     case 'site': return ctx.label('site', v);
     case 'circuit': return ctx.label('function', v);
+    // Facets a department page puts forward ('default': those of every department without its own, lib/departments.ts).
+    case 'featured': return v === 'default' ? t.featured_default : t[FACET_LABEL[v as FacetKey]] ?? v;
     default: return v;
   }
 }
@@ -796,6 +804,44 @@ export async function listSavedSearches(ctx: Ctx) {
         : `${x.scope === 'department' ? `${ctx.t.search_is_department} ${ctx.label('department', x.department)}` : ctx.t.search_is_group} · ${ctx.t.by} ${ctx.userName(x.ownerId)}`,
       mayDelete: mayDeleteSearch(ctx, x),
     }));
+}
+
+// ── Department pages ─────────────────────────────────────────────────────
+
+/**
+ * A department's page (/departements/[code], G12, FON-06): its documents in force, review, expiry and retention dates
+ * falling due, running circuits, the saved searches shared with it and with the whole group, and its featured filters.
+ * Everything is read from the lists the other screens use, then narrowed to the department, so that the same rules
+ * hold (D-14): documents the user may read (listDocs), circuits they may follow (listWorkflows, `visible`: records
+ * managers all of them, others those they take part in, never outside the drafting circle), saved searches they may see
+ * (listSavedSearches). Null for an unknown department.
+ */
+export async function departmentPage(ctx: Ctx, code: string) {
+  const db = await getDb();
+  const [row] = await db.select().from(s.departments).where(eq(s.departments.code, code));
+  if (!row) return null;
+  const [docs, workflows, saved] = await Promise.all([listDocs(ctx), listWorkflows(ctx), listSavedSearches(ctx)]);
+  const own = docs.filter((d) => d.department === code);
+  const ids = new Set(own.map((d) => d.id));
+  const keys = featuredOf(row);
+  const of = (facets: Facets) => searchHref({ facets: { department: [code], ...facets } });
+  return {
+    code,
+    label: ctx.label('department', code),
+    /** Documents of the department the user may read, in force, most recently modified first. */
+    inForce: own.filter((d) => d.status === 'in_force'),
+    deadlines: deadlines(ctx, own),
+    workflows: workflows.filter((w) => w.visible && !w.done && ids.has(w.docId)),
+    /** Shared with this department first, then with the whole group; personal searches stay on /recherche. */
+    saved: [...saved.filter((x) => x.scope === 'department' && x.department === code), ...saved.filter((x) => x.scope === 'group')],
+    featured: featuredFilters(docs, code, keys, (k, v) => facetValueL(ctx, k, v), ctx.lang),
+    /** The featured facets follow the default ones (no setting of the department's own). */
+    featuredDefault: row.featured == null,
+    /** The facets put forward, in order (empty: Administration set none for the department). */
+    featuredKeys: keys,
+    /** /recherche on the department, and on its documents in force. */
+    href: { all: of({}), inForce: of({ status: ['in_force'] }) },
+  };
 }
 
 /** Templates available to "Nouveau depuis un modèle": template-type documents in force, with their file (same rule as createDocument). */

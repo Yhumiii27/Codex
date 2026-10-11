@@ -94,6 +94,11 @@ export type DialogSpec =
   | { kind: 'holder'; functionKey: string; functionLabel: string; scope: 'global' | 'department' | 'project' | 'research' }
   | { kind: 'org'; what: 'department' | 'site' }
   /**
+   * Administration › Organisation: facets the page of a department puts forward (lib/actions.ts setDepartmentFeatured).
+   * `featured`: those it puts forward now; `isDefault`: they are the default ones, the department has none of its own.
+   */
+  | { kind: 'featured'; department: { code: string; label: string }; featured: string[]; isDefault: boolean }
+  /**
    * Save the criteria of /recherche and the order of its results under a label (lib/actions.ts saveSearch). `search`: as
    * read from the URL (lib/search.ts parseSearch); `criteria`: the same, as lines to read; `mayShare`: the user may share
    * it with a department or the group (lib/access.ts mayShareSearches).
