@@ -131,7 +131,7 @@ export default async function SearchPage({ searchParams }: PageProps<'/recherche
         <div style={{ padding: '18px 24px 10px', display: 'flex', flexDirection: 'column', gap: 12 }}>
           <SearchField q={q} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <span className="text-muted" style={{ fontSize: 12 }}>{results.length} {t.results}</span>
+            <span className="text-muted" style={{ fontSize: 12 }}>{results.length} {results.length === 1 ? t.result_one : t.results}</span>
             <span style={{ flex: 1 }} />
             <SortSelect value={sort} options={SORT_KEYS.map((k) => ({ key: k, label: sortL(ctx, k) }))} />
             {hasActive && ctx.can('read') && (
