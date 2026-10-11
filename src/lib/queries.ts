@@ -3,14 +3,14 @@ import { cache } from 'react';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { getDb, schema as s } from '@/db';
 import type { AuditChange, AuditData, AuditTargetKind, AuditValue, Conf } from '@/db/schema';
-import { canRead, changeAsSeen, deadlineActor, draftTodo, getAccessIndex, inDraftingCircle, isUsableTemplate, mayRecall, mayWorkOnDraft, openRevisionView, readerMaySeeEntry, readerMaySeeRevision, type AccessIndex } from './access';
+import { canRead, changeAsSeen, deadlineActor, draftTodo, getAccessIndex, inDraftingCircle, isUsableTemplate, mayDeleteSearch, mayRecall, mayWorkOnDraft, openRevisionView, readerMaySeeEntry, readerMaySeeRevision, savedSearchesSeenBy, type AccessIndex } from './access';
 import { revLabel } from './codification';
 import type { Ctx } from './context';
 import { addDays, clip, daysBetween, fmtDate, fmtDateTime, fmtSize, fmtWhen, loc, parisStamp, todayIso } from './format';
 import { CONF_LEVELS, MATRIX_ROLE_LABEL, TAGCLS, type T, type TKey } from './i18n';
 import { decisionWait, lockOf, type DecisionWait } from './lifecycle';
 import { retainUntil } from './retention';
-import { FACET_KEYS, type FacetKey } from './search';
+import { FACET_KEYS, searchHref, type FacetKey, type Facets } from './search';
 
 type DocRow = typeof s.documents.$inferSelect;
 
@@ -709,10 +709,27 @@ export async function getMatrix() {
   return new Map(rows.map((r) => [`${r.role}:${r.perm}`, r.granted]));
 }
 
+const SCOPE_ORDER: Record<string, number> = { group: 0, department: 1, personal: 2 };
+
+/**
+ * Saved searches the user sees (lib/access.ts seesSavedSearch, filtered in SQL by savedSearchesSeenBy): shared with the
+ * group, then with a department, then their own, each in display order. `title` says who sees it and who shared it;
+ * `mayDelete`, whether to offer deletion.
+ */
 export async function listSavedSearches(ctx: Ctx) {
   const db = await getDb();
-  const rows = await db.select().from(s.savedSearches).orderBy(asc(s.savedSearches.sort));
-  return rows.map((x) => ({ ...x, labelL: loc(x.label, ctx.lang) }));
+  const rows = await db.select().from(s.savedSearches).where(savedSearchesSeenBy(ctx)).orderBy(asc(s.savedSearches.sort), asc(s.savedSearches.id));
+  return rows
+    .sort((a, b) => SCOPE_ORDER[a.scope] - SCOPE_ORDER[b.scope])
+    .map((x) => ({
+      id: x.id, q: x.q, facets: x.facets as Facets, scope: x.scope, department: x.department,
+      labelL: loc(x.label, ctx.lang),
+      href: searchHref(x.q, x.facets as Facets),
+      title: x.scope === 'personal'
+        ? ctx.t.search_is_personal
+        : `${x.scope === 'department' ? `${ctx.t.search_is_department} ${ctx.label('department', x.department)}` : ctx.t.search_is_group} · ${ctx.t.by} ${ctx.userName(x.ownerId)}`,
+      mayDelete: mayDeleteSearch(ctx, x),
+    }));
 }
 
 /** Templates available to "Nouveau depuis un modèle": template-type documents in force, with their file (same rule as createDocument). */

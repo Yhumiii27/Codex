@@ -778,3 +778,54 @@ dire pourquoi, et le demandeur restait bloqué jusqu'à la décision des valideu
   Antoine Girard donne la dernière approbation, puis Julien Wagner rappelle : message « Le circuit a avancé
   entre-temps », la révision D reste en vigueur. James Holt (auditeur) n'a pas accès au brouillon rappelé. Vue en
   anglais vérifiée (« Recalled », « Reason », journal « Approval request recalled »).
+
+
+## 17. Recherches enregistrées personnelles et partagées (11 oct.)
+
+Point 2 de [reste-a-faire.md](reste-a-faire.md) (G12, G15, FON-06) : les trois recherches enregistrées de l'écran
+Recherche venaient du jeu de démonstration, sans propriétaire ni portée, et personne ne pouvait en créer, en supprimer
+ou en partager.
+
+- **Schéma** : `saved_searches` gagne `owner_id`, `scope` (`personal`, `department`, `group`) et `department`, avec
+  deux contraintes (portée connue ; un département pour une recherche de département et pour elle seule) ; migration
+  unique régénérée. Le seed reprend les trois recherches comme recherches de groupe de Claire Bardet.
+- **Droits** (`src/lib/access.ts`) : `maySaveSearch` (recherche personnelle avec le droit « Lire » ; partagée selon
+  `mayShareSearches` : gestionnaire documentaire ou droit « Administrer »), `seesSavedSearch` (les siennes, celles de
+  son département, celles du groupe ; ceux qui partagent voient aussi celles des autres départements),
+  `mayDeleteSearch` (le propriétaire pour une recherche personnelle, ceux qui partagent pour une recherche partagée).
+- **Actions** (`src/lib/actions.ts`) : `saveSearch` refuse une portée inconnue, un partage sans le droit, un libellé
+  vide ou de plus de 80 caractères, une recherche sans critère et un département inconnu ; il ne garde que les
+  critères nettoyés par `cleanCriteria` (`src/lib/search.ts` : facettes connues, valeurs textuelles distinctes et
+  bornées). `deleteSavedSearch` répond « introuvable » pour une recherche que l'utilisateur ne voit pas (la recherche
+  personnelle d'un autre, celle d'un autre département) et refuse la suppression d'une recherche partagée à qui ne
+  partage pas.
+- **Écran Recherche** : bouton « Enregistrer la recherche » dès qu'un critère est choisi, qui ouvre un dialogue
+  (libellé, critères lus, portée « Vous seul / Un département / Tout le groupe » et département pour qui peut
+  partager ; sinon une phrase dit que la recherche sera personnelle et qui peut partager). Dans la liste : recherches
+  du groupe, du département, puis personnelles ; marque « Perso » ou code du département, info-bulle « Partagée avec
+  … · par … » ; suppression (×) au survol ou au clavier, par-dessus la fin de la ligne pour ne pas couper les libellés,
+  avec confirmation. L'URL de l'écran n'a pas encore de tri : `sort` reste l'ordre d'affichage. Le tri devra aussi
+  être enregistré par les recherches enregistrées quand le point 12 l'ajoutera (`saveSearch`, `cleanCriteria`,
+  `searchHref` ; nouvelle colonne de `saved_searches` distincte de `sort`, par exemple `order_by`) ; la fiche du
+  point 12 le mentionne.
+- **Requête** : `listSavedSearches` filtre en SQL (`savedSearchesSeenBy`, `src/lib/access.ts`, même règle que
+  `seesSavedSearch`) : les recherches personnelles des autres ne sont jamais chargées par le serveur.
+- **Visibilité** (D-14) : une recherche enregistrée n'est qu'un lien vers l'écran Recherche avec ses critères ; les
+  résultats passent par les mêmes filtres de lecture, et la liste des recherches ne contient aucun document.
+- **Choix à confirmer** (`docs/decisions.md`, `docs/modele-cible.md` §5) : qui partage et qui supprime, ce que voient
+  les gestionnaires.
+- **Vérifié** : `npm test` (417 tests, dont les 16 de `tests/integration/saved-searches.test.ts`, les règles de
+  `src/lib/access.ts` et `cleanCriteria`), `npm run typecheck`, `npm run lint`. Les tests échouent si la requête SQL
+  et `seesSavedSearch` divergent pour une personne (avec ou sans département, avec ou sans le droit « Administrer »),
+  si une recherche personnelle devient visible d'un autre (gestionnaire compris), si un collaborateur, un valideur ou
+  un auditeur peut partager, si un détenteur du droit « Administrer » ne le peut plus, si une recherche de département
+  sort de son département, si la suppression d'une recherche partagée est ouverte à son lecteur, ou si une recherche
+  ouverte par un auditeur fait apparaître un brouillon ou un document confidentiel d'un autre département.
+  Dans le navigateur, sur une base de démo neuve : Claire Bardet voit les trois recherches de groupe, sans bouton
+  « Enregistrer » tant qu'aucun critère n'est choisi ; elle enregistre « Qualité en vigueur » (Qualité, En vigueur)
+  pour tout le groupe, « Externes de Claire » (« pompe », externe) pour elle seule et « Procédures ING » pour le
+  département Ingénierie. Julien Wagner (collaborateur, ING) voit les recherches de groupe et « Procédures ING », pas
+  celle de Claire, ni bouton de suppression sur les recherches partagées ; son dialogue n'offre aucune portée ; il
+  enregistre « Mes notes béton », l'ouvre (`?q=béton&department=ING`) puis la supprime après confirmation. Léa
+  Marchand (PRJ) ne voit que les quatre recherches de groupe. Vue en anglais vérifiée (« Save search », « Name »,
+  « Criteria »).

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canRead, changeAsSeen, deadlineActor, draftTodo, inDraftingCircle, isUsableTemplate, mayRecall, mayWorkOnDraft, openRevisionView, readerMaySeeChange, readerMaySeeEntry, readerMaySeeRevision, readerMaySeeVersion, readersApply, type AccessIndex, type Viewer } from '@/lib/access';
+import { canRead, changeAsSeen, deadlineActor, draftTodo, inDraftingCircle, isUsableTemplate, mayDeleteSearch, mayRecall, maySaveSearch, mayShareSearches, mayWorkOnDraft, openRevisionView, readerMaySeeChange, readerMaySeeEntry, readerMaySeeRevision, readerMaySeeVersion, readersApply, seesSavedSearch, type AccessIndex, type Viewer } from '@/lib/access';
 import { CONF_LEVELS, PERMS, type Perm } from '@/lib/i18n';
 
 // Who sees what: confidentiality levels (D-13), drafting circle (D-14), docs/modele-cible.md §5.
@@ -477,5 +477,67 @@ describe('mayRecall (docs/modele-cible.md §6, recalling a running circuit)', ()
     expect(mayRecall(viewer('manager', { perms: ['read'], seesAll: true }), running, doc(), people)).toBe(false);
     // The owner changed since the request: the former owner no longer works on the draft.
     expect(mayRecall(editor('owner'), running, doc({ ownerId: 'someone_else' }), people)).toBe(false);
+  });
+});
+
+describe('saved searches (personal, department, group)', () => {
+  const collaborator = viewer('writer', { department: 'QUA', perms: ['read', 'upload', 'edit'] });
+  const colleague = viewer('colleague', { department: 'QUA', perms: ['read'] });
+  const outsider = viewer('engineer', { department: 'ING', perms: ['read', 'upload', 'edit', 'approve', 'publish'] });
+  const manager = viewer('manager', { department: 'HSE', perms: ['read', 'upload', 'edit', 'approve', 'publish', 'archive', 'admin'], seesAll: true });
+  const admin = viewer('admin', { department: 'DIR', perms: ['read', 'admin'] });
+  const noRead = viewer('nobody', { department: 'QUA', perms: [] });
+  const personal = { scope: 'personal', ownerId: 'writer', department: null };
+  const quality = { scope: 'department', ownerId: 'manager', department: 'QUA' };
+  const group = { scope: 'group', ownerId: 'manager', department: null };
+
+  it('lets records managers and administrators share, nobody else', () => {
+    expect(mayShareSearches(manager)).toBe(true);
+    expect(mayShareSearches(admin)).toBe(true);
+    // A records manager whose row lost the admin permission still shares.
+    expect(mayShareSearches(viewer('manager', { perms: ['read'], seesAll: true }))).toBe(true);
+    for (const v of [collaborator, colleague, outsider, noRead]) expect(mayShareSearches(v), v.user.id).toBe(false);
+  });
+
+  it('lets whoever may read save a personal search, and only those who share save a shared one', () => {
+    for (const v of [collaborator, colleague, outsider, manager, admin]) expect(maySaveSearch(v, 'personal'), v.user.id).toBe(true);
+    expect(maySaveSearch(noRead, 'personal')).toBe(false);
+    for (const scope of ['department', 'group']) {
+      expect(maySaveSearch(manager, scope), scope).toBe(true);
+      expect(maySaveSearch(admin, scope), scope).toBe(true);
+      for (const v of [collaborator, colleague, outsider]) expect(maySaveSearch(v, scope), `${v.user.id} ${scope}`).toBe(false);
+    }
+    expect(maySaveSearch(manager, 'everyone')).toBe(false);
+  });
+
+  it('shows a personal search to its owner only, records managers included', () => {
+    expect(seesSavedSearch(collaborator, personal)).toBe(true);
+    for (const v of [colleague, outsider, manager, admin]) expect(seesSavedSearch(v, personal), v.user.id).toBe(false);
+  });
+
+  it('shows a department search to the members of that department, and to those who share', () => {
+    expect(seesSavedSearch(collaborator, quality)).toBe(true);
+    expect(seesSavedSearch(colleague, quality)).toBe(true);
+    expect(seesSavedSearch(outsider, quality)).toBe(false);
+    expect(seesSavedSearch(viewer('nodept', { department: null as unknown as string }), { ...quality, department: null })).toBe(false);
+    expect(seesSavedSearch(manager, quality)).toBe(true);
+    expect(seesSavedSearch(admin, quality)).toBe(true);
+  });
+
+  it('shows a group search to everyone', () => {
+    for (const v of [collaborator, colleague, outsider, manager, admin, noRead]) expect(seesSavedSearch(v, group), v.user.id).toBe(true);
+    expect(seesSavedSearch(manager, { ...group, scope: 'other' })).toBe(false);
+  });
+
+  it('lets the owner delete a personal search, and those who share delete a shared one', () => {
+    expect(mayDeleteSearch(collaborator, personal)).toBe(true);
+    for (const v of [colleague, manager, admin]) expect(mayDeleteSearch(v, personal), v.user.id).toBe(false);
+    for (const x of [quality, group]) {
+      expect(mayDeleteSearch(manager, x), x.scope).toBe(true);
+      expect(mayDeleteSearch(admin, x), x.scope).toBe(true);
+      for (const v of [collaborator, colleague, outsider]) expect(mayDeleteSearch(v, x), `${v.user.id} ${x.scope}`).toBe(false);
+    }
+    // A shared search its author no longer may share: only those who share delete it.
+    expect(mayDeleteSearch(collaborator, { ...group, ownerId: 'writer' })).toBe(false);
   });
 });

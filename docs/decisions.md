@@ -484,6 +484,13 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
   distincte du rejet, et la révision revient en rédaction, comme après un rejet. Le propriétaire qui n'a pas fait la
   demande ne peut pas la rappeler. Abandonner un brouillon jamais mis en vigueur (statut « Annulée ») reste une règle
   à faire valider.
+- **Recherches enregistrées** (G12, G15, 11 octobre ; `docs/modele-cible.md` §5) : toute personne qui a le droit
+  « Lire » enregistre des recherches personnelles, visibles d'elle seule, et les supprime. Partager une recherche avec
+  un département (ses membres) ou avec tout le groupe, et supprimer une recherche partagée, est réservé aux
+  gestionnaires documentaires et aux détenteurs du droit « Administrer » ; ils voient aussi les recherches partagées
+  avec les autres départements, pour les gérer, mais jamais les recherches personnelles d'autrui. Une recherche ne
+  garde que des critères (texte et facettes), jamais de documents. Les trois recherches de démonstration sont
+  partagées avec le groupe.
 - **Retrait** (D-17) : effets d'un retrait accepté sur le travail en cours (circuit clos, révisions ouvertes annulées).
 - **Documents obsolètes ou archivés** (D-17) : bandeau d'avertissement sur la fiche et dans l'aperçu rapide de
   l'explorateur, suffixe `_OBSOLETE` ou `_ARCHIVE` dans le nom proposé au téléchargement (`docs/modele-cible.md` §4).

@@ -4,14 +4,15 @@ import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { cookies } from 'next/headers';
 import { refresh } from 'next/cache';
 import { getDb, schema as s } from '@/db';
-import type { Attachment, AuditChange, AuditValue, Conf, Disposition, Origin, RetentionTrigger } from '@/db/schema';
-import { buildAccessIndex, canRead, getAccessIndex, inDraftingCircle, isUsableTemplate, mayRecall, mayWorkOnDraft, readerMaySeeRevision, readersApply } from './access';
+import type { Attachment, AuditChange, AuditValue, Conf, Disposition, Origin, RetentionTrigger, SearchScope } from '@/db/schema';
+import { buildAccessIndex, canRead, getAccessIndex, inDraftingCircle, isUsableTemplate, mayDeleteSearch, mayRecall, maySaveSearch, mayWorkOnDraft, readerMaySeeRevision, readersApply, seesSavedSearch } from './access';
 import { idMatches, nextDocId, nextWorkflowId } from './codification';
 import { COOKIE_LANG, COOKIE_ROLE, COOKIE_USER, getCtx, type Ctx } from './context';
 import { addDays, fmtSize, loc, nowStamp, parseIsoDay, todayIso } from './format';
-import { ATTACHMENTS, CONF_LEVELS, ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLES, ORIGINS, PERMS, SIM_ROLES, SIMULATED_MATRIX_ROLES, type Perm, type SimRole, type TKey } from './i18n';
+import { ATTACHMENTS, CONF_LEVELS, ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLES, ORIGINS, PERMS, SEARCH_SCOPES, SIM_ROLES, SIMULATED_MATRIX_ROLES, type Perm, type SimRole, type TKey } from './i18n';
 import { applyChangeDecision, applyPendingDecision, approveRevision, audit, catchUpEffectiveDates, lockOf, refreshHeadline, type ModifierSwap, type Tx } from './lifecycle';
 import { decisionWaitL } from './queries';
+import { cleanCriteria, hasCriteria, type Facets } from './search';
 import { discardFile, fileColumns, nameStoredFile, readStored, renameDocFiles, stageFile, stageUpload, type StagedFile } from './storage';
 import { submitChange, vigieSimulated } from './vigie';
 
@@ -850,6 +851,48 @@ export async function restoreArchived(docId: string): Promise<ActionResult> {
   });
   refresh();
   return pendingApplied(ctx, d, swap);
+}
+
+// ── Saved searches ───────────────────────────────────────────────────────
+
+const LABEL_MAX = 80;
+
+/**
+ * Saves the criteria of /recherche (query and facets) under a label: a personal search for whoever may read, a search
+ * shared with a department (its members) or the whole group for records managers and administrators
+ * (lib/access.ts maySaveSearch). Only criteria are kept: each person who opens it sees the documents they may read.
+ */
+export async function saveSearch(label: string, q: string, facets: Facets, scope: string, department: string | null): Promise<ActionResult> {
+  const ctx = await getCtx();
+  if (!(SEARCH_SCOPES as readonly string[]).includes(scope)) return fail(ctx);
+  if (!maySaveSearch(ctx, scope)) return ctx.can('read') ? fail(ctx, 'not_allowed') : denied(ctx, 'read');
+  const name = typeof label === 'string' ? label.trim() : '';
+  if (!name || name.length > LABEL_MAX) return fail(ctx, 'search_label_invalid');
+  const criteria = cleanCriteria(q, facets);
+  if (!hasCriteria(criteria.q, criteria.facets)) return fail(ctx, 'search_no_criteria');
+  const dept = scope === 'department' ? department ?? '' : null;
+  if (dept !== null && !ctx.departments.some((d) => d.code === dept)) return fail(ctx);
+  const db = await getDb();
+  const [{ last }] = await db.select({ last: sql<number>`coalesce(max(${s.savedSearches.sort}), -1)` }).from(s.savedSearches);
+  await db.insert(s.savedSearches).values({
+    label: name, q: criteria.q, facets: criteria.facets, ownerId: ctx.user.id, scope: scope as SearchScope, department: dept, sort: Number(last) + 1,
+  });
+  refresh();
+  return { ok: true, message: ctx.t.search_saved_ok };
+}
+
+/** Deletes a saved search: its owner for a personal one, records managers and administrators for a shared one. */
+export async function deleteSavedSearch(id: number): Promise<ActionResult> {
+  const ctx = await getCtx();
+  if (!Number.isInteger(id)) return fail(ctx, 'search_not_found');
+  const db = await getDb();
+  const [row] = await db.select().from(s.savedSearches).where(eq(s.savedSearches.id, id));
+  // Someone else's personal search does not exist for the user.
+  if (!row || !seesSavedSearch(ctx, row)) return fail(ctx, 'search_not_found');
+  if (!mayDeleteSearch(ctx, row)) return fail(ctx, 'not_allowed');
+  await db.delete(s.savedSearches).where(eq(s.savedSearches.id, id));
+  refresh();
+  return { ok: true, message: ctx.t.search_deleted_ok };
 }
 
 // ── Administration ───────────────────────────────────────────────────────

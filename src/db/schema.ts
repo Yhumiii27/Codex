@@ -15,6 +15,8 @@ export type RevStatus = 'draft' | 'in_review' | 'approved' | 'in_force' | 'super
 export type DocState = 'active' | 'obsolete' | 'archived';
 export type RetentionTrigger = 'creation' | 'in_force' | 'superseded' | 'project_end' | 'contract_end' | 'fiscal_year_end' | 'expiry' | 'asset_life' | 'employee_departure' | 'permanent';
 export type Disposition = 'destroy' | 'review' | 'archive' | 'permanent';
+/** Who sees a saved search: its owner, the members of a department, or the whole group. */
+export type SearchScope = 'personal' | 'department' | 'group';
 
 // ── Organisation (provisional until the org chart is provided) ─────────────
 
@@ -402,10 +404,26 @@ export const rolePermissions = pgTable(
   (t) => [primaryKey({ columns: [t.role, t.perm] })],
 );
 
-export const savedSearches = pgTable('saved_searches', {
-  id: serial('id').primaryKey(),
-  label: jsonb('label').$type<Localized>().notNull(),
-  q: text('q').notNull().default(''),
-  facets: jsonb('facets').$type<Record<string, string[]>>().notNull(),
-  sort: integer('sort').notNull().default(0),
-});
+/**
+ * Search criteria (query and facets) saved under a label: never documents, so a saved search shows each person only what
+ * they may read (lib/access.ts). Personal: seen by its owner only; department: by the members of `department`; group: by
+ * everyone. Only records managers and administrators share (lib/access.ts mayShareSearches). `sort`: display order.
+ */
+export const savedSearches = pgTable(
+  'saved_searches',
+  {
+    id: serial('id').primaryKey(),
+    label: jsonb('label').$type<Localized>().notNull(),
+    q: text('q').notNull().default(''),
+    facets: jsonb('facets').$type<Record<string, string[]>>().notNull(),
+    ownerId: text('owner_id').notNull().references(() => users.id),
+    scope: text('scope').$type<SearchScope>().notNull().default('personal'),
+    department: text('department').references(() => departments.code),
+    sort: integer('sort').notNull().default(0),
+  },
+  (t) => [
+    check('saved_searches_scope', sql`${t.scope} in ('personal', 'department', 'group')`),
+    // A department-wide search names its department; no other one does.
+    check('saved_searches_department', sql`(${t.scope} = 'department') = (${t.department} is not null)`),
+  ],
+);

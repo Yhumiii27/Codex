@@ -119,6 +119,15 @@ const fr = {
   recall:'Rappeler la demande', recall_title:'Rappeler la demande de validation', recall_hint:'Le circuit s’arrête et la révision revient en rédaction : les valideurs n’ont plus d’étape à décider. Vous pourrez la soumettre de nouveau.',
   recall_note:'Vous pouvez rappeler cette demande tant que la dernière approbation n’est pas faite : la révision reviendra en rédaction.',
   wf_recalled:'Rappelé', act_recall:'Rappel de la demande de validation',
+  // Recherches enregistrées personnelles et partagées
+  search_save:'Enregistrer la recherche', search_label:'Libellé', search_criteria:'Critères', search_scope:'Visible par',
+  search_scope_personal:'Vous seul', search_scope_department:'Un département', search_scope_group:'Tout le groupe',
+  search_save_hint:'Seuls les critères sont enregistrés : chacun n’y verra que les documents qu’il a le droit de lire.',
+  search_personal_only:'Recherche personnelle, visible de vous seul. Partager avec un département ou le groupe est réservé aux gestionnaires documentaires et aux administrateurs.',
+  search_saved_ok:'Recherche enregistrée', search_deleted_ok:'Recherche supprimée', search_delete:'Supprimer la recherche', search_delete_confirm:'Supprimer cette recherche enregistrée ?',
+  search_no_criteria:'Choisissez au moins un critère avant d’enregistrer la recherche.', search_label_invalid:'Donnez un libellé à la recherche (80 caractères au plus).',
+  search_not_found:'Recherche enregistrée introuvable.', search_none:'Aucune recherche enregistrée.', search_mine:'Perso',
+  search_is_personal:'Personnelle : visible de vous seul', search_is_department:'Partagée avec le département', search_is_group:'Partagée avec tout le groupe',
 };
 
 type Dict = Record<keyof typeof fr, string>;
@@ -239,6 +248,15 @@ const en: Dict = {
   recall:'Recall the request', recall_title:'Recall the approval request', recall_hint:'The workflow stops and the revision goes back to drafting: the approvers no longer have a step to decide. You may send it for approval again.',
   recall_note:'You may recall this request until the last approval is given: the revision will go back to drafting.',
   wf_recalled:'Recalled', act_recall:'Approval request recalled',
+  // Personal and shared saved searches
+  search_save:'Save search', search_label:'Name', search_criteria:'Criteria', search_scope:'Visible to',
+  search_scope_personal:'Only you', search_scope_department:'A department', search_scope_group:'The whole group',
+  search_save_hint:'Only the criteria are saved: everyone will only see the documents they may read.',
+  search_personal_only:'Personal search, visible to you only. Sharing with a department or the group is reserved to records managers and administrators.',
+  search_saved_ok:'Search saved', search_deleted_ok:'Search deleted', search_delete:'Delete search', search_delete_confirm:'Delete this saved search?',
+  search_no_criteria:'Pick at least one criterion before saving the search.', search_label_invalid:'Give the search a name (80 characters at most).',
+  search_not_found:'Saved search not found.', search_none:'No saved search.', search_mine:'Mine',
+  search_is_personal:'Personal: visible to you only', search_is_department:'Shared with the department', search_is_group:'Shared with the whole group',
 };
 
 export const DICT: Record<Lang, Dict> = { fr, en };
@@ -253,6 +271,8 @@ export const ECR_TAGCLS: Record<string, string> = { submitted: 'tag tag-outline'
 export const CONF_LEVELS = ['public', 'restreint', 'interne', 'confidentiel', 'tres_confidentiel'] as const;
 export const ORIGINS = ['interne', 'externe'] as const;
 export const ATTACHMENTS = ['none', 'project', 'research'] as const;
+/** Who sees a saved search (saved_searches.scope). */
+export const SEARCH_SCOPES = ['personal', 'department', 'group'] as const;
 /** Lifecycle stages of a Keystone project (Keystone's own labels), offered as project phases. */
 export const PROJECT_PHASES = ['Initiative', 'APS', 'APD', 'Etudes', 'Approvisionnements', 'Fabrication & Assemblage', 'FAT', 'Expédition', 'Chantier', 'Mise Service & SAT', 'Garantie', 'Clos'] as const;
 export const SIM_ROLES = ['collaborateur', 'validateur', 'auditeur', 'gestionnaire'] as const;

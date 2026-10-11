@@ -1,5 +1,5 @@
 {
-  "id": "6433ee25-3d42-409e-b4e0-735f0dd3ca36",
+  "id": "3ebb1a3c-3d44-4b98-a944-aac71cb73a93",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -1579,6 +1579,25 @@
           "primaryKey": false,
           "notNull": true
         },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'personal'"
+        },
+        "department": {
+          "name": "department",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "sort": {
           "name": "sort",
           "type": "integer",
@@ -1588,11 +1607,47 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {},
+      "foreignKeys": {
+        "saved_searches_owner_id_users_id_fk": {
+          "name": "saved_searches_owner_id_users_id_fk",
+          "tableFrom": "saved_searches",
+          "tableTo": "users",
+          "columnsFrom": [
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "saved_searches_department_departments_code_fk": {
+          "name": "saved_searches_department_departments_code_fk",
+          "tableFrom": "saved_searches",
+          "tableTo": "departments",
+          "columnsFrom": [
+            "department"
+          ],
+          "columnsTo": [
+            "code"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "saved_searches_scope": {
+          "name": "saved_searches_scope",
+          "value": "\"saved_searches\".\"scope\" in ('personal', 'department', 'group')"
+        },
+        "saved_searches_department": {
+          "name": "saved_searches_department",
+          "value": "(\"saved_searches\".\"scope\" = 'department') = (\"saved_searches\".\"department\" is not null)"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.sites": {

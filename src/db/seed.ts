@@ -104,7 +104,7 @@ export async function seed(db: Db) {
     await tx.insert(s.projects).values(PROJECTS.map((p) => ({ code: p.code, name: p.name, client: p.client, stage: p.stage, managerId: p.manager, site: p.site, tiers: p.tiers, syncedAt: `${p.synced}:00` })));
     await tx.insert(s.researchPrograms).values(PROGRAMS.map((p) => ({ code: p.code, name: p.name, managerId: p.manager })));
     await tx.insert(s.rolePermissions).values(ROLE_KEYS.flatMap((role, i) => PERM_KEYS.map((perm, j) => ({ role, perm, granted: !!MATRIX[i][j] }))));
-    await tx.insert(s.savedSearches).values(SAVED.map((x, i) => ({ label: loc(x.label), q: x.q, facets: x.facets, sort: i })));
+    await tx.insert(s.savedSearches).values(SAVED.map((x, i) => ({ label: loc(x.label), q: x.q, facets: x.facets, ownerId: x.owner, scope: 'group' as const, sort: i })));
 
     // ── Documents ──
     const seqs = new Map<string, number>();

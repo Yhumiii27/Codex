@@ -696,7 +696,7 @@ par les décisions D-06 à D-21 et par le modèle v2.
 
 - **Constat sur la v1** : Aucune page par département. Briques : l'axe Service de l'explorateur, trois recherches enregistrées du jeu de démonstration ; la table `users` n'avait pas de département.
 - **Vérification** : « Partiel », confirmé. Tout l'état d'écran est dans l'URL, donc partageable.
-- **Aujourd'hui — partiel.** Toujours pas de page par département. Briques : axe Département de l'explorateur (`src/app/explorateur/page.tsx`), facettes de la recherche dans l'URL, département de chaque utilisateur (`users.department`). Les recherches enregistrées sont celles du jeu de démonstration (`SAVED`, `src/db/seed-org.ts`) ; aucune action ne permet d'en créer (`listSavedSearches`, `src/lib/queries.ts`, en lecture seule). Le recueil des besoins par département (slide 9) n'est pas fait.
+- **Aujourd'hui — partiel.** Toujours pas de page par département. Briques : axe Département de l'explorateur (`src/app/explorateur/page.tsx`), facettes de la recherche dans l'URL, département de chaque utilisateur (`users.department`). Depuis le 11 octobre 2026, les recherches enregistrées sont créables : personnelles pour chacun, partagées avec un département ou le groupe par les gestionnaires documentaires et les administrateurs (`saveSearch`, `src/lib/actions.ts` ; point 2 de `docs/reste-a-faire.md`). Le recueil des besoins par département (slide 9) n'est pas fait.
 
 <a id="g13"></a>
 #### G13 — Restriction des accès (classe de confidentialité, statut brouillon…)
@@ -723,7 +723,7 @@ par les décisions D-06 à D-21 et par le modèle v2.
 
 - **Constat sur la v1** : Recherche plein texte insensible aux accents, facettes affaire, type, entité, service et statut, recherches enregistrées, export CSV, champ global dans l'en-tête.
 - **Vérification** : « Couvert » ramené à « partiel ». Les facettes ignoraient presque toutes les métadonnées du deck ; les résultats et l'export n'étaient pas filtrés selon les droits ; les recherches enregistrées étaient figées ; le filtrage se faisait en mémoire et le contenu des fichiers n'était pas indexé.
-- **Aujourd'hui — partiel.** Facettes du modèle v2 : projet ou programme, famille, type, origine, rattachement, département, statut, confidentialité (`FACET_KEYS`, `src/lib/search.ts`). Plein texte sur le titre, l'ID et les anciens ID, les mots-clés, le type, le sous-type, l'organisme source et la référence externe. Résultats et export limités aux documents visibles. Reste : pas de recherche dans le contenu des fichiers ; filtrage en mémoire sur tous les documents (`runSearch`) ; pas de facette site, auteur, date, langue ou mot-clé ; recherches enregistrées non créables par l'utilisateur.
+- **Aujourd'hui — partiel.** Facettes du modèle v2 : projet ou programme, famille, type, origine, rattachement, département, statut, confidentialité (`FACET_KEYS`, `src/lib/search.ts`). Plein texte sur le titre, l'ID et les anciens ID, les mots-clés, le type, le sous-type, l'organisme source et la référence externe. Résultats et export limités aux documents visibles. Reste : pas de recherche dans le contenu des fichiers ; filtrage en mémoire sur tous les documents (`runSearch`) ; pas de facette site, auteur, date, langue ou mot-clé. Les recherches enregistrées sont créables depuis le 11 octobre 2026 (personnelles, de département ou de groupe ; elles ne gardent que des critères).
 
 <a id="g16"></a>
 #### G16 — Liens pour ouvrir le document (vers la bibliothèque SharePoint)

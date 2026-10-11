@@ -1,6 +1,6 @@
 import 'server-only';
 import { cache } from 'react';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, or, type SQL } from 'drizzle-orm';
 import { getDb, schema as s, type Db } from '@/db';
 import type { Conf } from '@/db/schema';
 import { TEMPLATE_TYPE } from './codes';
@@ -250,4 +250,52 @@ export function readerMaySeeEntry(circle: boolean, e: { action: string; revision
   if (circle) return true;
   if (e.revisionId == null) return !REVISION_ACTIONS.has(e.action);
   return readerMaySeeRevision(false, revStatus);
+}
+
+// ── Saved searches ──────────────────────────────────────────────────────
+
+type SavedSearchScope = { scope: string; ownerId: string; department: string | null };
+
+/**
+ * May the user share searches with a department or the whole group, and delete shared ones? Records managers and
+ * whoever holds the admin permission.
+ */
+export function mayShareSearches(ctx: Viewer): boolean {
+  return ctx.seesAll || ctx.can('admin');
+}
+
+/** May the user save a search with this scope? A personal one with the read permission; a shared one, mayShareSearches. */
+export function maySaveSearch(ctx: Viewer, scope: string): boolean {
+  if (!ctx.can('read')) return false;
+  if (scope === 'personal') return true;
+  return (scope === 'department' || scope === 'group') && mayShareSearches(ctx);
+}
+
+/**
+ * Saved searches the user sees: their own personal ones, those shared with their department and those shared with the
+ * whole group. Those who share also see the searches shared with other departments, to manage them. A saved search
+ * holds criteria only: the documents it finds are always filtered by canRead.
+ */
+export function seesSavedSearch(ctx: Viewer, x: SavedSearchScope): boolean {
+  if (x.scope === 'personal') return x.ownerId === ctx.user.id;
+  if (x.scope === 'department') return (!!x.department && x.department === ctx.user.department) || mayShareSearches(ctx);
+  return x.scope === 'group';
+}
+
+/**
+ * seesSavedSearch as an SQL condition on saved_searches, so that a listing never loads other people's personal searches.
+ * tests/integration/saved-searches.test.ts checks that both rules agree.
+ */
+export function savedSearchesSeenBy(ctx: Viewer): SQL {
+  const x = s.savedSearches;
+  const dept = mayShareSearches(ctx)
+    ? eq(x.scope, 'department')
+    : ctx.user.department ? and(eq(x.scope, 'department'), eq(x.department, ctx.user.department)) : undefined;
+  return or(eq(x.scope, 'group'), and(eq(x.scope, 'personal'), eq(x.ownerId, ctx.user.id)), dept)!;
+}
+
+/** May the user delete a saved search? Their own personal ones; shared ones, mayShareSearches. */
+export function mayDeleteSearch(ctx: Viewer, x: SavedSearchScope): boolean {
+  if (x.scope === 'personal') return x.ownerId === ctx.user.id;
+  return seesSavedSearch(ctx, x) && mayShareSearches(ctx);
 }

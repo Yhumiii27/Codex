@@ -6,7 +6,8 @@ et des arbitrages du 7 octobre 2026. Ce document fait foi pour l'implémentation
 Certaines règles ci-dessous sont des propositions de l'assistant, implémentées mais **non confirmées par l'utilisateur** :
 authentification Entra ID (§1), code département hors rattachement, largeur et portée du compteur, ID attribué au
 brouillon, alias et nom de fichier (§3), « Remplacé », mise en vigueur automatique, bandeau et nom de téléchargement
-d'un document obsolète ou archivé (§4), longueur du motif de rejet et droit de rappeler une demande de validation (§6).
+d'un document obsolète ou archivé (§4), partage des recherches enregistrées (§5), longueur du motif de rejet et droit
+de rappeler une demande de validation (§6).
 Elles sont listées dans `docs/decisions.md` (« Choix de l'assistant non validés explicitement », question O-09), qui
 prévaut en cas de doute.
 
@@ -130,6 +131,15 @@ d'un document reclassé compris) :
 - les entrées sans document (droits, organisation, fonctions, registre, exports) ne se lisent que depuis l'écran
   d'administration.
 Les gestionnaires documentaires lisent tout le journal.
+
+**Recherches enregistrées.** Une recherche enregistrée ne garde que des critères (texte et facettes de l'écran
+Recherche), jamais de documents : chacun n'y trouve que ce qu'il a le droit de lire. Sa portée dit qui la voit :
+- **personnelle** : son propriétaire seul, qui peut la créer avec le droit « Lire » et la supprimer ;
+- **département** : les membres du département choisi ;
+- **groupe** : tout le monde.
+Partager (département ou groupe) et supprimer une recherche partagée sont réservés aux gestionnaires documentaires et
+aux détenteurs du droit « Administrer », qui voient aussi les recherches des autres départements ; personne ne voit
+les recherches personnelles d'autrui. *Proposé, non confirmé* (`docs/decisions.md`).
 
 ## 6. Circuits de validation
 

@@ -91,4 +91,10 @@ export type DialogSpec =
   /** Administration: circuit, confidentiality and retention of a type. */
   | { kind: 'type'; type: { code: string; label: string; circuit: string[]; confAllowed: Conf[]; confDefault: Conf; retentionYears: number | null; retentionTrigger: string; retentionDisposition: string; retentionBasis: string; active: boolean } }
   | { kind: 'holder'; functionKey: string; functionLabel: string; scope: 'global' | 'department' | 'project' | 'research' }
-  | { kind: 'org'; what: 'department' | 'site' };
+  | { kind: 'org'; what: 'department' | 'site' }
+  /**
+   * Save the criteria of /recherche under a label (lib/actions.ts saveSearch). `facets`: facet key → values, as in the
+   * URL; `criteria`: the same, as lines to read; `mayShare`: the user may share it with a department or the group
+   * (lib/access.ts mayShareSearches).
+   */
+  | { kind: 'saveSearch'; q: string; facets: Record<string, string[]>; criteria: string[]; mayShare: boolean };

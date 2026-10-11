@@ -7,10 +7,10 @@ import { Seg } from '@/components/ui/Seg';
 import type { Attachment, Conf, Origin } from '@/db/schema';
 import {
   addFunctionHolder, addOrgValue, addWorkingVersion, createDocument, decideStep, delegateStep, graftChange, recallValidation, requestChange,
-  requestValidation, setReaders, simulateUser, simulateVigieDecision, updateMeta, updateType,
+  requestValidation, saveSearch, setReaders, simulateUser, simulateVigieDecision, updateMeta, updateType,
 } from '@/lib/actions';
 import { contextOf, idMatches, seqWidth } from '@/lib/codes';
-import { ATTACHMENTS, CONF_LEVELS, ORIGINS, PROJECT_PHASES, SIM_ROLES, type T, type TKey } from '@/lib/i18n';
+import { ATTACHMENTS, CONF_LEVELS, ORIGINS, PROJECT_PHASES, SEARCH_SCOPES, SIM_ROLES, type T, type TKey } from '@/lib/i18n';
 import { FilePicker, Modal, Select, useSubmit, type SelectOption } from './Modal';
 import type { DialogData, DialogSpec, MetaDoc, VersionLite } from './types';
 
@@ -32,6 +32,7 @@ export function Dialogs({ spec }: { spec: DialogSpec }) {
     case 'type': return <TypeEditor type={spec.type} />;
     case 'holder': return <AddHolder functionKey={spec.functionKey} functionLabel={spec.functionLabel} scope={spec.scope} />;
     case 'org': return <AddOrg what={spec.what} />;
+    case 'saveSearch': return <SaveSearch spec={spec} />;
   }
 }
 
@@ -930,6 +931,57 @@ function AddOrg({ what }: { what: 'department' | 'site' }) {
         ) : (
           <Field label={t.site_label}>{(id) => <input id={id} className="input" name="labelFr" required />}</Field>
         )}
+        <ErrorLine error={error} />
+      </form>
+    </Modal>
+  );
+}
+
+/**
+ * Saves the criteria of /recherche under a label (lib/actions.ts saveSearch): personal, or, for those who may share,
+ * with a department (the user's own by default) or the whole group.
+ */
+function SaveSearch({ spec }: { spec: Extract<DialogSpec, { kind: 'saveSearch' }> }) {
+  const { t, data, close } = useApp();
+  const { pending, error, run } = useSubmit();
+  const [scope, setScope] = useState<(typeof SEARCH_SCOPES)[number]>('personal');
+  const [department, setDepartment] = useState(data.currentDepartment ?? data.departments[0]?.key ?? '');
+  return (
+    <Modal title={t.search_save} actions={<Actions pending={pending} label={t.save} onCancel={close} form="save-search-form" disabled={scope === 'department' && !department} />}>
+      <form
+        id="save-search-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const label = String(new FormData(e.currentTarget).get('label') ?? '');
+          run(() => saveSearch(label, spec.q, spec.facets, scope, scope === 'department' ? department : null));
+        }}
+        style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
+      >
+        <Field label={t.search_label}>{(id) => <input id={id} className="input" name="label" required maxLength={80} autoComplete="off" />}</Field>
+        <Field label={t.search_criteria}>
+          <ul className="text-muted" style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {spec.criteria.map((c) => <li key={c}>{c}</li>)}
+          </ul>
+        </Field>
+        {spec.mayShare ? (
+          <>
+            <Field label={t.search_scope} radio>
+              <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+                {SEARCH_SCOPES.map((k) => (
+                  <label key={k} className="radio" style={{ fontSize: 13 }}>
+                    <input type="radio" name="scope" checked={scope === k} onChange={() => setScope(k)} /><span className="dot" />{t[`search_scope_${k}`]}
+                  </label>
+                ))}
+              </div>
+            </Field>
+            {scope === 'department' && (
+              <Field label={t.department}>{(id) => <Select id={id} name="department" value={department} onChange={setDepartment} options={data.departments.map(codeLabel)} />}</Field>
+            )}
+          </>
+        ) : (
+          <p className="text-muted" style={{ margin: 0, fontSize: 12.5 }}>{t.search_personal_only}</p>
+        )}
+        <p className="text-muted" style={{ margin: 0, fontSize: 12.5 }}>{t.search_save_hint}</p>
         <ErrorLine error={error} />
       </form>
     </Modal>

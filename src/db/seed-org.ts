@@ -124,8 +124,9 @@ export const MATRIX = [
   [1,1,1,1,1,1,1,1],
 ];
 
-export const SAVED: { label: Pair; q: string; facets: Record<string, string[]> }[] = [
-  { label: ['Procédures en vigueur', 'Procedures in force'], q: '', facets: { type: ['PRO'], status: ['in_force'] } },
-  { label: ['Documents du projet HLT-026', 'HLT-026 project documents'], q: '', facets: { project: ['HLT-026'] } },
-  { label: ['Documents externes à renouveler', 'External documents to renew'], q: '', facets: { origin: ['externe'] } },
+/** Searches shared with the whole group by the records manager (`owner`). */
+export const SAVED: { label: Pair; q: string; facets: Record<string, string[]>; owner: string }[] = [
+  { label: ['Procédures en vigueur', 'Procedures in force'], q: '', facets: { type: ['PRO'], status: ['in_force'] }, owner: 'cbardet' },
+  { label: ['Documents du projet HLT-026', 'HLT-026 project documents'], q: '', facets: { project: ['HLT-026'] }, owner: 'cbardet' },
+  { label: ['Documents externes à renouveler', 'External documents to renew'], q: '', facets: { origin: ['externe'] }, owner: 'cbardet' },
 ];

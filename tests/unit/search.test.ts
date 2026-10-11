@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DocView } from '@/lib/queries';
-import { facetValue, matches, parseSearch, runSearch, searchHref } from '@/lib/search';
+import { cleanCriteria, facetValue, hasCriteria, matches, parseSearch, runSearch, searchHref } from '@/lib/search';
 
 // Search screen: query and facets in the URL, accent-insensitive full-text match.
 
@@ -98,5 +98,39 @@ describe('facets', () => {
     expect(count('type', 'PRO')).toBe(2);
     expect(count('type', 'PID')).toBe(0);
     expect(count('project', 'R2601')).toBe(1);
+  });
+});
+
+describe('cleanCriteria (saved searches)', () => {
+  it('keeps the query and the facets of the URL', () => {
+    expect(cleanCriteria(' ligne de vie ', { type: ['PRO', 'NCR'], status: ['in_force'] })).toEqual({ q: 'ligne de vie', facets: { type: ['PRO', 'NCR'], status: ['in_force'] } });
+  });
+
+  it('drops unknown facets, non-text and empty values, duplicates and values the URL cannot carry', () => {
+    expect(cleanCriteria('', { type: ['PRO', ' PRO ', '', 3, 'A,B'], owner: ['writer'], status: 'in_force', conf: [] })).toEqual({ q: '', facets: { type: ['PRO'] } });
+  });
+
+  it('reads anything else as no criterion, and bounds the lengths', () => {
+    expect(cleanCriteria(42, null)).toEqual({ q: '', facets: {} });
+    expect(cleanCriteria(undefined, ['PRO'])).toEqual({ q: '', facets: {} });
+    const long = cleanCriteria('x'.repeat(500), { type: [...Array(80).keys()].map((i) => `T${i}`), status: ['y'.repeat(65)] });
+    expect(long.q).toHaveLength(200);
+    expect(long.facets.type).toHaveLength(50);
+    expect(long.facets.status).toBeUndefined();
+  });
+
+  it('round-trips through the URL of the search screen', () => {
+    const c = cleanCriteria('pompe', { department: ['QUA'], origin: ['externe'] });
+    const back = parseSearch(Object.fromEntries(new URL(searchHref(c.q, c.facets), 'http://x').searchParams));
+    expect(back).toEqual(c);
+  });
+});
+
+describe('hasCriteria', () => {
+  it('needs a query or a facet value', () => {
+    expect(hasCriteria('', {})).toBe(false);
+    expect(hasCriteria('', { type: [] })).toBe(false);
+    expect(hasCriteria('pompe', {})).toBe(true);
+    expect(hasCriteria('', { type: ['PRO'] })).toBe(true);
   });
 });

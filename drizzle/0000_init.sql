@@ -201,7 +201,12 @@ CREATE TABLE "saved_searches" (
 	"label" jsonb NOT NULL,
 	"q" text DEFAULT '' NOT NULL,
 	"facets" jsonb NOT NULL,
-	"sort" integer DEFAULT 0 NOT NULL
+	"owner_id" text NOT NULL,
+	"scope" text DEFAULT 'personal' NOT NULL,
+	"department" text,
+	"sort" integer DEFAULT 0 NOT NULL,
+	CONSTRAINT "saved_searches_scope" CHECK ("saved_searches"."scope" in ('personal', 'department', 'group')),
+	CONSTRAINT "saved_searches_department" CHECK (("saved_searches"."scope" = 'department') = ("saved_searches"."department" is not null))
 );
 --> statement-breakpoint
 CREATE TABLE "sites" (
@@ -297,6 +302,8 @@ ALTER TABLE "projects" ADD CONSTRAINT "projects_manager_id_users_id_fk" FOREIGN 
 ALTER TABLE "research_programs" ADD CONSTRAINT "research_programs_manager_id_users_id_fk" FOREIGN KEY ("manager_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "revisions" ADD CONSTRAINT "revisions_doc_id_documents_id_fk" FOREIGN KEY ("doc_id") REFERENCES "public"."documents"("id") ON DELETE no action ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE "revisions" ADD CONSTRAINT "revisions_modifier_id_users_id_fk" FOREIGN KEY ("modifier_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "saved_searches" ADD CONSTRAINT "saved_searches_owner_id_users_id_fk" FOREIGN KEY ("owner_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "saved_searches" ADD CONSTRAINT "saved_searches_department_departments_code_fk" FOREIGN KEY ("department") REFERENCES "public"."departments"("code") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "users" ADD CONSTRAINT "users_department_departments_code_fk" FOREIGN KEY ("department") REFERENCES "public"."departments"("code") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "users" ADD CONSTRAINT "users_site_sites_key_fk" FOREIGN KEY ("site") REFERENCES "public"."sites"("key") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_comments" ADD CONSTRAINT "workflow_comments_workflow_id_workflows_id_fk" FOREIGN KEY ("workflow_id") REFERENCES "public"."workflows"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint

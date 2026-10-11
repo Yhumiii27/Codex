@@ -45,6 +45,7 @@ src/lib/queries.ts:187 : `listChangeRequests(ctx, opts: { docId?: string })` n'a
 </details>
 
 #### 2. Recherches enregistrées : permettre d'en créer, d'en supprimer et d'en partager
+- **Fait le 11 octobre 2026** : `saved_searches` a un propriétaire (`owner_id`) et une portée (`scope` : `personal`, `department` avec sa colonne `department`, `group`), contrôlées par deux contraintes ; migration unique régénérée. `saveSearch` et `deleteSavedSearch` (src/lib/actions.ts) appliquent les règles de src/lib/access.ts : toute personne qui a le droit Lire enregistre une recherche personnelle et supprime les siennes (`maySaveSearch`, `mayDeleteSearch`) ; partager avec un département ou avec le groupe, et supprimer une recherche partagée, est réservé aux gestionnaires documentaires et aux détenteurs du droit Administrer (`mayShareSearches`). `listSavedSearches` (src/lib/queries.ts) ne rend que ce que l'utilisateur voit (`seesSavedSearch`) : recherches du groupe, de son département, puis les siennes ; les gestionnaires voient aussi celles des autres départements, pour les gérer, jamais les recherches personnelles d'autrui. Seuls les critères sont gardés (`cleanCriteria`, src/lib/search.ts : facettes connues, valeurs bornées) : une recherche ouverte passe par les mêmes filtres de lecture que l'écran Recherche et ne révèle aucun document invisible (D-14). Dans /recherche, bouton « Enregistrer la recherche » (dès qu'un critère est choisi) qui ouvre un dialogue : libellé (80 caractères au plus), critères lus, portée et département pour qui peut partager ; marque « Perso » ou code du département, info-bulle « partagée avec … par … », suppression (×) au survol ou au clavier, avec confirmation. La liste est filtrée en SQL (`savedSearchesSeenBy`, même règle que `seesSavedSearch`) : les recherches personnelles d'autrui ne sont jamais chargées. Le seed reprend les 3 recherches comme recherches de groupe de Claire Bardet. L'écran Recherche n'a pas encore de tri dans l'URL : son enregistrement est reporté au point 12 ; la colonne `sort` reste l'ordre d'affichage. Tests : tests/integration/saved-searches.test.ts (dont l'accord entre `savedSearchesSeenBy` et `seesSavedSearch`), `mayShareSearches`, `maySaveSearch`, `seesSavedSearch`, `mayDeleteSearch` (tests/unit/access.test.ts), `cleanCriteria` et `hasCriteria` (tests/unit/search.test.ts).
 
 - **Effort** : faible · **Références** : G12, G15, FON-06
 
@@ -212,7 +213,7 @@ src/app/page.tsx:23 et src/app/layout.tsx:27 : `mine = workflows.filter((w) => w
 
 - **Effort** : moyen · **Références** : G12, FON-06
 
-Le manque est confirmé. Il reste à créer une route `/departements/[code]`, ouverte par défaut sur le département de l'utilisateur. Elle montrerait les documents en vigueur du département, ses échéances, ses circuits en cours et ses recherches épinglées (qui supposent le point « Recherches enregistrées »). Il faudra aussi une configuration des filtres mis en avant pour chaque page, dans Administration, et une entrée dans la barre latérale.
+Le manque est confirmé. Il reste à créer une route `/departements/[code]`, ouverte par défaut sur le département de l'utilisateur. Elle montrerait les documents en vigueur du département, ses échéances, ses circuits en cours et ses recherches épinglées (les recherches partagées avec un département existent depuis le 11 octobre 2026, point 2). Il faudra aussi une configuration des filtres mis en avant pour chaque page, dans Administration, et une entrée dans la barre latérale.
 
 Le squelette peut se construire dès maintenant sur la table `departments`, même provisoire (O-04). En revanche, le choix des filtres de chaque métier dépend du recueil des besoins par département (slide 9, étape 1), qui n'est pas fait.
 
@@ -231,6 +232,8 @@ Le manque est confirmé. Il reste à ajouter des facettes : sous-type, site, pro
 Il faut aussi étendre le plein texte au propriétaire, à l'auteur et à l'ID d'étude, et proposer un tri choisi par l'utilisateur dans l'URL (date de modification, titre, ID, échéance). Le tri actuel est fixe, par date de modification décroissante.
 
 Tout cela touche `parseSearch`, `searchHref`, `passes`, la colonne de facettes et l'export CSV. Passer au filtrage SQL est souhaitable : il se fait aujourd'hui en mémoire sur tous les documents.
+
+Le tri devra aussi être enregistré par les recherches enregistrées (point 2 : `saveSearch`, `cleanCriteria`, `searchHref` ; nouvelle colonne de `saved_searches` distincte de `sort`, qui est l'ordre d'affichage, par exemple `order_by`).
 
 <details><summary>Constat dans le code</summary>
 
@@ -1970,7 +1973,7 @@ Dans src/db/registry.ts, seuls POL, REG, DTF, PUB et COL ont « public » dans c
 
 Le recueil lui-même n'est pas du développement : il revient aux départements, une fois la liste fixée par l'organigramme (O-04). Il conditionne ce qui reste à développer pour G12/FON-06 :
 - des pages ou vues par département (aujourd'hui, seul l'axe Département de l'explorateur existe) ;
-- des recherches enregistrées créables et administrables, avec une colonne département ou propriétaire dans saved_searches et une action dans src/lib/actions.ts ;
+- des recherches enregistrées créables et administrables (fait le 11 octobre 2026, point 2 : recherches personnelles, de département et de groupe) ;
 - les filtres et types suivis propres à chaque département.
 Les deux premiers éléments peuvent se coder dès maintenant sur la liste provisoire ; leur contenu attend le recueil.
 
