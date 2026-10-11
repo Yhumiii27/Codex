@@ -222,7 +222,7 @@ export const revisions = pgTable(
     supersededAt: date('superseded_at', { mode: 'string' }),
     /** Person designated by the ECO to write this revision. */
     modifierId: text('modifier_id').references(() => users.id),
-    /** Vigie change order that opened this revision. */
+    /** Vigie change order that opened this revision; those grafted onto it later point to it (change_requests.revision_id). */
     changeRef: text('change_ref'),
     createdAt: date('created_at', { mode: 'string' }).notNull(),
   },
@@ -307,10 +307,18 @@ export const changeRequests = pgTable(
     requesterId: text('requester_id').notNull().references(() => users.id),
     reason: text('reason').notNull(),
     description: text('description').notNull().default(''),
-    /** submitted → accepted / rejected (Vigie decision) → implemented (Codex applied it). */
+    /**
+     * submitted → accepted / rejected (Vigie decision) → implemented (Codex applied it). An acceptance stays 'accepted'
+     * while the document is locked or, for a change, while a revision is already open (lib/lifecycle.ts).
+     */
     status: text('status').$type<ChangeStatus>().notNull(),
     ecoRef: text('eco_ref'),
     modifierId: text('modifier_id').references(() => users.id),
+    /**
+     * Revision an implemented change is carried by: the one it opened, or the one already open it was grafted onto
+     * (D-26), which may then carry several change orders. Null for a withdrawal and for a change not applied yet.
+     */
+    revisionId: integer('revision_id').references(() => revisions.id),
     decisionNote: text('decision_note'),
     source: text('source').notNull().default('codex'),
     createdAt: timestamp('created_at', { mode: 'string' }).notNull(),

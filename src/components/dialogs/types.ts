@@ -67,11 +67,12 @@ export type DialogSpec =
   | { kind: 'readers'; docId: string; readers: string[] }
   /**
    * Records manager simulating Vigie's decision on a change request. `modifierId`: the author proposed by default;
-   * `drafters`: the people who may draft the document, the only ones offered as author; `locked`: why an acceptance
-   * cannot be given (revision already open); `deferred`: on an archived, obsolete or frozen document, that an acceptance
-   * is recorded and when it will apply.
+   * `drafters`: the people who may draft the document, the only ones offered as author; `deferred`: that an acceptance
+   * will be recorded without applying at once, and what it will wait for: the lock of an archived, obsolete or frozen
+   * document to lift, then, for a change, the revision already open to enter into force or be cancelled (D-26). An
+   * acceptance is never refused for a revision already open.
    */
-  | { kind: 'vigie'; requestId: string; docTitle: string; change: 'modification' | 'obsolescence'; modifierId: string; drafters: string[]; locked?: string; deferred?: string }
+  | { kind: 'vigie'; requestId: string; docTitle: string; change: 'modification' | 'obsolescence'; modifierId: string; drafters: string[]; deferred?: string }
   /** Administration: circuit, confidentiality and retention of a type. */
   | { kind: 'type'; type: { code: string; label: string; circuit: string[]; confAllowed: Conf[]; confDefault: Conf; retentionYears: number | null; retentionTrigger: string; retentionDisposition: string; retentionBasis: string; active: boolean } }
   | { kind: 'holder'; functionKey: string; functionLabel: string; scope: 'global' | 'department' | 'project' | 'research' }

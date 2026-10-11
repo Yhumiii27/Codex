@@ -52,6 +52,7 @@ export async function refreshHeadline(tx: Tx, docId: string) {
 /**
  * Puts an approved revision in force; the one it replaces becomes "Remplacé". A revision already in force is left
  * alone (two requests promoting it at once). An effective date already past becomes the day it actually entered into force.
+ * A change Vigie accepted while this revision was open then opens the next one (D-26, applyPendingDecision).
  */
 export async function putInForce(tx: Tx, rev: RevRow, date: string) {
   const [cur] = await tx.select().from(s.revisions).where(eq(s.revisions.id, rev.id));
@@ -62,6 +63,18 @@ export async function putInForce(tx: Tx, rev: RevRow, date: string) {
   await tx.update(s.documents).set({ issuedAt: d?.issuedAt ?? date, modifiedAt: date }).where(eq(s.documents.id, rev.docId));
   await audit(tx, 'codex', 'in_force', rev.docId, rev.letter, rev.id);
   await refreshHeadline(tx, rev.docId);
+  await applyPendingDecision(tx, rev.docId);
+}
+
+/**
+ * Cancels the revisions left open on a document (drafted, in review, approved waiting for their date). A change Vigie
+ * accepted while one was open then opens the next revision, unless the document is locked (D-26, applyPendingDecision).
+ * Today only an accepted withdrawal cancels revisions, after making the document obsolete: a change can then never apply.
+ */
+export async function cancelOpenRevisions(tx: Tx, docId: string): Promise<ModifierSwap | null> {
+  await tx.update(s.revisions).set({ status: 'cancelled' }).where(and(eq(s.revisions.docId, docId), inArray(s.revisions.status, ['draft', 'in_review', 'approved'])));
+  await refreshHeadline(tx, docId);
+  return applyPendingDecision(tx, docId);
 }
 
 /** Final approval of a revision still in review: in force now, or on its effective date. False when it is no longer in review. */
@@ -152,15 +165,26 @@ export async function defaultModifier(tx: Tx, requesterId: string, d: DocRow): P
   return (await mayDraft(tx, requesterId, d)) ? requesterId : d.ownerId;
 }
 
-export type ChangeDecisionError = 'not_found' | 'locked_working' | 'modifier_not_allowed';
-
-/**
- * What became of a decision: applied now ('rejected', 'implemented'), or an acceptance recorded while the document is
- * locked ('accepted', with the state and hold that lock it), applied when the lock lifts (applyPendingDecision).
- */
-export type ChangeDecisionResult = { error: ChangeDecisionError } | { status: 'rejected' | 'implemented' } | ({ status: 'accepted' } & Pick<DocRow, 'state' | 'legalHold'>);
+export type ChangeDecisionError = 'not_found' | 'modifier_not_allowed';
 
 type ChangeRow = typeof s.changeRequests.$inferSelect;
+
+/**
+ * What an accepted request waits for before it applies (applyPendingDecision): the document's state and hold, which may
+ * lock it (lockOf), and for a change the letter of the revision already open, which must first enter into force or be
+ * cancelled (D-26). Both may hold at once: nothing applies before the lock lifts.
+ */
+export type DecisionWait = Pick<DocRow, 'state' | 'legalHold'> & { revision: string | null };
+
+export function decisionWait(kind: ChangeRow['kind'], d: Pick<DocRow, 'state' | 'legalHold' | 'revWorking'>): DecisionWait {
+  return { state: d.state, legalHold: d.legalHold, revision: kind === 'modification' ? d.revWorking : null };
+}
+
+/**
+ * What became of a decision: applied now ('rejected', 'implemented'), or an acceptance recorded ('accepted') while the
+ * document is locked or, for a change, while a revision is already open, with what it waits for (decisionWait).
+ */
+export type ChangeDecisionResult = { error: ChangeDecisionError } | { status: 'rejected' | 'implemented' } | ({ status: 'accepted' } & DecisionWait);
 
 /**
  * A pending acceptance whose designated author could no longer draft the document when it applied: `setAside` is that
@@ -172,16 +196,22 @@ export type ModifierSwap = { setAside: string; modifierId: string; mayDraft: boo
 /**
  * Carries out an accepted request on an unlocked document: a change opens the next revision for the modifier (the one
  * Vigie named, else the default one), a withdrawal closes the work in progress (running workflows end, open revisions are
- * cancelled) and makes the document obsolete. The request becomes 'implemented'. `swap`: the designated author was set
- * aside for the default one (applyPendingDecision), which the journal records.
+ * cancelled) and makes the document obsolete. The request becomes 'implemented', a change linked to the revision it
+ * opened. `swap`: the designated author was set aside for the default one (applyPendingDecision), which the journal records.
  */
 async function implementChange(tx: Tx, req: ChangeRow, doc: DocRow, actorId: string, swap: ModifierSwap | null = null) {
+  // Claimed first: a request applies once, even if two transactions reach it or applying it looks at the pending
+  // decisions of the document again (cancelOpenRevisions).
+  const [claimed] = await tx.update(s.changeRequests).set({ status: 'implemented' }).where(and(eq(s.changeRequests.id, req.id), inArray(s.changeRequests.status, ['submitted', 'accepted']))).returning({ id: s.changeRequests.id });
+  if (!claimed) return;
   const at = nowStamp();
   const ref = req.ecoRef ?? req.id;
   let modifierId: string | null = null;
+  let revisionId: number | null = null;
   if (req.kind === 'modification') {
     modifierId = req.modifierId ?? (await defaultModifier(tx, req.requesterId, doc));
     const rev = await openRevision(tx, req.docId, { modifierId, changeRef: ref });
+    revisionId = rev.id;
     await audit(tx, actorId, 'ecr', req.docId, `${ref} → ${rev.letter}`, rev.id);
     if (swap) {
       const names = new Map((await tx.select({ id: s.users.id, name: s.users.name }).from(s.users).where(inArray(s.users.id, [swap.setAside, swap.modifierId]))).map((u) => [u.id, u.name]));
@@ -196,21 +226,23 @@ async function implementChange(tx: Tx, req: ChangeRow, doc: DocRow, actorId: str
       await tx.insert(s.workflowComments).values({ workflowId: w.id, authorId: actorId, at: at.slice(0, 10), text: { fr: `Circuit clos — document retiré (${ref}).`, en: `Workflow closed — document withdrawn (${ref}).` } });
       await audit(tx, actorId, 'reject', doc.id, w.id, w.revisionId);
     }
-    await tx.update(s.revisions).set({ status: 'cancelled' }).where(and(eq(s.revisions.docId, doc.id), inArray(s.revisions.status, ['draft', 'in_review', 'approved'])));
+    // Obsolete first: the document is locked for good when its open revisions are cancelled.
     await tx.update(s.documents).set({ state: 'obsolete', obsoleteAt: at.slice(0, 10), modifiedAt: at.slice(0, 10) }).where(eq(s.documents.id, req.docId));
-    await refreshHeadline(tx, req.docId);
+    await cancelOpenRevisions(tx, req.docId);
     await audit(tx, actorId, 'obsolete', req.docId, ref);
   }
   // decidedAt stays the date of Vigie's decision when it was recorded before it could apply.
-  await tx.update(s.changeRequests).set({ status: 'implemented', decidedAt: req.decidedAt ?? at, ecoRef: req.ecoRef, modifierId, decisionNote: req.decisionNote }).where(eq(s.changeRequests.id, req.id));
+  await tx.update(s.changeRequests).set({ decidedAt: req.decidedAt ?? at, ecoRef: req.ecoRef, modifierId, revisionId, decisionNote: req.decisionNote }).where(eq(s.changeRequests.id, req.id));
 }
 
 /**
  * Applies Vigie's decision on a change request (webhook or simulation). A refusal always applies. An acceptance applies
- * at once to an active document free of legal hold; on a locked one (archived, obsolete, frozen) it is recorded as
- * 'accepted' with its change order, modifier and note, and applied when the lock lifts. A change never opens a second
- * revision beside one already open, and the author Vigie names must be able to draft the document (mayDraft): nothing
- * is written otherwise.
+ * at once to an active document free of legal hold. Otherwise it is recorded as 'accepted' with its change order,
+ * modifier and note, and applied later (applyPendingDecision): on a locked document (archived, obsolete, frozen), when
+ * the lock lifts; for a change while a revision is already open, when that revision enters into force or is cancelled
+ * (D-26: a change never opens a second revision beside one already open; it may instead be grafted onto it while it is
+ * drafted, graftChange in lib/actions.ts). The author Vigie names must be able to draft the document (mayDraft):
+ * nothing is written otherwise.
  */
 export async function applyChangeDecision(tx: Tx, id: string, decision: { accepted: boolean; ecoRef?: string | null; modifierId?: string | null; note?: string | null }, actorId: string): Promise<ChangeDecisionResult> {
   const [req] = await tx.select().from(s.changeRequests).where(eq(s.changeRequests.id, id));
@@ -221,34 +253,38 @@ export async function applyChangeDecision(tx: Tx, id: string, decision: { accept
     await audit(tx, actorId, req.kind === 'modification' ? 'ecr' : 'obsolete', req.docId, `${id} · ✕`);
     return { status: 'rejected' };
   }
-  const [doc] = await tx.select().from(s.documents).where(eq(s.documents.id, req.docId));
+  // Row locked: what the acceptance waits for (lock, open revision) is read on the document that putInForce,
+  // cancelOpenRevisions, releaseHold and restoring an archive update before looking at the pending decisions. Either
+  // they see the acceptance once recorded, or it sees the document they left and applies at once: never left waiting.
+  const [doc] = await tx.select().from(s.documents).where(eq(s.documents.id, req.docId)).for('update');
   if (!doc) return { error: 'not_found' };
   if (req.kind === 'modification' && decision.modifierId && !(await mayDraft(tx, decision.modifierId, doc))) return { error: 'modifier_not_allowed' };
-  const lock = lockOf(doc);
-  if (!lock && req.kind === 'modification' && doc.revWorking) return { error: 'locked_working' };
   const accepted = { ecoRef: decision.ecoRef ?? null, modifierId: req.kind === 'modification' ? decision.modifierId ?? null : null, decisionNote: decision.note ?? null };
-  if (lock) {
+  const wait = decisionWait(req.kind, doc);
+  if (lockOf(doc) || wait.revision) {
     await tx.update(s.changeRequests).set({ status: 'accepted', decidedAt: at, ...accepted }).where(eq(s.changeRequests.id, id));
     await audit(tx, actorId, req.kind === 'modification' ? 'ecr' : 'obsolete', req.docId, `${id} · ✓`);
-    return { status: 'accepted', state: doc.state, legalHold: doc.legalHold };
+    return { status: 'accepted', ...wait };
   }
   await implementChange(tx, { ...req, ...accepted }, doc, actorId);
   return { status: 'implemented' };
 }
 
 /**
- * Applies the acceptance Vigie sent while the document was locked, once the lock has lifted (legal hold released,
- * archive restored). Nothing happens while the document is still locked or, for a change, while a revision is open:
- * the request stays 'accepted'. Rights may have changed since Vigie named the author: one who can no longer draft the
- * document gives way to the default author rather than leave the decision stuck. The default author is checked in turn;
- * the revision opens for them even when they cannot draft it either (a records manager may still upload to it), but the
- * journal records the substitution in every case. Returns it, for the person who lifted the lock.
+ * Applies an acceptance Vigie sent while it could not apply (applyChangeDecision), once nothing holds it any more: the
+ * lock has lifted (legal hold released, archive restored) and, for a change, the revision that was open has entered
+ * into force or been cancelled (putInForce, cancelOpenRevisions). Until then the request stays 'accepted'; once applied
+ * or grafted it is 'implemented', so it never applies twice. Rights may have changed since Vigie named the author: one
+ * who can no longer draft the document gives way to the default author rather than leave the decision stuck. The
+ * default author is checked in turn; the revision opens for them even when they cannot draft it either (a records
+ * manager may still upload to it), but the journal records the substitution in every case. Returns it, for the person
+ * who lifted the lock.
  */
 export async function applyPendingDecision(tx: Tx, docId: string): Promise<ModifierSwap | null> {
   const [req] = await tx.select().from(s.changeRequests).where(and(eq(s.changeRequests.docId, docId), eq(s.changeRequests.status, 'accepted')));
   if (!req) return null;
   const [doc] = await tx.select().from(s.documents).where(eq(s.documents.id, docId));
-  if (!doc || lockOf(doc) || (req.kind === 'modification' && doc.revWorking)) return null;
+  if (!doc || lockOf(doc) || decisionWait(req.kind, doc).revision) return null;
   if (req.kind !== 'modification' || !req.modifierId || (await mayDraft(tx, req.modifierId, doc))) {
     await implementChange(tx, req, doc, 'vigie');
     return null;

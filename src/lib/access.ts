@@ -104,8 +104,38 @@ export function readerMaySeeRevision(circle: boolean, revStatus: string | null |
   return circle || revStatus === 'in_force' || revStatus === 'superseded';
 }
 
-/** Journal actions that only ever concern one revision (working versions, circuits and their comments, entry into force, files). */
-const REVISION_ACTIONS = new Set(['upload', 'working', 'import', 'reclass', 'request', 'approve', 'sign', 'reject', 'delegate', 'comment', 'in_force', 'download']);
+/**
+ * Does a reader see the change order and designated author of a change request (D-14)? Outside the drafting circle,
+ * only once the revision carrying the change (the one it opened, or the open one it was grafted onto, D-26) is in force
+ * or superseded; never while an accepted change waits to apply, which would tell a revision is open or about to open.
+ */
+export function readerMaySeeChange(circle: boolean, r: { kind: string; status: string; revisionId: number | null }, revStatus: string | null | undefined): boolean {
+  if (circle) return true;
+  if (r.kind === 'modification' && r.status === 'accepted') return false;
+  return r.revisionId == null || readerMaySeeRevision(false, revStatus);
+}
+
+/**
+ * A change request as a reader of its document sees it (D-14). When readerMaySeeChange says no, it names neither its
+ * change order, its designated author nor its revision. A change grafted onto a revision the reader does not see (`rev`
+ * carries another change order: the change did not open it, D-26) also keeps the status it had before the graft,
+ * « Acceptée »: turning « Appliquée » with nothing entering into force would tell that a hidden revision took it up.
+ */
+export function changeAsSeen<R extends { id: string; kind: string; status: string; ecoRef: string | null; modifierId: string | null; revisionId: number | null }>(
+  circle: boolean,
+  r: R,
+  rev: { status: string; changeRef: string | null } | null | undefined,
+): R {
+  if (readerMaySeeChange(circle, r, rev?.status)) return r;
+  const grafted = r.kind === 'modification' && r.status === 'implemented' && !!rev && rev.changeRef !== (r.ecoRef ?? r.id);
+  return { ...r, ecoRef: null, modifierId: null, revisionId: null, ...(grafted ? { status: 'accepted' } : {}) };
+}
+
+/**
+ * Journal actions that only ever concern one revision (working versions, circuits and their comments, entry into force,
+ * files, a change grafted onto the revision being drafted).
+ */
+const REVISION_ACTIONS = new Set(['upload', 'working', 'import', 'reclass', 'request', 'approve', 'sign', 'reject', 'delegate', 'comment', 'in_force', 'download', 'graft']);
 
 /**
  * Journal entries outside the drafting circle (D-14). An entry about a revision records it (audit_log.revision_id) and

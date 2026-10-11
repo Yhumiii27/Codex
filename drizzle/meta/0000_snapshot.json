@@ -1,5 +1,5 @@
 {
-  "id": "8ee8e042-dc58-4374-8989-a2f8f9c4f300",
+  "id": "32a89b5e-fe86-4995-9666-30853c1fce6b",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -156,6 +156,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "revision_id": {
+          "name": "revision_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "decision_note": {
           "name": "decision_note",
           "type": "text",
@@ -233,6 +239,19 @@
           "tableTo": "users",
           "columnsFrom": [
             "modifier_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "change_requests_revision_id_revisions_id_fk": {
+          "name": "change_requests_revision_id_revisions_id_fk",
+          "tableFrom": "change_requests",
+          "tableTo": "revisions",
+          "columnsFrom": [
+            "revision_id"
           ],
           "columnsTo": [
             "id"

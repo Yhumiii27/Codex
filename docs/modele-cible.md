@@ -69,6 +69,13 @@ Fichier stocké : `{ID}_{indice}.{ext}` (ex. `PRO-QHS-0012_B.2.pdf`).
   de dépôt de son rôle, accès au document), sinon la décision est refusée ; s'il perd ce droit pendant qu'une
   acceptation attend la levée d'un verrou, la révision s'ouvre pour le modificateur par défaut et le journal le note,
   même si ce dernier ne peut pas rédiger non plus (*proposé, non confirmé*).
+- Modification acceptée alors qu'une révision est déjà ouverte (D-26) : elle n'ouvre pas de seconde révision. Par
+  défaut elle **attend** (demande **Acceptée**) et ouvre la révision suivante une fois la révision ouverte mise en
+  vigueur ou annulée ; ou bien elle est **greffée** sur la révision ouverte, qui porte alors aussi sa référence ECO
+  (demande **Appliquée**). La greffe se fait par un gestionnaire documentaire ou par le modificateur de la révision
+  ouverte (à défaut le propriétaire), et seulement tant que celle-ci est en rédaction et le document non verrouillé.
+  Une demande de modification peut être faite pendant qu'une révision est ouverte. Un verrou s'ajoute à l'attente
+  (*interprétations proposées, non confirmées*, `docs/decisions.md`).
 - Verrous : un document archivé, obsolète ou sous gel juridique ne change plus (ni version de travail, ni décision de
   circuit, ni mise en vigueur d'une révision approuvée). Une acceptation Vigie reçue pendant le verrou est enregistrée
   (demande **Acceptée**, avec ECO, modificateur et note) et s'applique à sa levée : levée du gel ou restauration de
@@ -89,7 +96,9 @@ en vigueur, et ne voit que les révisions en vigueur et remplacées. Une révisi
 attente de sa date d'effet, ou annulée n'existe pas pour lui, ni rien de ce qui s'y rapporte :
 - l'étiquette « en cours » et le libellé de travail (« B.2 ») sur la fiche, dans l'explorateur, la recherche et
   l'export CSV ;
-- le modificateur désigné et la référence ECO de cette révision ;
+- le modificateur désigné et la référence ECO de cette révision, y compris ceux d'une modification greffée sur elle
+  ou qui attend pour ouvrir la suivante (D-26) ; une modification greffée reste affichée « Acceptée », comme avant la
+  greffe ;
 - ses circuits, en cours ou terminés, avec leurs commentaires. Un valideur sort du cercle quand le circuit se termine :
   s'il ne voit pas la révision, le circuit disparaît de son écran Validations, et un commentaire lui est refusé ;
 - les entrées du journal qui la concernent. Chaque entrée porte la révision dont elle parle (`audit_log.revision_id`)

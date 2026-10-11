@@ -1,11 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { POST } from '@/app/api/integrations/vigie/route';
 import { submitChange } from '@/lib/vigie';
-import { addDoc, fixClock, getChange, journalOf, revisionStatuses, setupDb } from '../support/db';
+import { approveRevision } from '@/lib/lifecycle';
+import { addDoc, fixClock, getChange, getRevision, journalOf, revisionStatuses, setupDb } from '../support/db';
 
 // The webhook Vigie sends its decisions to (docs/api.md, "Réponses"): a replayed decision is answered without effect
 // (200 alreadyApplied, 202 alreadyRecorded), a contrary one is refused (409), a designated author who may not draft
-// the document is refused (400) and nothing is recorded.
+// the document is refused (400) and nothing is recorded; an acceptance that cannot apply yet, on a locked document or
+// for a change while a revision is open (D-26), is recorded and answered 202 with the reason it waits.
 
 // The route reads the database through getDb(): it gets the test's in-memory database.
 vi.mock('@/db', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/db')>()), getDb: async () => (await import('../support/db')).currentDb() }));
@@ -64,7 +66,7 @@ describe('POST /api/integrations/vigie', () => {
     await addDoc(db(), { id: ID, legalHold: true });
     const requestId = await ask();
     const decision = { requestId, accepted: true, ecoRef: 'ECO-2026-010' };
-    const pending = { ok: true, pending: true, requestId, kind: 'modification', docId: ID, status: 'accepted', state: 'active', legalHold: true };
+    const pending = { ok: true, pending: true, reason: 'locked', requestId, kind: 'modification', docId: ID, status: 'accepted', state: 'active', legalHold: true, revision: null };
     expect(await post(decision)).toEqual({ status: 202, body: pending });
     const journal = await journalOf(db(), ID);
     expect(await post(decision)).toEqual({ status: 202, body: { ...pending, alreadyRecorded: true } });
@@ -94,11 +96,38 @@ describe('POST /api/integrations/vigie', () => {
     expect((await getChange(db(), requestId)).status).toBe('submitted');
   });
 
-  it('answers 409 revision_in_progress when a revision is already open', async () => {
-    await addDoc(db(), { id: ID, revisions: [{ letter: 'A', status: 'in_force' }, { letter: 'B', status: 'draft' }] });
+  it('records a change accepted while a revision is open with 202 revision_open, and the same acceptance sent again gets 202 alreadyRecorded (D-26)', async () => {
+    await addDoc(db(), { id: ID, revisions: [{ letter: 'A', status: 'in_force' }, { letter: 'B', status: 'in_review' }] });
     const requestId = await ask();
-    expect(await post({ requestId, accepted: true })).toEqual({ status: 409, body: { error: 'revision_in_progress', docId: ID, revision: 'B' } });
-    expect((await getChange(db(), requestId)).status).toBe('submitted');
+    const decision = { requestId, accepted: true, ecoRef: 'ECO-2026-010', modifierId: 'writer2' };
+    const pending = { ok: true, pending: true, reason: 'revision_open', requestId, kind: 'modification', docId: ID, status: 'accepted', state: 'active', legalHold: false, revision: 'B' };
+    expect(await post(decision)).toEqual({ status: 202, body: pending });
+    const journal = await journalOf(db(), ID);
+    expect(await post(decision)).toEqual({ status: 202, body: { ...pending, alreadyRecorded: true } });
+    expect(await journalOf(db(), ID)).toEqual(journal);
+    expect(await post({ requestId, accepted: false })).toEqual({ status: 409, body: { error: 'already_decided', status: 'accepted' } });
+    expect(await getChange(db(), requestId)).toMatchObject({ status: 'accepted', ecoRef: 'ECO-2026-010', modifierId: 'writer2' });
+    expect(await revisionStatuses(db(), ID)).toEqual({ A: 'in_force', B: 'in_review' });
+
+    // B enters into force: the change opens C, and the same acceptance sent again is answered as applied.
+    const b = await getRevision(db(), ID, 'B');
+    await db().transaction((tx) => approveRevision(tx, b.id));
+    expect(await revisionStatuses(db(), ID)).toEqual({ A: 'superseded', B: 'in_force', C: 'draft' });
+    expect(await post(decision)).toEqual({ status: 200, body: { ok: true, alreadyApplied: true, requestId, docId: ID, status: 'implemented' } });
+  });
+
+  it('gives the lock as the reason first when the document is also locked, with the revision open', async () => {
+    await addDoc(db(), { id: ID, legalHold: true, revisions: [{ letter: 'A', status: 'in_force' }, { letter: 'B', status: 'draft' }] });
+    const requestId = await ask();
+    expect(await post({ requestId, accepted: true })).toEqual({
+      status: 202, body: { ok: true, pending: true, reason: 'locked', requestId, kind: 'modification', docId: ID, status: 'accepted', state: 'active', legalHold: true, revision: 'B' },
+    });
+  });
+
+  it('gives no revision for a withdrawal, which never waits for one', async () => {
+    await addDoc(db(), { id: ID, state: 'archived', revisions: [{ letter: 'A', status: 'in_force' }, { letter: 'B', status: 'draft' }] });
+    const requestId = await ask('obsolescence');
+    expect((await post({ requestId, accepted: true })).body).toMatchObject({ pending: true, reason: 'locked', kind: 'obsolescence', state: 'archived', revision: null });
   });
 
   it('answers 404 for a request Codex does not know', async () => {

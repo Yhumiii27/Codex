@@ -2,12 +2,12 @@ import 'server-only';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { getDb, schema as s } from '@/db';
 import type { AuditChange, AuditData, AuditTargetKind, AuditValue, Conf } from '@/db/schema';
-import { canRead, getAccessIndex, inDraftingCircle, isUsableTemplate, readerMaySeeEntry, readerMaySeeRevision, type AccessIndex } from './access';
+import { canRead, changeAsSeen, getAccessIndex, inDraftingCircle, isUsableTemplate, readerMaySeeEntry, readerMaySeeRevision, type AccessIndex } from './access';
 import { revLabel } from './codification';
 import type { Ctx } from './context';
 import { addDays, daysBetween, fmtDate, fmtSize, fmtWhen, loc, parisStamp, todayIso } from './format';
 import { CONF_LEVELS, MATRIX_ROLE_LABEL, TAGCLS, type T, type TKey } from './i18n';
-import { lockOf } from './lifecycle';
+import { lockOf, type DecisionWait } from './lifecycle';
 import { retainUntil } from './retention';
 import { FACET_KEYS, type FacetKey } from './search';
 
@@ -124,12 +124,17 @@ export async function getDoc(ctx: Ctx, id: string): Promise<{ doc: DocView; circ
   return { doc: docView(ctx, d, wl.get(d.id), circle, vm.get(d.id)), circle, ix };
 }
 
-/** Revisions (newest first) with their working versions (newest first). */
+/**
+ * Revisions (newest first) with their working versions (newest first) and the change orders they carry: the one that
+ * opened them, then those grafted onto them (D-26). Callers show a revision only to who may see it (readerMaySeeRevision).
+ */
 export async function listRevisions(ctx: Ctx, docId: string) {
   const db = await getDb();
-  const [revs, versions] = await Promise.all([
+  const [revs, versions, carried] = await Promise.all([
     db.select().from(s.revisions).where(eq(s.revisions.docId, docId)).orderBy(desc(s.revisions.id)),
     db.select().from(s.workingVersions).where(eq(s.workingVersions.docId, docId)).orderBy(desc(s.workingVersions.n)),
+    db.select({ revisionId: s.changeRequests.revisionId, ref: sql<string>`coalesce(${s.changeRequests.ecoRef}, ${s.changeRequests.id})` }).from(s.changeRequests)
+      .where(and(eq(s.changeRequests.docId, docId), isNotNull(s.changeRequests.revisionId))).orderBy(asc(s.changeRequests.decidedAt), asc(s.changeRequests.id)),
   ]);
   return revs.map((r) => {
     const vs = versions.filter((v) => v.revisionId === r.id).map((v) => ({
@@ -147,6 +152,7 @@ export async function listRevisions(ctx: Ctx, docId: string) {
       statusLabel: ctx.t[`st_${r.status}` as TKey],
       tagClass: TAGCLS[r.status] ?? 'tag tag-neutral',
       modifier: r.modifierId ? ctx.userName(r.modifierId) : null,
+      changeRefs: [...new Set([...(r.changeRef ? [r.changeRef] : []), ...carried.filter((c) => c.revisionId === r.id).map((c) => c.ref)])],
       effectiveF: fmtDate(r.effectiveAt, ctx.lang),
       approvedF: fmtDate(r.approvedAt, ctx.lang),
       inForceF: fmtDate(r.inForceAt, ctx.lang),
@@ -227,16 +233,27 @@ export type WorkflowView = Awaited<ReturnType<typeof listWorkflows>>[number];
 
 // ── Change requests (Vigie) ──────────────────────────────────────────────
 
-/** Requests on documents the user can see; the others are treated as if they did not exist. */
+/**
+ * Requests on documents the user can see; the others are treated as if they did not exist. Outside a document's drafting
+ * circle, a request whose revision the user may not see names neither its change order, its designated author nor that
+ * revision, and one grafted onto that revision still shows « Acceptée » (access.ts, changeAsSeen; D-14, D-26).
+ */
 export async function listChangeRequests(ctx: Ctx, opts: { docId?: string } = {}) {
   const db = await getDb();
   const q = db.select().from(s.changeRequests).orderBy(desc(s.changeRequests.createdAt));
   const all = await (opts.docId ? q.where(eq(s.changeRequests.docId, opts.docId)) : q);
   const ids = [...new Set(all.map((r) => r.docId))];
+  const revIds = [...new Set(all.flatMap((r) => (r.revisionId == null ? [] : [r.revisionId])))];
   const ix = await getAccessIndex();
-  const docs = ids.length ? await db.select().from(s.documents).where(inArray(s.documents.id, ids)) : [];
-  const visible = new Set(docs.filter((d) => canRead(ctx, d, ix)).map((d) => d.id));
-  const rows = all.filter((r) => visible.has(r.docId));
+  const [docs, revs] = await Promise.all([
+    ids.length ? db.select().from(s.documents).where(inArray(s.documents.id, ids)) : [],
+    revIds.length ? db.select({ id: s.revisions.id, status: s.revisions.status, changeRef: s.revisions.changeRef }).from(s.revisions).where(inArray(s.revisions.id, revIds)) : [],
+  ]);
+  const circleOf = new Map(docs.filter((d) => canRead(ctx, d, ix)).map((d) => [d.id, inDraftingCircle(ctx, d, ix)]));
+  const revBy = new Map(revs.map((x) => [x.id, x]));
+  const rows = all
+    .filter((r) => circleOf.has(r.docId))
+    .map((r) => changeAsSeen(circleOf.get(r.docId)!, r, r.revisionId == null ? null : revBy.get(r.revisionId)));
   return rows.map((r) => ({
     ...r,
     kindL: ctx.t[`kind_${r.kind}` as TKey],
@@ -249,12 +266,15 @@ export async function listChangeRequests(ctx: Ctx, opts: { docId?: string } = {}
 export type ChangeRequestView = Awaited<ReturnType<typeof listChangeRequests>>[number];
 
 /**
- * What an acceptance recorded on a locked document waits for (lib/lifecycle.ts applyPendingDecision). An archived
- * document under legal hold cannot be restored before the hold is released: both are named.
+ * What a recorded acceptance waits for (lib/lifecycle.ts decisionWait, applyPendingDecision): the lock of the document,
+ * then, for a change, the revision already open (D-26). An archived document under legal hold cannot be restored before
+ * the hold is released: both are named. Outside the drafting circle, pass no revision: it does not exist for the reader (D-14).
  */
-export function decisionWaitL(t: T, d: Pick<DocRow, 'state' | 'legalHold'>): string {
-  if (d.state === 'archived') return d.legalHold ? t.ecr_wait_hold_archived : t.ecr_wait_archived;
-  return d.state === 'active' && d.legalHold ? t.ecr_wait_hold : t.ecr_wait_lock;
+export function decisionWaitL(t: T, w: DecisionWait): string {
+  const rev = w.revision ? ` (${t.rev_short} ${w.revision})` : '';
+  const lock = w.state === 'archived' ? (w.legalHold ? t.ecr_wait_hold_archived : t.ecr_wait_archived) : w.state === 'active' && w.legalHold ? t.ecr_wait_hold : w.state === 'active' ? null : t.ecr_wait_lock;
+  if (!lock) return `${t.ecr_wait_revision}${rev}`;
+  return w.revision ? `${lock}, ${t.ecr_wait_then_revision}${rev}` : lock;
 }
 
 /**
@@ -342,7 +362,7 @@ export async function auditForReader(ctx: Ctx, all: AuditRow[]): Promise<AuditEn
   const revIds = [...new Set(rows.flatMap((a) => (a.revisionId == null ? [] : [a.revisionId])))];
   const [docs, revs, ix] = await Promise.all([
     docIds.length ? db.select().from(s.documents).where(inArray(s.documents.id, docIds)) : [],
-    revIds.length ? db.select({ id: s.revisions.id, status: s.revisions.status }).from(s.revisions).where(inArray(s.revisions.id, revIds)) : [],
+    revIds.length ? db.select({ id: s.revisions.id, status: s.revisions.status, changeRef: s.revisions.changeRef }).from(s.revisions).where(inArray(s.revisions.id, revIds)) : [],
     getAccessIndex(),
   ]);
   const docBy = new Map(docs.map((d) => [d.id, d]));

@@ -268,14 +268,14 @@ gestionnaire documentaire peut aussi simuler la décision depuis la fiche docume
 | `requestId` | oui | Référence de la demande dans Vigie (`ECR-…`), telle que Codex l'a transmise. |
 | `accepted` | oui | `true` : acceptée ; `false` : refusée. |
 | `ecoRef` | non | Référence de l'ordre de modification (ECO) ; à défaut, la référence de la demande sert de référence de changement. |
-| `modifierId` | non | Utilisateur désigné pour rédiger la révision (modification acceptée). Pour un refus ou un retrait, il est sans effet, mais s'il est fourni il doit désigner un utilisateur existant et non système (sinon 400 `unknown_user`, comme pour une acceptation). Pour une modification acceptée, il doit en outre pouvoir rédiger le document : droit **Déposer** (`upload`) de son rôle par défaut dans la matrice des droits (Administration › Rôles), et accès en lecture au document (confidentialité, lecteurs désignés). Sinon : 400 `modifier_not_allowed`, rien n'est enregistré, et Codex ne lui substitue pas le modificateur par défaut. Défaut : le demandeur, s'il peut rédiger le document (même contrôle) ; sinon le propriétaire. Ce défaut est déterminé quand la révision s'ouvre : pour une acceptation mise en attente (document verrouillé), à la levée du verrou. |
+| `modifierId` | non | Utilisateur désigné pour rédiger la révision (modification acceptée). Pour un refus ou un retrait, il est sans effet, mais s'il est fourni il doit désigner un utilisateur existant et non système (sinon 400 `unknown_user`, comme pour une acceptation). Pour une modification acceptée, il doit en outre pouvoir rédiger le document : droit **Déposer** (`upload`) de son rôle par défaut dans la matrice des droits (Administration › Rôles), et accès en lecture au document (confidentialité, lecteurs désignés). Sinon : 400 `modifier_not_allowed`, rien n'est enregistré, et Codex ne lui substitue pas le modificateur par défaut. Défaut : le demandeur, s'il peut rédiger le document (même contrôle) ; sinon le propriétaire. Ce défaut est déterminé quand la révision s'ouvre : pour une acceptation mise en attente (document verrouillé, révision déjà ouverte), au moment où elle s'applique. |
 | `note` | non | Commentaire de décision (≤ 2000 caractères). |
 
 ### Effet
 
 | Demande | Acceptée | Refusée |
 |---|---|---|
-| Modification | Codex ouvre la révision suivante en **Brouillon**, attribuée au modificateur, avec la référence ECO ; la demande passe **Appliquée**. | La demande passe **Refusée**. |
+| Modification | Codex ouvre la révision suivante en **Brouillon**, attribuée au modificateur, avec la référence ECO ; la demande passe **Appliquée**, rattachée à cette révision. Si une révision est déjà ouverte, voir « Révision déjà ouverte » ci-dessous. | La demande passe **Refusée**. |
 | Retrait | Le document passe **Obsolète** ; un circuit en cours est clos (commentaire « document retiré ») et les révisions ouvertes passent **Annulées** ; la demande passe **Appliquée**. | La demande passe **Refusée**. |
 
 **Document verrouillé.** Si le document est archivé, obsolète ou sous gel juridique quand l'acceptation arrive, elle ne
@@ -289,6 +289,30 @@ restauration, et non à sa réception. Le journal garde les deux temps :
 « ECR-… · ✓ » à la réception, puis l'ouverture de la révision ou le retrait à l'application. La fiche document signale
 la décision en attente (bandeau et onglet Demandes). Un refus, lui, s'applique toujours aussitôt. Un document obsolète
 ne redevient jamais actif : une acceptation reçue pour un tel document resterait en attente.
+
+**Révision déjà ouverte (D-26).** Une modification acceptée alors qu'une révision du document est déjà ouverte (en
+brouillon, en validation, ou approuvée en attente de sa date d'effet) n'en ouvre jamais une seconde. Codex l'enregistre :
+la demande passe **Acceptée**, avec la référence ECO, le modificateur désigné et la note, et le webhook répond **202**
+avec `"reason":"revision_open"` et l'indice de la révision ouverte (`revision`). Personne n'a de choix à faire : par
+défaut, la modification **attend**. Elle ouvre la révision suivante, avec les effets du tableau ci-dessus, dès que la
+révision ouverte entre en vigueur (dernière approbation de son circuit, approbation immédiate d'un type sans circuit, ou
+date d'effet atteinte) ou est annulée (`putInForce` et `cancelOpenRevisions`, `src/lib/lifecycle.ts`). Tant que la
+révision ouverte est en brouillon et que le document n'est pas verrouillé, un gestionnaire documentaire ou l'auteur de
+cette révision (son modificateur désigné, à défaut le propriétaire), avec le droit **Modifier**, peut à la place la
+**greffer** sur cette révision (Server Action `graftChange`, `src/lib/actions.ts`) : la révision garde son modificateur
+et porte aussi la référence ECO ; la demande passe **Appliquée**, rattachée à cette révision, avec pour modificateur
+celui de la révision ; le journal inscrit « Greffe d'une modification » (« ECO-… → B », suivi du modificateur désigné
+par Vigie écarté s'il y en avait un autre). En validation ou approuvée, la révision ne reçoit plus de greffe : la
+modification attend. Une révision peut ainsi porter plusieurs ECO (`change_requests.revision_id`). Une demande de
+modification peut d'ailleurs être faite depuis Codex pendant qu'une révision est ouverte ; les autres refus restent
+(document non en vigueur, verrouillé, demande déjà en cours). Le verrou et la révision ouverte se cumulent : sur un
+document verrouillé, rien ne s'applique ni ne se greffe avant la levée du verrou, puis la modification attend encore la
+révision ouverte. Aujourd'hui, seul un retrait accepté annule une révision ouverte, et il rend le document obsolète : une
+modification n'y attend jamais (une seule demande en cours par document), et un document obsolète ne change plus.
+Hors du cercle de rédaction, ni la référence ECO, ni le modificateur, ni la révision d'une modification en attente,
+greffée ou appliquée à une révision qui n'est pas encore en vigueur ne sont montrés (D-14), et une modification greffée
+y reste affichée **Acceptée** jusqu'à la mise en vigueur de la révision qui la porte : rien ne trahit la greffe. Vigie
+n'est prévenu ni de la greffe ni de l'application différée (O-10).
 
 **Modificateur désigné qui perd le droit de rédiger.** Avec `modifierId`, le droit de rédiger est contrôlé à la
 réception de la décision (400 `modifier_not_allowed` sinon), puis de nouveau quand une acceptation mise en attente
@@ -310,12 +334,23 @@ remplacement n'est jamais silencieux, y compris dans ces deux cas :
   rédaction (c'est le cas d'un gestionnaire documentaire). Le message est différent quand le modificateur effectif ne
   peut pas rédiger le document : il dit que ni le modificateur désigné ni le modificateur par défaut ne le peuvent.
 
-Vigie n'en est pas prévenu (O-10). Appliquer la décision plutôt que la laisser en attente est un choix proposé, non
-confirmé (`docs/decisions.md`).
+Une acceptation qui attendait une révision ouverte suit la même règle quand elle s'applique à la mise en vigueur ou à
+l'annulation de cette révision : elle est alors appliquée au nom de `vigie`, sans personne à avertir par message ; le
+journal en garde trace. Vigie n'en est pas prévenu (O-10). Appliquer la décision plutôt que la laisser en attente est un
+choix proposé, non confirmé (`docs/decisions.md`).
 
 Les mêmes règles s'appliquent à la décision simulée depuis la fiche document (`applyChangeDecision`). Le contrôle du
 modificateur est le même pour les deux (`mayDraft`, `src/lib/lifecycle.ts`) ; le dialogue de simulation ne propose que
 les personnes qui peuvent rédiger le document, et un refus y est affiché comme erreur, sans repli sur le défaut.
+
+### Statuts d'une demande
+
+| Statut (`change_requests.status`) | Libellé | Sens |
+|---|---|---|
+| `submitted` | Transmise à Vigie | En attente de la décision de Vigie. Une seule demande `submitted` ou `accepted` par document. |
+| `rejected` | Refusée | Vigie a refusé ; rien n'a changé. |
+| `accepted` | Acceptée | Vigie a accepté, mais la décision ne peut pas encore s'appliquer : document verrouillé, ou, pour une modification, révision déjà ouverte (D-26). Elle s'applique d'elle-même dès que plus rien ne la retient, ou se greffe sur la révision ouverte. |
+| `implemented` | Appliquée | Codex a appliqué la décision : révision ouverte (ou révision déjà ouverte sur laquelle la modification a été greffée), rattachée par `revision_id` ; ou document passé obsolète (retrait). |
 
 ### Réponses
 
@@ -323,11 +358,11 @@ les personnes qui peuvent rédiger le document, et un refus y est affiché comme
 |---|---|
 | **200** | `{"ok":true,"requestId","kind","docId","status":"implemented"\|"rejected","docStatus","revision"}` (`revision` : lettre ouverte par une modification acceptée) |
 | **200** | `{"ok":true,"alreadyApplied":true,…}` : la même décision a déjà été appliquée (renvoi du webhook sans effet) |
-| **202** | `{"ok":true,"pending":true,"requestId","kind","docId","status":"accepted","state","legalHold"}` : acceptation enregistrée sur un document verrouillé, appliquée à la levée du verrou (`state` et `legalHold` disent ce qui le verrouille). Un renvoi de la même acceptation reçoit la même réponse avec `"alreadyRecorded":true`, sans effet. |
+| **202** | `{"ok":true,"pending":true,"reason","requestId","kind","docId","status":"accepted","state","legalHold","revision"}` : acceptation enregistrée, qui ne peut pas encore s'appliquer. `reason` dit ce qui la retient d'abord : `locked`, le document est verrouillé (`state` et `legalHold` disent comment ; elle s'applique à la levée du verrou), ou `revision_open`, une révision est déjà ouverte (D-26). `revision` donne l'indice de la révision ouverte que la modification attend aussi (`null` pour un retrait, ou sans révision ouverte) : avec `reason` `locked`, elle attendra encore cette révision après la levée du verrou. Un renvoi de la même acceptation reçoit la même réponse, établie sur l'état du moment, avec `"alreadyRecorded":true`, sans effet. Une fois la décision appliquée ou greffée, le renvoi reçoit 200 `alreadyApplied`. |
 | **400** | `invalid_json`, `{"error":"invalid","field":"…"}`, `{"error":"unknown_user","field":"modifierId"}` (utilisateur inconnu ou compte système, quelle que soit la décision), `{"error":"modifier_not_allowed","field":"modifierId","docId"}` (le modificateur désigné ne peut pas rédiger le document : pas de droit Déposer avec son rôle, ou pas d'accès au document ; rien n'est enregistré) |
 | **401** / **503** | jeton absent ou faux / webhook désactivé |
 | **404** | `{"error":"not_found"}` : demande inconnue de Codex |
-| **409** | `already_decided` (décision contraire déjà appliquée ou enregistrée ; `status` donne l'état de la demande), `revision_in_progress` (une révision est déjà en cours sur le document) |
+| **409** | `already_decided` (décision contraire déjà appliquée ou enregistrée ; `status` donne l'état de la demande). Une révision déjà ouverte ne donne plus de 409 (`revision_in_progress` a disparu) : 202 `revision_open`. |
 
 ### Exemples
 
@@ -356,6 +391,6 @@ curl -s -X POST http://localhost:3100/api/integrations/vigie \
 curl -s -X POST http://localhost:3100/api/integrations/vigie \
   -H "Authorization: Bearer $VIGIE_WEBHOOK_TOKEN" -H 'Content-Type: application/json' \
   -d '{"requestId":"ECR-2026-001","accepted":true,"ecoRef":"ECO-2026-010","modifierId":"jwagner"}'
-# → 202 {"ok":true,"pending":true,"requestId":"ECR-2026-001","kind":"modification","docId":"PRO-QUA-0001","status":"accepted","state":"active","legalHold":true}
+# → 202 {"ok":true,"pending":true,"reason":"locked","requestId":"ECR-2026-001","kind":"modification","docId":"PRO-QUA-0001","status":"accepted","state":"active","legalHold":true,"revision":null}
 # Le même envoi, rejoué avant la levée du gel : même réponse, avec "alreadyRecorded":true, sans effet.
 ```

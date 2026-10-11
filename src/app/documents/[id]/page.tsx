@@ -14,7 +14,7 @@ import { isFinalStatus } from '@/lib/codes';
 import { getCtx } from '@/lib/context';
 import { fmtDate, todayIso } from '@/lib/format';
 import { getProject } from '@/lib/keystone';
-import { defaultModifier, draftersOf } from '@/lib/lifecycle';
+import { decisionWait, defaultModifier, draftersOf } from '@/lib/lifecycle';
 import { decisionWaitL, getDoc, listAudit, listChangeRequests, listDocs, listRevisions, listWorkflows, stateNotice, typeView, type RevisionView } from '@/lib/queries';
 import { normalizeMime } from '@/lib/storage';
 import { vigieSimulated, vigieUrl } from '@/lib/vigie';
@@ -108,15 +108,15 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
   // Archived, obsolete or frozen records are read-only (same rule as lib/actions.ts).
   const lock = doc.state === 'archived' ? t.locked_archived : doc.state === 'obsolete' ? t.locked_obsolete : doc.legalHold ? t.locked_hold : undefined;
   const pending = requests.find((r) => r.status === 'submitted' || r.status === 'accepted');
-  // Vigie's acceptance recorded while the document is locked: it applies when the lock lifts (lib/lifecycle.ts).
+  // Vigie's acceptance recorded while the document is locked or, for a change, while a revision is open: it applies when
+  // the lock lifts, then once that revision is in force or cancelled (lib/lifecycle.ts, D-26).
   const awaiting = pending?.status === 'accepted' ? pending : null;
-  const waitL = decisionWaitL(t, doc);
-  // Outside the drafting circle, a change order whose revision is not in force yet, or not open yet (acceptance waiting
-  // for the lock to lift), names neither itself nor its author (D-14).
-  const unseenRefs = new Set(revs.filter((r) => r.changeRef && !readerMaySeeRevision(circle, r.status)).map((r) => r.changeRef));
-  const unseen = (r: (typeof requests)[number]) => unseenRefs.has(r.ecoRef ?? r.id) || (!circle && r.status === 'accepted' && r.kind === 'modification');
-  const shownRequests = requests.map((r) => (unseen(r) ? { ...r, ecoRef: null, modifier: null } : r));
-  const notice = stateNotice(ctx, doc, shownRequests);
+  // Outside the drafting circle the open revision does not exist (docView leaves revWorking out, D-14): a change waiting
+  // for it alone gives no reason.
+  const waitL = awaiting && (lock || (awaiting.kind === 'modification' && doc.revWorking)) ? decisionWaitL(t, decisionWait(awaiting.kind, doc)) : null;
+  // Outside the drafting circle, listChangeRequests already leaves out the change order and author of a change whose
+  // revision is not in force yet, or not open yet, and shows one grafted onto such a revision as still accepted (D-14).
+  const notice = stateNotice(ctx, doc, requests);
   const changeLock = lock ?? (pending ? `${t.change_pending} : ${pending.id}` : undefined);
   const drafting = circle && working?.status === 'draft' ? working : null;
   const isOwner = ctx.seesAll || doc.ownerId === ctx.user.id;
@@ -141,8 +141,8 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
         className={cls} icon="check" deniedTitle={lock ?? deny('edit') ?? (type && !type.circuit.length ? deny('publish') : undefined) ?? (drafting.versions.length ? undefined : t.need_file)}
       >{t.request_validation}</DialogButton>
     );
-  // A change request needs a revision in force and no revision already open; a withdrawal only a revision in force.
-  const canChange = !!doc.revInForce && !working;
+  // A change request needs a revision in force; one asked while a revision is open waits for it or is grafted (D-26).
+  const canChange = !!doc.revInForce;
   const canWithdraw = !!doc.revInForce && doc.state !== 'obsolete';
   const changeBtn = (cls: string) => canChange && (
     <DialogButton spec={{ kind: 'change', docId: doc.id, title: doc.title, change: 'modification' }} className={cls} icon="pen" deniedTitle={changeLock ?? deny('edit')}>{t.request_change}</DialogButton>
@@ -166,7 +166,7 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
       r.inForceAt && `${t.st_in_force} : ${r.inForceF}`,
       r.supersededAt && `${t.st_superseded} : ${r.supersededF}`,
     ].filter((x): x is string => !!x);
-    const who = [r.modifier && `${t.modifier} : ${r.modifier}`, r.changeRef && `${t.eco_ref} : ${r.changeRef}`].filter((x): x is string => !!x);
+    const who = [r.modifier && `${t.modifier} : ${r.modifier}`, r.changeRefs.length > 0 && `${t.eco_ref} : ${r.changeRefs.join(', ')}`].filter((x): x is string => !!x);
     return {
       id: r.id, letter: r.letter, statusLabel: r.statusLabel, tagClass: r.tagClass,
       lines: [dates.length ? dates.join(' · ') : `${t.created} ${r.createdF}`, ...(who.length ? [who.join(' · ')] : [])],
@@ -192,17 +192,19 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
   const showReaders = readersApply(doc.conf) || readerIds.length > 0;
   const simulateVigie = ctx.seesAll && vigieSimulated();
   // Simulated Vigie decision: the author proposed by default (requester if they may draft the document, else the
-  // owner), the people who may draft it, why an acceptance cannot be given, or that it will wait for the lock to lift
-  // (same rules as lib/lifecycle.ts applyChangeDecision).
+  // owner), the people who may draft it, and what an acceptance will wait for: the lock to lift, the revision open
+  // (same rules as lib/lifecycle.ts applyChangeDecision). Records managers belong to the drafting circle.
   const db = await getDb();
   const submitted = simulateVigie ? requests.filter((r) => r.status === 'submitted') : [];
   const drafters = submitted.some((r) => r.kind === 'modification') ? await draftersOf(db, doc) : [];
-  const vigieSpecs = new Map(await Promise.all(submitted.map(async (r) => [r.id, {
-    modifierId: await defaultModifier(db, r.requesterId, doc),
-    drafters,
-    locked: !lock && r.kind === 'modification' && doc.revWorking ? t.locked_working : undefined,
-    deferred: lock ? `${lock} ${t.vigie_deferred} : ${waitL}.` : undefined,
-  }] as const)));
+  const vigieSpecs = new Map(await Promise.all(submitted.map(async (r) => {
+    const wait = decisionWait(r.kind, doc);
+    return [r.id, {
+      modifierId: await defaultModifier(db, r.requesterId, doc),
+      drafters,
+      deferred: lock || wait.revision ? `${lock ? `${lock} ` : ''}${t.vigie_deferred} : ${decisionWaitL(t, wait)}.` : undefined,
+    }] as const;
+  })));
   const canRelease = doc.legalHold && ctx.can('archive') && ctx.screens.retention;
   const previewMime = current?.fileKey && current.mime ? normalizeMime(current.mime, current.fileName ?? '') : null;
 
@@ -245,7 +247,7 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
           <span>{notice.text}</span>
         </div>
       )}
-      {awaiting && (
+      {awaiting && waitL && (
         <div className={styles.stateNotice} data-state="pending" role="note">
           <Icon name="lock" size={16} style={{ flex: 'none' }} />
           <span>{t.ecr_accepted_waiting} ({awaiting.id}) : {waitL}.</span>
@@ -448,9 +450,9 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
 
             {tab === 'requests' && (
               <>
-                {shownRequests.length ? (
+                {requests.length ? (
                   <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    {shownRequests.map((r) => (
+                    {requests.map((r) => (
                       <div key={r.id} className={`hairline ${styles.requestRow}`}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                           <span className="tabnum" style={{ fontSize: 13 }}>{r.id}</span>
@@ -465,7 +467,7 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
                           {r.modifier && ` · ${t.modifier} : ${r.modifier}`}
                         </div>
                         {r.decisionNote && <div className="text-muted" style={{ fontSize: 11, marginTop: 2 }}>{r.decisionNote}</div>}
-                        {r.status === 'accepted' && (
+                        {r.status === 'accepted' && waitL && (
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, marginTop: 4 }}>
                             <Icon name="lock" size={12} style={{ flex: 'none' }} />{t.ecr_pending_apply} : {waitL}.
                           </div>

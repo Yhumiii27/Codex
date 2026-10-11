@@ -26,7 +26,7 @@ export function Dialogs({ spec }: { spec: DialogSpec }) {
     case 'delegate': return <Delegate workflowId={spec.workflowId} stepName={spec.stepName} step={spec.step} excluded={spec.excluded} />;
     case 'compare': return <Compare current={spec.current} other={spec.other} />;
     case 'readers': return <Readers docId={spec.docId} readers={spec.readers} />;
-    case 'vigie': return <VigieDecision requestId={spec.requestId} docTitle={spec.docTitle} change={spec.change} modifierId={spec.modifierId} drafters={spec.drafters} locked={spec.locked} deferred={spec.deferred} />;
+    case 'vigie': return <VigieDecision requestId={spec.requestId} docTitle={spec.docTitle} change={spec.change} modifierId={spec.modifierId} drafters={spec.drafters} deferred={spec.deferred} />;
     case 'type': return <TypeEditor type={spec.type} />;
     case 'holder': return <AddHolder functionKey={spec.functionKey} functionLabel={spec.functionLabel} scope={spec.scope} />;
     case 'org': return <AddOrg what={spec.what} />;
@@ -579,12 +579,12 @@ function Readers({ docId, readers }: { docId: string; readers: string[] }) {
   );
 }
 
-function VigieDecision({ requestId, docTitle, change, modifierId, drafters, locked, deferred }: { requestId: string; docTitle: string; change: 'modification' | 'obsolescence'; modifierId: string; drafters: string[]; locked?: string; deferred?: string }) {
+function VigieDecision({ requestId, docTitle, change, modifierId, drafters, deferred }: { requestId: string; docTitle: string; change: 'modification' | 'obsolescence'; modifierId: string; drafters: string[]; deferred?: string }) {
   const { t, data, close } = useApp();
   const { pending, error, run } = useSubmit();
-  // With a revision already open, the request can only be refused, as with Vigie. On an archived, obsolete or frozen
-  // document an acceptance is recorded and applies when the lock lifts (`deferred` says so).
-  const [accept, setAccept] = useState(!locked);
+  // On an archived, obsolete or frozen document, or for a change while a revision is open, an acceptance is recorded
+  // and applies later (`deferred` says when).
+  const [accept, setAccept] = useState(true);
   // Only the people who may draft the document, as the server checks (lib/lifecycle.ts, mayDraft).
   const users = userOptions(data).filter((o) => drafters.includes(o.key));
   const [modifier, setModifier] = useState(users.some((o) => o.key === modifierId) ? modifierId : users[0]?.key ?? '');
@@ -604,11 +604,11 @@ function VigieDecision({ requestId, docTitle, change, modifierId, drafters, lock
         <div className="text-muted sub tabnum">{requestId} · {t[`kind_${change}`]}</div>
       </div>
       <p className="text-muted" style={{ margin: 0, fontSize: 12.5 }}>{t.vigie_hint}</p>
-      <Field label={t.vigie_decision} radio hint={locked ?? (accept ? deferred : undefined)}>
+      <Field label={t.vigie_decision} radio hint={accept ? deferred : undefined}>
         <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
           {([true, false] as const).map((v) => (
-            <label key={String(v)} className="radio" style={{ fontSize: 13, opacity: v && locked ? 0.45 : undefined }}>
-              <input type="radio" name="decision" checked={accept === v} disabled={v && !!locked} onChange={() => setAccept(v)} /><span className="dot" />{v ? t.ecr_accepted : t.ecr_rejected}
+            <label key={String(v)} className="radio" style={{ fontSize: 13 }}>
+              <input type="radio" name="decision" checked={accept === v} onChange={() => setAccept(v)} /><span className="dot" />{v ? t.ecr_accepted : t.ecr_rejected}
             </label>
           ))}
         </div>

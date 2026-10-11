@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { schema as s } from '@/db';
 import type { DocState } from '@/db/schema';
 import { buildAccessIndex } from '@/lib/access';
-import { applyChangeDecision, applyPendingDecision, promoteDue } from '@/lib/lifecycle';
+import { applyChangeDecision, applyPendingDecision, approveRevision, promoteDue } from '@/lib/lifecycle';
 import { submitChange } from '@/lib/vigie';
 import { addDoc, addWorkflow, fixClock, getChange, getDoc, getRevision, journalOf, revisionStatuses, setClock, setupDb } from '../support/db';
 import type { Person } from '../support/fixtures';
@@ -77,14 +77,20 @@ describe('accepted change (D-16)', () => {
     expect((await getRevision(db(), 'PRO-QUA-0002', 'B')).modifierId).toBe('owner');
   });
 
-  it('never opens a second revision beside one already open, and writes nothing', async () => {
+  // D-26: the acceptance waits for the open revision or is grafted onto it (tests/integration/change-revision-open.test.ts).
+  it('never opens a second revision beside one already open: the acceptance is recorded and waits', async () => {
     await addDoc(db(), { id: ID, revisions: [{ letter: 'A', status: 'in_force' }, { letter: 'B', status: 'draft' }] });
     const id = await ask('modification');
-    const before = await journalOf(db(), ID);
-    expect(await decide(id, { accepted: true, ecoRef: ECO })).toEqual({ error: 'locked_working' });
+    expect(await decide(id, { accepted: true, ecoRef: ECO })).toEqual({ status: 'accepted', state: 'active', legalHold: false, revision: 'B' });
     expect(await revisionStatuses(db(), ID)).toEqual({ A: 'in_force', B: 'draft' });
-    expect((await getChange(db(), id)).status).toBe('submitted');
-    expect(await journalOf(db(), ID)).toEqual(before);
+    expect(await getChange(db(), id)).toMatchObject({ status: 'accepted', ecoRef: ECO });
+  });
+
+  it('links the request to the revision it opened', async () => {
+    await addDoc(db(), { id: ID });
+    const id = await ask('modification');
+    await decide(id, { accepted: true, ecoRef: ECO });
+    expect((await getChange(db(), id)).revisionId).toBe((await getRevision(db(), ID, 'B')).id);
   });
 
   it('records a refusal and opens nothing', async () => {
@@ -180,7 +186,7 @@ describe('acceptance on a locked document (D-16, D-17, step 3)', () => {
   it('is recorded « Acceptée » under legal hold, with its change order, author and note, and applied when the hold lifts', async () => {
     await addDoc(db(), { id: ID, legalHold: true });
     const id = await ask('modification');
-    expect(await decide(id, { accepted: true, ecoRef: ECO, modifierId: 'writer2', note: 'CCB' })).toEqual({ status: 'accepted', state: 'active', legalHold: true });
+    expect(await decide(id, { accepted: true, ecoRef: ECO, modifierId: 'writer2', note: 'CCB' })).toEqual({ status: 'accepted', state: 'active', legalHold: true, revision: null });
     expect(await getChange(db(), id)).toMatchObject({ status: 'accepted', ecoRef: ECO, modifierId: 'writer2', decisionNote: 'CCB', decidedAt: '2026-10-10 10:00:00' });
     expect(await revisionStatuses(db(), ID)).toEqual({ A: 'in_force' });
     expect((await journalOf(db(), ID)).at(-1)).toMatchObject({ userId: 'vigie', action: 'ecr', detail: `${id} · ✓` });
@@ -216,16 +222,20 @@ describe('acceptance on a locked document (D-16, D-17, step 3)', () => {
     expect((await getChange(db(), id)).status).toBe('implemented');
   });
 
-  // The lock is checked before the open revision: the acceptance is recorded, then waits while B is open. Nothing applies
-  // it later when B closes (only lifting a lock does): reported, not encoded.
-  it('never opens a second revision beside one already open when the hold lifts: the acceptance stays pending', async () => {
-    await addDoc(db(), { id: ID, legalHold: true, revisions: [{ letter: 'A', status: 'in_force' }, { letter: 'B', status: 'draft', modifierId: 'writer', versions: ['writer'] }] });
+  // The lock and the open revision add up (D-26): the acceptance waits while B is open after the hold lifts, then opens
+  // the next revision once B enters into force.
+  it('never opens a second revision beside one already open when the hold lifts: the acceptance waits for B', async () => {
+    await addDoc(db(), { id: ID, legalHold: true, revisions: [{ letter: 'A', status: 'in_force' }, { letter: 'B', status: 'in_review', modifierId: 'writer', versions: ['writer'] }] });
     const id = await ask('modification');
-    expect(await decide(id, { accepted: true, ecoRef: ECO })).toEqual({ status: 'accepted', state: 'active', legalHold: true });
+    expect(await decide(id, { accepted: true, ecoRef: ECO })).toEqual({ status: 'accepted', state: 'active', legalHold: true, revision: 'B' });
     expect(await unlock({ legalHold: false })).toBeNull();
-    expect(await revisionStatuses(db(), ID)).toEqual({ A: 'in_force', B: 'draft' });
+    expect(await revisionStatuses(db(), ID)).toEqual({ A: 'in_force', B: 'in_review' });
     expect(await getDoc(db(), ID)).toMatchObject({ legalHold: false, revWorking: 'B' });
     expect((await getChange(db(), id)).status).toBe('accepted');
+    const b = await getRevision(db(), ID, 'B');
+    expect(await db().transaction((tx) => approveRevision(tx, b.id))).toBe(true);
+    expect(await revisionStatuses(db(), ID)).toEqual({ A: 'superseded', B: 'in_force', C: 'draft' });
+    expect((await getChange(db(), id)).status).toBe('implemented');
   });
 
   it('never applies a change to an obsolete document: the acceptance stays pending', async () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canRead, inDraftingCircle, isUsableTemplate, readerMaySeeEntry, readerMaySeeRevision, readerMaySeeVersion, readersApply, type AccessIndex, type Viewer } from '@/lib/access';
+import { canRead, changeAsSeen, inDraftingCircle, isUsableTemplate, readerMaySeeChange, readerMaySeeEntry, readerMaySeeRevision, readerMaySeeVersion, readersApply, type AccessIndex, type Viewer } from '@/lib/access';
 import { CONF_LEVELS, PERMS, type Perm } from '@/lib/i18n';
 
 // Who sees what: confidentiality levels (D-13), drafting circle (D-14), docs/modele-cible.md §5.
@@ -245,7 +245,7 @@ describe('readerMaySeeRevision (D-14)', () => {
 
 describe('readerMaySeeEntry (D-14, journal)', () => {
   const DOCUMENT_ACTIONS = ['edit', 'ecr', 'obsolete', 'hold', 'release', 'archive', 'restore'];
-  const REVISION_ACTIONS = ['upload', 'working', 'import', 'reclass', 'request', 'approve', 'sign', 'reject', 'delegate', 'comment', 'in_force', 'download'];
+  const REVISION_ACTIONS = ['upload', 'working', 'import', 'reclass', 'request', 'approve', 'sign', 'reject', 'delegate', 'comment', 'in_force', 'download', 'graft'];
 
   it('shows every entry to the circle', () => {
     for (const action of [...DOCUMENT_ACTIONS, ...REVISION_ACTIONS]) {
@@ -269,6 +269,65 @@ describe('readerMaySeeEntry (D-14, journal)', () => {
       expect(readerMaySeeEntry(false, { action, revisionId: 7 }, 'superseded'), action).toBe(true);
       for (const s of ['draft', 'in_review', 'approved', 'cancelled']) expect(readerMaySeeEntry(false, { action, revisionId: 7 }, s), `${action} ${s}`).toBe(false);
       expect(readerMaySeeEntry(false, { action, revisionId: 7 }, undefined), `${action} unknown revision`).toBe(false);
+    }
+  });
+});
+
+describe('readerMaySeeChange (D-14, D-26, change requests)', () => {
+  const change = (status: string, revisionId: number | null = null, kind = 'modification') => ({ kind, status, revisionId });
+
+  it('shows everything to the circle', () => {
+    for (const status of ['submitted', 'accepted', 'rejected', 'implemented']) {
+      for (const rev of [...REV_STATUSES, undefined]) expect(readerMaySeeChange(true, change(status, 7), rev), `${status} ${rev}`).toBe(true);
+    }
+  });
+
+  it('hides outside the circle a change carried by a revision not in force: the one it opened, or the one it was grafted onto', () => {
+    for (const rev of ['draft', 'in_review', 'approved', 'cancelled', undefined]) expect(readerMaySeeChange(false, change('implemented', 7), rev), String(rev)).toBe(false);
+    for (const rev of ['in_force', 'superseded']) expect(readerMaySeeChange(false, change('implemented', 7), rev), rev).toBe(true);
+  });
+
+  it('hides outside the circle an accepted change waiting to apply, never a waiting withdrawal', () => {
+    expect(readerMaySeeChange(false, change('accepted'), null)).toBe(false);
+    expect(readerMaySeeChange(false, change('accepted', null, 'obsolescence'), null)).toBe(true);
+  });
+
+  it('shows outside the circle a request carried by no revision: submitted, rejected, a withdrawal', () => {
+    for (const status of ['submitted', 'rejected']) expect(readerMaySeeChange(false, change(status), null), status).toBe(true);
+    expect(readerMaySeeChange(false, change('implemented', null, 'obsolescence'), null)).toBe(true);
+  });
+});
+
+describe('changeAsSeen (D-14, D-26, change requests)', () => {
+  const req = (status: string, over: Partial<{ kind: string; ecoRef: string | null; revisionId: number | null }> = {}) =>
+    ({ id: 'ECR-2026-002', kind: 'modification', status, ecoRef: 'ECO-2026-020', modifierId: 'writer', revisionId: 7, ...over });
+  const opened = (status: string) => ({ status, changeRef: 'ECO-2026-020' });
+  const grafted = (status: string) => ({ status, changeRef: 'ECO-2026-010' });
+
+  it('leaves everything to the circle, a graft included', () => {
+    for (const rev of ['draft', 'in_review', 'approved', 'cancelled', 'in_force']) {
+      expect(changeAsSeen(true, req('implemented'), grafted(rev)), rev).toEqual(req('implemented'));
+    }
+  });
+
+  it('shows outside the circle a change grafted onto a revision not in force as still accepted, with nothing to name', () => {
+    for (const rev of ['draft', 'in_review', 'approved', 'cancelled']) {
+      expect(changeAsSeen(false, req('implemented'), grafted(rev)), rev).toEqual({ ...req('implemented'), status: 'accepted', ecoRef: null, modifierId: null, revisionId: null });
+    }
+  });
+
+  it('keeps « Appliquée » outside the circle for a change that opened its revision, naming nothing until it is in force', () => {
+    for (const rev of ['draft', 'in_review', 'approved', 'cancelled']) {
+      expect(changeAsSeen(false, req('implemented'), opened(rev)), rev).toEqual({ ...req('implemented'), ecoRef: null, modifierId: null, revisionId: null });
+    }
+    // Without a change order, the request itself opened the revision (lib/lifecycle.ts implementChange).
+    expect(changeAsSeen(false, req('implemented', { ecoRef: null }), { status: 'draft', changeRef: 'ECR-2026-002' }).status).toBe('implemented');
+  });
+
+  it('shows outside the circle a graft, like any change, once its revision is in force or superseded', () => {
+    for (const rev of ['in_force', 'superseded']) {
+      expect(changeAsSeen(false, req('implemented'), grafted(rev)), rev).toEqual(req('implemented'));
+      expect(changeAsSeen(false, req('implemented'), opened(rev)), rev).toEqual(req('implemented'));
     }
   });
 });

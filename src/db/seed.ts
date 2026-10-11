@@ -109,6 +109,8 @@ export async function seed(db: Db) {
     // ── Documents ──
     const seqs = new Map<string, number>();
     const idByKey = new Map<string, string>();
+    /** Revision opened by each change order (ECO → revision id). */
+    const revByChange = new Map<string, number>();
     const audit: (typeof s.auditLog.$inferInsert)[] = [];
     let wfSeq = 300;
 
@@ -172,6 +174,7 @@ export async function seed(db: Db) {
           docId: id, letter: r.letter, status: r.status, approvedAt: r.approvedAt ?? null, inForceAt: r.inForceAt ?? null, supersededAt: r.supersededAt ?? null,
           modifierId: r.modifierId ?? null, changeRef: r.changeRef ?? null, createdAt: revCreated,
         }).returning();
+        if (r.changeRef) revByChange.set(r.changeRef, rev.id);
         // Journal entries carry the revision they are about (lib/access.ts, readerMaySeeEntry).
         if (ri === 0) audit.push({ at: stamp(createdAt, `${id}c`), userId: demo.owner, action: 'upload', docId: id, detail: 'A.1', revisionId: rev.id });
         if (r.decided) audit.push({ at: r.decided, userId: 'vigie', action: 'ecr', docId: id, detail: `${r.changeRef} → ${r.letter}`, revisionId: rev.id });
@@ -219,9 +222,11 @@ export async function seed(db: Db) {
       steps.slice(1).forEach((st, i) => audit.push({ at: stamp(sdates[i + 1], `${wid}${i}`), userId: st.assigneeId, action: 'approve', docId: id, detail: wid, revisionId: rev.id }));
     }
 
+    // An implemented change is carried by the revision it opened (lifecycle.implementChange).
     await tx.insert(s.changeRequests).values(CHANGES.map((c) => ({
       id: c.id, kind: c.kind, docId: idByKey.get(c.doc)!, requesterId: c.requester, reason: c.reason, description: c.description ?? '',
-      status: c.status, ecoRef: c.eco ?? null, modifierId: c.modifier ?? null, createdAt: c.created, decidedAt: c.decided ?? null,
+      status: c.status, ecoRef: c.eco ?? null, modifierId: c.modifier ?? null, revisionId: c.status === 'implemented' && c.eco ? revByChange.get(c.eco) ?? null : null,
+      createdAt: c.created, decidedAt: c.decided ?? null,
     })));
     CHANGES.forEach((c) => audit.push({ at: c.created, userId: c.requester, action: c.kind === 'modification' ? 'ecr' : 'obsolete', docId: idByKey.get(c.doc)!, detail: c.id }));
 

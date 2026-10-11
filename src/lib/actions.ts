@@ -600,7 +600,8 @@ export async function addComment(workflowId: string, text: string): Promise<Acti
 
 /**
  * Asks Vigie for a change (ECR) or the withdrawal of a document in force. Needs the edit permission and a document the
- * user can see: a hidden document answers "not found" before anything about its state.
+ * user can see: a hidden document answers "not found" before anything about its state. A change may be asked while a
+ * revision is open (D-26): once accepted, it waits for that revision or is grafted onto it.
  */
 export async function requestChange(docId: string, kind: 'modification' | 'obsolescence', reason: string, description: string): Promise<ActionResult> {
   const ctx = await getCtx();
@@ -615,7 +616,6 @@ export async function requestChange(docId: string, kind: 'modification' | 'obsol
     const lock = lockOf(d);
     if (lock) return { err: lock };
     if (!d.revInForce) return { err: 'need_in_force' };
-    if (kind === 'modification' && d.revWorking) return { err: 'locked_working' };
     const [pending] = await tx.select().from(s.changeRequests).where(and(eq(s.changeRequests.docId, docId), inArray(s.changeRequests.status, ['submitted', 'accepted'])));
     if (pending) return { err: 'change_pending', extra: pending.id };
     const id = await submitChange(tx, { kind, docId, requesterId: ctx.user.id, reason: why.slice(0, 300), description: description.trim().slice(0, 4000) });
@@ -629,8 +629,8 @@ export async function requestChange(docId: string, kind: 'modification' | 'obsol
 
 /**
  * Simulates Vigie's decision while no Vigie endpoint is configured (records managers only); same rules as the webhook:
- * an acceptance on a locked document is recorded and applies when the lock lifts, and the designated author must be
- * able to draft the document.
+ * an acceptance on a locked document, or of a change while a revision is open, is recorded and applies later, and the
+ * designated author must be able to draft the document.
  */
 export async function simulateVigieDecision(id: string, accepted: boolean, modifierId: string | null): Promise<ActionResult> {
   const ctx = await getCtx();
@@ -641,7 +641,48 @@ export async function simulateVigieDecision(id: string, accepted: boolean, modif
   const res = await db.transaction((tx) => applyChangeDecision(tx, id, { accepted, ecoRef: accepted ? id.replace(/^ECR/, 'ECO') : null, modifierId }, 'vigie'));
   if ('error' in res) return fail(ctx, res.error, res.error === 'modifier_not_allowed' ? modifier?.name : undefined);
   refresh();
+  // Records managers belong to every drafting circle: the open revision may be named (D-14).
   return res.status === 'accepted' ? { ok: true, message: `${ctx.t.ecr_accepted_waiting} : ${decisionWaitL(ctx.t, res)}.` } : { ok: true };
+}
+
+/**
+ * Grafts a change Vigie accepted while a revision was open onto that revision (D-26), instead of waiting for it to enter
+ * into force: the revision keeps its author and also carries the change order; the request becomes 'implemented',
+ * linked to it. Only while that revision is drafted and the document is not locked (in review or approved, grafting
+ * would mean running the circuit again: the change waits). For a records manager or the author of the open revision
+ * (its designated modifier, else the owner), with the edit permission, on a document they can read.
+ */
+export async function graftChange(requestId: string): Promise<ActionResult> {
+  const ctx = await getCtx();
+  if (!ctx.can('edit')) return denied(ctx, 'edit');
+  const ix = await getAccessIndex();
+  const db = await getDb();
+  const res = await db.transaction(async (tx): Promise<{ err: TKey } | { ref: string; letter: string }> => {
+    const [req] = await tx.select().from(s.changeRequests).where(eq(s.changeRequests.id, requestId));
+    const [d] = req ? await tx.select().from(s.documents).where(eq(s.documents.id, req.docId)) : [];
+    if (!req || !d || !canRead(ctx, d, ix)) return { err: 'not_found' };
+    // Locked against a concurrent validation request: a revision is grafted onto while drafted, never once in review.
+    const [rev] = await tx.select().from(s.revisions).where(and(eq(s.revisions.docId, d.id), inArray(s.revisions.status, ['draft', 'in_review', 'approved']))).for('update');
+    const author = rev ? rev.modifierId ?? d.ownerId : null;
+    // Outside the drafting circle nothing tells whether a revision is open (D-14): the same refusal either way.
+    if (!(ctx.seesAll || (author && author === ctx.user.id))) return { err: 'not_allowed' };
+    if (req.kind !== 'modification' || req.status !== 'accepted' || !rev) return { err: 'graft_not_pending' };
+    const lock = lockOf(d);
+    if (lock) return { err: lock };
+    if (rev.status !== 'draft') return { err: 'graft_not_draft' };
+    const ref = req.ecoRef ?? req.id;
+    // The request shows who actually writes the change, as for one Vigie's author could no longer draft (lib/lifecycle.ts).
+    const [done] = await tx.update(s.changeRequests).set({ status: 'implemented', revisionId: rev.id, modifierId: author }).where(and(eq(s.changeRequests.id, req.id), eq(s.changeRequests.status, 'accepted'))).returning();
+    if (!done) return { err: 'graft_not_pending' };
+    // Vigie's designated author, when someone else writes the revision, is named in the journal: never set aside silently.
+    const named = req.modifierId && req.modifierId !== author ? ` · ${ctx.userName(req.modifierId)} → ${ctx.userName(author)}` : '';
+    // Tied to the revision: outside the drafting circle, the entry shows once the revision is in force (D-14).
+    await audit(tx, ctx.user.id, 'graft', d.id, `${ref} → ${rev.letter}${named}`, rev.id);
+    return { ref, letter: rev.letter };
+  });
+  if ('err' in res) return fail(ctx, res.err);
+  refresh();
+  return { ok: true, message: `${ctx.t.graft_done} : ${res.ref} → ${res.letter}` };
 }
 
 // ── Retention ────────────────────────────────────────────────────────────
