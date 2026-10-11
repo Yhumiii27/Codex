@@ -13,9 +13,10 @@ import { releaseHold } from '@/lib/actions';
 import { isFinalStatus } from '@/lib/codes';
 import { getCtx } from '@/lib/context';
 import { fmtDate, todayIso } from '@/lib/format';
+import { ECR_TAGCLS } from '@/lib/i18n';
 import { getProject } from '@/lib/keystone';
 import { decisionWait, defaultModifier, draftersOf } from '@/lib/lifecycle';
-import { acceptedWaitL, decisionWaitL, getDoc, listAudit, listChangeRequests, listDocs, listRevisions, listWorkflows, stateNotice, typeView, type RevisionView } from '@/lib/queries';
+import { decisionWaitL, getDoc, listAudit, listChangeRequests, listDocs, listRevisions, listWorkflows, stateNotice, typeView, type RevisionView } from '@/lib/queries';
 import { normalizeMime } from '@/lib/storage';
 import { vigieSimulated, vigieUrl } from '@/lib/vigie';
 import { Preview, RevisionsTab, type RevItem } from './DocClient';
@@ -26,7 +27,6 @@ type Tab = (typeof TABS)[number];
 
 /** Revision statuses of the revision being drafted, reviewed or waiting for its effective date. */
 const WORKING = new Set(['draft', 'in_review', 'approved']);
-const ECR_TAG: Record<string, string> = { submitted: 'tag tag-outline', accepted: 'tag tag-accent', rejected: 'tag tag-neutral', implemented: 'tag tag-accent' };
 /** Audit actions that change the document's content or record ("Modifié … par …"). */
 const MODIFYING = new Set(['upload', 'working', 'edit', 'reclass', 'restore']);
 
@@ -113,7 +113,7 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
   const awaiting = pending?.status === 'accepted' ? pending : null;
   // What it still waits for, in words this reader may be given: outside the drafting circle, a revision they do not see
   // may hold it too, so the lifting of a lock is never promised as the moment it applies (acceptedWaitL, D-14).
-  const waitL = awaiting ? acceptedWaitL(t, awaiting, doc, circle) : null;
+  const waitL = awaiting?.waitL ?? null;
   // The open revision, in the drafting circle only (openRevisionView): what a change asked now would wait for, and the
   // revision an accepted change waits for. While that one is drafted, the change may instead be grafted onto it by a
   // records manager or its author (lib/actions.ts graftChange); in review or approved, it can only wait.
@@ -180,11 +180,7 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
 
   // The revision an applied change is carried by, when the user sees it: the one it opened, or the open one it was grafted
   // onto (D-26). Outside the drafting circle, listChangeRequests already leaves out a revision not in force yet (D-14).
-  const revById = new Map(revs.map((r) => [r.id, r]));
-  const carriedBy = (r: (typeof requests)[number]) => {
-    const rev = r.kind === 'modification' && r.status === 'implemented' && r.revisionId != null ? revById.get(r.revisionId) : undefined;
-    return rev && readerMaySeeRevision(circle, rev.status) ? `${rev.changeRef === (r.ecoRef ?? r.id) ? t.change_opened : t.change_grafted_on} ${rev.letter}` : null;
-  };
+  const carriedBy = (r: (typeof requests)[number]) => (r.carrier ? `${r.carrier.grafted ? t.change_grafted_on : t.change_opened} ${r.carrier.letter}` : null);
 
   // Outside the drafting circle: the revision in force and those it replaced, nothing of a revision open or cancelled.
   const revItems: RevItem[] = revs.filter((r) => readerMaySeeRevision(circle, r.status)).map((r) => {
@@ -492,7 +488,7 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
                       <div key={r.id} className={`hairline ${styles.requestRow}`}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                           <span className="tabnum" style={{ fontSize: 13 }}>{r.id}</span>
-                          <span className={ECR_TAG[r.status] ?? 'tag tag-neutral'} style={{ fontSize: 10.5, padding: '2px 8px' }}>{r.statusL}</span>
+                          <span className={ECR_TAGCLS[r.status] ?? 'tag tag-neutral'} style={{ fontSize: 10.5, padding: '2px 8px' }}>{r.statusL}</span>
                           <span className="tag tag-neutral" style={{ fontSize: 10.5, padding: '2px 8px' }}>{r.kindL}</span>
                         </div>
                         <div style={{ fontSize: 12.5, marginTop: 6 }}>{r.reason}</div>

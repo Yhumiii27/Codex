@@ -14,6 +14,14 @@ export function vigieUrl(id?: string): string {
   return id ? `${base}/changements/${encodeURIComponent(id)}` : base;
 }
 
+/**
+ * True when Vigie's address is configured (NEXT_PUBLIC_VIGIE_URL). Without it, vigieUrl falls back on Vigie's local
+ * port, where a request may not exist: a link offered only « si configuré » is then left out.
+ */
+export function vigieLinkConfigured(): boolean {
+  return !!process.env.NEXT_PUBLIC_VIGIE_URL?.trim();
+}
+
 /** True while no real Vigie endpoint is configured: decisions are simulated from Codex. */
 export function vigieSimulated(): boolean {
   return !process.env.VIGIE_API_URL;

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { addDays, addYears, daysBetween, fmtClock, fmtDate, fmtSize, fmtWhen, loc, nowStamp, parisStamp, parisToUtc, parseIsoDay, todayIso } from '@/lib/format';
+import { addDays, addYears, daysBetween, fmtClock, fmtDate, fmtDateTime, fmtSize, fmtWhen, loc, nowStamp, parisStamp, parisToUtc, parseIsoDay, todayIso } from '@/lib/format';
 
 // Dates are calendar days "YYYY-MM-DD"; timestamps are written in Paris time (the group's time zone).
 
@@ -25,6 +25,13 @@ describe('fmtDate, fmtWhen, loc', () => {
   it('writes a journal timestamp as day/month and time', () => {
     expect(fmtWhen('2026-10-05 09:45:00')).toBe('05/10 09:45');
     expect(fmtWhen('2026-10-05T09:45:00')).toBe('05/10 09:45');
+  });
+
+  it('keeps the year in a timestamp listed with others from any year', () => {
+    expect(fmtDateTime('2025-10-06 14:20:00', 'fr')).toBe('06/10/2025 14:20');
+    expect(fmtDateTime('2026-10-06T14:20:00', 'fr')).toBe('06/10/2026 14:20');
+    expect(fmtDateTime('2026-10-06 14:20:00', 'en')).toBe('6 Oct 2026 14:20');
+    expect(fmtDateTime('2026-10-06', 'fr')).toBe('06/10/2026');
   });
 
   it('picks the text of the interface language', () => {

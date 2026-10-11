@@ -5,7 +5,7 @@ import type { AuditChange, AuditData, AuditTargetKind, AuditValue, Conf } from '
 import { canRead, changeAsSeen, getAccessIndex, inDraftingCircle, isUsableTemplate, readerMaySeeEntry, readerMaySeeRevision, type AccessIndex } from './access';
 import { revLabel } from './codification';
 import type { Ctx } from './context';
-import { addDays, daysBetween, fmtDate, fmtSize, fmtWhen, loc, parisStamp, todayIso } from './format';
+import { addDays, daysBetween, fmtDate, fmtDateTime, fmtSize, fmtWhen, loc, parisStamp, todayIso } from './format';
 import { CONF_LEVELS, MATRIX_ROLE_LABEL, TAGCLS, type T, type TKey } from './i18n';
 import { decisionWait, lockOf, type DecisionWait } from './lifecycle';
 import { retainUntil } from './retention';
@@ -234,34 +234,50 @@ export type WorkflowView = Awaited<ReturnType<typeof listWorkflows>>[number];
 // ── Change requests (Vigie) ──────────────────────────────────────────────
 
 /**
- * Requests on documents the user can see; the others are treated as if they did not exist. Outside a document's drafting
- * circle, a request whose revision the user may not see names neither its change order, its designated author nor that
- * revision, and one grafted onto that revision still shows « Acceptée » (access.ts, changeAsSeen; D-14, D-26).
+ * Requests on documents the user can see; the others are treated as if they did not exist. `mine`: only those the user
+ * sent (Validations › Mes demandes Vigie). Outside a document's drafting circle, a request whose revision the user may
+ * not see names neither its change order, its designated author nor that revision, nor its decision date once shown
+ * « Appliquée », and one grafted onto that revision still shows « Acceptée » (access.ts, changeAsSeen; D-14, D-26).
  */
-export async function listChangeRequests(ctx: Ctx, opts: { docId?: string } = {}) {
+export async function listChangeRequests(ctx: Ctx, opts: { docId?: string; mine?: boolean } = {}) {
   const db = await getDb();
-  const q = db.select().from(s.changeRequests).orderBy(desc(s.changeRequests.createdAt));
-  const all = await (opts.docId ? q.where(eq(s.changeRequests.docId, opts.docId)) : q);
+  const where = and(opts.docId ? eq(s.changeRequests.docId, opts.docId) : undefined, opts.mine ? eq(s.changeRequests.requesterId, ctx.user.id) : undefined);
+  const all = await db.select().from(s.changeRequests).where(where).orderBy(desc(s.changeRequests.createdAt), desc(s.changeRequests.id));
   const ids = [...new Set(all.map((r) => r.docId))];
   const revIds = [...new Set(all.flatMap((r) => (r.revisionId == null ? [] : [r.revisionId])))];
   const ix = await getAccessIndex();
   const [docs, revs] = await Promise.all([
     ids.length ? db.select().from(s.documents).where(inArray(s.documents.id, ids)) : [],
-    revIds.length ? db.select({ id: s.revisions.id, status: s.revisions.status, changeRef: s.revisions.changeRef }).from(s.revisions).where(inArray(s.revisions.id, revIds)) : [],
+    revIds.length ? db.select({ id: s.revisions.id, letter: s.revisions.letter, status: s.revisions.status, changeRef: s.revisions.changeRef }).from(s.revisions).where(inArray(s.revisions.id, revIds)) : [],
   ]);
-  const circleOf = new Map(docs.filter((d) => canRead(ctx, d, ix)).map((d) => [d.id, inDraftingCircle(ctx, d, ix)]));
+  const docBy = new Map(docs.filter((d) => canRead(ctx, d, ix)).map((d) => [d.id, { d, circle: inDraftingCircle(ctx, d, ix) }]));
   const revBy = new Map(revs.map((x) => [x.id, x]));
-  const rows = all
-    .filter((r) => circleOf.has(r.docId))
-    .map((r) => changeAsSeen(circleOf.get(r.docId)!, r, r.revisionId == null ? null : revBy.get(r.revisionId)));
-  return rows.map((r) => ({
-    ...r,
-    kindL: ctx.t[`kind_${r.kind}` as TKey],
-    statusL: ctx.t[`ecr_${r.status}` as TKey],
-    requester: ctx.userName(r.requesterId),
-    modifier: r.modifierId ? ctx.userName(r.modifierId) : null,
-    when: fmtWhen(r.createdAt),
-  }));
+  return all.flatMap((raw) => {
+    const seen = docBy.get(raw.docId);
+    if (!seen) return [];
+    const { d, circle } = seen;
+    const r = changeAsSeen(circle, raw, raw.revisionId == null ? null : revBy.get(raw.revisionId));
+    // Still linked to its revision only when the reader may see that revision (changeAsSeen).
+    const rev = r.kind === 'modification' && r.status === 'implemented' && r.revisionId != null ? revBy.get(r.revisionId) : undefined;
+    return [{
+      ...r,
+      docTitle: d.title,
+      docHref: `/documents/${encodeURIComponent(d.id)}`,
+      kindL: ctx.t[`kind_${r.kind}` as TKey],
+      statusL: ctx.t[`ecr_${r.status}` as TKey],
+      requester: ctx.userName(r.requesterId),
+      modifier: r.modifierId ? ctx.userName(r.modifierId) : null,
+      when: fmtWhen(r.createdAt),
+      /** With the year (Mes demandes Vigie lists requests of every year): day sent, day and time sent, of Vigie's decision. */
+      sentDayF: fmtDate(r.createdAt, ctx.lang),
+      sentF: fmtDateTime(r.createdAt, ctx.lang),
+      decidedF: r.decidedAt ? fmtDateTime(r.decidedAt, ctx.lang) : null,
+      /** What an acceptance still waits for, in words this reader may be given (acceptedWaitL), or null. */
+      waitL: acceptedWaitL(ctx.t, r, d, circle),
+      /** The revision an applied change is carried by, when the reader sees it: the one it opened, or the one it was grafted onto (D-26). */
+      carrier: rev ? { letter: rev.letter, grafted: rev.changeRef !== (r.ecoRef ?? r.id) } : null,
+    }];
+  });
 }
 export type ChangeRequestView = Awaited<ReturnType<typeof listChangeRequests>>[number];
 

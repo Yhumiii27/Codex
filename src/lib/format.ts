@@ -24,6 +24,12 @@ export function fmtWhen(ts: string): string {
   return `${d}/${m} ${time.slice(0, 5)}`;
 }
 
+/** "2026-10-05 09:45:00" → "05/10/2026 09:45" (fr) or "5 Oct 2026 09:45" (en): a timestamp in a list spanning years. */
+export function fmtDateTime(ts: string, lang: Lang): string {
+  const [date, time = ''] = ts.split(/[ T]/);
+  return `${fmtDate(date, lang)} ${time.slice(0, 5)}`.trim();
+}
+
 /** Time only when the timestamp is today, otherwise day and time. */
 export function fmtClock(ts: string): string {
   return ts.slice(0, 10) === todayIso() ? ts.slice(11, 16) : fmtWhen(ts);

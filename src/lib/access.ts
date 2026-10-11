@@ -148,15 +148,19 @@ export function readerMaySeeChange(circle: boolean, r: { kind: string; status: s
  * « Acceptée », while that revision is open: turning « Appliquée » with nothing entering into force would tell that a
  * hidden revision took it up. Once that revision is cancelled (an accepted withdrawal), the change will never apply:
  * it shows « Appliquée », like the change that opened the revision, rather than wait for good.
+ * A change shown « Appliquée » while its revision is hidden also loses its decision date: applied at once, that date is
+ * when the hidden revision opened, and the journal entry recording it follows that revision (readerMaySeeEntry). The
+ * acceptance date of a change shown « Acceptée » stays: its journal entry concerns the document and is shown.
  */
-export function changeAsSeen<R extends { id: string; kind: string; status: string; ecoRef: string | null; modifierId: string | null; revisionId: number | null }>(
+export function changeAsSeen<R extends { id: string; kind: string; status: string; ecoRef: string | null; modifierId: string | null; revisionId: number | null; decidedAt: string | null }>(
   circle: boolean,
   r: R,
   rev: { status: string; changeRef: string | null } | null | undefined,
 ): R {
   if (readerMaySeeChange(circle, r, rev?.status)) return r;
   const grafted = r.kind === 'modification' && r.status === 'implemented' && !!rev && isOpenRevision(rev.status) && rev.changeRef !== (r.ecoRef ?? r.id);
-  return { ...r, ecoRef: null, modifierId: null, revisionId: null, ...(grafted ? { status: 'accepted' } : {}) };
+  const masked = { ...r, ecoRef: null, modifierId: null, revisionId: null };
+  return grafted ? { ...masked, status: 'accepted' } : r.status === 'implemented' ? { ...masked, decidedAt: null } : masked;
 }
 
 /**

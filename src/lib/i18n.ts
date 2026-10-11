@@ -91,6 +91,7 @@ const fr = {
   tab_revisions:'Révisions', tab_requests:'Demandes', rev_short:'Rév.', in_progress:'en cours', project_docs:'Documents du projet', no_version:'Aucune version de travail déposée.',
   locked_obsolete:'Document obsolète : modification impossible.', no_requests:'Aucune demande de modification ou de retrait pour ce document.',
   dl_expiry:'Expire le', dl_review:'Revue prévue le', ax_department_short:'Dépt.', department_short:'Département', no_attachment:'Sans rattachement', project_program:'Projet / programme', retention_short:'Conservation',
+  wf_circuits:'Circuits', wf_vigie:'Mes demandes Vigie', vigie_empty:'Aucune demande de modification ou de retrait envoyée à Vigie.', ecr_sent_on:'Envoyée le', ecr_decided_on:'Décision de Vigie', ecr_note:'Note de Vigie', ecr_wait_vigie:'En attente de la décision de Vigie.',
   wf_requested:'Mes demandes', due_kind:'Nature', due_retention:'Conservation', due_expiry:'Expiration', due_review:'Révision périodique',
   all_families:'Toutes les familles', types_count:'types', inactive:'Inactif', people:'Personnes', function_label:'Fonction', scope:'Portée',
   org_provisional:'Valeurs provisoires, en attente de l’organigramme. Le code à 3 lettres du département entre dans l’identifiant des documents sans rattachement.',
@@ -201,6 +202,7 @@ const en: Dict = {
   tab_revisions:'Revisions', tab_requests:'Requests', rev_short:'Rev.', in_progress:'in progress', project_docs:'Project documents', no_version:'No working version uploaded yet.',
   locked_obsolete:'Obsolete document: it cannot be changed.', no_requests:'No change or withdrawal request for this document.',
   dl_expiry:'Expires', dl_review:'Review due', ax_department_short:'Dept.', department_short:'Department', no_attachment:'Not attached', project_program:'Project / programme', retention_short:'Retention',
+  wf_circuits:'Workflows', wf_vigie:'My Vigie requests', vigie_empty:'No change or withdrawal request sent to Vigie.', ecr_sent_on:'Sent on', ecr_decided_on:'Vigie decision', ecr_note:'Vigie note', ecr_wait_vigie:'Waiting for Vigie’s decision.',
   wf_requested:'My requests', due_kind:'Kind', due_retention:'Retention', due_expiry:'Expiry', due_review:'Periodic review',
   all_families:'All families', types_count:'types', inactive:'Inactive', people:'People', function_label:'Function', scope:'Scope',
   org_provisional:'Provisional values, pending the organisation chart. The 3-letter department code is part of the ID of documents without attachment.',
@@ -228,6 +230,8 @@ export type TKey = keyof Dict;
 /** Headline statuses of a document (lists, filters, facets). */
 export const STATUS_KEYS = ['draft', 'in_review', 'approved', 'in_force', 'obsolete', 'archived'] as const;
 export const TAGCLS: Record<string, string> = { draft: 'tag tag-neutral', in_review: 'tag tag-outline', approved: 'tag tag-outline', in_force: 'tag tag-accent', superseded: 'tag tag-neutral', cancelled: 'tag tag-neutral', obsolete: 'tag tag-neutral', archived: 'tag tag-neutral' };
+/** Tag of a change request status (record › Demandes, Validations › Mes demandes Vigie). */
+export const ECR_TAGCLS: Record<string, string> = { submitted: 'tag tag-outline', accepted: 'tag tag-accent', rejected: 'tag tag-neutral', implemented: 'tag tag-accent' };
 export const CONF_LEVELS = ['public', 'restreint', 'interne', 'confidentiel', 'tres_confidentiel'] as const;
 export const ORIGINS = ['interne', 'externe'] as const;
 export const ATTACHMENTS = ['none', 'project', 'research'] as const;

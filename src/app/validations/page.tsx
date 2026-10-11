@@ -7,12 +7,15 @@ import { HStepper, type StepItem } from '@/components/ui/Stepper';
 import { ActionButton, DialogButton } from '@/components/ui/client';
 import { decideStep } from '@/lib/actions';
 import { getCtx } from '@/lib/context';
-import { getDoc, listRevisions, listWorkflows, type WorkflowView } from '@/lib/queries';
+import { getDoc, listChangeRequests, listRevisions, listWorkflows, type WorkflowView } from '@/lib/queries';
 import { CommentBox } from './CommentBox';
+import { MyChangeRequests } from './MyChangeRequests';
 import styles from './workflow.module.css';
 
 const FILTERS = ['mine', 'requested', 'active', 'done'] as const;
 type Filter = (typeof FILTERS)[number];
+/** `f` of the view « Mes demandes Vigie » (`c`: the request shown), beside the workflow filters. */
+const VIGIE = 'vigie';
 
 /** `done` once the workflow has an outcome: a rejection stops it at the rejecting step. */
 const PICK: Record<Filter, (w: WorkflowView) => boolean> = {
@@ -27,9 +30,39 @@ export default async function WorkflowPage({ searchParams }: PageProps<'/validat
   const ctx = await getCtx();
   const { t } = ctx;
   if (!ctx.screens.workflow) return <Forbidden text={t.forbidden} back={t.back_home} />;
-  // Records managers follow every workflow; others the ones they request or take part in.
-  const every = await listWorkflows(ctx);
+  // Records managers follow every workflow; others the ones they request or take part in. Beside them, the change and
+  // withdrawal requests the user sent to Vigie, on documents they may still read (f=vigie).
+  const [every, sent] = await Promise.all([listWorkflows(ctx), listChangeRequests(ctx, { mine: true })]);
   const all = every.filter((w) => w.visible);
+  const href = (f: Filter, id?: string) => `/validations?f=${f}${id ? `&r=${encodeURIComponent(id)}` : ''}`;
+  const vigieHref = (id?: string) => `/validations?f=${VIGIE}${id ? `&c=${encodeURIComponent(id)}` : ''}`;
+  // "Circuits" leads to the first filter with something in it.
+  const landing: Filter = FILTERS.find((k) => all.some(PICK[k])) ?? 'mine';
+  const views = (view: 'circuits' | typeof VIGIE) => (
+    <div style={{ padding: '14px 12px 0' }}>
+      <Seg
+        name="wfView"
+        value={view}
+        style={{ display: 'flex', width: '100%' }}
+        optStyle={{ flex: '1 1 auto', justifyContent: 'center', padding: '6px 6px', fontSize: 12, gap: 5, whiteSpace: 'nowrap' }}
+        options={[
+          { key: 'circuits', label: t.wf_circuits, count: all.length, href: href(landing) },
+          { key: VIGIE, label: t.wf_vigie, count: sent.length, href: vigieHref() },
+        ]}
+      />
+    </div>
+  );
+
+  // Without a filter or a circuit asked for, someone who takes part in no circuit lands on the requests they sent.
+  if (sp.f === VIGIE || (!sp.f && !sp.r && !all.length && sent.length)) {
+    const picked = sp.c ? sent.find((c) => c.id === sp.c) : undefined;
+    // Not one of the user's requests (another person's, or on a document they no longer read): back to their list.
+    if (sp.c && !picked) redirect(vigieHref());
+    // Those still waiting for Vigie or for their application first, then the most recent.
+    const waiting = (c: (typeof sent)[number]) => c.status === 'submitted' || c.status === 'accepted';
+    const list = [...sent].sort((a, b) => Number(waiting(b)) - Number(waiting(a)));
+    return <MyChangeRequests t={t} views={views(VIGIE)} requests={list} selected={picked ?? list[0]} href={vigieHref} />;
+  }
   const requested = sp.r ? all.find((w) => w.id === sp.r) : undefined;
   const explicit = (FILTERS as readonly string[]).includes(sp.f ?? '') ? (sp.f as Filter) : null;
   const hidden = sp.r && !requested ? every.find((w) => w.id === sp.r) : undefined;
@@ -45,17 +78,26 @@ export default async function WorkflowPage({ searchParams }: PageProps<'/validat
     explicit ??
     (requested
       ? PICK.mine(requested) ? 'mine' : requested.requested ? 'requested' : requested.done ? 'done' : 'active'
-      : FILTERS.find((k) => all.some(PICK[k])) ?? 'mine');
+      : landing);
   const list = all.filter(PICK[filter]);
   if (filter === 'done') list.reverse();
   // My requests: the ones still running first.
   if (filter === 'requested') list.sort((a, b) => Number(a.done) - Number(b.done));
   const r = requested ?? list[0] ?? all[0];
-  const href = (f: Filter, id?: string) => `/validations?f=${f}${id ? `&r=${encodeURIComponent(id)}` : ''}`;
   const filterLabel = (k: Filter) => t[`wf_${k}`];
   const outcomeLabel = (w: WorkflowView) => (w.outcome === 'rejected' ? t.wf_rejected : t.wf_approved);
 
-  if (!r) return <div className="screen" style={{ padding: 'var(--space-8)' }}><p className="text-muted">{t.wf_empty}</p></div>;
+  if (!r) {
+    return (
+      <div className="screen" style={{ display: 'flex', minWidth: 0 }} data-screen-label="Validations">
+        <aside className={styles.side}>
+          {views('circuits')}
+          <p className="text-muted" style={{ padding: '16px 20px', fontSize: 12.5, margin: 0 }}>{t.wf_empty}</p>
+        </aside>
+        <section style={{ flex: 1, minWidth: 0 }} />
+      </div>
+    );
+  }
   const [found, revs] = await Promise.all([getDoc(ctx, r.docId), listRevisions(ctx, r.docId)]);
   const doc = found && found !== 'hidden' ? found.doc : null;
   const rev = revs.find((x) => x.id === r.revisionId);
@@ -83,7 +125,8 @@ export default async function WorkflowPage({ searchParams }: PageProps<'/validat
   return (
     <div className="screen" style={{ display: 'flex', minWidth: 0 }} data-screen-label="Validations">
       <aside className={styles.side}>
-        <div style={{ padding: '14px 12px 10px' }}>
+        {views('circuits')}
+        <div style={{ padding: '8px 12px 10px' }}>
           <Seg
             name="wfFilter"
             value={filter}

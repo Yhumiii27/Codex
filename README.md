@@ -66,7 +66,7 @@ quitter l'app et supprimer `~/Library/Application Support/Codex/data`.
 | `/explorateur` | Classement par famille, département, projet / programme, type ou origine ; filtres de statut ; aperçu rapide |
 | `/documents/[id]` | Fiche document : aperçu, onglets Projet · Fiche · Révisions · Validation · Demandes · Historique |
 | `/recherche` | Recherche plein texte + facettes (projet, famille, type, origine, rattachement, département, statut, confidentialité), export CSV |
-| `/validations` | Circuits de validation : à valider, mes demandes, en cours, terminées ; approuver / rejeter / déléguer, commentaires |
+| `/validations` | Circuits de validation : à valider, mes demandes, en cours, terminées ; approuver / rejeter / déléguer, commentaires. Vue « Mes demandes Vigie » : demandes de modification et de retrait envoyées par l'utilisateur, avec leur statut |
 | `/archivage` | Échéances (archivage, gel juridique), règles de conservation du registre, archives |
 | `/administration` | Registre des types, fonctions & circuits, rôles & droits, organisation, modèles (QMS), journal d'audit (CSV) |
 

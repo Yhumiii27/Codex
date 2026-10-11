@@ -33,6 +33,7 @@ Conventions :
 | 10 oct. | Développement par étapes, un commit par étape validée. Étape 1 : brouillons invisibles hors du cercle (D-14). Étape 2 : avertissement sur les documents obsolètes ou archivés. Étape 3 : décision Vigie acceptée sur un document verrouillé. Étape 4 : droit de rédiger du modificateur désigné par Vigie. Étape 5 : identifiants sûrs en concurrence. Étape 6 : journal d'audit en ajout seul et complet | 11 |
 | 10 oct. | Tests (Vitest, PGlite en mémoire) et intégration continue | 12 |
 | 11 oct. | Décision D-26 : greffe ou attente d'une modification acceptée pendant une révision ouverte. Étape 1 : couche métier. Étape 2 : fiche document | 13 |
+| 11 oct. | « Mes demandes Vigie » dans l'écran Validations | 14 |
 
 La session a été coupée plusieurs fois par une limite d'usage ou de dépense :
 - le 7 octobre à 13:38, reprise à 17:31 sur « Try again » ;
@@ -633,3 +634,39 @@ Constats confirmés, dans la numérotation du workflow :
   puisqu'aujourd'hui seul un retrait accepté annule une révision ouverte et qu'il ne peut pas être demandé pendant
   qu'une modification attend (une seule demande en cours par document) ; le modificateur désigné écarté par une greffe
   n'en est averti que par le journal, qu'il ne lit plus une fois sorti du cercle.
+
+## 14. Mes demandes Vigie (11 oct.)
+
+Point 1 de [reste-a-faire.md](reste-a-faire.md) (G18, FON-10) : chacun suit les demandes de modification et de retrait
+qu'il a envoyées à Vigie, jusque-là visibles seulement document par document.
+
+- **Écran Validations** (`src/app/validations/page.tsx`, `MyChangeRequests.tsx`) : au-dessus des quatre filtres, deux
+  vues, « Circuits » et « Mes demandes Vigie » (`?f=vigie`, la demande affichée dans `c`), chacune avec son compteur.
+  La seconde reprend la disposition des circuits : à gauche la liste (ID et type, titre du document, référence et
+  statut, jour d'envoi), celles qui attendent encore la décision ou leur application d'abord ; à droite la demande
+  (statut, type, liens vers l'onglet Demandes de la fiche et, si `NEXT_PUBLIC_VIGIE_URL` est défini, vers Vigie
+  (`vigieLinkConfigured`, `src/lib/vigie.ts`), dates d'envoi et de décision, ECO, modificateur désigné, note de Vigie,
+  motif et description). Les dates gardent leur année (`fmtDateTime`, `src/lib/format.ts`) : la liste cumule les
+  demandes de toutes les années. Un encadré dit où elle en est : « En attente de la décision de Vigie », ce qu'attend
+  une demande acceptée (`acceptedWaitL`), ou la révision qu'elle a ouverte ou sur laquelle elle a été greffée. Sans
+  circuit mais avec des demandes, l'écran s'ouvre sur cette vue.
+- **Lecture** (`listChangeRequests(ctx, { mine: true })`, `src/lib/queries.ts`) : seulement les demandes de
+  l'utilisateur, sur les documents qu'il lit encore ; hors du cercle de rédaction, ni ECO, ni modificateur, ni
+  révision tant que la révision qui porte la modification n'est pas en vigueur, et une greffe reste « Acceptée »
+  (`changeAsSeen`, D-14, D-26). Une modification « Appliquée » dans ces conditions perd aussi sa date de décision :
+  appliquée aussitôt, c'est l'heure d'ouverture de la révision masquée, dont l'entrée de journal est cachée hors du
+  cercle (`readerMaySeeEntry`) ; la date d'acceptation d'une demande « Acceptée », greffe comprise, reste, comme son
+  entrée de journal. La requête renvoie désormais aussi le titre et le lien du document, les dates, la mention
+  d'attente et la révision porteuse, que la fiche reprend au lieu de les recalculer. Une demande d'un autre, appelée
+  par l'URL, ramène à la liste sans rien en dire.
+- **Accueil inchangé** : la maquette n'y prévoit que trois indicateurs et la liste « À traiter », réservée à ce qui
+  attend une décision de l'utilisateur ; un rappel des demandes envoyées n'y a pas sa place.
+- **Vérifié** : `npm test` (339 tests, dont les 8 de `tests/integration/my-change-requests.test.ts`), `npm run typecheck`,
+  `npm run lint`. Dans le navigateur, sur une base de démo remise à zéro : Julien Wagner envoie une demande de
+  modification sur `HSE-HLT-026-001` et la voit « Transmise à Vigie », datée avec l'année ; après l'acceptation
+  simulée par Claire Bardet, qui le désigne modificateur, « Acceptée » avec l'ECO, la date de décision et « elle ouvrira
+  la révision suivante à la mise en vigueur de la révision C » ; sa demande sur `PRO-QUA-0001`, acceptée avec Gabriel
+  Comte comme modificateur, passe « Appliquée » sans ECO, ni modificateur, ni date de décision (il est hors du cercle) ;
+  aucune des deux n'apparaît dans les demandes de Claire Bardet ; Léa Marchand n'en voit aucune, et l'URL de l'une
+  d'elles la ramène à sa liste vide ; le lien « Ouvrir dans Vigie » n'apparaît qu'avec `NEXT_PUBLIC_VIGIE_URL` ; la
+  vue en anglais.

@@ -308,7 +308,7 @@ describe('readerMaySeeChange (D-14, D-26, change requests)', () => {
 
 describe('changeAsSeen (D-14, D-26, change requests)', () => {
   const req = (status: string, over: Partial<{ kind: string; ecoRef: string | null; revisionId: number | null }> = {}) =>
-    ({ id: 'ECR-2026-002', kind: 'modification', status, ecoRef: 'ECO-2026-020', modifierId: 'writer', revisionId: 7, ...over });
+    ({ id: 'ECR-2026-002', kind: 'modification', status, ecoRef: 'ECO-2026-020', modifierId: 'writer', revisionId: 7, decidedAt: '2026-10-11 09:30:00', ...over });
   const opened = (status: string) => ({ status, changeRef: 'ECO-2026-020' });
   const grafted = (status: string) => ({ status, changeRef: 'ECO-2026-010' });
 
@@ -320,21 +320,29 @@ describe('changeAsSeen (D-14, D-26, change requests)', () => {
 
   it('shows outside the circle a change grafted onto a revision still open as still accepted, with nothing to name', () => {
     for (const rev of ['draft', 'in_review', 'approved']) {
+      // Its acceptance date stays, as for any accepted change: the journal shows it, and leaving it out would tell the graft.
       expect(changeAsSeen(false, req('implemented'), grafted(rev)), rev).toEqual({ ...req('implemented'), status: 'accepted', ecoRef: null, modifierId: null, revisionId: null });
     }
   });
 
   it('shows « Appliquée » outside the circle once the revision it was grafted onto is cancelled: it will never apply', () => {
     // Like the change that opened that revision: no change order, author or revision, and no wait promised for good.
-    expect(changeAsSeen(false, req('implemented'), grafted('cancelled'))).toEqual({ ...req('implemented'), ecoRef: null, modifierId: null, revisionId: null });
+    expect(changeAsSeen(false, req('implemented'), grafted('cancelled'))).toEqual({ ...req('implemented'), ecoRef: null, modifierId: null, revisionId: null, decidedAt: null });
   });
 
   it('keeps « Appliquée » outside the circle for a change that opened its revision, naming nothing until it is in force', () => {
     for (const rev of ['draft', 'in_review', 'approved', 'cancelled']) {
-      expect(changeAsSeen(false, req('implemented'), opened(rev)), rev).toEqual({ ...req('implemented'), ecoRef: null, modifierId: null, revisionId: null });
+      // Nor its decision date: applied at once, it is when the hidden revision opened.
+      expect(changeAsSeen(false, req('implemented'), opened(rev)), rev).toEqual({ ...req('implemented'), ecoRef: null, modifierId: null, revisionId: null, decidedAt: null });
     }
     // Without a change order, the request itself opened the revision (lib/lifecycle.ts implementChange).
     expect(changeAsSeen(false, req('implemented', { ecoRef: null }), { status: 'draft', changeRef: 'ECR-2026-002' }).status).toBe('implemented');
+  });
+
+  it('keeps outside the circle the acceptance date of a change waiting to apply, and every date of a request carried by no revision', () => {
+    expect(changeAsSeen(false, req('accepted', { revisionId: null }), null)).toEqual({ ...req('accepted', { revisionId: null }), ecoRef: null, modifierId: null });
+    for (const status of ['rejected', 'submitted']) expect(changeAsSeen(false, req(status, { revisionId: null }), null), status).toEqual(req(status, { revisionId: null }));
+    expect(changeAsSeen(false, req('implemented', { kind: 'obsolescence', revisionId: null }), null)).toEqual(req('implemented', { kind: 'obsolescence', revisionId: null }));
   });
 
   it('shows outside the circle a graft, like any change, once its revision is in force or superseded', () => {
