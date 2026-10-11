@@ -96,8 +96,9 @@ Tout l'état d'écran est dans l'URL (onglets, filtres, sélection) : les liens 
 - **Vigie simulé** : les demandes de modification (ECR) et de retrait sont enregistrées par `src/lib/vigie.ts` ; tant
   que `VIGIE_API_URL` n'est pas défini, un gestionnaire documentaire simule la décision depuis l'onglet Demandes.
   Le webhook `/api/integrations/vigie` applique les décisions réelles.
-- **Aperçu** : un PDF ou une image déposés s'affichent dans la fiche ; les documents de démonstration (sans
-  fichier) gardent la page maquette et se téléchargent sous forme d'un PDF généré.
+- **Aperçu** : un PDF, une image PNG, JPEG, GIF ou WebP, ou un fichier texte déposés s'affichent dans la fiche ; les
+  autres formats se téléchargent. Les documents de démonstration (sans fichier) gardent la page maquette et se
+  téléchargent sous forme d'un PDF généré.
 
 ## Organisation du code
 
@@ -121,6 +122,7 @@ src/
     codes.ts           identifiants TYPE-CONTEXTE-SEQ et lettres de révision
     retention.ts       fin de conservation
     storage.ts         stockage des fichiers (disque local ou SharePoint)
+    filetypes.ts       types de fichier servis en ligne et affichés en aperçu
     keystone.ts, vigie.ts  frontières d'intégration
     importer.ts        API d'import (outil de migration)
     i18n.ts            textes FR / EN

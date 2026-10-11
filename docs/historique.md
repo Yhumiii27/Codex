@@ -535,8 +535,14 @@ Constats confirmés, dans la numérotation du workflow :
     numéro (des chiffres, largeur non contrôlée) ; un document de projet reclassé avant sa première approbation vers
     un département de même code est recodifié. Deux contextes de code strictement identique resteraient
     indiscernables dans l'ID (D-09, O-04) ;
-  - `normalizeMime` garde `text/plain` pour une extension inconnue : un fichier binaire importé sans type peut être
-    servi comme du texte ;
+  - `normalizeMime` gardait `text/plain` pour une extension inconnue : un fichier binaire importé sans type pouvait
+    être servi comme du texte. **Corrigé le 11 octobre** : un `text/plain` reçu pour un fichier dont l'extension n'est
+    pas un texte connu (.txt, .csv, .log), ou qui n'en a pas, est générique. Un type générique est remplacé par celui
+    de l'extension, sinon par `application/pdf` si le fichier commence par `%PDF-`, sinon par
+    `application/octet-stream` : le fichier est alors servi en téléchargement et la fiche propose de le télécharger.
+    L'extension et le nom enregistrés ne changent pas ; un fichier sans extension n'en reçoit plus (il prenait
+    `.txt`). L'aperçu n'affiche plus que les images servies en ligne (PNG, JPEG, GIF, WebP, liste partagée avec la
+    route fichier dans `src/lib/filetypes.ts`) : un plan déposé en `image/vnd.dwg` montrait une image cassée ;
   - l'import traite une référence d'origine égale à l'ancien ID d'un document reclassé comme un rejeu.
 - **Point à arbitrer** : une modification acceptée pendant un gel, alors qu'une révision est déjà ouverte, reste
   « acceptée » après la levée du gel, et rien ne l'applique ensuite.

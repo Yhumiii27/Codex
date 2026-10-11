@@ -123,7 +123,10 @@ Crée **un** document par appel à partir d'un document de l'ancien système. Co
   - partie `meta` (obligatoire) : les métadonnées en JSON, en champ texte ou en fichier `.json` ;
   - partie `file` (facultative) : le fichier de la révision, avec son `Content-Type` (en Python :
     `files={'file': (nom, fh, 'application/pdf')}`). Sans type, ou avec un type générique (`application/octet-stream`,
-    `text/plain` pour un fichier qui n'est pas du texte), Codex le déduit de l'extension et de la signature `%PDF-`.
+    `text/plain` pour un fichier dont l'extension n'est pas `.txt`, `.csv` ou `.log`, ou qui n'en a pas), Codex le
+    déduit de l'extension, comme le navigateur pour un fichier déposé à l'écran, sinon de la signature `%PDF-` ; à
+    défaut, le fichier est enregistré en `application/octet-stream` et ne se télécharge que comme pièce jointe, sans
+    aperçu.
 - ou `application/json` : les métadonnées seules, sans fichier.
 
 Taille maximale du fichier : `CODEX_IMPORT_MAX_MB` (100 Mo par défaut, 250 Mo au plus avec SharePoint), au-delà **413**.

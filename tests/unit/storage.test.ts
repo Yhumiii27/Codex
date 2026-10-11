@@ -1,9 +1,11 @@
 import { deflateSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
+import { INLINE_SAFE, previewKind } from '@/lib/filetypes';
 import { simplePdf } from '@/lib/pdf';
 import { countPdfPages, normalizeMime } from '@/lib/storage';
 
-// File types and PDF page counts of uploaded files (src/lib/storage.ts); nothing here touches a store.
+// File types and PDF page counts of uploaded files (src/lib/storage.ts), and how the preview shows them
+// (src/lib/filetypes.ts); nothing here touches a store.
 
 const PDF = 'application/pdf';
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -38,17 +40,87 @@ describe('normalizeMime', () => {
     expect(normalizeMime('', 'sans-extension', Buffer.from('PK\x03\x04'))).toBe('application/octet-stream');
   });
 
+  // Order of inference: the extension first (the type a browser gives the same file when it is uploaded on screen),
+  // the signature only when the extension says nothing.
+  it('prefers the type of a known extension to the PDF signature', () => {
+    const pdf = Buffer.from('%PDF-1.7\n');
+    expect(normalizeMime('', 'rapport.docx', pdf)).toBe(DOCX);
+    expect(normalizeMime('application/octet-stream', 'photo.png', pdf)).toBe('image/png');
+    expect(normalizeMime('text/plain', 'tableau.xlsx', pdf)).toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    expect(normalizeMime('', 'notes.txt', pdf)).toBe('text/plain');
+    expect(normalizeMime('', 'plan.pdf', Buffer.from('PK\x03\x04'))).toBe(PDF);
+  });
+
   it('falls back to a generic type for an unknown extension', () => {
     expect(normalizeMime('', 'archive.xyz')).toBe('application/octet-stream');
     expect(normalizeMime('application/octet-stream', 'archive.xyz')).toBe('application/octet-stream');
   });
 
-  // Known gap, reported with this test: text/plain sent for a file that is not text is generic (normalizeMime's own
-  // rule), yet with an extension Codex does not know (.dwg, .xyz…) the declared text/plain is kept. A drawing posted to
-  // POST /api/import as a multipart part without Content-Type is then stored, served inline and previewed as text.
-  // When normalizeMime is fixed, this test fails: drop `.fails`.
-  it.fails('does not keep text/plain for a non-text file of unknown extension', () => {
+  // text/plain sent for a file whose extension is not a known text one is generic, the extension being unknown or
+  // missing too: a drawing posted to POST /api/import as a multipart part without Content-Type (which arrives as
+  // text/plain) must not be stored, served inline and previewed as text.
+  it('does not keep text/plain for a non-text file of unknown extension', () => {
     expect(normalizeMime('text/plain', 'plan.dwg')).toBe('application/octet-stream');
+    expect(normalizeMime('text/plain', 'piece.step')).toBe('application/octet-stream');
+    expect(normalizeMime('Text/Plain; charset=UTF-8', 'PLAN.DWG')).toBe('application/octet-stream');
+    expect(normalizeMime('text/plain', 'export.tar.gz')).toBe('application/octet-stream');
+    expect(normalizeMime('text/plain', 'plan.dwg', Buffer.from([0x41, 0x43, 0x31, 0x30, 0x33, 0x32, 0x00, 0xff]))).toBe('application/octet-stream');
+    // Bytes that are a PDF are still recognised.
+    expect(normalizeMime('text/plain', 'piece.step', Buffer.from('%PDF-1.4\n'))).toBe(PDF);
+  });
+
+  it('does not keep text/plain for a file without extension', () => {
+    expect(normalizeMime('text/plain', 'LISEZMOI')).toBe('application/octet-stream');
+    expect(normalizeMime('text/plain', '.bashrc')).toBe('application/octet-stream');
+    expect(normalizeMime('text/plain', 'plan.')).toBe('application/octet-stream');
+    expect(normalizeMime('text/plain', 'LISEZMOI', Buffer.from('\x00\x01\x02'))).toBe('application/octet-stream');
+    expect(normalizeMime('text/plain', 'scan', Buffer.from('%PDF-1.7\n'))).toBe(PDF);
+  });
+
+  it('keeps text/plain for a text file, and any specific type declared for an unknown extension', () => {
+    expect(normalizeMime('text/plain; charset=utf-8', 'NOTES.TXT')).toBe('text/plain');
+    expect(normalizeMime('', 'notes.txt')).toBe('text/plain');
+    expect(normalizeMime('application/octet-stream', 'serveur.log')).toBe('text/plain');
+    expect(normalizeMime('image/vnd.dwg', 'plan.dwg')).toBe('image/vnd.dwg');
+    expect(normalizeMime('model/step', 'piece.step')).toBe('model/step');
+  });
+
+  it('gives the same type when a stored type is normalised again (the file route and the preview do)', () => {
+    for (const [raw, name, buf] of [
+      ['text/plain', 'plan.dwg'], ['text/plain', 'LISEZMOI'], ['text/plain', 'notes.txt'], ['', 'scan', Buffer.from('%PDF-1.7\n')],
+      ['application/octet-stream', 'tableau.xlsx'], ['image/vnd.dwg', 'plan.dwg'], ['', 'rapport.docx', Buffer.from('%PDF-1.7\n')],
+    ] as [string, string, Buffer?][]) {
+      const stored = normalizeMime(raw, name, buf);
+      expect(normalizeMime(stored, name)).toBe(stored);
+    }
+  });
+});
+
+// The preview shows a file only when the file route serves it inline (src/lib/filetypes.ts); otherwise it offers the
+// download ("Aperçu indisponible pour ce format").
+describe('previewKind', () => {
+  it('shows a PDF, an image the route serves inline, and plain text', () => {
+    expect(previewKind(PDF)).toBe('pdf');
+    for (const m of ['image/png', 'image/jpeg', 'image/gif', 'image/webp']) expect(previewKind(m), m).toBe('image');
+    expect(previewKind('text/plain')).toBe('text');
+  });
+
+  it('shows no other type, images included: the route hands them out as downloads', () => {
+    for (const m of ['image/vnd.dwg', 'image/tiff', 'image/heic', 'image/svg+xml', 'application/octet-stream', DOCX, 'text/csv', 'text/html', 'model/step', ''])
+      expect(previewKind(m), m).toBeNull();
+    expect(previewKind(null)).toBeNull();
+    expect(previewKind(undefined)).toBeNull();
+  });
+
+  it('shows a type exactly when the route serves it inline', () => {
+    for (const m of INLINE_SAFE) expect(previewKind(m), m).not.toBeNull();
+  });
+
+  it('offers a drawing as a download, whatever type it was sent with', () => {
+    // An import without Content-Type (text/plain), a browser upload on Linux (image/vnd.dwg), a generic type.
+    for (const raw of ['text/plain', 'image/vnd.dwg', 'application/octet-stream', ''])
+      expect(previewKind(normalizeMime(raw, 'plan.dwg', Buffer.from([0x41, 0x43, 0x31, 0x30, 0x33, 0x32, 0x00, 0xff]))), raw).toBeNull();
+    expect(previewKind(normalizeMime('text/plain', 'LISEZMOI'))).toBeNull();
   });
 });
 

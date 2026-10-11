@@ -4,14 +4,13 @@ import { getDb, schema as s } from '@/db';
 import { readerMaySeeVersion } from '@/lib/access';
 import { isFinalStatus } from '@/lib/codes';
 import { getCtx, type Ctx } from '@/lib/context';
+import { INLINE_SAFE } from '@/lib/filetypes';
 import { fmtDate } from '@/lib/format';
 import { audit } from '@/lib/lifecycle';
 import { simplePdf } from '@/lib/pdf';
 import { getDoc, type DocView } from '@/lib/queries';
 import { EXT_BY_MIME, FileNotFoundError, normalizeMime, readStored } from '@/lib/storage';
 
-// Uploaded files are only rendered inline for types the browser displays without running scripts.
-const INLINE_SAFE = new Set(['application/pdf', 'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'text/plain']);
 const WORKING = new Set(['draft', 'in_review', 'approved']);
 /** Suffix of the proposed name for a document withdrawn or archived; the file itself is served unchanged. */
 const STATE_SUFFIX: Record<string, string> = { obsolete: '_OBSOLETE', archived: '_ARCHIVE' };

@@ -152,16 +152,20 @@ const TEXT_EXTS = new Set(['.txt', '.csv', '.log']);
 
 /**
  * Media type to store: the bare type/subtype in lower case. A missing or generic type (empty, octet-stream, or text/plain
- * sent for a file that is not text — what a multipart part without Content-Type turns into) is inferred from the
- * extension, and from the `%PDF-` signature when the bytes are at hand.
+ * sent for a file whose extension is not a known text one — what a multipart part without Content-Type turns into) is
+ * replaced: by the type of the extension, as a browser gives it to a file it uploads; else by PDF when the bytes at hand
+ * start with `%PDF-`; else by application/octet-stream. A generic text/plain is never kept: an unknown file is neither
+ * served nor previewed as text.
  */
 export function normalizeMime(raw: string | null | undefined, name: string, buf?: Buffer): string {
   const essence = (raw ?? '').split(';')[0].trim().toLowerCase();
   const ext = path.extname(name).toLowerCase();
   const generic = !essence || essence === 'application/octet-stream' || (essence === 'text/plain' && !TEXT_EXTS.has(ext));
   if (!generic) return essence;
+  const byExt = MIME_BY_EXT[ext];
+  if (byExt) return byExt;
   if (buf && buf.subarray(0, 5).toString('latin1') === '%PDF-') return 'application/pdf';
-  return MIME_BY_EXT[ext] ?? (essence || 'application/octet-stream');
+  return 'application/octet-stream';
 }
 
 /**
