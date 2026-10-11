@@ -529,9 +529,12 @@ Constats confirmés, dans la numérotation du workflow :
   sur PGlite en mémoire (242 tests, environ 20 s) ; `d5c3680` workflow GitHub Actions (npm ci, typecheck, lint,
   tests, build) ; `679e167` version de Node alignée sur `engines` dans CLAUDE.md. Premier passage de la CI vert sur
   `679e167`.
-- **Écarts révélés par les tests, marqués `it.fails`, non corrigés** :
-  - `idMatches` confond un code client de projet et un code de département identiques (D-10 ; latent tant que les
-    codes ne se recouvrent pas, O-04) ;
+- **Écarts révélés par les tests, marqués `it.fails`, non corrigés au 10 octobre** :
+  - `idMatches` confondait un code client de projet et un code de département identiques (D-10) : **corrigé le
+    11 octobre**. Un ID ne correspond plus à un type et à un contexte que si `TYPE-CONTEXTE-` est suivi du seul
+    numéro (des chiffres, largeur non contrôlée) ; un document de projet reclassé avant sa première approbation vers
+    un département de même code est recodifié. Deux contextes de code strictement identique resteraient
+    indiscernables dans l'ID (D-09, O-04) ;
   - `normalizeMime` garde `text/plain` pour une extension inconnue : un fichier binaire importé sans type peut être
     servi comme du texte ;
   - l'import traite une référence d'origine égale à l'ancien ID d'un document reclassé comme un rejeu.

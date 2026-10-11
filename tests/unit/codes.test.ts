@@ -91,12 +91,55 @@ describe('idMatches', () => {
     expect(idMatches('PRO-QUA-0003', { ...department, typeCode: 'PR' })).toBe(false);
   });
 
-  // Known gap, reported with this test: a department code equal to the client part of a project code (a client "FIN"
-  // and the FIN department) makes a project ID look like a department ID, so a project document moved to that
-  // department before its first approval would keep its project ID instead of being re-codified (D-10). The current
-  // reference data has no such overlap (O-04). When idMatches is fixed, this test fails: drop `.fails`.
-  it.fails('rejects a project ID for a department that shares the client code', () => {
+  // A department code equal to the client part of a project code (a client "FIN" and the FIN department) must not make
+  // a project ID look like a department ID: a project document moved to that department before its first approval is
+  // re-codified (D-10). The current reference data has no such overlap (O-04).
+  it('rejects a project ID for a department that shares the client code', () => {
     expect(idMatches('PRO-FIN-012-001', { typeCode: 'PRO', attachment: 'none', department: 'FIN' })).toBe(false);
+    expect(idMatches('COR-HLT-026-001', { typeCode: 'COR', attachment: 'none', department: 'HLT' })).toBe(false);
+  });
+
+  it('rejects a department ID for a project whose client code is the department', () => {
+    expect(idMatches('PRO-FIN-0003', { typeCode: 'PRO', attachment: 'project', projectCode: 'FIN-012', department: 'FIN' })).toBe(false);
+    expect(idMatches('PRO-FIN-0012', { typeCode: 'PRO', attachment: 'project', projectCode: 'FIN-012', department: 'FIN' })).toBe(false);
+  });
+
+  it('rejects an ID of a project whose code extends the new one', () => {
+    expect(idMatches('PID-HLT-026-001', { ...project, projectCode: 'HLT' })).toBe(false);
+  });
+
+  it('keeps an ID whose number outgrew its width (formatId never truncates)', () => {
+    expect(idMatches('PID-HLT-026-1000', project)).toBe(true);
+    expect(idMatches('PRT-R2601-1000', research)).toBe(true);
+    expect(idMatches('FRM-QMS-1000', template)).toBe(true);
+    expect(idMatches('PRO-QUA-12345', department)).toBe(true);
+  });
+
+  it('rejects anything but digits after TYPE-CONTEXTE-', () => {
+    for (const id of ['PRO-QUA-', 'PRO-QUA-00x9', 'PRO-QUA-0003-1', 'PRO-QUA-0003 ', 'PRO-QUA- 0003', 'PRO-QUA-+3', 'PRO-QUA--3', 'PRO-QUA-0003.1', 'PRO-QUA-٣']) {
+      expect(idMatches(id, department), id).toBe(false);
+    }
+    expect(idMatches('PRT-R2601-004-1', research)).toBe(false);
+  });
+
+  it('matches every ID formatId builds for the same type and context, and none built for another', () => {
+    // Contexts that share a code across kinds: the FIN and HLT departments, projects FIN-012 and HLT-026.
+    const inputs: IdInput[] = [
+      project, research, template, department,
+      { typeCode: 'COR', attachment: 'project', projectCode: 'HLT-026', department: 'ING' },
+      { typeCode: 'COR', attachment: 'project', projectCode: 'FIN-012', department: 'FIN' },
+      { typeCode: 'COR', attachment: 'none', department: 'FIN' },
+      { typeCode: 'COR', attachment: 'none', department: 'HLT' },
+      { typeCode: 'COR', attachment: 'research', programCode: 'R2601', department: 'RDI' },
+      { typeCode: 'COR', attachment: 'none', department: 'QUA' },
+    ];
+    const scope = (d: IdInput) => `${d.typeCode}-${contextOf(d)}`;
+    for (const n of [0, 1, 12, 999, 1000, 12345]) {
+      for (const built of inputs) {
+        const id = formatId(built, n);
+        for (const d of inputs) expect(idMatches(id, d), `${id} for ${scope(d)}`).toBe(scope(d) === scope(built));
+      }
+    }
   });
 });
 

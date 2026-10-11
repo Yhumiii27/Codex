@@ -104,14 +104,21 @@ describe('nextDocId (D-09, D-10)', () => {
 describe('updateMeta: reclassification (D-10, docs/modele-cible.md §3 and §6)', () => {
   const t = DICT.fr;
 
-  /** The owner moves the document to the ING department through the metadata form. */
-  function moveToIng(id: string) {
+  /** The owner submits the metadata form with these fields; the others keep their stored values. */
+  function edit(id: string, fields: Record<string, string>) {
     actAs('owner');
     const fd = new FormData();
     fd.set('docId', id);
-    fd.set('department', 'ING');
+    for (const [k, v] of Object.entries(fields)) fd.set(k, v);
     return updateMeta(fd);
   }
+
+  /** The owner moves the document to the ING department through the metadata form. */
+  const moveToIng = (id: string) => edit(id, { department: 'ING' });
+
+  /** A project whose code starts with the code of the QUA department (a client "QUA"). */
+  const addQuaProject = () => db().insert(s.projects).values({ code: 'QUA-012', name: 'Quai', client: 'QUA', stage: 'Etudes', managerId: 'pm', site: '', tiers: '', syncedAt: '2026-10-01 08:00:00' });
+  const draft: DocSpec['revisions'] = [{ letter: 'A', status: 'draft', versions: ['owner'] }];
 
   it('re-codifies a document never approved, keeps its former ID as an alias, and never hands that number out again', async () => {
     await addDoc(db(), { id: 'PRO-QUA-0001', revisions: [{ letter: 'A', status: 'draft', versions: ['owner'] }] });
@@ -133,6 +140,34 @@ describe('updateMeta: reclassification (D-10, docs/modele-cible.md §3 and §6)'
     expect(await moveToIng('PRO-QUA-0001')).toMatchObject({ ok: true, message: t.saved_ok });
     expect(await getDoc(db(), 'PRO-QUA-0001')).toMatchObject({ department: 'ING', aliases: [] });
     expect((await journalOf(db(), 'PRO-QUA-0001')).map((e) => e.action)).toEqual(['edit']);
+  });
+
+  it('re-codifies a project document moved to the department that shares its client code', async () => {
+    await addQuaProject();
+    await addDoc(db(), { id: 'COR-QUA-012-001', typeCode: 'COR', projectCode: 'QUA-012', revisions: draft });
+    expect(await edit('COR-QUA-012-001', { attachment: 'none' })).toMatchObject({ ok: true, message: `${t.act_reclass} : COR-QUA-0001` });
+    expect(await getDoc(db(), 'COR-QUA-0001')).toMatchObject({ attachment: 'none', projectCode: null, department: 'QUA', aliases: ['COR-QUA-012-001'] });
+  });
+
+  it('re-codifies a department document attached to a project whose client code is the department', async () => {
+    await addQuaProject();
+    await addDoc(db(), { id: 'COR-QUA-0001', typeCode: 'COR', revisions: draft });
+    expect(await edit('COR-QUA-0001', { attachment: 'project', projectCode: 'QUA-012' })).toMatchObject({ ok: true, message: `${t.act_reclass} : COR-QUA-012-001` });
+    expect(await getDoc(db(), 'COR-QUA-012-001')).toMatchObject({ attachment: 'project', projectCode: 'QUA-012', aliases: ['COR-QUA-0001'] });
+  });
+
+  it.each<[string, DocSpec, Record<string, string>]>([
+    ['a project document (project code with a dash)', { id: 'PID-HLT-026-001', typeCode: 'PID', projectCode: 'HLT-026', department: 'ING' }, { projectCode: 'HLT-026' }],
+    ['a department document', { id: 'PRO-QUA-0001' }, {}],
+    ['a department document numbered past its width', { id: 'PRO-QUA-12345' }, {}],
+    ['a template', { id: 'FRM-QMS-012', typeCode: 'FRM' }, {}],
+    ['a research document', { id: 'PRT-R2601-004', typeCode: 'PRT', department: 'RDI' }, { programCode: 'R2601' }],
+  ])('keeps the ID of %s never approved when neither its type nor its context changes', async (_, spec, fields) => {
+    await addDoc(db(), { ...spec, revisions: draft });
+    if (spec.typeCode === 'PRT') await db().update(s.documents).set({ attachment: 'research', programCode: 'R2601' }).where(sql`${s.documents.id} = ${spec.id}`);
+    expect(await edit(spec.id, { ...fields, title: 'Nouveau titre' })).toMatchObject({ ok: true, message: t.saved_ok });
+    expect(await getDoc(db(), spec.id)).toMatchObject({ title: 'Nouveau titre', aliases: [] });
+    expect((await journalOf(db(), spec.id)).map((e) => e.action)).toEqual(['edit']);
   });
 
   it('refuses to change the type or context while a circuit runs, and changes nothing', async () => {
