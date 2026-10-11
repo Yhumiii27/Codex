@@ -7,7 +7,7 @@ import { revLabel } from './codification';
 import type { Ctx } from './context';
 import { addDays, daysBetween, fmtDate, fmtSize, fmtWhen, loc, parisStamp, todayIso } from './format';
 import { CONF_LEVELS, MATRIX_ROLE_LABEL, TAGCLS, type T, type TKey } from './i18n';
-import { lockOf, type DecisionWait } from './lifecycle';
+import { decisionWait, lockOf, type DecisionWait } from './lifecycle';
 import { retainUntil } from './retention';
 import { FACET_KEYS, type FacetKey } from './search';
 
@@ -271,10 +271,34 @@ export type ChangeRequestView = Awaited<ReturnType<typeof listChangeRequests>>[n
  * the hold is released: both are named. Outside the drafting circle, pass no revision: it does not exist for the reader (D-14).
  */
 export function decisionWaitL(t: T, w: DecisionWait): string {
-  const rev = w.revision ? ` (${t.rev_short} ${w.revision})` : '';
-  const lock = w.state === 'archived' ? (w.legalHold ? t.ecr_wait_hold_archived : t.ecr_wait_archived) : w.state === 'active' && w.legalHold ? t.ecr_wait_hold : w.state === 'active' ? null : t.ecr_wait_lock;
-  if (!lock) return `${t.ecr_wait_revision}${rev}`;
-  return w.revision ? `${lock}, ${t.ecr_wait_then_revision}${rev}` : lock;
+  const archived = w.state === 'archived';
+  if (!w.revision) {
+    if (archived) return w.legalHold ? t.ecr_wait_hold_archived : t.ecr_wait_archived;
+    return w.state === 'active' && w.legalHold ? t.ecr_wait_hold : t.ecr_wait_lock;
+  }
+  // The revision is named first: it is what the change opens after; a lock only delays it further.
+  const lock = archived
+    ? (w.legalHold ? t.ecr_wait_not_before_hold_archived : t.ecr_wait_not_before_archived)
+    : w.state === 'active' ? (w.legalHold ? t.ecr_wait_not_before_hold : null) : t.ecr_wait_not_while_locked;
+  return `${t.ecr_wait_revision} ${w.revision}${lock ? `, ${lock}` : ''}`;
+}
+
+/**
+ * What the record says an acceptance still waits for (`r`, as listChangeRequests gives it), or null when it says nothing.
+ * In the drafting circle, decisionWaitL. Outside it, an accepted change may be waiting for a revision the reader does not
+ * see, or be grafted onto one and shown « Acceptée » (changeAsSeen): the lifting of a lock is then only named as a moment
+ * it will not apply before, never as the one it applies at, the same words whether a revision is open or not; without a
+ * lock nothing is said (D-14, D-26). A withdrawal waits for the lock alone.
+ */
+export function acceptedWaitL(t: T, r: { kind: string; status: string }, d: Pick<DocRow, 'state' | 'legalHold' | 'revWorking'>, circle: boolean): string | null {
+  if (r.status !== 'accepted') return null;
+  const kind = r.kind === 'modification' ? 'modification' : 'obsolescence';
+  const wait = decisionWait(kind, circle ? d : { ...d, revWorking: null });
+  const locked = wait.state !== 'active' || wait.legalHold;
+  if (circle || kind !== 'modification') return locked || wait.revision ? decisionWaitL(t, wait) : null;
+  if (!locked) return null;
+  if (wait.state === 'archived') return wait.legalHold ? t.ecr_wait_no_earlier_hold_archived : t.ecr_wait_no_earlier_archived;
+  return wait.state === 'active' ? t.ecr_wait_no_earlier_hold : t.ecr_wait_no_earlier_lock;
 }
 
 /**

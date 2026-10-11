@@ -58,8 +58,12 @@ export type DialogSpec =
   | { kind: 'meta'; doc: MetaDoc }
   /** Request approval of the revision being drafted, with an optional effective date (`minDate`: today, Paris time). */
   | { kind: 'validate'; docId: string; title: string; revLabel: string; circuitL: string; minDate: string }
-  /** Change request (ECR) or withdrawal request, both sent to Vigie. */
-  | { kind: 'change'; docId: string; title: string; change: 'modification' | 'obsolescence' }
+  /**
+   * Change request (ECR) or withdrawal request, both sent to Vigie. `openRev`: for a change asked while a revision is
+   * open, that revision and its status (an accepted change waits for its entry into force, or may be grafted onto it
+   * while it is drafted, D-26); given to the drafting circle only (lib/access.ts openRevisionView, D-14).
+   */
+  | { kind: 'change'; docId: string; title: string; change: 'modification' | 'obsolescence'; openRev?: { letter: string; status: 'draft' | 'in_review' | 'approved' } }
   /** Hand the current step on: `step` is the step shown, `excluded` the people who may not approve this revision. */
   | { kind: 'delegate'; workflowId: string; stepName: string; step: number; excluded: string[] }
   | { kind: 'compare'; current: VersionLite; other: VersionLite }
@@ -73,6 +77,12 @@ export type DialogSpec =
    * acceptance is never refused for a revision already open.
    */
   | { kind: 'vigie'; requestId: string; docTitle: string; change: 'modification' | 'obsolescence'; modifierId: string; drafters: string[]; deferred?: string }
+  /**
+   * Graft a change Vigie accepted onto the revision being drafted, instead of waiting for it to enter into force (D-26).
+   * `author`: who writes that revision, and the change once grafted; `vigieModifier`: the author Vigie named, when it is
+   * someone else.
+   */
+  | { kind: 'graft'; requestId: string; ecoRef: string; docId: string; title: string; letter: string; reason: string; author: string; vigieModifier?: string }
   /** Administration: circuit, confidentiality and retention of a type. */
   | { kind: 'type'; type: { code: string; label: string; circuit: string[]; confAllowed: Conf[]; confDefault: Conf; retentionYears: number | null; retentionTrigger: string; retentionDisposition: string; retentionBasis: string; active: boolean } }
   | { kind: 'holder'; functionKey: string; functionLabel: string; scope: 'global' | 'department' | 'project' | 'research' }

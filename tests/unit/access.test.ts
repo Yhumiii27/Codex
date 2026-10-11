@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { canRead, changeAsSeen, inDraftingCircle, isUsableTemplate, readerMaySeeChange, readerMaySeeEntry, readerMaySeeRevision, readerMaySeeVersion, readersApply, type AccessIndex, type Viewer } from '@/lib/access';
+import { canRead, changeAsSeen, inDraftingCircle, isUsableTemplate, mayWorkOnDraft, openRevisionView, readerMaySeeChange, readerMaySeeEntry, readerMaySeeRevision, readerMaySeeVersion, readersApply, type AccessIndex, type Viewer } from '@/lib/access';
 import { CONF_LEVELS, PERMS, type Perm } from '@/lib/i18n';
 
 // Who sees what: confidentiality levels (D-13), drafting circle (D-14), docs/modele-cible.md §5.
 
 type Doc = Parameters<typeof canRead>[1];
-type People = Partial<Record<'readers' | 'modifiers' | 'approvers' | 'team', Record<string, string[]>>>;
+type People = Partial<Record<'readers' | 'modifiers' | 'designated' | 'approvers' | 'team', Record<string, string[]>>>;
 
 const REV_STATUSES = ['draft', 'in_review', 'approved', 'in_force', 'superseded', 'cancelled'] as const;
 
@@ -20,9 +20,9 @@ function viewer(id: string, { department = 'COM', perms = ['read'], seesAll = fa
 }
 
 /** People around documents (keyed by document ID) and project teams (keyed by project code). */
-function index({ readers = {}, modifiers = {}, approvers = {}, team = {} }: People = {}): AccessIndex {
+function index({ readers = {}, modifiers = {}, designated = {}, approvers = {}, team = {} }: People = {}): AccessIndex {
   const lookup = (m: Record<string, string[]>) => (key: string) => new Set(m[key] ?? []);
-  return { readers: lookup(readers), modifiers: lookup(modifiers), approvers: lookup(approvers), team: (code) => (code ? lookup(team)(code) : new Set()) };
+  return { readers: lookup(readers), modifiers: lookup(modifiers), designated: lookup(designated), approvers: lookup(approvers), team: (code) => (code ? lookup(team)(code) : new Set()) };
 }
 
 /** A QUA document owned by `owner`, revision A in force. */
@@ -32,6 +32,7 @@ const D = 'PRO-QUA-0003';
 const people = index({
   readers: { [D]: ['reader'] },
   modifiers: { [D]: ['modifier'] },
+  designated: { [D]: ['next_modifier'] },
   approvers: { [D]: ['approver'], 'PRO-QUA-0004': ['other_approver'] },
   team: { 'HLT-026': ['pm'], 'NDC-031': ['other_pm'] },
 });
@@ -44,7 +45,9 @@ const reader = viewer('reader', { department: 'COM' });
 const pm = viewer('pm', { department: 'PRJ' });
 const otherPm = viewer('other_pm', { department: 'PRJ' });
 const stranger = viewer('stranger', { department: 'COM' });
-const circle = { owner, modifier, approver, recordsManager };
+// Designated by Vigie for an accepted change that waits for the open revision (D-26).
+const nextModifier = viewer('next_modifier', { department: 'ING', perms: ['read', 'upload', 'edit'] });
+const circle = { owner, modifier, approver, recordsManager, nextModifier };
 // Matrix permissions do not make a drafting circle (§5): only records managers see everything. Roles of src/db/seed-org.ts.
 const validator = viewer('validator', { department: 'DIR', perms: ['read', 'upload', 'edit', 'approve', 'publish'] });
 const administrator = viewer('administrator', { department: 'DSI', perms: [...PERMS] });
@@ -60,6 +63,11 @@ describe('confidentiality scale (D-13)', () => {
 describe('inDraftingCircle (D-14)', () => {
   it('holds the owner, the designated modifier, the approvers of the running circuit and the records managers', () => {
     for (const [who, v] of Object.entries(circle)) expect(inDraftingCircle(v, doc(), people), who).toBe(true);
+  });
+
+  it('lets them all work on the draft but the author designated for a change waiting for it, who writes the next revision', () => {
+    for (const [who, v] of Object.entries(circle)) expect(mayWorkOnDraft(v, doc(), people), who).toBe(who !== 'nextModifier');
+    for (const [who, v] of Object.entries({ colleague, reader, pm, stranger, ...elevated })) expect(mayWorkOnDraft(v, doc(), people), who).toBe(false);
   });
 
   it('leaves out named readers, the department, the project team and anyone else', () => {
@@ -310,10 +318,15 @@ describe('changeAsSeen (D-14, D-26, change requests)', () => {
     }
   });
 
-  it('shows outside the circle a change grafted onto a revision not in force as still accepted, with nothing to name', () => {
-    for (const rev of ['draft', 'in_review', 'approved', 'cancelled']) {
+  it('shows outside the circle a change grafted onto a revision still open as still accepted, with nothing to name', () => {
+    for (const rev of ['draft', 'in_review', 'approved']) {
       expect(changeAsSeen(false, req('implemented'), grafted(rev)), rev).toEqual({ ...req('implemented'), status: 'accepted', ecoRef: null, modifierId: null, revisionId: null });
     }
+  });
+
+  it('shows « Appliquée » outside the circle once the revision it was grafted onto is cancelled: it will never apply', () => {
+    // Like the change that opened that revision: no change order, author or revision, and no wait promised for good.
+    expect(changeAsSeen(false, req('implemented'), grafted('cancelled'))).toEqual({ ...req('implemented'), ecoRef: null, modifierId: null, revisionId: null });
   });
 
   it('keeps « Appliquée » outside the circle for a change that opened its revision, naming nothing until it is in force', () => {
@@ -328,6 +341,52 @@ describe('changeAsSeen (D-14, D-26, change requests)', () => {
     for (const rev of ['in_force', 'superseded']) {
       expect(changeAsSeen(false, req('implemented'), grafted(rev)), rev).toEqual(req('implemented'));
       expect(changeAsSeen(false, req('implemented'), opened(rev)), rev).toEqual(req('implemented'));
+    }
+  });
+});
+
+describe('openRevisionView (D-14, D-26, document record)', () => {
+  const rev = (status: string, modifierId: string | null = 'modifier') => ({ letter: 'C', status, modifierId });
+  const waiting = { kind: 'modification', status: 'accepted' };
+
+  it('gives nothing outside the drafting circle: no revision open, none to wait for, no graft', () => {
+    for (const status of ['draft', 'in_review', 'approved']) {
+      for (const who of [stranger, colleague, reader, recordsManager]) {
+        expect(openRevisionView(false, who, 'owner', rev(status), waiting), `${who.user.id} ${status}`).toEqual({ open: null, wait: null });
+      }
+    }
+  });
+
+  it('tells the circle about the open revision a change asked now would meet, with nothing waiting', () => {
+    for (const status of ['draft', 'in_review', 'approved'] as const) {
+      expect(openRevisionView(true, owner, 'owner', rev(status), null), status).toEqual({ open: { letter: 'C', status }, wait: null });
+      // A submitted change, a withdrawal or a change already applied waits for nothing.
+      for (const r of [{ kind: 'modification', status: 'submitted' }, { kind: 'obsolescence', status: 'accepted' }, { kind: 'modification', status: 'implemented' }]) {
+        expect(openRevisionView(true, owner, 'owner', rev(status), r).wait, `${status} ${r.kind} ${r.status}`).toBeNull();
+      }
+    }
+  });
+
+  it('knows of no open revision once it is in force, superseded or cancelled, nor without one', () => {
+    for (const status of ['in_force', 'superseded', 'cancelled']) expect(openRevisionView(true, owner, 'owner', rev(status), waiting), status).toEqual({ open: null, wait: null });
+    expect(openRevisionView(true, owner, 'owner', null, waiting)).toEqual({ open: null, wait: null });
+  });
+
+  it('lets a records manager or the author of the revision being drafted graft the waiting change, not the owner', () => {
+    expect(openRevisionView(true, recordsManager, 'owner', rev('draft'), waiting).wait).toEqual({ letter: 'C', author: 'modifier', graft: 'yes' });
+    expect(openRevisionView(true, modifier, 'owner', rev('draft'), waiting).wait).toEqual({ letter: 'C', author: 'modifier', graft: 'yes' });
+    // The owner, a collaborator, when someone else was designated to write the revision; an approver as well.
+    expect(openRevisionView(true, owner, 'owner', rev('draft'), waiting).wait).toEqual({ letter: 'C', author: 'modifier', graft: 'reserved' });
+    expect(openRevisionView(true, approver, 'owner', rev('draft'), waiting).wait?.graft).toBe('reserved');
+    // Nobody designated: the owner writes the revision, and may graft.
+    expect(openRevisionView(true, owner, 'owner', rev('draft', null), waiting).wait).toEqual({ letter: 'C', author: 'owner', graft: 'yes' });
+  });
+
+  it('only lets the change wait once the revision is under review or approved, whoever looks', () => {
+    for (const status of ['in_review', 'approved'] as const) {
+      for (const who of [recordsManager, modifier, owner]) {
+        expect(openRevisionView(true, who, 'owner', rev(status), waiting).wait, `${who.user.id} ${status}`).toEqual({ letter: 'C', author: 'modifier', graft: status });
+      }
     }
   });
 });

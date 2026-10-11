@@ -31,6 +31,8 @@ Conventions :
 | 9 oct., 15:00 | Passage en session cloud : ce qui n'existait qu'en local est versé dans le dépôt | 9 |
 | 9 oct. | Reprise en session cloud : corrections T-03, inventaire du reste à faire | 10 |
 | 10 oct. | Développement par étapes, un commit par étape validée. Étape 1 : brouillons invisibles hors du cercle (D-14). Étape 2 : avertissement sur les documents obsolètes ou archivés. Étape 3 : décision Vigie acceptée sur un document verrouillé. Étape 4 : droit de rédiger du modificateur désigné par Vigie. Étape 5 : identifiants sûrs en concurrence. Étape 6 : journal d'audit en ajout seul et complet | 11 |
+| 10 oct. | Tests (Vitest, PGlite en mémoire) et intégration continue | 12 |
+| 11 oct. | Décision D-26 : greffe ou attente d'une modification acceptée pendant une révision ouverte. Étape 1 : couche métier. Étape 2 : fiche document | 13 |
 
 La session a été coupée plusieurs fois par une limite d'usage ou de dépense :
 - le 7 octobre à 13:38, reprise à 17:31 sur « Try again » ;
@@ -549,4 +551,85 @@ Constats confirmés, dans la numérotation du workflow :
     ID Codex, actuel ou ancien, d'un autre document reçoit 409 `ref_is_codex_id`. La migration unique `0000_init` a été
     régénérée : une base existante doit repartir de zéro (`npm run db:reset`).
 - **Point à arbitrer** : une modification acceptée pendant un gel, alors qu'une révision est déjà ouverte, reste
-  « acceptée » après la levée du gel, et rien ne l'applique ensuite.
+  « acceptée » après la levée du gel, et rien ne l'applique ensuite. **Tranché le 11 octobre** (D-26, §13).
+
+## 13. Décision D-26 (11 oct.)
+
+- **Question** (posée à la fin du lot 2, le 10 octobre) : « Que doit-il se passer quand Vigie accepte une modification
+  pendant un gel, alors qu'une révision est déjà ouverte ? […] Faut-il l'appliquer quand la révision ouverte entre en
+  vigueur, ou la signaler pour qu'elle soit traitée à la main ? »
+- **Réponse de l'utilisateur** (11 octobre) :
+  > si une ouverture de revision d'un document est en cours alors soit la modification vient se greffer sur la modification en cours soit il faudra attendre que la rvision soit validée avant d'en ouvrir une nouvelle
+- **Règle** ([decisions.md](decisions.md), D-26, commit `6ea55e9`) : une modification acceptée par Vigie alors qu'une
+  révision du document est déjà ouverte n'en ouvre pas une seconde. Soit elle est **greffée** sur la révision ouverte,
+  qui porte alors aussi sa référence ECO ; soit elle **attend**, puis ouvre la révision suivante une fois la révision
+  en cours validée.
+- **Interprétations appliquées** (*proposé, non confirmé*) :
+  - le choix se fait sur la fiche du document, par un gestionnaire documentaire ou par le modificateur de la révision
+    ouverte (à défaut son propriétaire) ; tant que personne n'a choisi, c'est l'attente qui vaut ;
+  - la greffe n'est possible que pendant la rédaction de la révision ouverte ; en validation, ou approuvée en attente
+    de sa date d'effet, seule l'attente l'est (greffer obligerait à relancer le circuit) ;
+  - « validée » s'entend « mise en vigueur » ; une révision ouverte annulée libère aussi la modification en attente ;
+  - la règle vaut pour toute révision ouverte, pas seulement après un gel : une demande de modification peut être faite
+    depuis Codex pendant qu'une révision est ouverte (l'ancien refus `locked_working` disparaît).
+- **Étape 1 : couche métier** (commit `3bb2e96`) :
+  - une acceptation reçue pendant qu'une révision est ouverte (brouillon, en validation, approuvée) est enregistrée
+    « Acceptée » ; elle ouvre la révision suivante, une seule fois, à la mise en vigueur de la révision ouverte
+    (`putInForce` : dernière approbation, date d'effet atteinte, rattrapage) ou à son annulation
+    (`cancelOpenRevisions`) ; un verrou (gel, archive) s'ajoute à l'attente ;
+  - Server Action `graftChange` (`src/lib/actions.ts`) : greffe sur la révision en rédaction, document lisible et non
+    verrouillé ; colonne `change_requests.revision_id`, qui permet à une révision de porter plusieurs ECO ; entrée de
+    journal « Greffe d'une modification » rattachée à la révision ; migration unique `0000_init` régénérée ;
+  - `requestChange` accepte une demande de modification pendant une révision ouverte ; le webhook Vigie répond 202
+    `reason: "revision_open"` avec l'indice de la révision (`docs/api.md`) ;
+  - hors du cercle de rédaction (D-14), ni ECO, ni modificateur, ni révision liée, et une modification greffée reste
+    affichée « Acceptée » jusqu'à la mise en vigueur de la révision qui la porte (`changeAsSeen`, `src/lib/access.ts`).
+- **Étape 2 : fiche document** (`src/app/documents/[id]/page.tsx`, `src/components/dialogs/Dialogs.tsx`) :
+  - pour le cercle de rédaction, un bandeau « ECO-… acceptée : elle ouvrira la révision suivante à la mise en vigueur
+    de la révision C », complété par le verrou s'il y en a un (« …, pas avant la levée du gel juridique ») ; la même
+    formule sert dans l'onglet Demandes, le dialogue de simulation Vigie et son message (`decisionWaitL`,
+    `src/lib/queries.ts`) ;
+  - révision en rédaction : bouton « Greffer sur la révision C » dans le bandeau et sur la demande, avec un dialogue de
+    confirmation (motif, modificateur de la révision, modificateur désigné par Vigie s'il est différent) ; grisé, avec
+    sa raison, sous un verrou, sans le droit Modifier, ou pour une personne du cercle qui n'est ni gestionnaire ni
+    modificateur de la révision ; révision en validation ou approuvée : le bandeau explique que seule l'attente est
+    possible ;
+  - après la greffe, l'onglet Demandes indique « Greffée sur la révision C » (« A ouvert la révision C » pour l'ECO
+    qui l'a ouverte) et l'onglet Révisions liste les ECO que porte la révision ;
+  - le dialogue « Demander une modification » dit au cercle de rédaction, en une seule consigne, qu'une révision est
+    déjà ouverte, son état, et qu'un ECO accepté ouvrira la révision suivante à la mise en vigueur de la révision C
+    (ou pourra y être greffé tant qu'elle est en rédaction) ; hors du cercle, la consigne habituelle ;
+  - ce que la fiche montre de la révision ouverte et de la greffe est calculé par une fonction pure,
+    `openRevisionView` (`src/lib/access.ts`), qui ne renvoie rien hors du cercle (tests unitaires) ;
+  - hors du cercle, ni bandeau D-26, ni bouton, ni révision ; une demande acceptée ou greffée s'affiche « Acceptée »,
+    sans plus de détail. Sous un verrou, la mention d'attente d'une modification dit seulement qu'elle « ne s'appliquera
+    pas avant » la levée du verrou (`acceptedWaitL`) : une révision que ce lecteur ne voit pas peut la retenir encore.
+- **Corrections après relecture de l'étape 2** :
+  - une modification greffée sur une révision ensuite annulée par un retrait accepté s'affichait « Acceptée » pour
+    toujours hors du cercle, avec une attente qui n'aboutirait jamais ; elle s'affiche désormais « Appliquée », comme
+    celle qui avait ouvert la révision (`changeAsSeen`) ;
+  - le modificateur désigné par Vigie pour une modification en attente entre dans le cercle de rédaction (D-14 : « qui
+    modifiera un document via une ECO ») : il voit la révision ouverte, l'ECO et le bandeau, mais n'y dépose pas, ne la
+    soumet pas et ne greffe pas (`mayWorkOnDraft`, `src/lib/access.ts`) ; cette désignation ne compte pas quand on
+    vérifie qu'il peut encore rédiger le document (`mayDraft`, `buildAccessIndex(tx, { pending: false })`). Choix
+    consigné dans [decisions.md](decisions.md) (choix de l'assistant non validés) ;
+  - les textes du dialogue de demande et le refus `graft_not_draft` nomment la révision dont on attend la mise en
+    vigueur, sans « sa » ambigu.
+- **Vérifié** (étape 2) : `npm test` (329 tests), `npm run typecheck`, `npm run lint`. Dans le navigateur, sur une
+  base neuve, avec Claire Bardet (gestionnaire) :
+  - `HSE-HLT-026-001` (B en vigueur, C en brouillon) : dialogue de demande, acceptation simulée, bandeau d'attente,
+    greffe ; C porte ECO-2026-002 et ECO-2026-004. Julien Wagner, hors du cercle, ne voit que « Acceptée » ; sous gel
+    juridique, « elle ne s'appliquera pas avant la levée du gel juridique » ; après un retrait accepté qui annule C,
+    « Appliquée », sans attente ;
+  - `PRO-HSE-0001` (B en vigueur, C en brouillon) : acceptation avec Julien Wagner comme modificateur, attente laissée ;
+    Julien voit C, l'ECO et le bandeau, avec « Nouvelle version de travail », « Demander la validation » et « Greffer »
+    grisés ; circuit de C (Gabriel Comte puis Hélène Costa) ; C entre en vigueur et D s'ouvre en brouillon pour Julien
+    Wagner, avec l'ECO ; Léa Marchand, hors du cercle, ne voit que « Acceptée » puis « Appliquée » ;
+  - `BOM-HLT-026-001` (D en validation) : dialogue de demande en français et en anglais (« Rév. D, en validation ») ;
+    hors du cercle, la consigne habituelle.
+- **Reste ouvert** : Vigie n'est prévenu ni de la greffe ni de l'application différée (O-10) ; hors du cercle, une
+  modification greffée reste « Acceptée » et grise le bouton « Demander une modification » tant que la révision qui la
+  porte est ouverte (point 26 de [reste-a-faire.md](reste-a-faire.md)) ; la fiche ne parle que de la mise en vigueur,
+  puisqu'aujourd'hui seul un retrait accepté annule une révision ouverte et qu'il ne peut pas être demandé pendant
+  qu'une modification attend (une seule demande en cours par document) ; le modificateur désigné écarté par une greffe
+  n'en est averti que par le journal, qu'il ne lit plus une fois sorti du cercle.

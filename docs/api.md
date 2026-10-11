@@ -311,8 +311,12 @@ révision ouverte. Aujourd'hui, seul un retrait accepté annule une révision ou
 modification n'y attend jamais (une seule demande en cours par document), et un document obsolète ne change plus.
 Hors du cercle de rédaction, ni la référence ECO, ni le modificateur, ni la révision d'une modification en attente,
 greffée ou appliquée à une révision qui n'est pas encore en vigueur ne sont montrés (D-14), et une modification greffée
-y reste affichée **Acceptée** jusqu'à la mise en vigueur de la révision qui la porte : rien ne trahit la greffe. Vigie
-n'est prévenu ni de la greffe ni de l'application différée (O-10).
+y reste affichée **Acceptée** tant que la révision qui la porte est ouverte : rien ne trahit la greffe. Si cette
+révision est annulée (retrait accepté), la modification y est affichée **Appliquée**, comme celle qui avait ouvert la
+révision. Le modificateur désigné par Vigie pour une modification en attente entre dans le cercle de rédaction (D-14 :
+« qui modifiera un document via une ECO ») : il voit la révision ouverte, mais n'y dépose pas et ne la soumet pas, et
+cette désignation ne compte pas dans le contrôle de son droit de rédiger. Vigie n'est prévenu ni de la greffe ni de
+l'application différée (O-10).
 
 **Modificateur désigné qui perd le droit de rédiger.** Avec `modifierId`, le droit de rédiger est contrôlé à la
 réception de la décision (400 `modifier_not_allowed` sinon), puis de nouveau quand une acceptation mise en attente

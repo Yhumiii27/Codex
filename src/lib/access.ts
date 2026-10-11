@@ -1,6 +1,6 @@
 import 'server-only';
 import { cache } from 'react';
-import { inArray } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { getDb, schema as s, type Db } from '@/db';
 import type { Conf } from '@/db/schema';
 import { TEMPLATE_TYPE } from './codes';
@@ -14,23 +14,36 @@ type Q = Db | Parameters<Parameters<Db['transaction']>[0]>[0];
 /** The person whose access is checked: the simulated user, or another person (default modifier of an accepted ECO). */
 export type Viewer = Pick<Ctx, 'user' | 'seesAll' | 'can'>;
 
+/** Revision statuses of a revision open on a document: drafted, under review, approved waiting for its effective date. */
+const OPEN_REVISION = ['draft', 'in_review', 'approved'] as const;
+type OpenStatus = (typeof OPEN_REVISION)[number];
+const isOpenRevision = (status: string | null | undefined): status is OpenStatus => (OPEN_REVISION as readonly string[]).includes(status ?? '');
+
 /**
- * People around each document: named readers, designated authors of open revisions, approvers of running workflows,
- * project teams. Built from `q` (a transaction inside lib/lifecycle.ts); getAccessIndex() caches it per request.
+ * People around each document: named readers, designated authors of open revisions, authors Vigie designated for an
+ * accepted change that waits to open the next one (`designated`; D-14: whoever « modifiera un document via une ECO »,
+ * D-26), approvers of running workflows, project teams. Built from `q` (a transaction inside lib/lifecycle.ts);
+ * getAccessIndex() caches it per request. `pending: false` leaves the waiting changes out: whether their author may
+ * still draft the document must not rest on that very designation (lib/lifecycle.ts mayDraft).
  */
-export async function buildAccessIndex(q: Q) {
-  const [readers, revs, wfs, steps, holders, projects] = await Promise.all([
+export async function buildAccessIndex(q: Q, { pending = true }: { pending?: boolean } = {}) {
+  const [readers, revs, waiting, wfs, steps, holders, projects] = await Promise.all([
     q.select().from(s.documentReaders),
-    q.select({ docId: s.revisions.docId, modifierId: s.revisions.modifierId, status: s.revisions.status }).from(s.revisions).where(inArray(s.revisions.status, ['draft', 'in_review', 'approved'])),
+    q.select({ docId: s.revisions.docId, modifierId: s.revisions.modifierId, status: s.revisions.status }).from(s.revisions).where(inArray(s.revisions.status, [...OPEN_REVISION])),
+    pending
+      ? q.select({ docId: s.changeRequests.docId, modifierId: s.changeRequests.modifierId }).from(s.changeRequests).where(and(eq(s.changeRequests.kind, 'modification'), eq(s.changeRequests.status, 'accepted')))
+      : [],
     q.select().from(s.workflows),
     q.select({ workflowId: s.workflowSteps.workflowId, idx: s.workflowSteps.idx, assigneeId: s.workflowSteps.assigneeId }).from(s.workflowSteps),
     q.select().from(s.functionHolders),
     q.select({ code: s.projects.code, managerId: s.projects.managerId }).from(s.projects),
   ]);
   const add = (m: Map<string, Set<string>>, k: string, v: string | null) => { if (!v) return; if (!m.has(k)) m.set(k, new Set()); m.get(k)!.add(v); };
-  const readersBy = new Map<string, Set<string>>(), modifiersBy = new Map<string, Set<string>>(), approversBy = new Map<string, Set<string>>(), teamBy = new Map<string, Set<string>>();
+  const readersBy = new Map<string, Set<string>>(), modifiersBy = new Map<string, Set<string>>(), designatedBy = new Map<string, Set<string>>();
+  const approversBy = new Map<string, Set<string>>(), teamBy = new Map<string, Set<string>>();
   readers.forEach((r) => add(readersBy, r.docId, r.userId));
   revs.forEach((r) => add(modifiersBy, r.docId, r.modifierId));
+  waiting.forEach((r) => add(designatedBy, r.docId, r.modifierId));
   for (const w of wfs) {
     const ws = steps.filter((x) => x.workflowId === w.id);
     if (w.outcome || w.step >= ws.length) continue; // finished or rejected workflows no longer open drafts to their approvers
@@ -42,6 +55,7 @@ export async function buildAccessIndex(q: Q) {
   return {
     readers: (docId: string) => readersBy.get(docId) ?? none,
     modifiers: (docId: string) => modifiersBy.get(docId) ?? none,
+    designated: (docId: string) => designatedBy.get(docId) ?? none,
     approvers: (docId: string) => approversBy.get(docId) ?? none,
     team: (projectCode: string | null) => (projectCode ? teamBy.get(projectCode) ?? none : none),
   };
@@ -50,8 +64,20 @@ export type AccessIndex = Awaited<ReturnType<typeof buildAccessIndex>>;
 
 export const getAccessIndex = cache(async () => buildAccessIndex(await getDb()));
 
-/** Owner, designated author, current approvers and records managers: they see drafts and working versions. */
+/**
+ * Owner, designated author (of the open revision, or of an accepted change waiting for it, D-26), current approvers and
+ * records managers: they see drafts and working versions (D-14).
+ */
 export function inDraftingCircle(ctx: Viewer, d: AccessDoc, ix: AccessIndex): boolean {
+  return mayWorkOnDraft(ctx, d, ix) || ix.designated(d.id).has(ctx.user.id);
+}
+
+/**
+ * Who may add working versions to the revision being drafted and send it for approval: the drafting circle, except the
+ * author Vigie designated for a change waiting for that revision. He sees it (D-14) but writes the next one; taking
+ * his change into the open revision is a graft, which is chosen on the record (D-26, lib/actions.ts graftChange).
+ */
+export function mayWorkOnDraft(ctx: Viewer, d: AccessDoc, ix: AccessIndex): boolean {
   const me = ctx.user.id;
   return ctx.seesAll || d.ownerId === me || ix.modifiers(d.id).has(me) || ix.approvers(d.id).has(me);
 }
@@ -119,7 +145,9 @@ export function readerMaySeeChange(circle: boolean, r: { kind: string; status: s
  * A change request as a reader of its document sees it (D-14). When readerMaySeeChange says no, it names neither its
  * change order, its designated author nor its revision. A change grafted onto a revision the reader does not see (`rev`
  * carries another change order: the change did not open it, D-26) also keeps the status it had before the graft,
- * « Acceptée »: turning « Appliquée » with nothing entering into force would tell that a hidden revision took it up.
+ * « Acceptée », while that revision is open: turning « Appliquée » with nothing entering into force would tell that a
+ * hidden revision took it up. Once that revision is cancelled (an accepted withdrawal), the change will never apply:
+ * it shows « Appliquée », like the change that opened the revision, rather than wait for good.
  */
 export function changeAsSeen<R extends { id: string; kind: string; status: string; ecoRef: string | null; modifierId: string | null; revisionId: number | null }>(
   circle: boolean,
@@ -127,8 +155,37 @@ export function changeAsSeen<R extends { id: string; kind: string; status: strin
   rev: { status: string; changeRef: string | null } | null | undefined,
 ): R {
   if (readerMaySeeChange(circle, r, rev?.status)) return r;
-  const grafted = r.kind === 'modification' && r.status === 'implemented' && !!rev && rev.changeRef !== (r.ecoRef ?? r.id);
+  const grafted = r.kind === 'modification' && r.status === 'implemented' && !!rev && isOpenRevision(rev.status) && rev.changeRef !== (r.ecoRef ?? r.id);
   return { ...r, ecoRef: null, modifierId: null, revisionId: null, ...(grafted ? { status: 'accepted' } : {}) };
+}
+
+/**
+ * The revision open on a document as its record shows it (D-14, D-26). `open`: told to whoever asks for a change now
+ * (what an acceptance would do). `wait`: the revision an accepted change waits for (`awaiting`, as listChangeRequests
+ * gives it), who writes it, and whether the user may graft the change onto it instead: 'yes' for a records manager or
+ * the author of that revision (its designated modifier, else the owner; lib/actions.ts graftChange) while it is drafted,
+ * 'reserved' for anyone else, 'in_review' or 'approved' when it can only wait. A lock or a missing permission is the
+ * record's to add. Outside the drafting circle no revision is open: neither is given.
+ */
+export type OpenRevisionView = {
+  open: { letter: string; status: OpenStatus } | null;
+  wait: { letter: string; author: string; graft: 'yes' | 'reserved' | Exclude<OpenStatus, 'draft'> } | null;
+};
+
+export function openRevisionView(
+  circle: boolean,
+  viewer: Pick<Viewer, 'user' | 'seesAll'>,
+  ownerId: string,
+  working: { letter: string; status: string; modifierId: string | null } | null | undefined,
+  awaiting: { kind: string; status: string } | null | undefined,
+): OpenRevisionView {
+  const status = working?.status;
+  if (!circle || !working || !isOpenRevision(status)) return { open: null, wait: null };
+  const open = { letter: working.letter, status };
+  if (awaiting?.kind !== 'modification' || awaiting.status !== 'accepted') return { open, wait: null };
+  const author = working.modifierId ?? ownerId;
+  const graft = status !== 'draft' ? status : viewer.seesAll || author === viewer.user.id ? 'yes' : 'reserved';
+  return { open, wait: { letter: working.letter, author, graft } };
 }
 
 /**

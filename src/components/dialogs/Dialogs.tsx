@@ -6,7 +6,7 @@ import { Icon } from '@/components/ui/Icon';
 import { Seg } from '@/components/ui/Seg';
 import type { Attachment, Conf, Origin } from '@/db/schema';
 import {
-  addFunctionHolder, addOrgValue, addWorkingVersion, createDocument, delegateStep, requestChange, requestValidation,
+  addFunctionHolder, addOrgValue, addWorkingVersion, createDocument, delegateStep, graftChange, requestChange, requestValidation,
   setReaders, simulateUser, simulateVigieDecision, updateMeta, updateType,
 } from '@/lib/actions';
 import { contextOf, idMatches, seqWidth } from '@/lib/codes';
@@ -22,11 +22,12 @@ export function Dialogs({ spec }: { spec: DialogSpec }) {
     case 'working': return <WorkingVersion docId={spec.docId} nextLabel={spec.nextLabel} />;
     case 'meta': return <EditMeta doc={spec.doc} />;
     case 'validate': return <RequestValidation docId={spec.docId} title={spec.title} revLabel={spec.revLabel} circuitL={spec.circuitL} minDate={spec.minDate} />;
-    case 'change': return <ChangeRequest docId={spec.docId} title={spec.title} change={spec.change} />;
+    case 'change': return <ChangeRequest docId={spec.docId} title={spec.title} change={spec.change} openRev={spec.openRev} />;
     case 'delegate': return <Delegate workflowId={spec.workflowId} stepName={spec.stepName} step={spec.step} excluded={spec.excluded} />;
     case 'compare': return <Compare current={spec.current} other={spec.other} />;
     case 'readers': return <Readers docId={spec.docId} readers={spec.readers} />;
     case 'vigie': return <VigieDecision requestId={spec.requestId} docTitle={spec.docTitle} change={spec.change} modifierId={spec.modifierId} drafters={spec.drafters} deferred={spec.deferred} />;
+    case 'graft': return <Graft spec={spec} />;
     case 'type': return <TypeEditor type={spec.type} />;
     case 'holder': return <AddHolder functionKey={spec.functionKey} functionLabel={spec.functionLabel} scope={spec.scope} />;
     case 'org': return <AddOrg what={spec.what} />;
@@ -480,8 +481,8 @@ function RequestValidation({ docId, title, revLabel, circuitL, minDate }: { docI
   );
 }
 
-function ChangeRequest({ docId, title, change }: { docId: string; title: string; change: 'modification' | 'obsolescence' }) {
-  const { t, close } = useApp();
+function ChangeRequest({ docId, title, change, openRev }: { docId: string; title: string; change: 'modification' | 'obsolescence'; openRev?: { letter: string; status: 'draft' | 'in_review' | 'approved' } }) {
+  const { t, lang, close } = useApp();
   const { pending, error, run } = useSubmit();
   return (
     <Modal title={change === 'modification' ? t.request_change : t.request_obsolete} actions={<Actions pending={pending} label={t.send} onCancel={close} form="change-form" />}>
@@ -498,7 +499,15 @@ function ChangeRequest({ docId, title, change }: { docId: string; title: string;
           <div style={{ fontSize: 13 }}>{title}</div>
           <div className="text-muted sub tabnum">{docId}</div>
         </div>
-        <p className="text-muted" style={{ margin: 0, fontSize: 12.5 }}>{change === 'modification' ? t.change_hint_modification : t.change_hint_obsolescence}</p>
+        {/* A change asked while a revision is open waits for its entry into force, or is grafted onto it while it is drafted (D-26). */}
+        {change === 'modification' && openRev ? (
+          <p className="text-muted" style={{ margin: 0, fontSize: 12.5 }}>
+            {t.change_hint_sent} {t.change_hint_open} ({t.rev_short} {openRev.letter}, {t[`open_rev_${openRev.status}`]}). {t.change_hint_open_wait} {openRev.letter}
+            {openRev.status === 'draft' ? `${lang === 'fr' ? ' ;' : ';'} ${t.change_hint_open_graft}` : ''}.
+          </p>
+        ) : (
+          <p className="text-muted" style={{ margin: 0, fontSize: 12.5 }}>{change === 'modification' ? t.change_hint_modification : t.change_hint_obsolescence}</p>
+        )}
         <Field label={t.ecr_reason}>{(id) => <input id={id} className="input" name="reason" maxLength={300} required />}</Field>
         <Field label={t.ecr_description}>{(id) => <textarea id={id} className="input" name="description" rows={4} maxLength={4000} />}</Field>
         <ErrorLine error={error} />
@@ -615,6 +624,33 @@ function VigieDecision({ requestId, docTitle, change, modifierId, drafters, defe
       </Field>
       {designate && (
         <Field label={t.modifier} hint={t.vigie_modifier_hint}>{(id) => <Select id={id} name="modifier" value={modifier} onChange={setModifier} options={users} />}</Field>
+      )}
+      <ErrorLine error={error} />
+    </Modal>
+  );
+}
+
+/** Confirms the graft of an accepted change onto the revision being drafted (lib/actions.ts graftChange, D-26). */
+function Graft({ spec }: { spec: Extract<DialogSpec, { kind: 'graft' }> }) {
+  const { t, close } = useApp();
+  const { pending, error, run } = useSubmit();
+  return (
+    <Modal
+      title={`${t.graft_on} ${spec.letter}`}
+      actions={<>
+        <button type="button" className="btn btn-secondary" onClick={close}>{t.cancel}</button>
+        <button type="button" className="btn btn-primary" disabled={pending} onClick={() => run(() => graftChange(spec.requestId))}>{t.graft_confirm}</button>
+      </>}
+    >
+      <div>
+        <div style={{ fontSize: 13 }}>{spec.title}</div>
+        <div className="text-muted sub tabnum">{spec.docId} · {t.revision} {spec.letter} · {spec.ecoRef}</div>
+      </div>
+      <p className="text-muted" style={{ margin: 0, fontSize: 12.5 }}>{t.graft_hint}</p>
+      <Field label={t.ecr_reason}><div style={{ fontSize: 13 }}>{spec.reason}</div></Field>
+      <Field label={`${t.graft_author} ${spec.letter}`}><div style={{ fontSize: 13 }}>{spec.author}</div></Field>
+      {spec.vigieModifier && (
+        <Field label={t.graft_vigie_modifier} hint={t.graft_vigie_modifier_hint}><div style={{ fontSize: 13 }}>{spec.vigieModifier}</div></Field>
       )}
       <ErrorLine error={error} />
     </Modal>

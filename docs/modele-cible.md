@@ -91,14 +91,17 @@ externe désigné ; minimum pour tout document non public) < **Interne** < **Con
 < **Très confidentiel** (personnes désignées).
 
 Brouillons et versions de travail visibles par : le propriétaire, le modificateur désigné, les valideurs du circuit en
-cours et les gestionnaires documentaires. Hors de ce cercle, un lecteur n'obtient que le fichier final de la révision
+cours et les gestionnaires documentaires. Le modificateur désigné par un ECO accepté qui attend la révision ouverte
+(D-26) en fait partie : il voit la révision ouverte, mais n'y dépose pas de version de travail et ne la soumet pas au
+circuit, puisqu'il rédigera la suivante (*proposé, non confirmé*). Hors de ce cercle, un lecteur n'obtient que le fichier final de la révision
 en vigueur, et ne voit que les révisions en vigueur et remplacées. Une révision en rédaction, en revue, approuvée en
 attente de sa date d'effet, ou annulée n'existe pas pour lui, ni rien de ce qui s'y rapporte :
 - l'étiquette « en cours » et le libellé de travail (« B.2 ») sur la fiche, dans l'explorateur, la recherche et
   l'export CSV ;
 - le modificateur désigné et la référence ECO de cette révision, y compris ceux d'une modification greffée sur elle
   ou qui attend pour ouvrir la suivante (D-26) ; une modification greffée reste affichée « Acceptée », comme avant la
-  greffe ;
+  greffe, tant que la révision est ouverte, et « Appliquée » si elle est annulée ; sous un verrou, la fiche dit qu'une
+  modification acceptée « ne s'appliquera pas avant » la levée du verrou, jamais qu'elle s'appliquera à ce moment-là ;
 - ses circuits, en cours ou terminés, avec leurs commentaires. Un valideur sort du cercle quand le circuit se termine :
   s'il ne voit pas la révision, le circuit disparaît de son écran Validations, et un commentaire lui est refusé ;
 - les entrées du journal qui la concernent. Chaque entrée porte la révision dont elle parle (`audit_log.revision_id`)

@@ -2,11 +2,12 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { schema as s } from '@/db';
 import type { RevStatus } from '@/db/schema';
-import { decideStep, graftChange, releaseHold, requestChange, requestValidation, simulateVigieDecision } from '@/lib/actions';
+import { addWorkingVersion, decideStep, graftChange, releaseHold, requestChange, requestValidation, simulateVigieDecision } from '@/lib/actions';
+import { buildAccessIndex, inDraftingCircle, readerMaySeeRevision } from '@/lib/access';
 import { getCtx } from '@/lib/context';
 import { DICT } from '@/lib/i18n';
 import { applyChangeDecision, applyPendingDecision, approveRevision, cancelOpenRevisions, promoteDue } from '@/lib/lifecycle';
-import { listAudit, listChangeRequests, listRevisions } from '@/lib/queries';
+import { acceptedWaitL, decisionWaitL, listAudit, listChangeRequests, listRevisions } from '@/lib/queries';
 import { submitChange } from '@/lib/vigie';
 import { addDoc, addWorkflow, fixClock, getChange, getDoc, getRevision, journalOf, revisionStatuses, setClock, setupDb, type DocSpec } from '../support/db';
 import type { Person } from '../support/fixtures';
@@ -216,7 +217,8 @@ describe('graft onto the revision being drafted (D-26)', () => {
   });
 
   it.each<[string, Person]>([
-    ['a reader outside the drafting circle', 'writer2'],
+    ['a reader outside the drafting circle', 'engineer'],
+    ['the author Vigie designated, who does not write the open revision', 'writer2'],
     ['an approver who reads the document', 'head'],
     ['the owner, when someone else was designated to write the revision', 'owner'],
   ])('is refused to %s', async (_, who) => {
@@ -301,15 +303,48 @@ describe('change request while a revision is open (D-26)', () => {
     expect(await requestChange(ID, 'modification', 'r', '')).toEqual({ ok: true, message: `${t.ecr_sent} : ECR-2026-001` });
     expect(await getChange(db(), 'ECR-2026-001')).toMatchObject({ kind: 'modification', status: 'submitted', requesterId: 'writer2' });
     actAs('manager');
-    expect(await simulateVigieDecision('ECR-2026-001', true, null)).toEqual({ ok: true, message: `${t.ecr_accepted_waiting} : ${t.ecr_wait_revision} (${t.rev_short} B).` });
+    expect(await simulateVigieDecision('ECR-2026-001', true, null)).toEqual({ ok: true, message: `${t.ecr_accepted_waiting} : ${t.ecr_wait_revision} B.` });
     expect((await getChange(db(), 'ECR-2026-001')).status).toBe('accepted');
   });
 
-  it('names the lock, then the revision in progress, when both hold the acceptance', async () => {
+  it('names the revision in progress, then the lock, when both hold the acceptance', async () => {
     await withOpen('draft', { legalHold: true });
     const id = await ask();
     actAs('manager');
-    expect(await simulateVigieDecision(id, true, null)).toEqual({ ok: true, message: `${t.ecr_accepted_waiting} : ${t.ecr_wait_hold}, ${t.ecr_wait_then_revision} (${t.rev_short} B).` });
+    expect(await simulateVigieDecision(id, true, null)).toEqual({ ok: true, message: `${t.ecr_accepted_waiting} : ${t.ecr_wait_revision} B, ${t.ecr_wait_not_before_hold}.` });
+  });
+
+  it('names the revision waited for, then what a lock adds to the wait (record, simulation)', () => {
+    const wait = (state: 'active' | 'archived' | 'obsolete', legalHold: boolean) => decisionWaitL(t, { state, legalHold, revision: 'B' });
+    expect(wait('active', false)).toBe(`${t.ecr_wait_revision} B`);
+    expect(wait('active', true)).toBe(`${t.ecr_wait_revision} B, ${t.ecr_wait_not_before_hold}`);
+    expect(wait('archived', false)).toBe(`${t.ecr_wait_revision} B, ${t.ecr_wait_not_before_archived}`);
+    expect(wait('archived', true)).toBe(`${t.ecr_wait_revision} B, ${t.ecr_wait_not_before_hold_archived}`);
+    expect(wait('obsolete', false)).toBe(`${t.ecr_wait_revision} B, ${t.ecr_wait_not_while_locked}`);
+    // Without a revision open (or outside the drafting circle, which knows of none), only the lock is named.
+    expect(decisionWaitL(t, { state: 'archived', legalHold: true, revision: null })).toBe(t.ecr_wait_hold_archived);
+    expect(decisionWaitL(t, { state: 'active', legalHold: true, revision: null })).toBe(t.ecr_wait_hold);
+  });
+
+  it('never promises outside the drafting circle that a change applies when a lock lifts: a hidden revision may hold it too', () => {
+    const accepted = { kind: 'modification', status: 'accepted' };
+    const doc = (state: 'active' | 'archived' | 'obsolete', legalHold: boolean, revWorking: string | null) => ({ state, legalHold, revWorking });
+    // The same words whether a revision is open (or the change grafted onto it) or not: nothing tells which.
+    for (const rev of ['B', null]) {
+      expect(acceptedWaitL(t, accepted, doc('active', true, rev), false), String(rev)).toBe(t.ecr_wait_no_earlier_hold);
+      expect(acceptedWaitL(t, accepted, doc('archived', false, rev), false), String(rev)).toBe(t.ecr_wait_no_earlier_archived);
+      expect(acceptedWaitL(t, accepted, doc('archived', true, rev), false), String(rev)).toBe(t.ecr_wait_no_earlier_hold_archived);
+      expect(acceptedWaitL(t, accepted, doc('obsolete', false, rev), false), String(rev)).toBe(t.ecr_wait_no_earlier_lock);
+      // Without a lock, the reader is given no reason at all: « Acceptée », as listChangeRequests shows it.
+      expect(acceptedWaitL(t, accepted, doc('active', false, rev), false), String(rev)).toBeNull();
+    }
+    // A withdrawal waits for the lock alone: when it applies may be said.
+    expect(acceptedWaitL(t, { kind: 'obsolescence', status: 'accepted' }, doc('active', true, 'B'), false)).toBe(t.ecr_wait_hold);
+    // The drafting circle is told exactly (decisionWaitL); nothing is said of a request that does not wait.
+    expect(acceptedWaitL(t, accepted, doc('active', true, 'B'), true)).toBe(`${t.ecr_wait_revision} B, ${t.ecr_wait_not_before_hold}`);
+    expect(acceptedWaitL(t, accepted, doc('active', true, null), true)).toBe(t.ecr_wait_hold);
+    expect(acceptedWaitL(t, accepted, doc('active', false, 'B'), true)).toBe(`${t.ecr_wait_revision} B`);
+    expect(acceptedWaitL(t, { kind: 'modification', status: 'implemented' }, doc('active', true, 'B'), true)).toBeNull();
   });
 
   it('keeps the other refusals: one pending request per document, a lock, no revision in force', async () => {
@@ -332,7 +367,9 @@ describe('drafting circle (D-14)', () => {
     actAs(who);
     const ctx = await getCtx();
     const [requests, journal, revisions] = await Promise.all([listChangeRequests(ctx, { docId: ID }), listAudit(ctx, { docId: ID }), listRevisions(ctx, ID)]);
-    return { request: requests[0], journal, revisions };
+    const circle = inDraftingCircle(ctx, await getDoc(db(), ID), await buildAccessIndex(db()));
+    // `shown`: the revisions the record lists for them, newest first (Révisions tab).
+    return { request: requests[0], requests, journal, revisions, circle, shown: revisions.filter((r) => readerMaySeeRevision(circle, r.status)).map((r) => r.letter) };
   }
 
   it('hides from readers outside it the change order and author of a change waiting for B or grafted onto it, and the graft itself, until B is in force', async () => {
@@ -373,5 +410,65 @@ describe('drafting circle (D-14)', () => {
     const c = await getRevision(db(), ID, 'C');
     expect((await seenBy('engineer')).request).toMatchObject({ id, status: 'implemented', ecoRef: null, modifier: null, revisionId: null });
     expect((await seenBy('writer2')).request).toMatchObject({ id, status: 'implemented', ecoRef: ECO, modifier: 'writer2', revisionId: c.id });
+  });
+
+  it('takes in the author Vigie designated for a change waiting for B: he sees B, the change order and his designation', async () => {
+    await withOpen('draft');
+    const id = await waiting('writer2');
+    // writer2 « modifiera le document via une ECO » (D-14): he will write C once B is in force.
+    const designated = await seenBy('writer2');
+    expect(designated.circle).toBe(true);
+    expect(designated.request).toMatchObject({ id, status: 'accepted', ecoRef: ECO, modifier: 'writer2' });
+    expect(designated.shown).toEqual(['B', 'A']);
+    expect((await seenBy('engineer')).circle).toBe(false);
+    // He sees B but does not write it: taking his change into B is a graft, chosen on the record.
+    const before = await journalOf(db(), ID);
+    actAs('writer2');
+    const fd = new FormData();
+    fd.set('docId', ID);
+    fd.set('file', new File(['%PDF-1.4\n%%EOF'], 'b.pdf', { type: 'application/pdf' }));
+    expect(await addWorkingVersion(fd)).toEqual({ ok: false, error: t.not_allowed });
+    expect(await requestValidation(ID, null)).toEqual({ ok: false, error: t.not_allowed });
+    expect(await graftChange(id)).toEqual({ ok: false, error: t.not_allowed });
+    expect(await journalOf(db(), ID)).toEqual(before);
+
+    // Grafted onto B, the change is written by B's author: writer2 is no longer designated, and leaves the circle.
+    await graft('writer', id);
+    const after = await seenBy('writer2');
+    expect(after.circle).toBe(false);
+    expect(after.request).toMatchObject({ id, status: 'accepted', ecoRef: null, modifier: null });
+    expect(after.shown).toEqual(['A']);
+  });
+
+  it('does not let that designation stand for the right to draft: one who lost access gives way when B enters into force', async () => {
+    await withOpen('in_review');
+    const id = await waiting('writer2');
+    // Very confidential now, with writer as the only named reader: writer2 can no longer read it, but for his designation.
+    await db().update(s.documents).set({ conf: 'tres_confidentiel' }).where(eq(s.documents.id, ID));
+    await db().insert(s.documentReaders).values({ docId: ID, userId: 'writer' });
+    expect((await seenBy('writer2')).circle).toBe(true);
+    expect(await approveB()).toBe(true);
+    // The requester (writer2) cannot draft either: the owner takes over, and the journal says so.
+    expect(await getRevision(db(), ID, 'C')).toMatchObject({ modifierId: 'owner', changeRef: ECO });
+    expect(await getChange(db(), id)).toMatchObject({ status: 'implemented', modifierId: 'owner' });
+    expect((await journalOf(db(), ID)).at(-1)).toMatchObject({ userId: 'codex', action: 'ecr', detail: `${ECO} · writer2 → owner` });
+    expect((await seenBy('writer2')).circle).toBe(false);
+  });
+
+  it('shows a change grafted onto B « Appliquée » to readers outside it once B is cancelled by a withdrawal: no wait promised for good', async () => {
+    await withOpen('draft');
+    const id = await waiting('writer2');
+    await graft('writer', id);
+    const withdrawal = await db().transaction((tx) => submitChange(tx, { kind: 'obsolescence', docId: ID, requesterId: 'owner', reason: 'r', description: '' }));
+    expect(await decide(withdrawal, { accepted: true, ecoRef: 'ECO-2026-030' })).toEqual({ status: 'implemented' });
+    expect(await revisionStatuses(db(), ID)).toEqual({ A: 'in_force', B: 'cancelled' });
+
+    const outside = await seenBy('engineer');
+    expect(outside.circle).toBe(false);
+    expect(outside.requests.find((r) => r.id === id)).toMatchObject({ status: 'implemented', ecoRef: null, modifier: null, revisionId: null });
+    // Nothing accepted is left: the record shows no pending decision, and no reason to wait (acceptedWaitL).
+    expect(outside.requests.filter((r) => r.status === 'accepted' || r.status === 'submitted')).toEqual([]);
+    // The drafting circle keeps the whole story: grafted onto B, cancelled since.
+    expect((await seenBy('manager')).requests.find((r) => r.id === id)).toMatchObject({ status: 'implemented', ecoRef: ECO, revisionId: (await getRevision(db(), ID, 'B')).id });
   });
 });

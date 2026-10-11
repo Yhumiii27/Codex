@@ -12,6 +12,9 @@
   color: var(--color-neutral-100); background: color-mix(in srgb, var(--color-text) 9%, transparent);
   border-bottom-color: var(--color-divider); box-shadow: inset 3px 0 0 var(--color-neutral-400);
 }
+/* A change waiting for the revision open (D-26): the wait, then why it can no longer be grafted; the graft button sits right. */
+.noticeBody { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.noticeSub { font-size: 12px; font-weight: 400; color: color-mix(in srgb, var(--color-text) 70%, transparent); }
 
 .previewCol { flex: 1; min-width: 0; display: flex; flex-direction: column; background: radial-gradient(ellipse at 50% 0%, var(--color-surface), var(--color-bg) 75%); }
 .previewScroll { flex: 1; overflow: auto; padding: 28px 24px; display: flex; justify-content: center; align-items: flex-start; }

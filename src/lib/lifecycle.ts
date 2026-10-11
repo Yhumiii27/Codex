@@ -143,15 +143,18 @@ function draftsFor(u: UserRow, perms: Set<Perm>, d: DocRow, ix: AccessIndex): bo
   return canRead({ user: u, seesAll: u.role === 'gestionnaire', can: (p: Perm) => perms.has(p) }, d, ix);
 }
 
-/** Can the person draft the document (draftsFor)? The rule for the author Vigie names and for the default one. */
+/**
+ * Can the person draft the document (draftsFor)? The rule for the author Vigie names and for the default one. Being the
+ * author of a change waiting to apply does not count: it is that very designation that is checked (buildAccessIndex).
+ */
 export async function mayDraft(tx: Tx, userId: string, d: DocRow): Promise<boolean> {
   const [u] = await tx.select().from(s.users).where(eq(s.users.id, userId));
-  return !!u && draftsFor(u, await defaultPerms(tx, u.role), d, await buildAccessIndex(tx));
+  return !!u && draftsFor(u, await defaultPerms(tx, u.role), d, await buildAccessIndex(tx, { pending: false }));
 }
 
 /** People who may draft the document (draftsFor): the authors a simulated Vigie decision may designate. */
 export async function draftersOf(tx: Tx, d: DocRow): Promise<string[]> {
-  const [users, ix] = await Promise.all([tx.select().from(s.users).where(eq(s.users.isSystem, false)), buildAccessIndex(tx)]);
+  const [users, ix] = await Promise.all([tx.select().from(s.users).where(eq(s.users.isSystem, false)), buildAccessIndex(tx, { pending: false })]);
   const perms = new Map<string, Set<Perm>>();
   for (const role of new Set(users.map((u) => u.role))) perms.set(role, await defaultPerms(tx, role));
   return users.filter((u) => draftsFor(u, perms.get(u.role) ?? new Set(), d, ix)).map((u) => u.id);

@@ -484,6 +484,12 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
   répond 202 au lieu de 409. La fiche signale la décision en attente ; hors du cercle de rédaction, elle ne nomme ni
   l'ECO ni le modificateur d'une modification (même règle que pour une révision ouverte, D-14). Vigie n'est pas
   prévenu quand la décision s'applique (O-10).
+- **Modification acceptée pendant une révision ouverte** (D-14, D-26) : le modificateur désigné par Vigie pour une
+  modification qui attend la révision ouverte entre dans le cercle de rédaction, au sens de D-14 (« qui modifiera un
+  document via une ECO ») : il voit la révision ouverte et l'attente, mais n'y dépose pas de version de travail, ne la
+  soumet pas au circuit et ne greffe pas sa modification (réservé au modificateur de la révision ouverte et aux
+  gestionnaires documentaires). Greffée, la modification est rédigée par le modificateur de la révision ouverte : celui
+  désigné par Vigie sort alors du cercle, et seul le journal garde la trace de ce changement.
 - **Modificateur désigné par Vigie** (D-16) : il doit pouvoir rédiger le document (droit de dépôt de son rôle par
   défaut, accès au document), comme le modificateur par défaut ; sinon la décision est refusée (webhook 400
   `modifier_not_allowed`, erreur dans la simulation). S'il perd ce droit pendant qu'une acceptation attend la levée

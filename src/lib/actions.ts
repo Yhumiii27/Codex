@@ -5,7 +5,7 @@ import { cookies } from 'next/headers';
 import { refresh } from 'next/cache';
 import { getDb, schema as s } from '@/db';
 import type { Attachment, AuditChange, AuditValue, Conf, Disposition, Origin, RetentionTrigger } from '@/db/schema';
-import { buildAccessIndex, canRead, getAccessIndex, inDraftingCircle, isUsableTemplate, readerMaySeeRevision, readersApply } from './access';
+import { buildAccessIndex, canRead, getAccessIndex, inDraftingCircle, isUsableTemplate, mayWorkOnDraft, readerMaySeeRevision, readersApply } from './access';
 import { idMatches, nextDocId, nextWorkflowId } from './codification';
 import { COOKIE_LANG, COOKIE_ROLE, COOKIE_USER, getCtx, type Ctx } from './context';
 import { addDays, fmtSize, loc, nowStamp, parseIsoDay, todayIso } from './format';
@@ -251,7 +251,7 @@ export async function addWorkingVersion(fd: FormData): Promise<ActionResult> {
   const [d] = await db.select().from(s.documents).where(eq(s.documents.id, docId));
   // Access first: a document the user cannot see gives nothing away, not even its lock.
   if (!d || !canRead(ctx, d, ix)) return fail(ctx, 'not_found');
-  if (!inDraftingCircle(ctx, d, ix)) return fail(ctx, 'not_allowed');
+  if (!mayWorkOnDraft(ctx, d, ix)) return fail(ctx, 'not_allowed');
   const lock = lockOf(d);
   if (lock) return fail(ctx, lock);
   const open = await workingRevision(db, docId);
@@ -430,7 +430,7 @@ export async function requestValidation(docId: string, effectiveAt: string | nul
   const res = await db.transaction(async (tx): Promise<Res> => {
     const [d] = await tx.select().from(s.documents).where(eq(s.documents.id, docId));
     if (!d || !canRead(ctx, d, ix)) return { err: 'not_found' };
-    if (!inDraftingCircle(ctx, d, ix)) return { err: 'not_allowed' };
+    if (!mayWorkOnDraft(ctx, d, ix)) return { err: 'not_allowed' };
     const lock = lockOf(d);
     if (lock) return { err: lock };
     const active = await activeWorkflow(tx, docId);

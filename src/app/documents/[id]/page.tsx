@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from 'react';
+import { Fragment, type CSSProperties, type ReactNode } from 'react';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import type { MetaDoc, VersionLite } from '@/components/dialogs/types';
@@ -8,14 +8,14 @@ import { Seg } from '@/components/ui/Seg';
 import { VStepper } from '@/components/ui/Stepper';
 import { getDb } from '@/db';
 import { ActionButton, DialogButton, ShareButton } from '@/components/ui/client';
-import { canRead, readerMaySeeRevision, readerMaySeeVersion, readersApply } from '@/lib/access';
+import { canRead, mayWorkOnDraft, openRevisionView, readerMaySeeRevision, readerMaySeeVersion, readersApply } from '@/lib/access';
 import { releaseHold } from '@/lib/actions';
 import { isFinalStatus } from '@/lib/codes';
 import { getCtx } from '@/lib/context';
 import { fmtDate, todayIso } from '@/lib/format';
 import { getProject } from '@/lib/keystone';
 import { decisionWait, defaultModifier, draftersOf } from '@/lib/lifecycle';
-import { decisionWaitL, getDoc, listAudit, listChangeRequests, listDocs, listRevisions, listWorkflows, stateNotice, typeView, type RevisionView } from '@/lib/queries';
+import { acceptedWaitL, decisionWaitL, getDoc, listAudit, listChangeRequests, listDocs, listRevisions, listWorkflows, stateNotice, typeView, type RevisionView } from '@/lib/queries';
 import { normalizeMime } from '@/lib/storage';
 import { vigieSimulated, vigieUrl } from '@/lib/vigie';
 import { Preview, RevisionsTab, type RevItem } from './DocClient';
@@ -111,14 +111,33 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
   // Vigie's acceptance recorded while the document is locked or, for a change, while a revision is open: it applies when
   // the lock lifts, then once that revision is in force or cancelled (lib/lifecycle.ts, D-26).
   const awaiting = pending?.status === 'accepted' ? pending : null;
-  // Outside the drafting circle the open revision does not exist (docView leaves revWorking out, D-14): a change waiting
-  // for it alone gives no reason.
-  const waitL = awaiting && (lock || (awaiting.kind === 'modification' && doc.revWorking)) ? decisionWaitL(t, decisionWait(awaiting.kind, doc)) : null;
+  // What it still waits for, in words this reader may be given: outside the drafting circle, a revision they do not see
+  // may hold it too, so the lifting of a lock is never promised as the moment it applies (acceptedWaitL, D-14).
+  const waitL = awaiting ? acceptedWaitL(t, awaiting, doc, circle) : null;
+  // The open revision, in the drafting circle only (openRevisionView): what a change asked now would wait for, and the
+  // revision an accepted change waits for. While that one is drafted, the change may instead be grafted onto it by a
+  // records manager or its author (lib/actions.ts graftChange); in review or approved, it can only wait.
+  const { open: openRev, wait: waitRev } = openRevisionView(circle, ctx, doc.ownerId, working, awaiting);
+  const graftClosed = waitRev && (waitRev.graft === 'in_review' || waitRev.graft === 'approved')
+    ? `${t.revision} ${waitRev.letter} ${waitRev.graft === 'in_review' ? t.graft_closed_review : t.graft_closed_approved}`
+    : null;
+  const graftBtn = (cls: string, style?: CSSProperties) => awaiting && waitRev && (waitRev.graft === 'yes' || waitRev.graft === 'reserved') && (
+    <DialogButton
+      spec={{
+        kind: 'graft', requestId: awaiting.id, ecoRef: awaiting.ecoRef ?? awaiting.id, docId: doc.id, title: doc.title, letter: waitRev.letter, reason: awaiting.reason,
+        author: ctx.userName(waitRev.author), vigieModifier: awaiting.modifierId && awaiting.modifierId !== waitRev.author ? ctx.userName(awaiting.modifierId) : undefined,
+      }}
+      className={cls} style={style} icon="pen"
+      deniedTitle={lock ?? deny('edit') ?? (waitRev.graft === 'yes' ? undefined : t.graft_reserved)}
+    >{t.graft_on} {waitRev.letter}</DialogButton>
+  );
   // Outside the drafting circle, listChangeRequests already leaves out the change order and author of a change whose
-  // revision is not in force yet, or not open yet, and shows one grafted onto such a revision as still accepted (D-14).
+  // revision is not in force yet, or not open yet, and shows one grafted onto a revision still open as accepted (D-14).
   const notice = stateNotice(ctx, doc, requests);
   const changeLock = lock ?? (pending ? `${t.change_pending} : ${pending.id}` : undefined);
   const drafting = circle && working?.status === 'draft' ? working : null;
+  // The author Vigie designated for a change waiting for this revision sees it, but writes the next one (D-26).
+  const draftReserved = mayWorkOnDraft(ctx, doc, ix) ? undefined : t.draft_reserved;
   const isOwner = ctx.seesAll || doc.ownerId === ctx.user.id;
   const type = ctx.typeByCode.get(doc.typeCode);
   const circuitL = type ? typeView(ctx, type).circuitL : '';
@@ -128,7 +147,7 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
   const wip = circle && working ? `${t.rev_short} ${working.label} ${t.in_progress}` : null;
 
   const workingBtn = drafting && (
-    <DialogButton spec={{ kind: 'working', docId: doc.id, nextLabel: `${drafting.letter}.${(drafting.file?.n ?? 0) + 1}` }} icon="upload" deniedTitle={lock ?? deny('upload')}>
+    <DialogButton spec={{ kind: 'working', docId: doc.id, nextLabel: `${drafting.letter}.${(drafting.file?.n ?? 0) + 1}` }} icon="upload" deniedTitle={lock ?? deny('upload') ?? draftReserved}>
       {t.new_working_version}
     </DialogButton>
   );
@@ -138,14 +157,15 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
     : drafting && (
       <DialogButton
         spec={{ kind: 'validate', docId: doc.id, title: doc.title, revLabel: drafting.label, circuitL, minDate: todayIso() }}
-        className={cls} icon="check" deniedTitle={lock ?? deny('edit') ?? (type && !type.circuit.length ? deny('publish') : undefined) ?? (drafting.versions.length ? undefined : t.need_file)}
+        className={cls} icon="check" deniedTitle={lock ?? deny('edit') ?? draftReserved ?? (type && !type.circuit.length ? deny('publish') : undefined) ?? (drafting.versions.length ? undefined : t.need_file)}
       >{t.request_validation}</DialogButton>
     );
   // A change request needs a revision in force; one asked while a revision is open waits for it or is grafted (D-26).
   const canChange = !!doc.revInForce;
   const canWithdraw = !!doc.revInForce && doc.state !== 'obsolete';
+  // The drafting circle is told what an acceptance would do while a revision is open; others know of no such revision.
   const changeBtn = (cls: string) => canChange && (
-    <DialogButton spec={{ kind: 'change', docId: doc.id, title: doc.title, change: 'modification' }} className={cls} icon="pen" deniedTitle={changeLock ?? deny('edit')}>{t.request_change}</DialogButton>
+    <DialogButton spec={{ kind: 'change', docId: doc.id, title: doc.title, change: 'modification', openRev: openRev ?? undefined }} className={cls} icon="pen" deniedTitle={changeLock ?? deny('edit')}>{t.request_change}</DialogButton>
   );
   const withdrawBtn = (cls: string) => canWithdraw && (
     <DialogButton spec={{ kind: 'change', docId: doc.id, title: doc.title, change: 'obsolescence' }} className={cls} deniedTitle={changeLock ?? deny('edit')}>{t.request_obsolete}</DialogButton>
@@ -157,6 +177,14 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
     const st = d ? (d.revInForce ? 'ok' : 'wip') : p.later ? 'later' : 'missing';
     return { ...p, d, st, visible: !!d && canRead(ctx, d, ix) };
   }) : [];
+
+  // The revision an applied change is carried by, when the user sees it: the one it opened, or the open one it was grafted
+  // onto (D-26). Outside the drafting circle, listChangeRequests already leaves out a revision not in force yet (D-14).
+  const revById = new Map(revs.map((r) => [r.id, r]));
+  const carriedBy = (r: (typeof requests)[number]) => {
+    const rev = r.kind === 'modification' && r.status === 'implemented' && r.revisionId != null ? revById.get(r.revisionId) : undefined;
+    return rev && readerMaySeeRevision(circle, rev.status) ? `${rev.changeRef === (r.ecoRef ?? r.id) ? t.change_opened : t.change_grafted_on} ${rev.letter}` : null;
+  };
 
   // Outside the drafting circle: the revision in force and those it replaced, nothing of a revision open or cancelled.
   const revItems: RevItem[] = revs.filter((r) => readerMaySeeRevision(circle, r.status)).map((r) => {
@@ -202,7 +230,9 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
     return [r.id, {
       modifierId: await defaultModifier(db, r.requesterId, doc),
       drafters,
-      deferred: lock || wait.revision ? `${lock ? `${lock} ` : ''}${t.vigie_deferred} : ${decisionWaitL(t, wait)}.` : undefined,
+      deferred: lock || wait.revision
+        ? `${lock ? `${lock} ` : ''}${t.vigie_deferred} : ${decisionWaitL(t, wait)}.${wait.revision && working?.status === 'draft' ? ` ${t.vigie_graft_hint}` : ''}`
+        : undefined,
     }] as const;
   })));
   const canRelease = doc.legalHold && ctx.can('archive') && ctx.screens.retention;
@@ -249,8 +279,14 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
       )}
       {awaiting && waitL && (
         <div className={styles.stateNotice} data-state="pending" role="note">
-          <Icon name="lock" size={16} style={{ flex: 'none' }} />
-          <span>{t.ecr_accepted_waiting} ({awaiting.id}) : {waitL}.</span>
+          <Icon name={lock ? 'lock' : 'info'} size={16} style={{ flex: 'none' }} />
+          {waitRev ? (
+            <span className={styles.noticeBody}>
+              <span>{awaiting.ecoRef ?? awaiting.id} {t.ecr_accepted_l} : {waitL}.</span>
+              {graftClosed && <span className={styles.noticeSub}>{graftClosed}</span>}
+            </span>
+          ) : <span>{t.ecr_accepted_waiting} ({awaiting.id}) : {waitL}.</span>}
+          {graftBtn('btn btn-secondary', { flex: 'none', marginLeft: 'auto', fontSize: 12, padding: '5px 10px' })}
         </div>
       )}
 
@@ -467,12 +503,15 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
                           {r.modifier && ` · ${t.modifier} : ${r.modifier}`}
                         </div>
                         {r.decisionNote && <div className="text-muted" style={{ fontSize: 11, marginTop: 2 }}>{r.decisionNote}</div>}
+                        {carriedBy(r) && <div style={{ fontSize: 11.5, marginTop: 4 }}>{carriedBy(r)}</div>}
                         {r.status === 'accepted' && waitL && (
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, marginTop: 4 }}>
-                            <Icon name="lock" size={12} style={{ flex: 'none' }} />{t.ecr_pending_apply} : {waitL}.
+                            <Icon name={lock ? 'lock' : 'info'} size={12} style={{ flex: 'none' }} />{t.ecr_pending_apply} : {waitL}.
                           </div>
                         )}
+                        {r.id === awaiting?.id && graftClosed && <div className="text-muted" style={{ fontSize: 11, marginTop: 2 }}>{graftClosed}</div>}
                         <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+                          {r.id === awaiting?.id && graftBtn('btn btn-secondary', { fontSize: 11, padding: '2px 8px' })}
                           <a href={vigieUrl(r.id)} target="_blank" rel="noreferrer" className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 8px' }}><Icon name="openExternal" size={12} />{t.open_vigie}</a>
                           {simulateVigie && r.status === 'submitted' && vigieSpecs.has(r.id) && (
                             <DialogButton spec={{ kind: 'vigie', requestId: r.id, docTitle: doc.title, change: r.kind, ...vigieSpecs.get(r.id)! }} style={{ fontSize: 11, padding: '2px 8px' }}>{t.vigie_sim}</DialogButton>
