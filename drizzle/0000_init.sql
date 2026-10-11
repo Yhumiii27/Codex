@@ -66,6 +66,7 @@ CREATE TABLE "document_readers" (
 CREATE TABLE "documents" (
 	"id" text PRIMARY KEY NOT NULL,
 	"aliases" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"legacy_ref" text,
 	"title" text NOT NULL,
 	"origin" text NOT NULL,
 	"attachment" text NOT NULL,
@@ -107,7 +108,8 @@ CREATE TABLE "documents" (
 	"obsolete_at" date,
 	"archived_at" date,
 	"created_at" date NOT NULL,
-	"modified_at" date NOT NULL
+	"modified_at" date NOT NULL,
+	CONSTRAINT "documents_legacy_ref_unique" UNIQUE("legacy_ref")
 );
 --> statement-breakpoint
 CREATE TABLE "families" (

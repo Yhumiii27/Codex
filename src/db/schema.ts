@@ -122,6 +122,11 @@ export const documents = pgTable('documents', {
   id: text('id').primaryKey(),
   /** Earlier IDs (reclassification before first approval, migrated legacy references). */
   aliases: jsonb('aliases').$type<string[]>().notNull().default([]),
+  /**
+   * Reference in the legacy system the document was migrated from (/api/import), also kept in aliases; null for a
+   * document created in Codex. Aliases also hold former IDs: only this column says which reference was imported.
+   */
+  legacyRef: text('legacy_ref').unique(),
   title: text('title').notNull(),
   origin: text('origin').$type<Origin>().notNull(),
   attachment: text('attachment').$type<Attachment>().notNull(),

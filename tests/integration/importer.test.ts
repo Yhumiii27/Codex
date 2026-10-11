@@ -1,17 +1,22 @@
 import { eq } from 'drizzle-orm';
 import { describe, expect, it, vi } from 'vitest';
 import { schema as s } from '@/db';
+import { updateMeta } from '@/lib/actions';
 import { nextDocId } from '@/lib/codification';
 import type { IdInput } from '@/lib/codes';
 import { importDocument } from '@/lib/importer';
 import { promoteDue } from '@/lib/lifecycle';
 import { addDoc, fixClock, getDoc, getRevisions, journalOf, revisionStatuses, setClock, setupDb } from '../support/db';
+import { actAs } from '../support/session';
 
 // Import of legacy documents for the migration tool (D-21, docs/api.md "Import"), on the identifier rules of D-09 /
 // D-10 and step 5: a legacy reference already in Codex's format for the document's type and context becomes its ID and
 // raises the counter; any other one stays an alias whose number is never handed out; a replay creates nothing.
 
+// Reclassification runs through the Server Action updateMeta (simulated session, tests/support/session.ts).
 vi.mock('@/db', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/db')>()), getDb: async () => (await import('../support/db')).currentDb() }));
+vi.mock('next/headers', () => ({ cookies: async () => (await import('../support/session')).cookieStore() }));
+vi.mock('next/cache', () => ({ refresh: () => {} }));
 
 const db = setupDb();
 fixClock();
@@ -64,12 +69,13 @@ describe('importDocument: identifiers (D-09, D-10, step 5)', () => {
   });
 
   // docs/api.md: 409 `duplicate` is a legacy reference already imported; `ref_is_codex_id` is the Codex ID of another
-  // document "qui n'a pas été importé depuis elle". A former ID kept as alias by a reclassification is such an ID, but
-  // findByRef (lib/importer.ts) reads every alias as an import: the migration tool would record the legacy document as
-  // migrated into an unrelated document. Reported, not fixed (expected failure until the rule is settled).
-  it.fails('refuses as a Codex ID, not as a replay, a legacy reference equal to the former ID of a reclassified document', async () => {
+  // document "qui n'a pas été importé depuis elle". A former ID kept as alias by a reclassification is such an ID: taken
+  // for a replay, the migration tool would record the legacy document as migrated into an unrelated document.
+  it('refuses as a Codex ID, not as a replay, a legacy reference equal to the former ID of a reclassified document', async () => {
     await addDoc(db(), { id: 'PRO-ING-0001', department: 'ING', aliases: ['PRO-QUA-0005'] });
     expect(await importDocument(meta('PRO-QUA-0005'), null)).toEqual({ kind: 'conflict', id: 'PRO-ING-0001' });
+    expect(await getDoc(db(), 'PRO-ING-0001')).toMatchObject({ aliases: ['PRO-QUA-0005'], legacyRef: null });
+    expect(await db().select({ id: s.documents.id }).from(s.documents)).toEqual([{ id: 'PRO-ING-0001' }]);
   });
 });
 
@@ -108,6 +114,36 @@ describe('importDocument: replays', () => {
     expect(typeof explicit !== 'string' && (explicit.kind === 'conflict' || (explicit.kind === 'created' && explicit.id === 'PRO-QUA-0003'))).toBe(true);
     const docs = await db().select({ id: s.documents.id }).from(s.documents);
     expect(new Set(docs.map((d) => d.id)).size).toBe(docs.length);
+  });
+});
+
+// An imported document never approved is re-codified by a reclassification (D-10): its aliases then hold the legacy
+// reference it was imported from and the ID the import gave it. Only the first one is a replay.
+describe('importDocument: replays after a reclassification (D-10)', () => {
+  /** The owner moves a document to the ING department through the metadata form (Server Action updateMeta). */
+  function moveToIng(id: string) {
+    actAs('owner');
+    const fd = new FormData();
+    fd.set('docId', id);
+    fd.set('department', 'ING');
+    return updateMeta(fd);
+  }
+  const draft = (legacyRef: string) => meta(legacyRef, { status: 'draft', revision: 'A' });
+
+  it('answers a replay with the document under its new ID, and refuses as a Codex ID the ID the import gave it', async () => {
+    expect(await importDocument(draft('GED1-PRO-7'), null)).toMatchObject({ kind: 'created', id: 'PRO-QUA-0001' });
+    expect(await moveToIng('PRO-QUA-0001')).toMatchObject({ ok: true });
+    expect(await getDoc(db(), 'PRO-ING-0001')).toMatchObject({ aliases: ['GED1-PRO-7', 'PRO-QUA-0001'], legacyRef: 'GED1-PRO-7' });
+    expect(await importDocument(draft('GED1-PRO-7'), null)).toEqual({ kind: 'duplicate', id: 'PRO-ING-0001' });
+    expect(await importDocument(draft('PRO-QUA-0001'), null)).toEqual({ kind: 'conflict', id: 'PRO-ING-0001' });
+    expect(await db().select({ id: s.documents.id }).from(s.documents)).toEqual([{ id: 'PRO-ING-0001' }]);
+  });
+
+  it('answers a replay of a legacy reference in Codex format that became the ID, even once it is a former ID', async () => {
+    expect(await importDocument(draft('PRO-QUA-0042'), null)).toMatchObject({ kind: 'created', id: 'PRO-QUA-0042' });
+    expect(await moveToIng('PRO-QUA-0042')).toMatchObject({ ok: true });
+    expect(await importDocument(draft('PRO-QUA-0042'), null)).toEqual({ kind: 'duplicate', id: 'PRO-ING-0001' });
+    expect(await db().select({ id: s.documents.id }).from(s.documents)).toEqual([{ id: 'PRO-ING-0001' }]);
   });
 });
 

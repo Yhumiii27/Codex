@@ -264,7 +264,10 @@ export type ImportResult =
   | { kind: 'invalid'; issues: Issue[]; warnings: Issue[] }
   /** The legacy reference was already imported: the document it became. */
   | { kind: 'duplicate'; id: string }
-  /** The legacy reference is the current ID of another document, which was not imported from it. */
+  /**
+   * The legacy reference is a Codex ID, current or former (an alias left by a reclassification), of another document,
+   * which was not imported from it: id is that document's current ID.
+   */
   | { kind: 'conflict'; id: string };
 
 /** `legacyRef` as parseImportMeta reads it, or null when it is missing or invalid. */
@@ -276,13 +279,16 @@ function legacyRefOf(raw: unknown): string | null {
 }
 
 /**
- * Who already answers to this legacy reference: a document imported from it (one of its aliases) is a replay; a document
- * whose current ID merely equals it is a conflict, never to be recorded as the migrated document.
+ * Who already answers to this legacy reference: the document imported from it (documents.legacy_ref) is a replay; a
+ * document whose ID, current or former (an alias left by a reclassification), merely equals it is a conflict, never to
+ * be recorded as the migrated document. Aliases alone cannot tell the two apart: they hold both kinds of reference.
  */
 async function findByRef(tx: Tx, ref: string): Promise<Extract<ImportResult, { kind: 'duplicate' | 'conflict' }> | null> {
-  const [alias] = await tx.select({ id: s.documents.id }).from(s.documents).where(sql`${s.documents.aliases} @> ${JSON.stringify([ref])}::jsonb`).limit(1);
-  if (alias) return { kind: 'duplicate', id: alias.id };
-  const [same] = await tx.select({ id: s.documents.id }).from(s.documents).where(eq(s.documents.id, ref)).limit(1);
+  const [imported] = await tx.select({ id: s.documents.id }).from(s.documents).where(eq(s.documents.legacyRef, ref)).limit(1);
+  if (imported) return { kind: 'duplicate', id: imported.id };
+  const [same] = await tx.select({ id: s.documents.id }).from(s.documents)
+    .where(or(eq(s.documents.id, ref), sql`${s.documents.aliases} @> ${JSON.stringify([ref])}::jsonb`))
+    .orderBy(sql`${s.documents.id} = ${ref} desc`).limit(1);
   return same ? { kind: 'conflict', id: same.id } : null;
 }
 
@@ -302,9 +308,9 @@ async function importId(tx: Tx, v: ImportInput): Promise<string> {
 }
 
 /**
- * Creates one migrated document: ID TYPE-CONTEXTE-SEQ, the legacy reference kept as an alias, its revision (in force,
- * approved with a future effective date, or in draft) and working version n°1 carrying the file, stored as
- * {ID}_{letter}.{ext} ({ID}_{letter}.1.{ext} for a draft).
+ * Creates one migrated document: ID TYPE-CONTEXTE-SEQ, the legacy reference recorded (legacy_ref) and kept as an alias,
+ * its revision (in force, approved with a future effective date, or in draft) and working version n°1 carrying the
+ * file, stored as {ID}_{letter}.{ext} ({ID}_{letter}.1.{ext} for a draft).
  */
 export async function importDocument(raw: unknown, file: ImportFile | null): Promise<ImportResult> {
   const db = await getDb();
@@ -342,7 +348,7 @@ export async function importDocument(raw: unknown, file: ImportFile | null): Pro
       if (existing) return existing;
       const id = await importId(tx, v);
       await tx.insert(s.documents).values({
-        id, aliases: [v.legacyRef], title: v.title, origin: v.origin, attachment: v.attachment,
+        id, aliases: [v.legacyRef], legacyRef: v.legacyRef, title: v.title, origin: v.origin, attachment: v.attachment,
         projectCode: v.projectCode, programCode: v.programCode, family: type.family, typeCode: type.code, subtype: v.subtype,
         department: v.department, site: v.site, ownerId: v.ownerId, authorId: v.authorId, authorText: v.authorText,
         conf: v.conf, keywords: v.keywords, lang: v.lang, status: revStatus,

@@ -115,7 +115,9 @@ Réponse **200** (extrait) :
 
 Crée **un** document par appel à partir d'un document de l'ancien système. Codex attribue l'identifiant
 `TYPE-CONTEXTE-SEQ` ; la référence d'origine (`legacyRef`) est conservée comme ancienne référence du document
-(`documents.aliases`) : elle reste résolue par la fiche document (`/documents/<legacyRef>`).
+(`documents.aliases`) : elle reste résolue par la fiche document (`/documents/<legacyRef>`). Elle est aussi mémorisée à
+part (`documents.legacy_ref`, unique) : les anciennes références contiennent également les anciens ID Codex laissés par
+un reclassement, et seule cette colonne dit depuis quelle référence un document a été importé.
 
 ### Format de la requête
 
@@ -178,9 +180,10 @@ renvoyées ensemble.
 ### Ce que crée l'import
 
 - le document, avec l'identifiant suivant libre pour le couple (type, contexte), la classe de conservation du type et
-  `legacyRef` en ancienne référence. Une `legacyRef` déjà au format `TYPE-CONTEXTE-SEQ` du document (même type, même
-  contexte, même largeur de numéro) et libre devient son identifiant. Le numéro d'une `legacyRef` de la forme
-  `TYPE-CONTEXTE-SEQ`, quel que soit le type, n'est ensuite jamais attribué à un autre document ;
+  `legacyRef` en ancienne référence et en référence d'origine (`legacy_ref`). Une `legacyRef` déjà au format
+  `TYPE-CONTEXTE-SEQ` du document (même type, même contexte, même largeur de numéro) et libre devient son identifiant.
+  Le numéro d'une `legacyRef` de la forme `TYPE-CONTEXTE-SEQ`, quel que soit le type, n'est ensuite jamais attribué à
+  un autre document ;
 - **une** révision avec la lettre demandée (les révisions antérieures restent dans l'ancien système ; la prochaine
   révision ouverte dans Codex prendra la lettre suivante) :
   - `status: in_force` → révision **En vigueur** à `inForceAt` ; si cette date est future, la révision est **Approuvée**
@@ -200,8 +203,8 @@ renvoyées ensemble.
 | **201** | `{"id","revision","version","status","file","href","warnings"}` + en-tête `Location: /documents/<id>` |
 | **400** | `{"error":"validation","issues":[{field,code,message}],"warnings":[…]}` ; ou `invalid_json`, `meta_required`, `invalid_body`, `file_not_a_file` |
 | **401** / **503** | jeton absent ou faux / import désactivé |
-| **409** | `{"error":"duplicate","id":"<ID existant>"}` : `legacyRef` déjà importée. Vérifié avant la validation : un document déjà repris répond 409 même si le registre a changé depuis (type désactivé…). |
-| **409** | `{"error":"ref_is_codex_id","id":"<ID>"}` : `legacyRef` est l'identifiant Codex d'**un autre** document, qui n'a pas été importé depuis elle. Ce n'est pas un rejeu : l'outil ne doit pas enregistrer cette correspondance. |
+| **409** | `{"error":"duplicate","id":"<ID existant>"}` : `legacyRef` déjà importée ; `id` est l'identifiant actuel du document repris, même s'il a été reclassé depuis. Vérifié avant la validation : un document déjà repris répond 409 même si le registre a changé depuis (type désactivé…). |
+| **409** | `{"error":"ref_is_codex_id","id":"<ID>"}` : `legacyRef` est l'identifiant Codex, actuel ou ancien (gardé en alias après un reclassement), d'**un autre** document, qui n'a pas été importé depuis elle ; `id` est l'identifiant actuel de ce document. Ce n'est pas un rejeu : l'outil ne doit pas enregistrer cette correspondance. |
 | **413** | fichier trop volumineux |
 | **415** | type de contenu autre que `multipart/form-data` ou `application/json` |
 

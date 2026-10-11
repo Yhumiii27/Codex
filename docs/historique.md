@@ -543,6 +543,10 @@ Constats confirmés, dans la numérotation du workflow :
     L'extension et le nom enregistrés ne changent pas ; un fichier sans extension n'en reçoit plus (il prenait
     `.txt`). L'aperçu n'affiche plus que les images servies en ligne (PNG, JPEG, GIF, WebP, liste partagée avec la
     route fichier dans `src/lib/filetypes.ts`) : un plan déposé en `image/vnd.dwg` montrait une image cassée ;
-  - l'import traite une référence d'origine égale à l'ancien ID d'un document reclassé comme un rejeu.
+  - l'import traitait une référence d'origine égale à l'ancien ID d'un document reclassé comme un rejeu (409
+    `duplicate`) : **corrigé le 11 octobre**. La référence d'origine est mémorisée à part (`documents.legacy_ref`,
+    unique) ; seule elle fait un rejeu, y compris après un reclassement du document repris. Une référence égale à un
+    ID Codex, actuel ou ancien, d'un autre document reçoit 409 `ref_is_codex_id`. La migration unique `0000_init` a été
+    régénérée : une base existante doit repartir de zéro (`npm run db:reset`).
 - **Point à arbitrer** : une modification acceptée pendant un gel, alors qu'une révision est déjà ouverte, reste
   « acceptée » après la levée du gel, et rien ne l'applique ensuite.

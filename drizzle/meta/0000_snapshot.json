@@ -1,5 +1,5 @@
 {
-  "id": "ece57b3f-4b84-4b69-87d6-d12f8151e92e",
+  "id": "8ee8e042-dc58-4374-8989-a2f8f9c4f300",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -508,6 +508,12 @@
           "notNull": true,
           "default": "'[]'::jsonb"
         },
+        "legacy_ref": {
+          "name": "legacy_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "title": {
           "name": "title",
           "type": "text",
@@ -884,7 +890,15 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "documents_legacy_ref_unique": {
+          "name": "documents_legacy_ref_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "legacy_ref"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
