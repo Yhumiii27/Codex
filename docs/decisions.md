@@ -419,6 +419,30 @@ Règles de lecture :
   - le rapport d'audit, `docs/audit-deck-epc2i.md` ;
   - la section « Décisions et points ouverts » de `README.md`.
 
+### D-26 — Modification acceptée alors qu'une révision est déjà ouverte : greffe ou attente
+- **Date** : question le 10 octobre 2026 (fin du lot 2), réponse le 11 octobre.
+- **Question** : « Que doit-il se passer quand Vigie accepte une modification pendant un gel, alors qu'une révision
+  est déjà ouverte ? Aujourd'hui, la décision reste « acceptée » après la levée du gel et rien ne l'applique ensuite.
+  Faut-il l'appliquer quand la révision ouverte entre en vigueur, ou la signaler pour qu'elle soit traitée à la
+  main ? »
+- **Réponse de l'utilisateur** :
+  > si une ouverture de revision d'un document est en cours alors soit la modification vient se greffer sur la modification en cours soit il faudra attendre que la rvision soit validée avant d'en ouvrir une nouvelle
+- **Décision retenue** : quand une modification acceptée par Vigie arrive alors qu'une révision du document est déjà
+  ouverte, elle a deux issues :
+  - **greffe** : la révision ouverte intègre la modification et porte aussi sa référence ECO ;
+  - **attente** : la modification reste acceptée, puis ouvre la révision suivante une fois la révision en cours
+    validée.
+- **Interprétations appliquées** (proposé, non confirmé) :
+  - le choix entre greffe et attente se fait sur la fiche du document, par un gestionnaire documentaire ou par le
+    modificateur de la révision ouverte ; tant que personne n'a choisi, c'est l'attente qui vaut, sans rien perdre ;
+  - la greffe n'est possible que si la révision ouverte est en rédaction ; en cours de validation, ou approuvée en
+    attente de sa date d'effet, seule l'attente est possible (greffer obligerait à relancer le circuit) ;
+  - « validée » s'entend « mise en vigueur » ; si la révision ouverte est annulée, la modification en attente ouvre
+    alors la révision suivante ;
+  - la règle vaut pour toute révision ouverte, pas seulement après un gel : une demande de modification peut donc être
+    faite depuis Codex pendant qu'une révision est ouverte (elle était refusée jusque-là, `locked_working`).
+- **Mise en œuvre** : voir `docs/historique.md` (section du 11 octobre) et `docs/api.md` (webhook Vigie).
+
 ## Questions posées restées sans réponse directe
 
 | Date | Question de l'assistant | Suite |
