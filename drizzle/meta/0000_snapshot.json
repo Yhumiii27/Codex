@@ -1,5 +1,5 @@
 {
-  "id": "3ebb1a3c-3d44-4b98-a944-aac71cb73a93",
+  "id": "b9fa16b5-d36d-40b7-9801-2d7770cc7c05",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -1598,6 +1598,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "period": {
+          "name": "period",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "order_by": {
+          "name": "order_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "sort": {
           "name": "sort",
           "type": "integer",
@@ -1642,6 +1654,10 @@
         "saved_searches_scope": {
           "name": "saved_searches_scope",
           "value": "\"saved_searches\".\"scope\" in ('personal', 'department', 'group')"
+        },
+        "saved_searches_order_by": {
+          "name": "saved_searches_order_by",
+          "value": "\"saved_searches\".\"order_by\" in ('relevance', 'modified', 'issued', 'due', 'id', 'title')"
         },
         "saved_searches_department": {
           "name": "saved_searches_department",

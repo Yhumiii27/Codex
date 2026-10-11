@@ -10,7 +10,7 @@ import { addDays, clip, daysBetween, fmtDate, fmtDateTime, fmtSize, fmtWhen, loc
 import { CONF_LEVELS, MATRIX_ROLE_LABEL, TAGCLS, type T, type TKey } from './i18n';
 import { decisionWait, lockOf, type DecisionWait } from './lifecycle';
 import { retainUntil } from './retention';
-import { FACET_KEYS, searchHref, type FacetKey, type Facets } from './search';
+import { DATE_LABEL, FACET_KEYS, FACET_LABEL, searchHref, SORT_LABEL, type FacetKey, type Facets, type Period, type SearchDoc, type SearchInput, type SortKey } from './search';
 
 type DocRow = typeof s.documents.$inferSelect;
 
@@ -94,6 +94,31 @@ async function visibleModified(ids: string[]): Promise<Map<string, string>> {
   revs.forEach((r) => later(r.docId, r.at));
   entries.forEach((e) => e.docId && later(e.docId, parisStamp(e.at).slice(0, 10)));
   return out;
+}
+
+/**
+ * Date the revision in force of each document took effect, as its record shows it: the effective date set when it was
+ * sent for approval, or the day it entered into force when that came later. Revisions in force only (D-14).
+ */
+async function effectiveDates(): Promise<Map<string, string>> {
+  const db = await getDb();
+  const rows = await db.select({ docId: s.revisions.docId, effectiveAt: s.revisions.effectiveAt, inForceAt: s.revisions.inForceAt })
+    .from(s.revisions).where(eq(s.revisions.status, 'in_force'));
+  const out = new Map<string, string>();
+  for (const r of rows) {
+    const at = r.effectiveAt && (!r.inForceAt || r.effectiveAt >= r.inForceAt) ? r.effectiveAt : r.inForceAt;
+    if (at) out.set(r.docId, at);
+  }
+  return out;
+}
+
+/**
+ * Documents of /recherche and of its CSV export: those of listDocs (visible ones only), each with the date its revision
+ * in force took effect, on copies that leave the shared list as it is. Read here only: no other screen needs that date.
+ */
+export async function listSearchDocs(ctx: Ctx): Promise<SearchDoc[]> {
+  const [docs, eff] = await Promise.all([listDocs(ctx), effectiveDates()]);
+  return docs.map((d) => ({ ...d, effectiveAt: eff.get(d.id) ?? null }));
 }
 
 /**
@@ -607,15 +632,56 @@ function changeL(ctx: Ctx, c: AuditChange): string {
   return `${label ? `${label} : ` : ''}${changeValueL(ctx, c.field, c.before)} → ${changeValueL(ctx, c.field, c.after)}`;
 }
 
-const FACET_LABEL: Record<FacetKey, TKey> = { project: 'project_program', family: 'family', type: 'type', origin: 'origin', attachment: 'attachment', department: 'department', status: 'status', conf: 'conf' };
-const FACET_PREFIX: Partial<Record<FacetKey, string>> = { origin: 'or_', attachment: 'att_', status: 'st_', conf: 'conf_' };
+const FACET_PREFIX: Partial<Record<FacetKey, string>> = { origin: 'or_', attachment: 'att_', status: 'st_', conf: 'conf_', lang: 'lang_' };
 
-/** What an export wrote: "« béton » · Type : PRO, NCR · 12 lignes", or "journal complet · 830 lignes". */
+/** A facet value of /recherche as the reader reads it: reference labels, people's names, coded values translated. */
+export function facetValueL(ctx: Ctx, k: FacetKey, v: string): string {
+  const prefixed = FACET_PREFIX[k] && ctx.t[`${FACET_PREFIX[k]}${v}` as TKey];
+  if (prefixed) return prefixed;
+  switch (k) {
+    case 'project': {
+      const name = ctx.projects.find((p) => p.code === v)?.name ?? ctx.programs.find((p) => p.code === v)?.name;
+      return name ? `${v} · ${name}` : v;
+    }
+    case 'family': case 'type': case 'department': case 'site': return ctx.label(k, v);
+    case 'owner': return ctx.userName(v);
+    case 'author': return ctx.users.has(v) ? ctx.userName(v) : v;
+    case 'lang': return v.toUpperCase();
+    default: return v;
+  }
+}
+
+/** "Date d'émission : du 01/01/2026 au 30/06/2026", "… depuis le …", "… jusqu'au …". */
+export function periodL(ctx: Ctx, p: Period): string {
+  const { t, lang } = ctx;
+  const range = p.from && p.to ? `${t.period_from} ${fmtDate(p.from, lang)} ${t.period_to} ${fmtDate(p.to, lang)}`
+    : p.from ? `${t.period_since} ${fmtDate(p.from, lang)}` : `${t.period_until} ${fmtDate(p.to, lang)}`;
+  return `${t[DATE_LABEL[p.field]]}${lang === 'fr' ? ' : ' : ': '}${range}`;
+}
+
+/**
+ * Criteria of a search as lines to read (save dialog, journal of the exports): the query, each facet with its values,
+ * the period, and the order when one was chosen.
+ */
+export function searchCriteriaL(ctx: Ctx, x: SearchInput): string[] {
+  const { t, lang } = ctx;
+  const colon = lang === 'fr' ? ' : ' : ': ';
+  return [
+    ...(x.q ? [lang === 'fr' ? `« ${x.q} »` : `“${x.q}”`] : []),
+    ...FACET_KEYS.filter((k) => x.facets?.[k]?.length).map((k) => `${t[FACET_LABEL[k]]}${colon}${x.facets![k]!.map((v) => facetValueL(ctx, k, v)).join(', ')}`),
+    ...(x.period && (x.period.from || x.period.to) ? [periodL(ctx, x.period)] : []),
+    ...(x.sort ? [`${t.sorted_by}${colon}${sortL(ctx, x.sort)}`] : []),
+  ];
+}
+
+export function sortL(ctx: Ctx, k: SortKey): string {
+  return ctx.t[SORT_LABEL[k]];
+}
+
+/** What an export wrote: "« béton » · Type de document : Procédure · Tri : Titre · 12 lignes", or "journal complet · 830 lignes". */
 function exportL(ctx: Ctx, targetId: string | null, x: NonNullable<AuditData['export']>): string {
   const { t } = ctx;
-  const value = (k: FacetKey, v: string) => (FACET_PREFIX[k] && t[`${FACET_PREFIX[k]}${v}` as TKey]) || (k === 'family' ? ctx.label('family', v) : v);
-  const filters = FACET_KEYS.filter((k) => x.facets?.[k]?.length).map((k) => `${t[FACET_LABEL[k]]} : ${x.facets![k]!.map((v) => value(k, v)).join(', ')}`);
-  const what = targetId === 'search' ? [...(x.q ? [ctx.lang === 'fr' ? `« ${x.q} »` : `“${x.q}”`] : []), ...filters] : [t.export_full];
+  const what = targetId === 'search' ? searchCriteriaL(ctx, { q: x.q, facets: x.facets as Facets, period: x.period as Period | undefined, sort: x.sort as SortKey | undefined }) : [t.export_full];
   return [...(what.length ? what : [t.export_unfiltered]), `${x.interrupted ? `${t.export_interrupted} ` : ''}${x.rows} ${t.export_rows}`].join(' · ');
 }
 
@@ -724,7 +790,7 @@ export async function listSavedSearches(ctx: Ctx) {
     .map((x) => ({
       id: x.id, q: x.q, facets: x.facets as Facets, scope: x.scope, department: x.department,
       labelL: loc(x.label, ctx.lang),
-      href: searchHref(x.q, x.facets as Facets),
+      href: searchHref({ q: x.q, facets: x.facets as Facets, period: x.period, sort: x.orderBy }),
       title: x.scope === 'personal'
         ? ctx.t.search_is_personal
         : `${x.scope === 'department' ? `${ctx.t.search_is_department} ${ctx.label('department', x.department)}` : ctx.t.search_is_group} · ${ctx.t.by} ${ctx.userName(x.ownerId)}`,

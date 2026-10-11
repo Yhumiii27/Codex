@@ -489,8 +489,18 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
   un département (ses membres) ou avec tout le groupe, et supprimer une recherche partagée, est réservé aux
   gestionnaires documentaires et aux détenteurs du droit « Administrer » ; ils voient aussi les recherches partagées
   avec les autres départements, pour les gérer, mais jamais les recherches personnelles d'autrui. Une recherche ne
-  garde que des critères (texte et facettes), jamais de documents. Les trois recherches de démonstration sont
-  partagées avec le groupe.
+  garde que des critères (texte, facettes, période) et l'ordre choisi, jamais de documents. Les trois recherches de
+  démonstration sont partagées avec le groupe.
+- **Recherche : facettes, période et tri** (G15, G32, 11 octobre ; point 12 de `docs/reste-a-faire.md`) :
+  - l'auteur est celui que la fiche affiche (texte libre, sinon l'utilisateur auteur, sinon le propriétaire) ;
+  - une seule période à la fois, sur une date au choix ; un document sans cette date n'y entre pas ; la date d'effet
+    est celle de la révision en vigueur ;
+  - sans tri choisi : pertinence s'il y a un texte, date de modification sinon ; « échéance » est la plus proche des
+    dates de révision et d'expiration ;
+  - pertinence : ID et anciens ID, puis titre, mots-clés, référence externe et ID d'étude, puis le reste ; un champ
+    entier compte plus qu'un début de mot, qui compte plus qu'un morceau de mot ;
+  - au-delà de 8 options, une facette replie les autres sous « N de plus » (écart avec la maquette, qui affiche
+    tout) ; la période est en bas de la colonne des filtres.
 - **Retrait** (D-17) : effets d'un retrait accepté sur le travail en cours (circuit clos, révisions ouvertes annulées).
 - **Documents obsolètes ou archivés** (D-17) : bandeau d'avertissement sur la fiche et dans l'aperçu rapide de
   l'explorateur, suffixe `_OBSOLETE` ou `_ARCHIVE` dans le nom proposé au téléchargement (`docs/modele-cible.md` §4).

@@ -5,8 +5,8 @@ import { deleteSavedSearch, saveSearch } from '@/lib/actions';
 import { getCtx } from '@/lib/context';
 import { savedSearchesSeenBy, seesSavedSearch } from '@/lib/access';
 import { DICT } from '@/lib/i18n';
-import { listDocs, listSavedSearches } from '@/lib/queries';
-import { parseSearch, runSearch, type Facets } from '@/lib/search';
+import { listSavedSearches, listSearchDocs } from '@/lib/queries';
+import { parseSearch, runSearch, type Facets, type SearchInput } from '@/lib/search';
 import { addDoc, fixClock, setupDb } from '../support/db';
 import { DEPARTMENTS, PEOPLE, type Person } from '../support/fixtures';
 import { actAs } from '../support/session';
@@ -25,9 +25,9 @@ fixClock();
 const t = DICT.fr;
 const PRO: Facets = { type: ['PRO'] };
 
-async function save(who: Person, label: string, scope = 'personal', department: string | null = null, q = '', facets: Facets = PRO) {
+async function save(who: Person, label: string, scope = 'personal', department: string | null = null, q = '', facets: Facets = PRO, more: SearchInput = {}) {
   actAs(who);
-  return saveSearch(label, q, facets, scope, department);
+  return saveSearch(label, { q, facets, ...more }, scope, department);
 }
 
 /** Labels of the saved searches `who` sees in /recherche, in display order. */
@@ -47,7 +47,49 @@ describe('saving a search', () => {
   it('keeps the criteria under a label, as a personal search of whoever saves it', async () => {
     expect(await save('writer', 'Mes procédures', 'personal', null, ' pompe ', { type: ['PRO'], department: ['QUA'] })).toEqual({ ok: true, message: t.search_saved_ok });
     const [row] = await db().select().from(s.savedSearches);
-    expect(row).toMatchObject({ label: 'Mes procédures', q: 'pompe', facets: { type: ['PRO'], department: ['QUA'] }, ownerId: 'writer', scope: 'personal', department: null });
+    expect(row).toMatchObject({ label: 'Mes procédures', q: 'pompe', facets: { type: ['PRO'], department: ['QUA'] }, period: null, orderBy: null, ownerId: 'writer', scope: 'personal', department: null });
+  });
+
+  it('keeps the period and the order of the results, and opens the search screen with them (point 12)', async () => {
+    const more: SearchInput = { period: { field: 'issued', from: '2026-01-01', to: '2026-06-30' }, sort: 'title' };
+    expect(await save('writer', 'Émises au 1er semestre', 'personal', null, '', { site: ['lyon'], keywords: ['ATEX'] }, more)).toMatchObject({ ok: true });
+    const [row] = await db().select().from(s.savedSearches);
+    expect(row).toMatchObject({ facets: { site: ['lyon'], keywords: ['ATEX'] }, period: { field: 'issued', from: '2026-01-01', to: '2026-06-30' }, orderBy: 'title' });
+    actAs('writer');
+    const [x] = await listSavedSearches(await getCtx());
+    expect(x.href).toBe('/recherche?site=lyon&keywords=ATEX&date=issued&from=2026-01-01&to=2026-06-30&sort=title');
+    expect(parseSearch(new URL(x.href, 'http://codex').searchParams)).toEqual({ q: '', facets: { site: ['lyon'], keywords: ['ATEX'] }, ...more });
+  });
+
+  it('keeps a long free-text value, or one with a comma, and reopens the very search shown (point 12)', async () => {
+    const dreal = 'Direction régionale de l’environnement de l’aménagement et du logement';
+    expect(dreal.length).toBeGreaterThan(64);
+    const shown = { q: '', facets: { type: ['PRO'], source: [dreal], author: ['Préfecture du Rhône, DDPP'] }, period: null, sort: null };
+    expect(await save('writer', 'DREAL', 'personal', null, '', shown.facets)).toMatchObject({ ok: true });
+    expect(await save('writer', 'DREAL seule', 'personal', null, '', { source: [dreal] })).toMatchObject({ ok: true });
+    actAs('writer');
+    const [x, y] = await listSavedSearches(await getCtx());
+    expect(parseSearch(new URL(x.href, 'http://codex').searchParams)).toEqual(shown);
+    expect(parseSearch(new URL(y.href, 'http://codex').searchParams).facets).toEqual({ source: [dreal] });
+  });
+
+  it('refuses, with its own message, what a saved search could not keep whole', async () => {
+    expect(await save('writer', 'Trop long', 'personal', null, '', { type: ['PRO'], source: ['x'.repeat(301)] })).toEqual({ ok: false, error: t.search_too_long });
+    expect(await save('writer', 'Trop de valeurs', 'personal', null, '', { keywords: [...Array(51).keys()].map((i) => `k${i}`) })).toEqual({ ok: false, error: t.search_too_long });
+    expect(await save('writer', 'Texte trop long', 'personal', null, 'x'.repeat(201))).toEqual({ ok: false, error: t.search_too_long });
+    expect(await count()).toBe(0);
+  });
+
+  it('saves a period alone, but not an order alone, and drops an invalid period or order', async () => {
+    expect(await save('writer', 'Tri seul', 'personal', null, '', {}, { sort: 'title' })).toEqual({ ok: false, error: t.search_no_criteria });
+    expect(await save('writer', 'Période', 'personal', null, '', {}, { period: { field: 'expiry', from: null, to: '2026-12-31' } })).toMatchObject({ ok: true });
+    expect(await save('writer', 'Bizarre', 'personal', null, 'pompe', {}, { period: { field: 'issued', from: 'hier', to: null }, sort: 'size' } as unknown as SearchInput)).toMatchObject({ ok: true });
+    const rows = await db().select().from(s.savedSearches).orderBy(s.savedSearches.id);
+    expect(rows.map((r) => [r.label, r.period, r.orderBy])).toEqual([['Période', { field: 'expiry', from: null, to: '2026-12-31' }, null], ['Bizarre', null, null]]);
+  });
+
+  it('refuses an unknown order in the database itself', async () => {
+    await expect(db().insert(s.savedSearches).values({ label: 'x', facets: PRO, ownerId: 'writer', orderBy: 'size' as 'title' })).rejects.toThrow();
   });
 
   it('is open to anyone who may read, an auditor included', async () => {
@@ -66,7 +108,7 @@ describe('saving a search', () => {
     expect(await save('writer', 'x'.repeat(81))).toEqual({ ok: false, error: t.search_label_invalid });
     expect(await save('writer', 'Vide', 'personal', null, '  ', {})).toEqual({ ok: false, error: t.search_no_criteria });
     // Unknown facets are not criteria.
-    expect(await save('writer', 'Inconnue', 'personal', null, '', { owner: ['writer'] } as Facets)).toEqual({ ok: false, error: t.search_no_criteria });
+    expect(await save('writer', 'Inconnue', 'personal', null, '', { colour: ['red'] } as Facets)).toEqual({ ok: false, error: t.search_no_criteria });
     expect(await count()).toBe(0);
   });
 
@@ -141,8 +183,7 @@ describe('who sees a saved search', () => {
     const [x] = await listSavedSearches(ctx);
     expect(Object.keys(x).sort()).toEqual(['department', 'facets', 'href', 'id', 'labelL', 'mayDelete', 'q', 'scope', 'title']);
     expect(x.href).toBe('/recherche?type=PRO');
-    const { q, facets } = parseSearch(Object.fromEntries(new URL(x.href, 'http://codex').searchParams));
-    expect(runSearch(await listDocs(ctx), q, facets).results.map((d) => d.id)).toEqual(['PRO-QUA-0001']);
+    expect(runSearch(await listSearchDocs(ctx), parseSearch(new URL(x.href, 'http://codex').searchParams)).results.map((d) => d.id)).toEqual(['PRO-QUA-0001']);
   });
 });
 

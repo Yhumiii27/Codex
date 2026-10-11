@@ -126,8 +126,14 @@ const fr = {
   search_personal_only:'Recherche personnelle, visible de vous seul. Partager avec un département ou le groupe est réservé aux gestionnaires documentaires et aux administrateurs.',
   search_saved_ok:'Recherche enregistrée', search_deleted_ok:'Recherche supprimée', search_delete:'Supprimer la recherche', search_delete_confirm:'Supprimer cette recherche enregistrée ?',
   search_no_criteria:'Choisissez au moins un critère avant d’enregistrer la recherche.', search_label_invalid:'Donnez un libellé à la recherche (80 caractères au plus).',
+  search_too_long:'Cette recherche dépasse ce qu’une recherche enregistrée peut garder : un texte de 200 caractères, 50 valeurs par filtre, de 300 caractères chacune.',
   search_not_found:'Recherche enregistrée introuvable.', search_none:'Aucune recherche enregistrée.', search_mine:'Perso',
   search_is_personal:'Personnelle : visible de vous seul', search_is_department:'Partagée avec le département', search_is_group:'Partagée avec tout le groupe',
+  // Recherche : période et tri
+  date_modified:'Date de modification', sort_relevance:'Pertinence', sort_due:'Prochaine échéance', sort_id:'ID',
+  sort_by:'Trier par', sorted_by:'Tri', period:'Période', period_date:'Date', period_from:'du', period_to:'au',
+  period_since:'depuis le', period_until:'jusqu’au', period_start:'Du', period_end:'Au', period_clear:'Effacer la période',
+  facet_more:'de plus',
 };
 
 type Dict = Record<keyof typeof fr, string>;
@@ -255,8 +261,14 @@ const en: Dict = {
   search_personal_only:'Personal search, visible to you only. Sharing with a department or the group is reserved to records managers and administrators.',
   search_saved_ok:'Search saved', search_deleted_ok:'Search deleted', search_delete:'Delete search', search_delete_confirm:'Delete this saved search?',
   search_no_criteria:'Pick at least one criterion before saving the search.', search_label_invalid:'Give the search a name (80 characters at most).',
+  search_too_long:'This search goes beyond what a saved search keeps: a text of 200 characters, 50 values per filter, of 300 characters each.',
   search_not_found:'Saved search not found.', search_none:'No saved search.', search_mine:'Mine',
   search_is_personal:'Personal: visible to you only', search_is_department:'Shared with the department', search_is_group:'Shared with the whole group',
+  // Search: period and order
+  date_modified:'Modification date', sort_relevance:'Relevance', sort_due:'Next due date', sort_id:'ID',
+  sort_by:'Sort by', sorted_by:'Sort', period:'Period', period_date:'Date', period_from:'from', period_to:'to',
+  period_since:'since', period_until:'until', period_start:'From', period_end:'To', period_clear:'Clear the period',
+  facet_more:'more',
 };
 
 export const DICT: Record<Lang, Dict> = { fr, en };

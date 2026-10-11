@@ -29,8 +29,9 @@ déposés sont stockés dans `.data/files/` (ou dans SharePoint, voir `src/lib/s
   - `tests/integration/` : règles métier sur une base PGlite en mémoire, migrée depuis `drizzle/` avec le déclencheur
     du journal (`openDb` dans `src/db/index.ts`) et remplie de données minimales (`tests/support/fixtures.ts`), pas de
     la base de démo. Identifiants et compteurs, révisions et dates d'effet, circuits, décisions Vigie et webhook,
-    journal en ajout seul, cercle de rédaction, import, recherches enregistrées. Les Server Actions y tournent avec
-    `next/headers` et `next/cache` simulés (`tests/support/session.ts`) ; l'horloge est figée au 10 octobre 2026.
+    journal en ajout seul, cercle de rédaction, import, recherche et recherches enregistrées. Les Server Actions y
+    tournent avec `next/headers` et `next/cache` simulés (`tests/support/session.ts`) ; l'horloge est figée au
+    10 octobre 2026.
   - Limite : PGlite n'a qu'une connexion et exécute les transactions l'une après l'autre. Les tests d'attributions
     « simultanées » (`Promise.all`) vérifient l'absence de doublon sous cet entrelacement, pas l'atomicité des
     compteurs entre connexions d'un vrai serveur Postgres (étape 5, O-03) : il faudra un Postgres serveur pour la
@@ -65,7 +66,7 @@ quitter l'app et supprimer `~/Library/Application Support/Codex/data`.
 | `/` | Tableau de bord : « À traiter » (étapes à décider, révisions à rédiger ou à reprendre, greffes possibles, revues et expirations des documents dont on est propriétaire ou propriétaire de processus), documents récents, échéances (conservation, expiration, revue), activité. La pastille d'Accueil et la cloche reprennent la même liste |
 | `/explorateur` | Classement par famille, département, projet / programme, type ou origine ; filtres de statut ; aperçu rapide |
 | `/documents/[id]` | Fiche document : aperçu, onglets Projet · Fiche · Révisions · Validation · Demandes · Historique |
-| `/recherche` | Recherche plein texte + facettes (projet, famille, type, origine, rattachement, département, statut, confidentialité), export CSV ; recherches enregistrées personnelles, ou partagées avec un département ou le groupe par un gestionnaire documentaire |
+| `/recherche` | Recherche plein texte classée par pertinence + facettes (projet, famille, type, sous-type, origine, rattachement, département, site, propriétaire, auteur, statut, confidentialité, langue, mots-clés, organisme source, phase, lot, discipline, thème), période sur une date (modification, émission, effet, révision, expiration), tri au choix, export CSV dans le même ordre ; recherches enregistrées (critères, période et tri) personnelles, ou partagées avec un département ou le groupe par un gestionnaire documentaire |
 | `/validations` | Circuits de validation : à valider, mes demandes, en cours, terminées ; approuver / rejeter (motif obligatoire) / déléguer, rappeler sa demande avant la dernière approbation, commentaires. Vue « Mes demandes Vigie » : demandes de modification et de retrait envoyées par l'utilisateur, avec leur statut |
 | `/archivage` | Échéances (archivage, gel juridique), règles de conservation du registre, archives |
 | `/administration` | Registre des types, fonctions & circuits, rôles & droits, organisation, modèles (QMS), journal d'audit (CSV) |

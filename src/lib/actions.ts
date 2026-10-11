@@ -12,7 +12,7 @@ import { addDays, fmtSize, loc, nowStamp, parseIsoDay, todayIso } from './format
 import { ATTACHMENTS, CONF_LEVELS, ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLES, ORIGINS, PERMS, SEARCH_SCOPES, SIM_ROLES, SIMULATED_MATRIX_ROLES, type Perm, type SimRole, type TKey } from './i18n';
 import { applyChangeDecision, applyPendingDecision, approveRevision, audit, catchUpEffectiveDates, lockOf, refreshHeadline, type ModifierSwap, type Tx } from './lifecycle';
 import { decisionWaitL } from './queries';
-import { cleanCriteria, hasCriteria, type Facets } from './search';
+import { beyondBounds, cleanCriteria, hasCriteria, type SearchInput } from './search';
 import { discardFile, fileColumns, nameStoredFile, readStored, renameDocFiles, stageFile, stageUpload, type StagedFile } from './storage';
 import { submitChange, vigieSimulated } from './vigie';
 
@@ -858,24 +858,28 @@ export async function restoreArchived(docId: string): Promise<ActionResult> {
 const LABEL_MAX = 80;
 
 /**
- * Saves the criteria of /recherche (query and facets) under a label: a personal search for whoever may read, a search
- * shared with a department (its members) or the whole group for records managers and administrators
- * (lib/access.ts maySaveSearch). Only criteria are kept: each person who opens it sees the documents they may read.
+ * Saves the criteria of /recherche (query, facets, period) and the order of its results under a label: a personal
+ * search for whoever may read, a search shared with a department (its members) or the whole group for records managers
+ * and administrators (lib/access.ts maySaveSearch). Only criteria are kept: each person who opens it sees the documents
+ * they may read.
  */
-export async function saveSearch(label: string, q: string, facets: Facets, scope: string, department: string | null): Promise<ActionResult> {
+export async function saveSearch(label: string, search: SearchInput, scope: string, department: string | null): Promise<ActionResult> {
   const ctx = await getCtx();
   if (!(SEARCH_SCOPES as readonly string[]).includes(scope)) return fail(ctx);
   if (!maySaveSearch(ctx, scope)) return ctx.can('read') ? fail(ctx, 'not_allowed') : denied(ctx, 'read');
   const name = typeof label === 'string' ? label.trim() : '';
   if (!name || name.length > LABEL_MAX) return fail(ctx, 'search_label_invalid');
-  const criteria = cleanCriteria(q, facets);
-  if (!hasCriteria(criteria.q, criteria.facets)) return fail(ctx, 'search_no_criteria');
+  // Refused rather than cut down: the search saved is the one shown, or none.
+  if (beyondBounds(search)) return fail(ctx, 'search_too_long');
+  const criteria = cleanCriteria(search);
+  if (!hasCriteria(criteria)) return fail(ctx, 'search_no_criteria');
   const dept = scope === 'department' ? department ?? '' : null;
   if (dept !== null && !ctx.departments.some((d) => d.code === dept)) return fail(ctx);
   const db = await getDb();
   const [{ last }] = await db.select({ last: sql<number>`coalesce(max(${s.savedSearches.sort}), -1)` }).from(s.savedSearches);
   await db.insert(s.savedSearches).values({
-    label: name, q: criteria.q, facets: criteria.facets, ownerId: ctx.user.id, scope: scope as SearchScope, department: dept, sort: Number(last) + 1,
+    label: name, q: criteria.q, facets: criteria.facets, period: criteria.period, orderBy: criteria.sort,
+    ownerId: ctx.user.id, scope: scope as SearchScope, department: dept, sort: Number(last) + 1,
   });
   refresh();
   return { ok: true, message: ctx.t.search_saved_ok };

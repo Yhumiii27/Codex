@@ -204,8 +204,11 @@ CREATE TABLE "saved_searches" (
 	"owner_id" text NOT NULL,
 	"scope" text DEFAULT 'personal' NOT NULL,
 	"department" text,
+	"period" jsonb,
+	"order_by" text,
 	"sort" integer DEFAULT 0 NOT NULL,
 	CONSTRAINT "saved_searches_scope" CHECK ("saved_searches"."scope" in ('personal', 'department', 'group')),
+	CONSTRAINT "saved_searches_order_by" CHECK ("saved_searches"."order_by" in ('relevance', 'modified', 'issued', 'due', 'id', 'title')),
 	CONSTRAINT "saved_searches_department" CHECK (("saved_searches"."scope" = 'department') = ("saved_searches"."department" is not null))
 );
 --> statement-breakpoint

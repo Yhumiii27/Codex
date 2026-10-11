@@ -953,7 +953,7 @@ function SaveSearch({ spec }: { spec: Extract<DialogSpec, { kind: 'saveSearch' }
         onSubmit={(e) => {
           e.preventDefault();
           const label = String(new FormData(e.currentTarget).get('label') ?? '');
-          run(() => saveSearch(label, spec.q, spec.facets, scope, scope === 'department' ? department : null));
+          run(() => saveSearch(label, spec.search, scope, scope === 'department' ? department : null));
         }}
         style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
       >

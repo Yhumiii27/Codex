@@ -829,3 +829,73 @@ ou en partager.
   enregistre « Mes notes béton », l'ouvre (`?q=béton&department=ING`) puis la supprime après confirmation. Léa
   Marchand (PRJ) ne voit que les quatre recherches de groupe. Vue en anglais vérifiée (« Save search », « Name »,
   « Criteria »).
+
+
+## 18. Recherche : facettes manquantes, période et tri (11 oct.)
+
+Point 12 de [reste-a-faire.md](reste-a-faire.md) (G15, G32, FON-04) : la recherche n'avait que huit facettes, une
+valeur par document et par facette (pas de mots-clés), aucune date et un ordre fixe (date de modification).
+
+- **Facettes** (`src/lib/search.ts`) : sous-type, site, propriétaire, auteur, langue, mots-clés, organisme source,
+  phase projet, lot, discipline et thème de recherche s'ajoutent. `facetValues` renvoie une liste ; `passes` garde un
+  document qui a l'une des valeurs choisies ; `runSearch` rend `tally(k)`, le nombre de documents par valeur sous tous
+  les autres critères, calculé une fois par facette. L'auteur est celui que la fiche affiche (texte libre, sinon
+  l'utilisateur auteur, sinon le propriétaire).
+- **Période** : une date au choix (modification, émission, effet, révision, expiration), bornes comprises, l'une
+  pouvant manquer (`date`, `from`, `to` dans l'URL ; jours invalides ignorés, bornes remises dans l'ordre par
+  `cleanPeriod`). La date d'effet est celle de la révision en vigueur, comme sur la fiche (`effectiveDates`,
+  `src/lib/queries.ts`). Seules la recherche et son export la lisent (`listSearchDocs`, copies de la liste partagée) :
+  les autres écrans ne paient pas cette lecture.
+- **Tri** (`sort` dans l'URL) : pertinence, date de modification, date d'émission, prochaine échéance (révision ou
+  expiration), ID, titre ; sans choix, pertinence s'il y a un texte, date de modification sinon (`sortOf`). La
+  pertinence (`score`) pondère le champ où le texte est trouvé (ID et anciens ID, titre, mots-clés, référence
+  externe et ID d'étude, le reste) et la façon dont il y est (champ entier, début de mot, morceau de mot). Le plein
+  texte couvre aussi le propriétaire, l'auteur et l'ID d'étude.
+- **URL** : chaque valeur choisie a son propre paramètre (`?discipline=Électricité&discipline=Mécanique`), si bien
+  qu'une valeur en texte libre peut contenir une virgule (« Préfecture du Rhône, DDPP ») ; les facettes à codes
+  acceptent encore la forme `?type=PRO,NCR` des anciens liens. L'export lit les paramètres répétés de la même façon.
+- **Écran** : nouvelles facettes présentées comme dans la maquette (case, libellé, nombre ; une valeur longue est
+  coupée et se lit au survol) ; au-delà de 8 options, les
+  autres se replient sous « N de plus », les valeurs choisies restant visibles ; bloc « Période » (date, du, au,
+  appliqué pendant la saisie) en bas de la colonne, avec un bouton pour l'effacer ; sélecteur « Trier par » au-dessus
+  des résultats ; la date en fin de ligne suit le tri (émission, échéance, sinon modification). « Effacer » garde le
+  tri. Libellés des valeurs partagés avec le journal des exports (`facetValueL`, `searchCriteriaL`).
+- **Export CSV** : mêmes critères, même ordre que l'écran ; colonnes site, mots-clés, dates d'émission, d'effet, de
+  révision et d'expiration en plus ; le journal garde la période et le tri (« Mots-clés : ATEX · Date d'émission :
+  depuis le 01/01/2026 · Tri : Date d'émission · 2 lignes »).
+- **Recherches enregistrées** : `saved_searches` gagne `period` et `order_by` (contrainte sur les valeurs ; `sort`
+  reste l'ordre d'affichage) ; migration unique régénérée. `saveSearch` reçoit la recherche entière, nettoyée par
+  `cleanCriteria` (période valide, tri connu) ; une période seule est un critère, un tri seul ne l'est pas. Une valeur
+  de facette y tient jusqu'à 300 caractères, le plus long texte libre que l'import accepte (l'organisme source) ;
+  au-delà, ou au-delà de 50 valeurs par facette ou d'un texte de 200 caractères, `saveSearch` refuse avec un message
+  (`beyondBounds`) au lieu d'enregistrer une recherche plus large que celle affichée.
+- **Visibilité** (D-14) : facettes, comptes, période et tri ne portent que sur `listDocs`, donc sur les documents que
+  l'utilisateur peut lire ; hors du cercle de rédaction, la date de modification est celle du dernier changement
+  visible, et la date d'effet ne vient jamais d'une révision approuvée en attente.
+- **Choix à confirmer** (`docs/decisions.md`) : définition de l'auteur et de l'échéance, ordre par défaut, poids de
+  la pertinence, une seule période, repli des longues facettes.
+- **Reste** : le filtrage et les comptes se font toujours en mémoire sur tous les documents visibles (point 50).
+- **Relecture** : quatre corrections. Les valeurs de plus de 64 caractères (borne héritée des facettes à codes) et
+  celles qui contiennent une virgule se perdaient à l'enregistrement ou ne pouvaient pas être choisies : paramètres
+  répétés et borne de 300 caractères, avec refus explicite au-delà. La date d'effet n'est plus lue à chaque page.
+  Un test vérifie enfin que l'export d'un auditeur écarte le brouillon par la visibilité, et non par la période
+  (remplacer la liste visible par `listDocs(ctx, { includeHidden: true })` le fait échouer).
+- **Vérifié** : `npm test` (456 tests, dont `tests/unit/search.test.ts` et `tests/integration/search.test.ts`),
+  `npm run typecheck`, `npm run lint`. Les tests échouent si l'aller-retour URL perd la période, le tri ou une valeur
+  avec virgule, si un mot-clé d'un brouillon jamais en vigueur est compté, trouvé ou exporté pour un auditeur, si la
+  période ou le tri par date de modification utilisent la date du travail en cours hors du cercle, si la date d'effet
+  vient d'une révision approuvée en attente, si l'export ne suit pas les critères ou l'ordre de l'écran, ou si une
+  recherche enregistrée perd sa période, son tri ou une valeur longue. Dans le navigateur, sur une base de démo neuve, Claire Bardet coche Discipline
+  « Électricité » et « Mécanique », puis Propriétaire « Samir Haddad » (4 résultats, dont la liste des câbles en
+  brouillon), trie par titre, puis limite la date d'émission à partir du 01/06/2026 (3 résultats) :
+  `?owner=shaddad&discipline=Électricité&discipline=Mécanique&sort=title&date=issued&from=2026-06-01`. L'export CSV donne les
+  trois mêmes documents dans le même ordre ; le dialogue d'enregistrement liste « Propriétaire : Samir Haddad »,
+  « Discipline : Électricité, Mécanique », « Date d'émission : depuis le 01/06/2026 », « Tri : Titre » ; la recherche
+  enregistrée rouvre la même URL, avec le tri et la période dans leurs champs ; « Effacer » ne garde que `?sort=title`.
+  Sur HLT-026, la facette Discipline compte Automatisme 3 et Électricité 4 pour Claire Bardet, mais pas Automatisme et
+  Électricité 3 pour Julien Wagner (brouillons de Camille Morvan et de Samir Haddad hors de son cercle) ; son export
+  de HLT-026 a les 23 lignes de son écran, contre 33 pour Claire Bardet. Après avoir donné à MNT-CHA-0001 l'organisme
+  source « Direction régionale de l'environnement de l'aménagement et du logement » (70 caractères) et à AUT-JUR-0001
+  « Préfecture du Rhône, DDPP », chacun se coche dans la facette, s'exporte, s'enregistre et se rouvre avec le même
+  résultat ; une valeur de 301 caractères est refusée avec son message. Vue en anglais vérifiée (« Sort by », « Issue
+  date », dates en fin de ligne).

@@ -132,8 +132,13 @@ d'un document reclassé compris) :
   d'administration.
 Les gestionnaires documentaires lisent tout le journal.
 
-**Recherches enregistrées.** Une recherche enregistrée ne garde que des critères (texte et facettes de l'écran
-Recherche), jamais de documents : chacun n'y trouve que ce qu'il a le droit de lire. Sa portée dit qui la voit :
+**Recherche.** Facettes, période et comptes ne portent que sur les documents que l'utilisateur peut lire ; hors du
+cercle de rédaction, un document est daté par son dernier changement visible et sa date d'effet est celle de la
+révision en vigueur.
+
+**Recherches enregistrées.** Une recherche enregistrée ne garde que des critères (texte, facettes et période de
+l'écran Recherche) et l'ordre choisi pour ses résultats, jamais de documents : chacun n'y trouve que ce qu'il a le
+droit de lire. Sa portée dit qui la voit :
 - **personnelle** : son propriétaire seul, qui peut la créer avec le droit « Lire » et la supprimer ;
 - **département** : les membres du département choisi ;
 - **groupe** : tout le monde.

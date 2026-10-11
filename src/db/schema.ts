@@ -17,6 +17,10 @@ export type RetentionTrigger = 'creation' | 'in_force' | 'superseded' | 'project
 export type Disposition = 'destroy' | 'review' | 'archive' | 'permanent';
 /** Who sees a saved search: its owner, the members of a department, or the whole group. */
 export type SearchScope = 'personal' | 'department' | 'group';
+/** Period of a search on one date of the documents (lib/search.ts Period), bounds included. */
+export type SearchPeriod = { field: 'modified' | 'issued' | 'effective' | 'review' | 'expiry'; from: string | null; to: string | null };
+/** Orders of the search results (lib/search.ts SORT_KEYS). */
+export type SearchOrder = 'relevance' | 'modified' | 'issued' | 'due' | 'id' | 'title';
 
 // ── Organisation (provisional until the org chart is provided) ─────────────
 
@@ -365,8 +369,11 @@ export type AuditChange = { field: string; before?: AuditValue; after?: AuditVal
 /** Structured part of a journal entry, next to its free `detail`. */
 export type AuditData = {
   changes?: AuditChange[];
-  /** CSV export: query and facets of a search export (none for the full journal), rows written, download cut short. */
-  export?: { q?: string; facets?: Partial<Record<string, string[]>>; rows: number; interrupted?: boolean };
+  /**
+   * CSV export: query, facets, period and chosen order of a search export (none for the full journal), rows written,
+   * download cut short.
+   */
+  export?: { q?: string; facets?: Partial<Record<string, string[]>>; period?: SearchPeriod; sort?: string; rows: number; interrupted?: boolean };
   /** Metadata edit: the document's strictest level across the change, and whether a revision was in force. */
   doc?: { conf: Conf; inForce: boolean };
 };
@@ -419,10 +426,16 @@ export const savedSearches = pgTable(
     ownerId: text('owner_id').notNull().references(() => users.id),
     scope: text('scope').$type<SearchScope>().notNull().default('personal'),
     department: text('department').references(() => departments.code),
+    /** Period on a date of the documents, null without one. */
+    period: jsonb('period').$type<SearchPeriod>(),
+    /** Order of the results chosen with the search, null for the default one (lib/search.ts sortOf). */
+    orderBy: text('order_by').$type<SearchOrder>(),
+    /** Display order in the list of saved searches. */
     sort: integer('sort').notNull().default(0),
   },
   (t) => [
     check('saved_searches_scope', sql`${t.scope} in ('personal', 'department', 'group')`),
+    check('saved_searches_order_by', sql`${t.orderBy} in ('relevance', 'modified', 'issued', 'due', 'id', 'title')`),
     // A department-wide search names its department; no other one does.
     check('saved_searches_department', sql`(${t.scope} = 'department') = (${t.department} is not null)`),
   ],

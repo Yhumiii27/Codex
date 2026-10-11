@@ -723,7 +723,7 @@ par les décisions D-06 à D-21 et par le modèle v2.
 
 - **Constat sur la v1** : Recherche plein texte insensible aux accents, facettes affaire, type, entité, service et statut, recherches enregistrées, export CSV, champ global dans l'en-tête.
 - **Vérification** : « Couvert » ramené à « partiel ». Les facettes ignoraient presque toutes les métadonnées du deck ; les résultats et l'export n'étaient pas filtrés selon les droits ; les recherches enregistrées étaient figées ; le filtrage se faisait en mémoire et le contenu des fichiers n'était pas indexé.
-- **Aujourd'hui — partiel.** Facettes du modèle v2 : projet ou programme, famille, type, origine, rattachement, département, statut, confidentialité (`FACET_KEYS`, `src/lib/search.ts`). Plein texte sur le titre, l'ID et les anciens ID, les mots-clés, le type, le sous-type, l'organisme source et la référence externe. Résultats et export limités aux documents visibles. Reste : pas de recherche dans le contenu des fichiers ; filtrage en mémoire sur tous les documents (`runSearch`) ; pas de facette site, auteur, date, langue ou mot-clé. Les recherches enregistrées sont créables depuis le 11 octobre 2026 (personnelles, de département ou de groupe ; elles ne gardent que des critères).
+- **Aujourd'hui — partiel.** Facettes du modèle v2 : projet ou programme, famille, type, sous-type, origine, rattachement, département, site, propriétaire, auteur, statut, confidentialité, langue, mots-clés, organisme source, phase, lot, discipline et thème (`FACET_KEYS`, `src/lib/search.ts`, depuis le 11 octobre 2026), et une période sur la date de modification, d'émission, d'effet, de révision ou d'expiration. Plein texte sur le titre, l'ID et les anciens ID, les mots-clés, le type, le sous-type, l'organisme source, la référence externe, le propriétaire, l'auteur et l'ID d'étude, classé par pertinence ; tri au choix dans l'URL (pertinence, modification, émission, échéance, ID, titre). Résultats, comptes et export limités aux documents visibles. Les recherches enregistrées sont créables depuis le 11 octobre 2026 (personnelles, de département ou de groupe ; elles gardent les critères, la période et le tri, jamais de documents). Reste : pas de recherche dans le contenu des fichiers ; filtrage en mémoire sur tous les documents (`runSearch`).
 
 <a id="g16"></a>
 #### G16 — Liens pour ouvrir le document (vers la bibliothèque SharePoint)
@@ -876,7 +876,7 @@ par les décisions D-06 à D-21 et par le modèle v2.
 
 - **Constat sur la v1** : `keywords` facultatif, saisi en texte libre séparé par des virgules, cherché en plein texte.
 - **Vérification** : « Partiel », confirmé ; pas de facette mot-clé.
-- **Aujourd'hui — partiel.** Inchangé : texte libre séparé par des virgules (`readFields`, `src/lib/actions.ts`), cherché en plein texte. Ni vocabulaire géré ni facette.
+- **Aujourd'hui — partiel.** Texte libre séparé par des virgules (`readFields`, `src/lib/actions.ts`), cherché en plein texte ; facette « Mots-clés » de la recherche depuis le 11 octobre 2026 (plusieurs valeurs par document). Pas de vocabulaire géré.
 
 <a id="g33"></a>
 #### G33 — Tronc commun : Version / Révision
