@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canRead, changeAsSeen, deadlineActor, draftTodo, inDraftingCircle, isUsableTemplate, mayWorkOnDraft, openRevisionView, readerMaySeeChange, readerMaySeeEntry, readerMaySeeRevision, readerMaySeeVersion, readersApply, type AccessIndex, type Viewer } from '@/lib/access';
+import { canRead, changeAsSeen, deadlineActor, draftTodo, inDraftingCircle, isUsableTemplate, mayRecall, mayWorkOnDraft, openRevisionView, readerMaySeeChange, readerMaySeeEntry, readerMaySeeRevision, readerMaySeeVersion, readersApply, type AccessIndex, type Viewer } from '@/lib/access';
 import { CONF_LEVELS, PERMS, type Perm } from '@/lib/i18n';
 
 // Who sees what: confidentiality levels (D-13), drafting circle (D-14), docs/modele-cible.md §5.
@@ -253,7 +253,7 @@ describe('readerMaySeeRevision (D-14)', () => {
 
 describe('readerMaySeeEntry (D-14, journal)', () => {
   const DOCUMENT_ACTIONS = ['edit', 'ecr', 'obsolete', 'hold', 'release', 'archive', 'restore'];
-  const REVISION_ACTIONS = ['upload', 'working', 'import', 'reclass', 'request', 'approve', 'sign', 'reject', 'delegate', 'comment', 'in_force', 'download', 'graft'];
+  const REVISION_ACTIONS = ['upload', 'working', 'import', 'reclass', 'request', 'approve', 'sign', 'reject', 'recall', 'delegate', 'comment', 'in_force', 'download', 'graft'];
 
   it('shows every entry to the circle', () => {
     for (const action of [...DOCUMENT_ACTIONS, ...REVISION_ACTIONS]) {
@@ -400,12 +400,18 @@ describe('openRevisionView (D-14, D-26, document record)', () => {
 });
 
 describe('draftTodo (G19, revision being drafted)', () => {
-  const rejection = { authorId: 'author' };
+  const rejection = { authorId: 'author', outcome: 'rejected' } as const;
+  const recall = { authorId: 'author', outcome: 'recalled' } as const;
 
   it('a revision sent back by a circuit waits for its author, its designated modifier and the owner', () => {
     for (const who of ['author', 'modifier', 'owner']) expect(draftTodo(who, { modifierId: 'modifier' }, 'owner', rejection), who).toBe('rejected');
     expect(draftTodo('owner', { modifierId: null }, 'owner', rejection)).toBe('rejected');
     for (const who of ['approver', 'manager', 'stranger']) expect(draftTodo(who, { modifierId: 'modifier' }, 'owner', rejection), who).toBeNull();
+  });
+
+  it('so does one whose circuit was recalled: it is no longer a draft « jamais soumise »', () => {
+    for (const who of ['author', 'modifier', 'owner']) expect(draftTodo(who, { modifierId: 'modifier' }, 'owner', recall), who).toBe('recalled');
+    for (const who of ['approver', 'manager', 'stranger']) expect(draftTodo(who, { modifierId: 'modifier' }, 'owner', recall), who).toBeNull();
   });
 
   it('never submitted, it waits for the modifier an ECO designated and for the owner, whose draft it is', () => {
@@ -437,5 +443,39 @@ describe('deadlineActor (G19, review and expiry dates)', () => {
   it('nobody else, records managers included (they follow every date in Archivage)', () => {
     for (const who of ['manager', 'reader', 'stranger']) expect(deadlineActor(who, d, false), who).toBe(false);
     expect(deadlineActor('process', { ...d, processOwnerId: null }, false)).toBe(false);
+  });
+});
+
+describe('mayRecall (docs/modele-cible.md §6, recalling a running circuit)', () => {
+  const running = { requesterId: 'owner', outcome: null };
+  const editor = (id: string, over: { department?: string; seesAll?: boolean } = {}) => viewer(id, { perms: ['read', 'upload', 'edit'], ...over });
+
+  it('lets its requester recall it while it runs, with the edit permission and a place in the drafting circle', () => {
+    expect(mayRecall(editor('owner'), running, doc(), people)).toBe(true);
+    // The designated author who sent it for approval.
+    expect(mayRecall(editor('modifier'), { ...running, requesterId: 'modifier' }, doc(), people)).toBe(true);
+  });
+
+  it('lets a records manager recall any running circuit', () => {
+    expect(mayRecall(editor('manager', { seesAll: true }), running, doc(), people)).toBe(true);
+  });
+
+  it('refuses its approvers, the owner who did not request it, and anyone else', () => {
+    for (const who of ['approver', 'modifier', 'reader', 'stranger']) expect(mayRecall(editor(who), running, doc(), people), who).toBe(false);
+    expect(mayRecall(editor('owner'), { ...running, requesterId: 'modifier' }, doc(), people)).toBe(false);
+  });
+
+  it('refuses once the circuit ended: approved, rejected or recalled', () => {
+    for (const outcome of ['approved', 'rejected', 'recalled']) {
+      expect(mayRecall(editor('owner'), { ...running, outcome }, doc(), people), outcome).toBe(false);
+      expect(mayRecall(editor('manager', { seesAll: true }), { ...running, outcome }, doc(), people), outcome).toBe(false);
+    }
+  });
+
+  it('refuses without the edit permission, and to a requester who left the drafting circle', () => {
+    expect(mayRecall(viewer('owner', { perms: ['read', 'upload'] }), running, doc(), people)).toBe(false);
+    expect(mayRecall(viewer('manager', { perms: ['read'], seesAll: true }), running, doc(), people)).toBe(false);
+    // The owner changed since the request: the former owner no longer works on the draft.
+    expect(mayRecall(editor('owner'), running, doc({ ownerId: 'someone_else' }), people)).toBe(false);
   });
 });

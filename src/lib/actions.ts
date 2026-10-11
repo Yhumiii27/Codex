@@ -5,7 +5,7 @@ import { cookies } from 'next/headers';
 import { refresh } from 'next/cache';
 import { getDb, schema as s } from '@/db';
 import type { Attachment, AuditChange, AuditValue, Conf, Disposition, Origin, RetentionTrigger } from '@/db/schema';
-import { buildAccessIndex, canRead, getAccessIndex, inDraftingCircle, isUsableTemplate, mayWorkOnDraft, readerMaySeeRevision, readersApply } from './access';
+import { buildAccessIndex, canRead, getAccessIndex, inDraftingCircle, isUsableTemplate, mayRecall, mayWorkOnDraft, readerMaySeeRevision, readersApply } from './access';
 import { idMatches, nextDocId, nextWorkflowId } from './codification';
 import { COOKIE_LANG, COOKIE_ROLE, COOKIE_USER, getCtx, type Ctx } from './context';
 import { addDays, fmtSize, loc, nowStamp, parseIsoDay, todayIso } from './format';
@@ -470,7 +470,7 @@ export async function requestValidation(docId: string, effectiveAt: string | nul
     await audit(tx, ctx.user.id, 'request', docId, `${id} · ${rev.letter}`, rev.id);
     if (steps.length === 1) {
       // Circuit without approval (correspondence, photos…): approved as soon as it is requested.
-      await tx.update(s.workflows).set({ outcome: 'approved' }).where(eq(s.workflows.id, id));
+      await tx.update(s.workflows).set({ outcome: 'approved', closedBy: ctx.user.id, closedAt: today }).where(eq(s.workflows.id, id));
       await approveRevision(tx, rev.id);
     } else {
       await refreshHeadline(tx, docId);
@@ -490,10 +490,26 @@ async function loadWorkflow(tx: Tx, id: string) {
   return { w, steps };
 }
 
-/** Approve or reject the current step. `expectedStep` is the step the user saw: a stale click never acts on a later step. */
-export async function decideStep(workflowId: string, approve: boolean, expectedStep: number): Promise<ActionResult> {
+/** Longest reason for rejecting or recalling a circuit. */
+const REASON_MAX = 2000;
+
+/** A rejection's or a recall's reason, trimmed: an error key when it is missing (`required`) or too long. */
+function closingReason(raw: string, required: boolean): { why: string } | { err: TKey } {
+  const why = raw.trim();
+  if (required && !why) return { err: 'reason_required' };
+  return why.length > REASON_MAX ? { err: 'reason_too_long' } : { why };
+}
+
+/**
+ * Approve or reject the current step. `expectedStep` is the step the user saw: a stale click never acts on a later step.
+ * A rejection needs its `reason`, kept on the circuit, in its comments and in the journal.
+ */
+export async function decideStep(workflowId: string, approve: boolean, expectedStep: number, reason = ''): Promise<ActionResult> {
   const ctx = await getCtx();
   if (!ctx.screens.workflow) return fail(ctx, 'forbidden');
+  const motive = closingReason(reason, !approve);
+  if ('err' in motive) return fail(ctx, motive.err);
+  const { why } = motive;
   const db = await getDb();
   const err = await db.transaction(async (tx): Promise<TKey | null> => {
     const wf = await loadWorkflow(tx, workflowId);
@@ -508,19 +524,20 @@ export async function decideStep(workflowId: string, approve: boolean, expectedS
     const lock = lockOf(doc);
     if (lock) return lock;
     const [rev] = await tx.select().from(s.revisions).where(eq(s.revisions.id, w.revisionId));
+    const today = todayIso();
     if (!rev || rev.status !== 'in_review') {
       // Stale workflow (its revision moved on): it is closed and the revision is left as it is.
-      await tx.update(s.workflows).set({ outcome: 'rejected' }).where(eq(s.workflows.id, w.id));
+      await tx.update(s.workflows).set({ outcome: 'rejected', closedBy: ctx.user.id, closedAt: today }).where(eq(s.workflows.id, w.id));
       return 'wrong_step';
     }
     // Holders and delegations may have changed since the launch: the author or requester never decides on the revision.
     if ((await circuitExclusions(tx, doc, rev, w.requesterId)).has(ctx.user.id)) return 'no_self_approval';
-    const today = todayIso();
     if (!approve) {
-      await tx.update(s.workflows).set({ outcome: 'rejected' }).where(eq(s.workflows.id, w.id));
+      await tx.update(s.workflows).set({ outcome: 'rejected', closedBy: ctx.user.id, closedAt: today, reason: why }).where(eq(s.workflows.id, w.id));
       await tx.update(s.revisions).set({ status: 'draft' }).where(and(eq(s.revisions.id, w.revisionId), eq(s.revisions.status, 'in_review')));
-      await tx.insert(s.workflowComments).values({ workflowId: w.id, authorId: ctx.user.id, at: today, text: { fr: 'Rejeté — révision renvoyée en rédaction.', en: 'Rejected — revision sent back to drafting.' } });
-      await audit(tx, ctx.user.id, 'reject', w.docId, w.id, w.revisionId);
+      await tx.insert(s.workflowComments).values({ workflowId: w.id, authorId: ctx.user.id, at: today, text: { fr: `Rejeté — révision renvoyée en rédaction. Motif : ${why}`, en: `Rejected — revision sent back to drafting. Reason: ${why}` } });
+      // The entry follows the revision (D-14): outside the drafting circle, its reason shows once that revision is in force.
+      await audit(tx, ctx.user.id, 'reject', w.docId, `${w.id} · ${why}`, w.revisionId);
       await refreshHeadline(tx, w.docId);
       return null;
     }
@@ -530,11 +547,55 @@ export async function decideStep(workflowId: string, approve: boolean, expectedS
     if (last && !ctx.can('publish')) return 'perm_publish';
     await tx.update(s.workflowSteps).set({ date: today }).where(and(eq(s.workflowSteps.workflowId, w.id), eq(s.workflowSteps.idx, cur.idx)));
     await audit(tx, ctx.user.id, cur.sign ? 'sign' : 'approve', w.docId, w.id, w.revisionId);
-    await tx.update(s.workflows).set({ step, outcome: last ? 'approved' : null }).where(eq(s.workflows.id, w.id));
+    await tx.update(s.workflows).set(last ? { step, outcome: 'approved', closedBy: ctx.user.id, closedAt: today } : { step }).where(eq(s.workflows.id, w.id));
     if (last) await approveRevision(tx, w.revisionId);
     return null;
   });
   if (err) return err === 'perm_approve' ? denied(ctx, 'approve') : err === 'perm_publish' ? denied(ctx, 'publish') : fail(ctx, err);
+  refresh();
+  return { ok: true };
+}
+
+/**
+ * Recalls a running circuit before its last approval (docs/modele-cible.md §6): its requester or a records manager
+ * (access.ts, mayRecall), on a document not locked. The circuit ends « Rappelé » and the revision goes back to drafting;
+ * its approvers leave the drafting circle (D-14). `expectedStep` is the step the user saw: a circuit that moved on, or
+ * ended, since is left alone. `reason` is optional.
+ */
+export async function recallValidation(workflowId: string, expectedStep: number, reason = ''): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const motive = closingReason(reason, false);
+  if ('err' in motive) return fail(ctx, motive.err);
+  const { why } = motive;
+  if (!ctx.can('edit')) return denied(ctx, 'edit');
+  const ix = await getAccessIndex();
+  const db = await getDb();
+  const err = await db.transaction(async (tx): Promise<TKey | null> => {
+    const wf = await loadWorkflow(tx, workflowId);
+    if (!wf) return 'not_found';
+    const { w } = wf;
+    const [[d], [rev]] = await Promise.all([
+      tx.select().from(s.documents).where(eq(s.documents.id, w.docId)),
+      tx.select().from(s.revisions).where(eq(s.revisions.id, w.revisionId)),
+    ]);
+    // Same rule as listWorkflows: a document the user cannot read, or a revision outside their view, gives nothing away.
+    if (!d || !rev || !canRead(ctx, d, ix) || !readerMaySeeRevision(inDraftingCircle(ctx, d, ix), rev.status)) return 'not_found';
+    if (w.outcome || w.step !== expectedStep) return 'wrong_step';
+    if (!mayRecall(ctx, w, d, ix)) return 'not_allowed';
+    const lock = lockOf(d);
+    if (lock) return lock;
+    const today = todayIso();
+    await tx.update(s.workflows).set({ outcome: 'recalled', closedBy: ctx.user.id, closedAt: today, reason: why || null }).where(eq(s.workflows.id, w.id));
+    await tx.update(s.revisions).set({ status: 'draft' }).where(and(eq(s.revisions.id, w.revisionId), eq(s.revisions.status, 'in_review')));
+    const text = why
+      ? { fr: `Demande rappelée — révision renvoyée en rédaction. Motif : ${why}`, en: `Request recalled — revision sent back to drafting. Reason: ${why}` }
+      : { fr: 'Demande rappelée — révision renvoyée en rédaction.', en: 'Request recalled — revision sent back to drafting.' };
+    await tx.insert(s.workflowComments).values({ workflowId: w.id, authorId: ctx.user.id, at: today, text });
+    await audit(tx, ctx.user.id, 'recall', w.docId, why ? `${w.id} · ${why}` : w.id, w.revisionId);
+    await refreshHeadline(tx, w.docId);
+    return null;
+  });
+  if (err) return fail(ctx, err);
   refresh();
   return { ok: true };
 }

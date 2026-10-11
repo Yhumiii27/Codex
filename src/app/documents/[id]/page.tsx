@@ -452,7 +452,16 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
                     <div className="sec-head" style={{ marginBottom: 4 }}><span style={{ fontSize: 13 }}>{t.revision} {running.letter}</span>{running.visible ? <Link href={running.href} className="link-plain" style={{ fontSize: 12 }}>{running.id}</Link> : <span className="text-muted" style={{ fontSize: 12 }}>{running.id}</span>}</div>
                     <div className="text-muted" style={{ fontSize: 11, marginBottom: 14 }}>{t.requested_by} {running.requester} · {t.due} {running.dueF}</div>
                     <VStepper items={running.steps.map((st) => ({ key: st.idx, state: st.state, title: st.nameL, lines: [`${st.assignee} · ${st.stateLabel}${st.dateF ? ` ${st.dateF}` : ''}`] }))} />
-                    {running.visible && <Link href={running.href} className="btn btn-primary" style={{ marginTop: 6 }}>{t.open}</Link>}
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
+                      {running.visible && <Link href={running.href} className="btn btn-primary">{t.open}</Link>}
+                      {/* Its requester or a records manager may recall it before the last approval (lib/access.ts, mayRecall). */}
+                      {running.recallable && (
+                        <DialogButton
+                          spec={{ kind: 'recall', workflowId: running.id, step: running.step, stepName: running.stepName, docId: doc.id, title: doc.title, letter: running.letter }}
+                          className="btn btn-ghost" deniedTitle={lock}
+                        >{t.recall}</DialogButton>
+                      )}
+                    </div>
                   </>
                 ) : (
                   <>
@@ -469,8 +478,11 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ fontSize: 12.5 }}>{t.revision} {w.letter} <span className="text-muted">· {w.id}</span></div>
                             <div className="text-muted ellipsis" style={{ fontSize: 11 }}>{w.requester} · {fmtDate(w.createdAt, lang)}</div>
+                            {/* Who rejected or recalled it, when, and why (the reason of a rejection is required). */}
+                            {w.outcome !== 'approved' && w.closer && <div className="text-muted ellipsis" style={{ fontSize: 11 }}>{w.outcomeL} · {w.closer}{w.closedF ? ` · ${w.closedF}` : ''}</div>}
+                            {w.reason && <div style={{ fontSize: 12, marginTop: 2, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}><span className="text-muted">{t.ecr_reason} : </span>{w.reason}</div>}
                           </div>
-                          <span className={w.outcome === 'approved' ? 'tag tag-accent' : 'tag tag-outline'} style={{ fontSize: 10.5, padding: '2px 8px' }}>{w.outcome === 'approved' ? t.wf_approved : t.wf_rejected}</span>
+                          <span className={w.outcome === 'approved' ? 'tag tag-accent' : 'tag tag-outline'} style={{ fontSize: 10.5, padding: '2px 8px' }}>{w.outcomeL}</span>
                           {w.visible && <Link href={w.href} className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 8px' }}>{t.open}</Link>}
                         </div>
                       ))}
@@ -533,7 +545,7 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
                 {(history.length ? history : [{ id: 0, when: doc.createdF, user: doc.owner, actionLabel: t.act_upload, detail: 'A.1' }]).map((h) => (
                   <div key={h.id} className="feed">
                     <span className="text-muted feed-when">{h.when}</span>
-                    <div style={{ minWidth: 0 }}><div style={{ fontSize: 13 }}>{h.actionLabel}{h.detail && <span className="text-muted"> · {h.detail}</span>}</div><div className="text-muted" style={{ fontSize: 11 }}>{h.user}</div></div>
+                    <div style={{ minWidth: 0 }}><div style={{ fontSize: 13, minWidth: 0, overflowWrap: 'anywhere' }}>{h.actionLabel}{h.detail && <span className="text-muted"> · {h.detail}</span>}</div><div className="text-muted" style={{ fontSize: 11 }}>{h.user}</div></div>
                   </div>
                 ))}
               </div>

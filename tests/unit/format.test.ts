@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { addDays, addYears, daysBetween, fmtClock, fmtDate, fmtDateTime, fmtSize, fmtWhen, loc, nowStamp, parisStamp, parisToUtc, parseIsoDay, todayIso } from '@/lib/format';
+import { addDays, addYears, clip, daysBetween, fmtClock, fmtDate, fmtDateTime, fmtSize, fmtWhen, loc, nowStamp, parisStamp, parisToUtc, parseIsoDay, todayIso } from '@/lib/format';
 
 // Dates are calendar days "YYYY-MM-DD"; timestamps are written in Paris time (the group's time zone).
 
@@ -132,5 +132,20 @@ describe('Paris time', () => {
     for (const local of ['2026-01-01 00:00:00', '2026-06-30 23:59:59', '2026-10-05 09:45:00', '2027-02-28 12:00:00']) {
       expect(parisStamp(parisToUtc(local)), local).toBe(local);
     }
+  });
+});
+
+describe('clip (a reason quoted in « À traiter »)', () => {
+  it('keeps a short text, on one line', () => {
+    expect(clip('Plan de contrôle', 140)).toBe('Plan de contrôle');
+    expect(clip('  Tableau 3 faux.\n\nRevoir   la section 2.  ', 140)).toBe('Tableau 3 faux. Revoir la section 2.');
+  });
+
+  it('cuts a long text to its length, ellipsis included', () => {
+    const cut = clip('x'.repeat(2000), 140);
+    expect(cut).toHaveLength(140);
+    expect(cut.endsWith('…')).toBe(true);
+    expect(clip('abcdef', 6)).toBe('abcdef');
+    expect(clip('abcd efgh', 6)).toBe('abcd…');
   });
 });

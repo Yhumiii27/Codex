@@ -98,7 +98,7 @@ const fr = {
   // Rules and states added after review
   st_cancelled:'Annulée', act_release:'Levée du gel', release_hold:'Lever le gel juridique', follow_workflow:'Suivre le circuit',
   invalid_date:'Date invalide : choisissez aujourd’hui ou une date à venir.',
-  circuit_running:'Circuit de validation en cours : rejetez-le ou attendez sa décision avant de changer le type ou le contexte.',
+  circuit_running:'Circuit de validation en cours : attendez sa décision, ou que son demandeur (ou un gestionnaire documentaire) rappelle la demande, avant de changer le type ou le contexte.',
   delegate_no_approve:'Cette personne ne peut pas valider avec son rôle par défaut.',
   admin_lockout:'Retrait impossible : votre rôle perdrait l’accès à l’administration.',
   not_enforced:'Non appliqué dans la simulation',
@@ -112,6 +112,13 @@ const fr = {
   target:'Objet', target_permission:'Droit', target_export:'Export', active_label:'Actif', export_rows:'lignes', export_full:'journal complet', export_unfiltered:'sans filtre', export_interrupted:'interrompu après',
   // « À traiter » (G19)
   todo_empty:'Rien à traiter pour le moment.', todo_eco:'à rédiger', todo_rejected:'renvoyée en rédaction par', todo_draft:'en brouillon, jamais soumise à validation', todo_assigned:'confiée à', todo_graft:'greffe possible sur la révision',
+  todo_recalled:'demande de validation rappelée par',
+  // Rejet motivé et rappel d'une demande de validation
+  reject_title:'Rejeter l’étape', reject_hint:'La révision repart en rédaction. Le motif est ajouté aux commentaires du circuit et au journal ; l’auteur et le propriétaire le retrouvent sur la fiche et dans « À traiter ».',
+  reason_optional:'Motif (facultatif)', reason_required:'Le motif du rejet est obligatoire.', reason_too_long:'Motif trop long : 2 000 caractères au plus.',
+  recall:'Rappeler la demande', recall_title:'Rappeler la demande de validation', recall_hint:'Le circuit s’arrête et la révision revient en rédaction : les valideurs n’ont plus d’étape à décider. Vous pourrez la soumettre de nouveau.',
+  recall_note:'Vous pouvez rappeler cette demande tant que la dernière approbation n’est pas faite : la révision reviendra en rédaction.',
+  wf_recalled:'Rappelé', act_recall:'Rappel de la demande de validation',
 };
 
 type Dict = Record<keyof typeof fr, string>;
@@ -211,7 +218,7 @@ const en: Dict = {
   // Rules and states added after review
   st_cancelled:'Cancelled', act_release:'Hold released', release_hold:'Release legal hold', follow_workflow:'Follow the workflow',
   invalid_date:'Invalid date: pick today or a later date.',
-  circuit_running:'Approval workflow in progress: reject it or wait for its decision before changing the type or context.',
+  circuit_running:'Approval workflow in progress: wait for its decision, or for its requester (or a records manager) to recall the request, before changing the type or context.',
   delegate_no_approve:'This person cannot approve with their default role.',
   admin_lockout:'Cannot revoke: your role would lose access to administration.',
   not_enforced:'Not enforced in the simulation',
@@ -225,6 +232,13 @@ const en: Dict = {
   target:'Target', target_permission:'Permission', target_export:'Export', active_label:'Active', export_rows:'rows', export_full:'full log', export_unfiltered:'no filter', export_interrupted:'interrupted after',
   // « À traiter » (G19)
   todo_empty:'Nothing to do for now.', todo_eco:'to draft', todo_rejected:'sent back to drafting by', todo_draft:'drafted, never sent for approval', todo_assigned:'assigned to', todo_graft:'may be grafted onto revision',
+  todo_recalled:'approval request recalled by',
+  // Reasoned rejection and recall of an approval request
+  reject_title:'Reject the step', reject_hint:'The revision goes back to drafting. The reason is added to the workflow comments and to the audit trail; the author and the owner find it on the record and in “To do”.',
+  reason_optional:'Reason (optional)', reason_required:'A reason is required to reject.', reason_too_long:'Reason too long: 2,000 characters at most.',
+  recall:'Recall the request', recall_title:'Recall the approval request', recall_hint:'The workflow stops and the revision goes back to drafting: the approvers no longer have a step to decide. You may send it for approval again.',
+  recall_note:'You may recall this request until the last approval is given: the revision will go back to drafting.',
+  wf_recalled:'Recalled', act_recall:'Approval request recalled',
 };
 
 export const DICT: Record<Lang, Dict> = { fr, en };

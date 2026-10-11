@@ -66,6 +66,11 @@ export type DialogSpec =
   | { kind: 'change'; docId: string; title: string; change: 'modification' | 'obsolescence'; openRev?: { letter: string; status: 'draft' | 'in_review' | 'approved' } }
   /** Hand the current step on: `step` is the step shown, `excluded` the people who may not approve this revision. */
   | { kind: 'delegate'; workflowId: string; stepName: string; step: number; excluded: string[] }
+  /**
+   * End a running circuit, the revision going back to drafting: reject the current step, with a reason (required), or
+   * recall the request, with an optional one. `step` is the step shown: the circuit may have moved on since.
+   */
+  | { kind: 'reject' | 'recall'; workflowId: string; step: number; stepName: string; docId: string; title: string; letter: string }
   | { kind: 'compare'; current: VersionLite; other: VersionLite }
   /** Named readers of a confidential or "très confidentiel" document. */
   | { kind: 'readers'; docId: string; readers: string[] }

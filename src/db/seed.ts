@@ -216,7 +216,10 @@ export async function seed(db: Db) {
       const steps = circuitSteps(type, demo, demo.owner, demo.owner);
       const wid = `W-${++wfSeq}`;
       const sdates = spread(addDays(rev.inForceAt!, -6), rev.inForceAt!, steps.length);
-      await tx.insert(s.workflows).values({ id: wid, docId: id, revisionId: rev.id, requesterId: demo.owner, due: addDays(rev.inForceAt!, 3), step: steps.length, outcome: 'approved', createdAt: sdates[0] });
+      await tx.insert(s.workflows).values({
+        id: wid, docId: id, revisionId: rev.id, requesterId: demo.owner, due: addDays(rev.inForceAt!, 3), step: steps.length, outcome: 'approved',
+        closedBy: steps[steps.length - 1].assigneeId, closedAt: sdates[sdates.length - 1], createdAt: sdates[0],
+      });
       await tx.insert(s.workflowSteps).values(steps.map((st, idx) => ({ workflowId: wid, idx, ...st, date: sdates[idx] })));
       audit.push({ at: stamp(sdates[0], `${wid}r`), userId: demo.owner, action: 'request', docId: id, detail: `${wid} · ${rev.letter}`, revisionId: rev.id });
       steps.slice(1).forEach((st, i) => audit.push({ at: stamp(sdates[i + 1], `${wid}${i}`), userId: st.assigneeId, action: 'approve', docId: id, detail: wid, revisionId: rev.id }));

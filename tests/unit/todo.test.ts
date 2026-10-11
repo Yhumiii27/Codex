@@ -5,7 +5,7 @@ import type { MyAction, Todo } from '@/lib/queries';
 // « À traiter » (G19): the home's list, the sidebar badge and the bell come from one source and show the same items.
 // A client navigation renders the home page again but not the layout: the shell keeps the most recent list.
 
-const item = (key: string): MyAction => ({ key, kind: 'step', docId: key, docTitle: key, detail: key, href: '/', due: null });
+const item = (key: string): MyAction => ({ key, kind: 'step', docId: key, docTitle: key, detail: key, note: null, href: '/', due: null });
 const list = (at: number, n: number): Todo => ({ at, items: Array.from({ length: n }, (_, i) => item(`k${i}`)) });
 
 describe('latestTodo (badge and bell follow the most recent list)', () => {

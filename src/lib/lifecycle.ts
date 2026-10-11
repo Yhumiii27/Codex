@@ -225,7 +225,7 @@ async function implementChange(tx: Tx, req: ChangeRow, doc: DocRow, actorId: str
   } else {
     const running = await tx.select().from(s.workflows).where(and(eq(s.workflows.docId, doc.id), isNull(s.workflows.outcome)));
     for (const w of running) {
-      await tx.update(s.workflows).set({ outcome: 'rejected' }).where(eq(s.workflows.id, w.id));
+      await tx.update(s.workflows).set({ outcome: 'rejected', closedBy: actorId, closedAt: at.slice(0, 10) }).where(eq(s.workflows.id, w.id));
       await tx.insert(s.workflowComments).values({ workflowId: w.id, authorId: actorId, at: at.slice(0, 10), text: { fr: `Circuit clos — document retiré (${ref}).`, en: `Workflow closed — document withdrawn (${ref}).` } });
       await audit(tx, actorId, 'reject', doc.id, w.id, w.revisionId);
     }

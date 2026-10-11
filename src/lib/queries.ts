@@ -3,10 +3,10 @@ import { cache } from 'react';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { getDb, schema as s } from '@/db';
 import type { AuditChange, AuditData, AuditTargetKind, AuditValue, Conf } from '@/db/schema';
-import { canRead, changeAsSeen, deadlineActor, draftTodo, getAccessIndex, inDraftingCircle, isUsableTemplate, mayWorkOnDraft, openRevisionView, readerMaySeeEntry, readerMaySeeRevision, type AccessIndex } from './access';
+import { canRead, changeAsSeen, deadlineActor, draftTodo, getAccessIndex, inDraftingCircle, isUsableTemplate, mayRecall, mayWorkOnDraft, openRevisionView, readerMaySeeEntry, readerMaySeeRevision, type AccessIndex } from './access';
 import { revLabel } from './codification';
 import type { Ctx } from './context';
-import { addDays, daysBetween, fmtDate, fmtDateTime, fmtSize, fmtWhen, loc, parisStamp, todayIso } from './format';
+import { addDays, clip, daysBetween, fmtDate, fmtDateTime, fmtSize, fmtWhen, loc, parisStamp, todayIso } from './format';
 import { CONF_LEVELS, MATRIX_ROLE_LABEL, TAGCLS, type T, type TKey } from './i18n';
 import { decisionWait, lockOf, type DecisionWait } from './lifecycle';
 import { retainUntil } from './retention';
@@ -207,6 +207,7 @@ export async function listWorkflows(ctx: Ctx) {
     const involved = w.requesterId === ctx.user.id || ws.some((x) => x.assigneeId === ctx.user.id);
     const doc = docBy.get(w.docId);
     const rev = revBy.get(w.revisionId);
+    const outcomeL = w.outcome === 'approved' ? t.wf_approved : w.outcome === 'rejected' ? t.wf_rejected : w.outcome === 'recalled' ? t.wf_recalled : null;
     return {
       ...w,
       docTitle: doc?.title ?? w.docId,
@@ -219,12 +220,19 @@ export async function listWorkflows(ctx: Ctx) {
       dueF: fmtDate(w.due, lang),
       steps: ws,
       current: cur ?? null,
-      stepName: w.outcome === 'rejected' ? t.wf_rejected : cur && !w.outcome ? cur.nameL : t.wf_finished,
-      /** Over once it has an outcome: a rejection stops the circuit at the rejecting step. */
+      stepName: (w.outcome === 'rejected' || w.outcome === 'recalled') && outcomeL ? outcomeL : cur && !w.outcome ? cur.nameL : t.wf_finished,
+      /** « Approuvé », « Rejeté » or « Rappelé » once it ended, else null. */
+      outcomeL,
+      /** Who ended it (a rejection recorded without it: the step it stopped at), and when. */
+      closer: w.closedBy ? ctx.userName(w.closedBy) : w.outcome === 'rejected' ? cur?.assignee ?? null : null,
+      closedF: w.closedAt ? fmtDate(w.closedAt, lang) : '',
+      /** Over once it has an outcome: a rejection or a recall stops the circuit at the step it had reached. */
       done: !!w.outcome || w.step >= ws.length,
       /** Running and waiting for the current user's decision. */
       mine: !w.outcome && !!cur && cur.assigneeId === ctx.user.id,
       requested: w.requesterId === ctx.user.id,
+      /** The user may recall it (access.ts, mayRecall); a lock of the document still stops them (recallValidation). */
+      recallable: !!doc && mayRecall(ctx, w, doc, ix),
       /**
        * Records managers follow every workflow; others the ones they take part in, as long as they may read the
        * document and see the revision (D-14: once the circuit is over, its approvers leave the drafting circle).
@@ -371,23 +379,30 @@ export type DeadlineView = ReturnType<typeof deadlines>[number];
 // ── What waits for the user (G19) ────────────────────────────────────────
 
 /**
- * An approval step to decide; a revision to draft again after a rejection, assigned by an ECO, or never submitted; an
- * accepted change that may be grafted onto the revision being drafted (D-26); a review or an expiry falling due.
+ * An approval step to decide; a revision to draft again after a rejection or a recall, assigned by an ECO, or never
+ * submitted; an accepted change that may be grafted onto the revision being drafted (D-26); a review or an expiry
+ * falling due.
  */
-export type ActionKind = 'step' | 'rejected' | 'eco' | 'graft' | 'draft' | 'review' | 'renew';
-const ACTION_ORDER: readonly ActionKind[] = ['step', 'rejected', 'eco', 'graft', 'draft', 'review', 'renew'];
+export type ActionKind = 'step' | 'rejected' | 'recalled' | 'eco' | 'graft' | 'draft' | 'review' | 'renew';
+const ACTION_ORDER: readonly ActionKind[] = ['step', 'rejected', 'recalled', 'eco', 'graft', 'draft', 'review', 'renew'];
 
-/** One thing waiting for the user: what to do (`detail`, in their language) and where to do it (`href`). */
-export type MyAction = { key: string; kind: ActionKind; docId: string; docTitle: string; detail: string; href: string; due: string | null };
+/** Characters of a rejection's or a recall's reason quoted in « À traiter » (the record shows all of it). */
+const REASON_SHOWN = 140;
+
+/**
+ * One thing waiting for the user: what to do (`detail`, in their language), why a circuit sent the revision back
+ * (`note`, its reason abridged, shown on a line of its own) and where to do it (`href`).
+ */
+export type MyAction = { key: string; kind: ActionKind; docId: string; docTitle: string; detail: string; note: string | null; href: string; due: string | null };
 
 /**
  * Everything waiting for the user, the one source of the home's « À traiter », the sidebar badge and the bell (G19).
  * An item is listed only on a document the user may see (listDocs, D-14) and when the server would let them act:
  * - steps of running circuits assigned to them, on a document not locked, with the approve permission and the
  *   Validations screen (decideStep);
- * - revisions being drafted (draftTodo: sent back by a circuit, assigned by an ECO, never submitted), when they may
- *   work on the draft of an unlocked document (mayWorkOnDraft) and upload a working version or, once there is one,
- *   send it for approval (addWorkingVersion, requestValidation);
+ * - revisions being drafted (draftTodo: sent back by a circuit rejected or recalled, with its reason; assigned by an
+ *   ECO; never submitted), when they may work on the draft of an unlocked document (mayWorkOnDraft) and upload a
+ *   working version or, once there is one, send it for approval (addWorkingVersion, requestValidation);
  * - changes Vigie accepted while that revision is drafted, which they may graft onto it (openRevisionView, graftChange);
  * - review and expiry dates within DEADLINE_WINDOW_DAYS, or past, of the unlocked documents they own or own the process
  *   of (deadlineActor), with the edit permission. End of retention stays with records managers, in Archivage.
@@ -410,8 +425,8 @@ export const myActions = cache(async (ctx: Ctx): Promise<MyAction[]> => {
   const drafted = draftIds.length ? await db.selectDistinct({ revisionId: s.workingVersions.revisionId }).from(s.workingVersions).where(inArray(s.workingVersions.revisionId, draftIds)) : [];
   const withVersions = new Set(drafted.map((v) => v.revisionId));
   const out: MyAction[] = [];
-  const push = (kind: ActionKind, d: DocView, detail: string, href: string, due: string | null = null, key = d.id) =>
-    out.push({ key: `${kind}:${key}`, kind, docId: d.id, docTitle: d.title, detail, href, due });
+  const push = (kind: ActionKind, d: DocView, detail: string, href: string, due: string | null = null, key = d.id, note: string | null = null) =>
+    out.push({ key: `${kind}:${key}`, kind, docId: d.id, docTitle: d.title, detail, note, href, due });
 
   if (ctx.screens.workflow && ctx.can('approve')) {
     for (const w of workflows) {
@@ -425,18 +440,23 @@ export const myActions = cache(async (ctx: Ctx): Promise<MyAction[]> => {
     const d = docBy.get(r.docId);
     if (!d || r.status !== 'draft' || lockOf(d) || !mayWorkOnDraft(ctx, d, ix)) continue;
     if (!ctx.can('upload') && !(ctx.can('edit') && withVersions.has(r.id))) continue;
-    // A draft revision with a circuit was sent back by it: the last one names who rejected it (the step it stopped at)
+    // A draft revision with a circuit was sent back by it, rejected or recalled: the last one names who ended it, why,
     // and who drafted it (its first step).
     const last = workflows.filter((w) => w.revisionId === r.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt) || Number(b.id.slice(2)) - Number(a.id.slice(2)))[0];
-    if (last && last.outcome !== 'rejected') continue;
-    const kind = draftTodo(me, r, d.ownerId, last ? { authorId: last.steps[0]?.assigneeId ?? r.modifierId ?? d.ownerId } : null);
+    const sentBack = last?.outcome === 'rejected' || last?.outcome === 'recalled' ? last.outcome : null;
+    if (last && !sentBack) continue;
+    const kind = draftTodo(me, r, d.ownerId, last && sentBack ? { authorId: last.steps[0]?.assigneeId ?? r.modifierId ?? d.ownerId, outcome: sentBack } : null);
     if (!kind) continue;
     const rev = `${d.id} · ${t.rev_short} ${d.workingLabel ?? r.letter}`;
     const eco = r.changeRef ? ` · ${r.changeRef}` : '';
     // The owner's draft an ECO assigned to someone else names who was designated to write it.
     const assigned = r.modifierId && r.modifierId !== me ? ` · ${t.todo_assigned} ${ctx.userName(r.modifierId)}${eco}` : '';
-    const detail = kind === 'rejected' ? `${rev} ${t.todo_rejected} ${last?.current?.assignee ?? '—'}${eco}` : kind === 'eco' ? `${rev} ${t.todo_eco}${eco}` : `${rev} ${t.todo_draft}${assigned}`;
-    push(kind, d, detail, `${d.href}?tab=versions`);
+    const sent = kind === 'rejected' || kind === 'recalled';
+    const detail = sent
+      ? `${rev} ${kind === 'rejected' ? t.todo_rejected : t.todo_recalled} ${last?.closer ?? '—'}${eco}`
+      : kind === 'eco' ? `${rev} ${t.todo_eco}${eco}` : `${rev} ${t.todo_draft}${assigned}`;
+    const note = sent && last?.reason ? `${t.ecr_reason} : ${clip(last.reason, REASON_SHOWN)}` : null;
+    push(kind, d, detail, `${d.href}?tab=versions`, null, d.id, note);
   }
 
   if (ctx.can('edit')) {

@@ -52,7 +52,7 @@ describe('approval steps', () => {
     await addDoc(db(), { id: ID, revisions: [{ letter: 'A', status: 'in_force' }, { letter: 'B', status: 'in_review', versions: ['owner'] }] });
     await addWorkflow(db(), { id: 'W-1', docId: ID, letter: 'B', requesterId: 'owner', author: 'owner', approvers: ['head', 'quality'] });
     expect(await todo('head')).toEqual([{
-      key: 'step:W-1', kind: 'step', docId: ID, docTitle: ID, href: '/validations?r=W-1', due: '2026-10-20',
+      key: 'step:W-1', kind: 'step', docId: ID, docTitle: ID, href: '/validations?r=W-1', due: '2026-10-20', note: null,
       detail: `${ID} · ${t.rev_short} B · ${t.requested_by} owner · ${t.step} : step 1 · ${t.due} 20/10/2026`,
     }]);
     // The next approver, the requester and a records manager have nothing to decide yet.
@@ -88,12 +88,12 @@ describe('revisions being drafted', () => {
     const [req] = await db().select().from(s.changeRequests);
     await db().transaction((tx) => applyChangeDecision(tx, req.id, { accepted: true, ecoRef: ECO, modifierId: 'writer' }, 'vigie'));
     expect(await todo('writer')).toEqual([{
-      key: `eco:${ID}`, kind: 'eco', docId: ID, docTitle: ID, href: `/documents/${ID}?tab=versions`, due: null,
+      key: `eco:${ID}`, kind: 'eco', docId: ID, docTitle: ID, href: `/documents/${ID}?tab=versions`, due: null, note: null,
       detail: `${ID} · ${t.rev_short} B ${t.todo_eco} · ${ECO}`,
     }]);
     // A draft of his never submitted: the owner may send it for approval too, and is told who was designated to write it.
     expect(await todo('owner')).toEqual([{
-      key: `draft:${ID}`, kind: 'draft', docId: ID, docTitle: ID, href: `/documents/${ID}?tab=versions`, due: null,
+      key: `draft:${ID}`, kind: 'draft', docId: ID, docTitle: ID, href: `/documents/${ID}?tab=versions`, due: null, note: null,
       detail: `${ID} · ${t.rev_short} B ${t.todo_draft} · ${t.todo_assigned} writer · ${ECO}`,
     }]);
     // The requester, a records manager and the approvers have nothing to do.
@@ -109,7 +109,7 @@ describe('revisions being drafted', () => {
 
   it('a draft never submitted waits for its owner until it is sent for approval', async () => {
     await addDoc(db(), { id: ID, revisions: [{ letter: 'A', status: 'draft', versions: ['owner'] }] });
-    expect(await todo('owner')).toEqual([{ key: `draft:${ID}`, kind: 'draft', docId: ID, docTitle: ID, href: `/documents/${ID}?tab=versions`, due: null, detail: `${ID} · ${t.rev_short} A.1 ${t.todo_draft}` }]);
+    expect(await todo('owner')).toEqual([{ key: `draft:${ID}`, kind: 'draft', docId: ID, docTitle: ID, href: `/documents/${ID}?tab=versions`, due: null, note: null, detail: `${ID} · ${t.rev_short} A.1 ${t.todo_draft}` }]);
     for (const who of ['writer', 'head', 'manager'] as const) expect(await kinds(who), who).toEqual([]);
     expect(await act('owner', () => requestValidation(ID, null))).toMatchObject({ ok: true });
     expect(await kinds('owner')).toEqual([]);
@@ -134,10 +134,13 @@ describe('revisions being drafted', () => {
     await drafting({ modifier: 'writer', authors: ['writer'] });
     expect(await act('writer', () => requestValidation(ID, null))).toMatchObject({ ok: true });
     expect(await kinds('writer')).toEqual([]);
-    expect(await act('head', () => decideStep('W-1', false, 1))).toEqual({ ok: true });
+    expect(await act('head', () => decideStep('W-1', false, 1, 'Tableau 3 à corriger'))).toEqual({ ok: true });
+    // Who sent it back, and why on a line of its own (the reason of a rejection is required).
     const sentBack = `${ID} · ${t.rev_short} B.1 ${t.todo_rejected} head · ${ECO}`;
     for (const who of ['writer', 'owner'] as const) {
-      expect((await todo(who)).map((a) => [a.kind, a.detail, a.href]), who).toEqual([['rejected', sentBack, `/documents/${ID}?tab=versions`]]);
+      expect((await todo(who)).map((a) => [a.kind, a.detail, a.note, a.href]), who).toEqual([
+        ['rejected', sentBack, `${t.ecr_reason} : Tableau 3 à corriger`, `/documents/${ID}?tab=versions`],
+      ]);
     }
     // The approvers left the drafting circle with the circuit (D-14): nothing for them, nor for a records manager.
     for (const who of ['head', 'quality', 'manager'] as const) expect(await kinds(who), who).toEqual([]);
@@ -151,7 +154,7 @@ describe('revisions being drafted', () => {
     // A records manager wrote B.1; the owner sent it for approval and the head of department rejected it.
     await drafting({ authors: ['manager'] });
     expect(await act('owner', () => requestValidation(ID, null))).toMatchObject({ ok: true });
-    expect(await act('head', () => decideStep('W-1', false, 1))).toEqual({ ok: true });
+    expect(await act('head', () => decideStep('W-1', false, 1, 'Hors périmètre'))).toEqual({ ok: true });
     expect(await kinds('manager')).toEqual([`rejected ${ID}`]);
     expect(await kinds('owner')).toEqual([`rejected ${ID}`]);
     // Simulating another role, the same person is outside the drafting circle: the revision does not exist for them.
@@ -215,8 +218,8 @@ describe('review and expiry dates', () => {
   it('wait for the owner and the process owner, overdue or within 90 days, with a link to the record', async () => {
     await dated();
     const items = [
-      { key: `review:${ID}`, kind: 'review', docId: ID, docTitle: ID, href: `/documents/${ID}?tab=meta`, due: '2026-11-30', detail: `${ID} · ${t.dl_review} 30/11/2026 · 51 ${t.days_left}` },
-      { key: `renew:${ID}`, kind: 'renew', docId: ID, docTitle: ID, href: `/documents/${ID}?tab=meta`, due: '2026-10-01', detail: `${ID} · ${t.dl_expiry} 01/10/2026 · 9 ${t.days_late}` },
+      { key: `review:${ID}`, kind: 'review', docId: ID, docTitle: ID, href: `/documents/${ID}?tab=meta`, due: '2026-11-30', note: null, detail: `${ID} · ${t.dl_review} 30/11/2026 · 51 ${t.days_left}` },
+      { key: `renew:${ID}`, kind: 'renew', docId: ID, docTitle: ID, href: `/documents/${ID}?tab=meta`, due: '2026-10-01', note: null, detail: `${ID} · ${t.dl_expiry} 01/10/2026 · 9 ${t.days_late}` },
     ];
     expect(await todo('owner')).toEqual(items);
     expect(await todo('writer')).toEqual(items);

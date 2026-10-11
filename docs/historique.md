@@ -725,3 +725,56 @@ un brouillon jamais soumis n'étaient listés nulle part, et les échéances n'�
   Wagner, Léa Marchand et James Holt (auditeur) voient « Rien à traiter pour le moment. », sans pastille ni point
   rouge ; Antoine Girard, simulé en collaborateur, n'a plus d'étape à décider. Vue en anglais vérifiée.
 
+
+## 16. Rejet motivé et rappel d'une demande de validation (11 oct.)
+
+Points 9 et 5 de [reste-a-faire.md](reste-a-faire.md) (G17, FON-08) : un valideur rejetait une étape d'un clic, sans
+dire pourquoi, et le demandeur restait bloqué jusqu'à la décision des valideurs, sans pouvoir rappeler sa demande.
+
+- **Rejet** : `decideStep` (`src/lib/actions.ts`) prend un motif et refuse un rejet sans motif (vide ou blancs) ou de
+  plus de 2 000 caractères, sans rien écrire. Le motif est gardé sur le circuit (`workflows.reason`, avec qui l'a clos
+  et quand, `closed_by` et `closed_at`), dans le commentaire du circuit (« Rejeté — révision renvoyée en rédaction.
+  Motif : … ») et dans le détail de l'entrée `reject` du journal, rattachée à la révision : hors du cercle de rédaction,
+  elle reste masquée tant que la révision n'est pas en vigueur (D-14). Sur l'écran Validations, « Rejeter » ouvre un
+  dialogue qui demande le motif (champ obligatoire, refus du serveur pour des blancs).
+- **Rappel** : `recallValidation` permet au demandeur, ou à un gestionnaire documentaire, de rappeler un circuit en
+  cours tant que la dernière approbation n'est pas faite (`mayRecall`, `src/lib/access.ts` : droit Modifier, cercle de
+  rédaction ; refusé sur un document verrouillé), avec un motif facultatif. Le circuit est clos avec l'issue `recalled`
+  (« Rappelé »), distincte du rejet ; la révision revient en brouillon ; un commentaire et une entrée `recall` du journal
+  sont écrits. Comme pour une décision, l'étape que l'utilisateur a vue est transmise : un clic sur un circuit qui a
+  avancé ou qui est déjà clos ne fait rien (« Le circuit a avancé entre-temps »). Bouton « Rappeler la demande » dans
+  Validations › Mes demandes (avec une phrase qui dit jusqu'à quand) et dans l'onglet Validation de la fiche.
+- **Ce que voient les autres** : les valideurs sortent du cercle avec la fin du circuit ; celui dont l'étape attendait
+  ne le voit plus dans sa liste ni dans « À traiter ». La fiche (onglet Validation) donne, pour un circuit rejeté ou
+  rappelé, qui l'a clos, quand et le motif ; l'écran Validations les donne dans le bandeau de fin et les commentaires.
+  « À traiter » de l'auteur, du modificateur et du propriétaire donne « renvoyée en rédaction par … » ou « demande de
+  validation rappelée par … », avec le motif sur une ligne à part (champ `note`, abrégé à 140 caractères par `clip`,
+  `src/lib/format.ts`), sur l'Accueil comme dans la cloche ; une révision rappelée n'y est plus présentée comme
+  « jamais soumise ». Dans l'onglet Historique de la fiche, un long motif (une URL) passe à la ligne au lieu de
+  déborder.
+- **Schéma** : colonnes `closed_by`, `closed_at` et `reason` de `workflows`, renseignées à chaque fin de circuit
+  (dernière approbation, rejet, rappel, retrait accepté) ; migration unique régénérée.
+- **Choix à confirmer** (`docs/decisions.md`, « Choix de l'assistant non validés explicitement ») : longueur du motif,
+  qui peut rappeler (pas le propriétaire qui n'a pas fait la demande), droit Modifier exigé.
+- **Après relecture** : le message qui verrouille type et contexte pendant un circuit (`circuit_running`) ne suppose
+  plus que le lecteur peut rappeler la demande (« attendez sa décision, ou que son demandeur (ou un gestionnaire
+  documentaire) rappelle la demande ») ; guillemets anglais dans `reject_hint` en anglais. Vérifié dans le navigateur
+  sur une base neuve : le motif occupe sa propre ligne sur la carte de l'Accueil et dans la cloche (Gabriel Comte ;
+  Camille Morvan, dont le motif contient une longue URL abrégée ; Lucas Fabre en anglais) ; dans l'Historique de
+  `FDS-HLT-026-001`, la même URL passe à la ligne sans défilement horizontal ; le dialogue « Modifier les
+  métadonnées » de Claire Bardet sur `RSQ-HSE-0001` affiche le nouveau message ; « Reject » en anglais dit “To do”.
+- **Vérifié** : `npm test` (390 tests, dont les 16 de `tests/integration/reject-recall.test.ts`, `mayRecall`, `draftTodo`
+  et `clip`), `npm run typecheck`, `npm run lint`. Les tests échouent si le motif n'est plus exigé, si le rappel laisse
+  la révision en revue, l'ouvre à un valideur ou au propriétaire qui n'a pas fait la demande, s'il agit deux fois, si
+  le bouton « Rappeler la demande » n'est plus proposé au demandeur et au gestionnaire (`recallable`), ou si la fiche
+  d'un document sans révision en vigueur reste « En revue » après un rejet ou un rappel.
+  Dans le navigateur, sur une base de démo neuve : Hélène Sauvage (valideur) ouvre « Rejeter » sur W-304 ; sans motif,
+  le formulaire ne part pas ; avec des blancs, le serveur répond « Le motif du rejet est obligatoire. » et rien ne
+  change ; avec un motif, le circuit quitte sa liste. Gabriel Comte, demandeur, voit « Rejeté · Hélène Sauvage ·
+  11/10/2026 » et le motif dans Validations, sur la fiche de `RPT-HLT-026-001` et dans « À traiter ». Lucas Fabre
+  rappelle W-305 depuis Mes demandes, avec un motif : « Rappelé », révision A en brouillon, et W-305 disparaît de
+  « À valider » de Claire Bardet (pastille de 3 à 2). Julien Wagner rappelle W-307 depuis la fiche de `PRT-R2601-001`,
+  sans motif : la liste de Yasmine Aït-Saïd, qui devait décider, devient vide. Clic périmé : Julien Wagner affiche W-301,
+  Antoine Girard donne la dernière approbation, puis Julien Wagner rappelle : message « Le circuit a avancé
+  entre-temps », la révision D reste en vigueur. James Holt (auditeur) n'a pas accès au brouillon rappelé. Vue en
+  anglais vérifiée (« Recalled », « Reason », journal « Approval request recalled »).

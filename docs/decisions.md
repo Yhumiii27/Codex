@@ -475,6 +475,15 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
 - **Cycle de vie** (D-11) : « Remplacé » pour la révision précédente, mise en vigueur automatique à la date d'effet.
 - **Circuits** (D-15) : le demandeur du circuit, le modificateur désigné et les auteurs des versions de travail sont
   écartés de la validation.
+- **Rejet motivé et rappel d'une demande de validation** (G17, 11 octobre ; `docs/modele-cible.md` §6) : un rejet
+  exige un motif de 2 000 caractères au plus, gardé sur le circuit, dans ses commentaires et au journal (entrée
+  rattachée à la révision, donc masquée hors du cercle de rédaction tant qu'elle n'est pas en vigueur, D-14). Le
+  demandeur, ou un gestionnaire documentaire, peut rappeler un circuit en cours tant que la dernière approbation n'est
+  pas faite : il lui faut le droit « Modifier » (celui qui permet de demander la validation), une place dans le cercle
+  de rédaction et un document non verrouillé ; le motif est facultatif. Le circuit est clos « Rappelé », issue
+  distincte du rejet, et la révision revient en rédaction, comme après un rejet. Le propriétaire qui n'a pas fait la
+  demande ne peut pas la rappeler. Abandonner un brouillon jamais mis en vigueur (statut « Annulée ») reste une règle
+  à faire valider.
 - **Retrait** (D-17) : effets d'un retrait accepté sur le travail en cours (circuit clos, révisions ouvertes annulées).
 - **Documents obsolètes ou archivés** (D-17) : bandeau d'avertissement sur la fiche et dans l'aperçu rapide de
   l'explorateur, suffixe `_OBSOLETE` ou `_ARCHIVE` dans le nom proposé au téléchargement (`docs/modele-cible.md` §4).

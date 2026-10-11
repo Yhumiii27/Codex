@@ -103,6 +103,7 @@ export function Header({ notif }: { notif: Notif }) {
                       <span style={{ minWidth: 0 }}>
                         <span className="ellipsis" style={{ display: 'block', color: 'var(--color-text)' }}>{p.docTitle}</span>
                         <span className="text-muted sub">{p.detail}</span>
+                        {p.note && <span className="sub" style={{ display: 'block', color: 'var(--color-text)', overflowWrap: 'anywhere', marginTop: 2 }}>{p.note}</span>}
                       </span>
                     </Link>
                   ))}

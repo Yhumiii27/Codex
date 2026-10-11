@@ -6,8 +6,9 @@ et des arbitrages du 7 octobre 2026. Ce document fait foi pour l'implémentation
 Certaines règles ci-dessous sont des propositions de l'assistant, implémentées mais **non confirmées par l'utilisateur** :
 authentification Entra ID (§1), code département hors rattachement, largeur et portée du compteur, ID attribué au
 brouillon, alias et nom de fichier (§3), « Remplacé », mise en vigueur automatique, bandeau et nom de téléchargement
-d'un document obsolète ou archivé (§4). Elles sont listées dans `docs/decisions.md` (« Choix de l'assistant non validés
-explicitement », question O-09), qui prévaut en cas de doute.
+d'un document obsolète ou archivé (§4), longueur du motif de rejet et droit de rappeler une demande de validation (§6).
+Elles sont listées dans `docs/decisions.md` (« Choix de l'assistant non validés explicitement », question O-09), qui
+prévaut en cas de doute.
 
 ## 1. Architecture
 
@@ -139,6 +140,17 @@ d'approbation approuve immédiatement. Ni l'auteur de la révision (modificateur
 auteurs de ses versions de travail) ni le demandeur ne la valident ; l'étape « Rédaction » revient à l'auteur. Un
 titulaire de fonction a un rôle qui permet de valider ; la dernière approbation exige aussi le droit « Publier ». Type et
 contexte (projet, programme, département) ne changent pas pendant un circuit en cours.
+
+Un circuit en cours s'arrête avant sa fin de deux façons ; la révision revient alors en rédaction et ses valideurs
+sortent du cercle de rédaction (§5) :
+- **Rejet** par le titulaire de l'étape en cours, avec un **motif obligatoire** (2 000 caractères au plus) : il est
+  gardé sur le circuit, dans ses commentaires et au journal (entrée rattachée à la révision), et l'auteur et le
+  propriétaire le retrouvent sur la fiche (onglet Validation) et dans « À traiter ».
+- **Rappel** de la demande par le demandeur ou par un gestionnaire documentaire, tant que la dernière approbation n'est
+  pas faite, avec le droit « Modifier » et sur un document non verrouillé ; motif facultatif. Le circuit est clos
+  « Rappelé », issue distincte du rejet, et la révision peut être soumise de nouveau. Un clic sur une étape déjà
+  décidée entre-temps ne fait rien.
+*Proposé, non confirmé* : la longueur du motif et qui peut rappeler (`docs/decisions.md`).
 
 ## 7. Métadonnées
 

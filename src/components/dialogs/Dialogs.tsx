@@ -6,8 +6,8 @@ import { Icon } from '@/components/ui/Icon';
 import { Seg } from '@/components/ui/Seg';
 import type { Attachment, Conf, Origin } from '@/db/schema';
 import {
-  addFunctionHolder, addOrgValue, addWorkingVersion, createDocument, delegateStep, graftChange, requestChange, requestValidation,
-  setReaders, simulateUser, simulateVigieDecision, updateMeta, updateType,
+  addFunctionHolder, addOrgValue, addWorkingVersion, createDocument, decideStep, delegateStep, graftChange, recallValidation, requestChange,
+  requestValidation, setReaders, simulateUser, simulateVigieDecision, updateMeta, updateType,
 } from '@/lib/actions';
 import { contextOf, idMatches, seqWidth } from '@/lib/codes';
 import { ATTACHMENTS, CONF_LEVELS, ORIGINS, PROJECT_PHASES, SIM_ROLES, type T, type TKey } from '@/lib/i18n';
@@ -24,6 +24,7 @@ export function Dialogs({ spec }: { spec: DialogSpec }) {
     case 'validate': return <RequestValidation docId={spec.docId} title={spec.title} revLabel={spec.revLabel} circuitL={spec.circuitL} minDate={spec.minDate} />;
     case 'change': return <ChangeRequest docId={spec.docId} title={spec.title} change={spec.change} openRev={spec.openRev} />;
     case 'delegate': return <Delegate workflowId={spec.workflowId} stepName={spec.stepName} step={spec.step} excluded={spec.excluded} />;
+    case 'reject': case 'recall': return <CloseWorkflow spec={spec} />;
     case 'compare': return <Compare current={spec.current} other={spec.other} />;
     case 'readers': return <Readers docId={spec.docId} readers={spec.readers} />;
     case 'vigie': return <VigieDecision requestId={spec.requestId} docTitle={spec.docTitle} change={spec.change} modifierId={spec.modifierId} drafters={spec.drafters} deferred={spec.deferred} />;
@@ -533,6 +534,39 @@ function Delegate({ workflowId, stepName, step, excluded }: { workflowId: string
       <div className="text-muted" style={{ fontSize: 12.5 }}>{t.step} : {stepName}</div>
       <Field label={t.delegate_to}>{(id) => <Select id={id} name="to" value={to} onChange={setTo} options={others} />}</Field>
       <ErrorLine error={error} />
+    </Modal>
+  );
+}
+
+/**
+ * Rejects the current step, with its reason, or recalls the request, with an optional one (lib/actions.ts decideStep,
+ * recallValidation). A circuit that moved on in the meantime closes the dialog and refreshes the page.
+ */
+function CloseWorkflow({ spec }: { spec: Extract<DialogSpec, { kind: 'reject' | 'recall' }> }) {
+  const { t, close } = useApp();
+  const { pending, error, run } = useSubmit();
+  const reject = spec.kind === 'reject';
+  return (
+    <Modal title={reject ? t.reject_title : t.recall_title} actions={<Actions pending={pending} label={reject ? t.reject : t.recall} onCancel={close} form="close-workflow-form" />}>
+      <form
+        id="close-workflow-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const why = String(new FormData(e.currentTarget).get('reason') ?? '');
+          run(() => (reject ? decideStep(spec.workflowId, false, spec.step, why) : recallValidation(spec.workflowId, spec.step, why)), { staleError: t.wrong_step });
+        }}
+        style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
+      >
+        <div>
+          <div style={{ fontSize: 13 }}>{spec.title}</div>
+          <div className="text-muted sub tabnum">{spec.docId} · {t.revision} {spec.letter} · {t.step} : {spec.stepName}</div>
+        </div>
+        <p className="text-muted" style={{ margin: 0, fontSize: 12.5 }}>{reject ? t.reject_hint : t.recall_hint}</p>
+        <Field label={reject ? t.ecr_reason : t.reason_optional}>
+          {(id) => <textarea id={id} className="input" name="reason" rows={4} maxLength={2000} required={reject} />}
+        </Field>
+        <ErrorLine error={error} />
+      </form>
     </Modal>
   );
 }

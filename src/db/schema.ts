@@ -262,8 +262,17 @@ export const workflows = pgTable(
     requesterId: text('requester_id').notNull().references(() => users.id),
     due: date('due', { mode: 'string' }).notNull(),
     step: integer('step').notNull(),
-    /** Set when the workflow ends: approved, or rejected (the revision goes back to draft; closed with a comment when the document is withdrawn). */
-    outcome: text('outcome').$type<'approved' | 'rejected'>(),
+    /**
+     * Set when the workflow ends: approved; rejected at a step (the revision goes back to draft; also a circuit closed
+     * by the withdrawal of its document); recalled by its requester or a records manager before the last approval (the
+     * revision goes back to draft).
+     */
+    outcome: text('outcome').$type<'approved' | 'rejected' | 'recalled'>(),
+    /** Who ended the workflow (last approver, rejecting approver, the one who recalled it, Vigie's withdrawal), and the day. */
+    closedBy: text('closed_by').references(() => users.id),
+    closedAt: date('closed_at', { mode: 'string' }),
+    /** Why it was rejected (required) or recalled (optional); also kept in its comments and in the journal. */
+    reason: text('reason'),
     createdAt: date('created_at', { mode: 'string' }).notNull(),
   },
   // A revision has one running workflow at most.

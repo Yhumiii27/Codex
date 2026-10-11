@@ -89,7 +89,7 @@ describe('change accepted while a revision is open (D-26)', () => {
     const id = await waiting();
     expect(await db().transaction((tx) => applyPendingDecision(tx, ID))).toBeNull();
     actAs('head');
-    expect(await decideStep('W-1', false, 1)).toEqual({ ok: true });
+    expect(await decideStep('W-1', false, 1, 'Plan à revoir')).toEqual({ ok: true });
     expect(await revisionStatuses(db(), ID)).toEqual({ A: 'in_force', B: 'draft' });
     expect((await getChange(db(), id)).status).toBe('accepted');
   });

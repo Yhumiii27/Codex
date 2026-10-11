@@ -71,6 +71,8 @@ export default async function HomePage() {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div className="ellipsis">{a.docTitle}</div>
                       <div className="text-muted ellipsis sub" title={a.detail}>{a.detail}</div>
+                      {/* Why a circuit sent the revision back, on its own line (abridged; the record shows all of it). */}
+                      {a.note && <div className="sub" style={{ overflowWrap: 'anywhere', marginTop: 2 }}>{a.note}</div>}
                     </div>
                     <Link href={a.href} className="btn btn-ghost" style={{ fontSize: 12 }}>{t.open}</Link>
                   </div>

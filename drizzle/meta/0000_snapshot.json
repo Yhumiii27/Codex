@@ -1,5 +1,5 @@
 {
-  "id": "32a89b5e-fe86-4995-9666-30853c1fce6b",
+  "id": "6433ee25-3d42-409e-b4e0-735f0dd3ca36",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -1923,6 +1923,24 @@
           "primaryKey": false,
           "notNull": false
         },
+        "closed_by": {
+          "name": "closed_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "closed_at": {
+          "name": "closed_at",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "date",
@@ -1981,6 +1999,19 @@
           "tableTo": "users",
           "columnsFrom": [
             "requester_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "workflows_closed_by_users_id_fk": {
+          "name": "workflows_closed_by_users_id_fk",
+          "tableFrom": "workflows",
+          "tableTo": "users",
+          "columnsFrom": [
+            "closed_by"
           ],
           "columnsTo": [
             "id"

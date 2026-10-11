@@ -2,7 +2,7 @@ import type { IconName } from '@/components/ui/Icon';
 import type { ActionKind, Todo } from '@/lib/queries';
 
 /** Icon of an item of « À traiter » (home, bell): a decision to take, a revision to write, a date falling due. */
-export const TODO_ICON: Record<ActionKind, IconName> = { step: 'check', rejected: 'pen', eco: 'pen', graft: 'pen', draft: 'pen', review: 'info', renew: 'info' };
+export const TODO_ICON: Record<ActionKind, IconName> = { step: 'check', rejected: 'pen', recalled: 'pen', eco: 'pen', graft: 'pen', draft: 'pen', review: 'info', renew: 'info' };
 
 /**
  * The list the badge and the bell show (AppProvider): `held`, unless `given` was computed later. A client navigation

@@ -137,9 +137,9 @@ describe('deciding and delegating a step (D-15)', () => {
     expect(await steps('W-1')).toEqual(['owner', 'head', 'quality']);
   }
 
-  const decide = (who: Person, approve: boolean, step: number) => {
+  const decide = (who: Person, approve: boolean, step: number, reason?: string) => {
     actAs(who);
-    return decideStep('W-1', approve, step);
+    return decideStep('W-1', approve, step, reason);
   };
 
   it('goes through the steps in order and puts the revision in force at the last approval', async () => {
@@ -157,7 +157,7 @@ describe('deciding and delegating a step (D-15)', () => {
 
   it('sends the revision back to drafting on a rejection', async () => {
     await running();
-    expect(await decide('head', false, 1)).toEqual({ ok: true });
+    expect(await decide('head', false, 1, 'Section 3 incomplète')).toEqual({ ok: true });
     expect((await workflow('W-1')).outcome).toBe('rejected');
     expect(await revisionStatuses(db(), ID)).toEqual({ A: 'draft' });
     expect((await buildAccessIndex(db())).approvers(ID).size).toBe(0);

@@ -741,7 +741,7 @@ par les décisions D-06 à D-21 et par le modèle v2.
 
 - **Constat sur la v1** : Écran Validations avec approuver, rejeter, déléguer, commentaires et mention de signature électronique.
 - **Vérification** : « Couvert » ramené à « partiel ». Le circuit était choisi à la main, la validation pouvait être contournée (publication au dépôt, nouvelle version d'un document publié), et la « signature eIDAS » n'était qu'un libellé.
-- **Aujourd'hui — intégré.** Écran Validations : approuver, rejeter, déléguer, commenter. Le circuit vient du type, et les contournements ont disparu : pas de publication au dépôt, pas de version de travail hors brouillon (`addWorkingVersion`), dernière approbation soumise au droit Publier (`decideStep`, `src/lib/actions.ts`). Toujours aucune signature électronique : le champ `sign` des étapes n'est jamais activé (`requestValidation`) ; voir M04.
+- **Aujourd'hui — intégré.** Écran Validations : approuver, rejeter, déléguer, commenter. Le circuit vient du type, et les contournements ont disparu : pas de publication au dépôt, pas de version de travail hors brouillon (`addWorkingVersion`), dernière approbation soumise au droit Publier (`decideStep`, `src/lib/actions.ts`). Depuis le 11 octobre 2026, un rejet exige un motif, que l'auteur et le propriétaire retrouvent sur la fiche et dans « À traiter », et le demandeur (ou un gestionnaire documentaire) peut rappeler sa demande avant la dernière approbation (`recallValidation`) ; points 5 et 9 de `docs/reste-a-faire.md`. Toujours aucune signature électronique : le champ `sign` des étapes n'est jamais activé (`requestValidation`) ; voir M04.
 
 <a id="g18"></a>
 #### G18 — Fonction : suivi des workflows en cours lancés par l'utilisateur

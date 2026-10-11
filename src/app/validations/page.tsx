@@ -17,7 +17,7 @@ type Filter = (typeof FILTERS)[number];
 /** `f` of the view « Mes demandes Vigie » (`c`: the request shown), beside the workflow filters. */
 const VIGIE = 'vigie';
 
-/** `done` once the workflow has an outcome: a rejection stops it at the rejecting step. */
+/** `done` once the workflow has an outcome: a rejection stops it at the rejecting step, a recall at the step it reached. */
 const PICK: Record<Filter, (w: WorkflowView) => boolean> = {
   mine: (w) => w.mine,
   requested: (w) => w.requested,
@@ -85,7 +85,6 @@ export default async function WorkflowPage({ searchParams }: PageProps<'/validat
   if (filter === 'requested') list.sort((a, b) => Number(a.done) - Number(b.done));
   const r = requested ?? list[0] ?? all[0];
   const filterLabel = (k: Filter) => t[`wf_${k}`];
-  const outcomeLabel = (w: WorkflowView) => (w.outcome === 'rejected' ? t.wf_rejected : t.wf_approved);
 
   if (!r) {
     return (
@@ -109,13 +108,16 @@ export default async function WorkflowPage({ searchParams }: PageProps<'/validat
   // The last approval puts the revision in force: the "publish" permission as well.
   const lastStep = r.step === r.steps.length - 1;
   const publishDenied = approveDenied ?? (lastStep && !ctx.can('publish') ? `${t.not_allowed} : ${t.perm_publish}` : undefined);
+  // The requester or a records manager may recall a running circuit (lib/access.ts, mayRecall); a lock stops them too.
+  const closeSpec = { workflowId: r.id, step: r.step, stepName: r.stepName, docId: r.docId, title: r.docTitle, letter: r.letter };
+  const recallBtn = r.recallable && <DialogButton spec={{ kind: 'recall', ...closeSpec }} className="btn btn-ghost" deniedTitle={lockText}>{t.recall}</DialogButton>;
   // Never offered as delegates: the requester, the revision's author (designated, or the owner) and its working versions' authors.
   const excluded = [...new Set([r.requesterId, rev?.modifierId ?? doc?.ownerId, ...(rev?.versions.map((v) => v.authorId) ?? [])].filter((x): x is string => !!x))];
 
   const steps: StepItem[] = r.steps.map((st) => {
-    if (r.outcome === 'rejected' && st.idx >= r.step) {
-      // The circuit stopped here: the rejecting step, then steps that will not happen.
-      return st.idx === r.step
+    if ((r.outcome === 'rejected' || r.outcome === 'recalled') && st.idx >= r.step) {
+      // The circuit stopped here: the rejecting step, then steps that will not happen (all of them after a recall).
+      return st.idx === r.step && r.outcome === 'rejected'
         ? { key: st.idx, state: 'current', title: st.nameL, lines: [st.assignee, t.wf_rejected] }
         : { key: st.idx, state: 'todo', title: st.nameL, lines: [st.assignee] };
     }
@@ -145,7 +147,7 @@ export default async function WorkflowPage({ searchParams }: PageProps<'/validat
               </div>
               <div style={{ fontSize: 13, lineHeight: 1.3 }}>{w.docTitle}</div>
               <div className="text-muted" style={{ fontSize: 11 }}>
-                {w.done ? outcomeLabel(w) : `${t.step} : ${w.stepName}`} · {t.due} {w.dueF}
+                {w.done ? w.outcomeL ?? t.wf_finished : `${t.step} : ${w.stepName}`} · {t.due} {w.dueF}
               </div>
             </Link>
           ))}
@@ -175,15 +177,24 @@ export default async function WorkflowPage({ searchParams }: PageProps<'/validat
               {lockText && <div role="status" style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12.5 }}><Icon name="lock" size={15} style={{ color: 'var(--color-accent)' }} />{lockText} {t.wf_closed_hint}</div>}
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <ActionButton className="btn btn-primary" disabled={!!publishDenied} title={publishDenied} action={decideStep.bind(null, r.id, true, r.step)} after={href(filter, r.id)}><Icon name="tick" size={14} sw={1.8} />{t.approve}</ActionButton>
-                {r.step > 0 && <ActionButton disabled={!!approveDenied} title={approveDenied} action={decideStep.bind(null, r.id, false, r.step)} after={href(filter, r.id)}><Icon name="close" size={14} />{t.reject}</ActionButton>}
+                {r.step > 0 && <DialogButton spec={{ kind: 'reject', ...closeSpec }} icon="close" deniedTitle={approveDenied}>{t.reject}</DialogButton>}
                 <DialogButton spec={{ kind: 'delegate', workflowId: r.id, stepName: r.stepName, step: r.step, excluded }} className="btn btn-ghost" deniedTitle={lockText}>{t.delegate}</DialogButton>
+                {recallBtn}
               </div>
+            </div>
+          )}
+          {!canAct && recallBtn && (
+            <div className="card elev-sm" style={{ padding: '14px 16px', gap: 12 }}>
+              <div className="text-muted" style={{ fontSize: 12.5 }}>{t.recall_note}</div>
+              {lockText && <div role="status" style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12.5 }}><Icon name="lock" size={15} style={{ color: 'var(--color-accent)' }} />{lockText} {t.wf_closed_hint}</div>}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{recallBtn}</div>
             </div>
           )}
           {over && (
             <div className="card" style={{ padding: '12px 16px', flexDirection: 'row', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-              <Icon name={r.outcome === 'rejected' ? 'close' : 'tick'} sw={1.8} style={{ color: 'var(--color-accent)' }} />
-              <span style={{ fontSize: 13 }}>{outcomeLabel(r)}</span>
+              <Icon name={r.outcome === 'approved' ? 'tick' : 'close'} sw={1.8} style={{ color: 'var(--color-accent)' }} />
+              <span style={{ fontSize: 13 }}>{r.outcomeL ?? t.wf_finished}</span>
+              {r.closer && <span className="text-muted" style={{ fontSize: 12 }}>{r.closer}{r.closedF ? ` · ${r.closedF}` : ''}</span>}
               {rev && (
                 <span className="text-muted" style={{ fontSize: 12 }}>
                   {t.revision} {rev.letter} · {rev.statusLabel}

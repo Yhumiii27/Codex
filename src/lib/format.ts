@@ -94,6 +94,12 @@ export function daysBetween(from: string, to: string): number {
   return Math.round((Date.parse(`${to.slice(0, 10)}T12:00:00Z`) - Date.parse(`${from.slice(0, 10)}T12:00:00Z`)) / 86400000);
 }
 
+/** Text on one line, cut to `max` characters with an ellipsis (a reason quoted in a short list). */
+export function clip(text: string, max: number): string {
+  const line = text.replace(/\s+/g, ' ').trim();
+  return line.length > max ? `${line.slice(0, max - 1).trimEnd()}…` : line;
+}
+
 export function fmtSize(bytes: number | null | undefined, lang: Lang): string {
   if (bytes == null) return '—';
   const units = lang === 'fr' ? ['o', 'Ko', 'Mo', 'Go'] : ['B', 'KB', 'MB', 'GB'];

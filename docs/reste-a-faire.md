@@ -99,6 +99,7 @@ src/lib/actions.ts:189 : `authorId: f.authorText ? null : ctx.user.id`. `Fields`
 </details>
 
 #### 5. Le demandeur ne peut pas rappeler sa demande de validation
+- **Fait le 11 octobre 2026** : `recallValidation` (src/lib/actions.ts) permet au demandeur, ou à un gestionnaire documentaire, de rappeler un circuit en cours tant que la dernière approbation n'est pas faite (`mayRecall`, src/lib/access.ts : droit Modifier, cercle de rédaction ; refusé sur un document verrouillé), avec un motif facultatif ; le circuit est clos avec l'issue `recalled` (« Rappelé »), qui s'ajoute au type de `workflows.outcome` avec `closed_by`, `closed_at` et `reason` (migration régénérée), la révision revient en brouillon, un commentaire et une entrée `recall` du journal (rattachée à la révision) sont écrits, et `refreshHeadline` est appelé. Un clic périmé (étape décidée entre-temps, circuit déjà clos) ne fait rien (`expectedStep`). Bouton « Rappeler la demande » dans Validations › Mes demandes et dans l'onglet Validation de la fiche ; les valideurs dont l'étape attendait perdent le circuit de leur liste (D-14) ; la révision rappelée revient dans « À traiter » de son auteur et de son propriétaire (« demande de validation rappelée par … »). Tests : tests/integration/reject-recall.test.ts, `mayRecall` et `draftTodo` dans tests/unit/access.test.ts.
 
 - **Effort** : faible
 
@@ -170,6 +171,7 @@ Constaté. src/lib/lifecycle.ts:159 n'annule que les révisions draft/in_review/
 </details>
 
 #### 9. Rejet d'une étape de validation sans motif
+- **Fait le 11 octobre 2026** : `decideStep` (src/lib/actions.ts) refuse un rejet sans motif (vide ou blancs : « Le motif du rejet est obligatoire. ») ou de plus de 2 000 caractères ; le motif est gardé sur le circuit (`workflows.reason`, avec `closed_by` et `closed_at`), dans le commentaire du circuit et dans le détail de l'entrée `reject` du journal, rattachée à la révision (D-14). L'écran Validations ouvre un dialogue « Rejeter l'étape » qui demande le motif (`kind: 'reject'`, src/components/dialogs/Dialogs.tsx) ; l'auteur et le propriétaire le retrouvent sur la fiche (onglet Validation, « Rejeté · qui · date » et « Motif : … ») et dans « À traiter », sur l'Accueil comme dans la cloche (motif sur une ligne à part, abrégé à 140 caractères). Pas de commentaire à l'approbation (option non retenue). Tests : tests/integration/reject-recall.test.ts.
 
 - **Effort** : faible · **Références** : G17, FON-08
 

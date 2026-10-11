@@ -193,16 +193,32 @@ export function openRevisionView(
 }
 
 /**
- * What a revision being drafted expects from `userId` (G19), or null. Sent back to drafting by a circuit (`rejection`,
- * with the author of its drafting step): 'rejected', for that author, the designated modifier and the owner. Never
- * submitted: 'eco' for the modifier an ECO designated (possibly the owner); 'draft' for the owner otherwise, also when
- * an ECO designated someone else to write it (the owner may still send it for approval, mayWorkOnDraft). Whether the
- * user may still work on it (mayWorkOnDraft, permissions, lock) is checked apart.
+ * What a revision being drafted expects from `userId` (G19), or null. Sent back to drafting by its last circuit
+ * (`sentBack`, with the author of its drafting step and how the circuit ended): 'rejected' or 'recalled', for that
+ * author, the designated modifier and the owner. Never submitted: 'eco' for the modifier an ECO designated (possibly
+ * the owner); 'draft' for the owner otherwise, also when an ECO designated someone else to write it (the owner may still
+ * send it for approval, mayWorkOnDraft). Whether the user may still work on it (mayWorkOnDraft, permissions, lock) is
+ * checked apart.
  */
-export function draftTodo(userId: string, rev: { modifierId: string | null }, ownerId: string, rejection: { authorId: string } | null): 'rejected' | 'eco' | 'draft' | null {
-  if (rejection) return [rejection.authorId, rev.modifierId, ownerId].includes(userId) ? 'rejected' : null;
+export function draftTodo(
+  userId: string,
+  rev: { modifierId: string | null },
+  ownerId: string,
+  sentBack: { authorId: string; outcome: 'rejected' | 'recalled' } | null,
+): 'rejected' | 'recalled' | 'eco' | 'draft' | null {
+  if (sentBack) return [sentBack.authorId, rev.modifierId, ownerId].includes(userId) ? sentBack.outcome : null;
   if (rev.modifierId === userId) return 'eco';
   return ownerId === userId ? 'draft' : null;
+}
+
+/**
+ * May the user recall a running circuit (docs/modele-cible.md §6)? Its requester or a records manager, with the edit
+ * permission that sent it for approval (lib/actions.ts requestValidation) and while they may work on the draft, as long
+ * as it runs: the last approval ends it. The lock of the document is checked apart.
+ */
+export function mayRecall(ctx: Viewer, w: { requesterId: string; outcome: string | null }, d: AccessDoc, ix: AccessIndex): boolean {
+  if (w.outcome || !ctx.can('edit')) return false;
+  return (ctx.seesAll || w.requesterId === ctx.user.id) && mayWorkOnDraft(ctx, d, ix);
 }
 
 /**
@@ -217,10 +233,10 @@ export function deadlineActor(userId: string, d: { ownerId: string; processOwner
 }
 
 /**
- * Journal actions that only ever concern one revision (working versions, circuits and their comments, entry into force,
- * files, a change grafted onto the revision being drafted).
+ * Journal actions that only ever concern one revision (working versions, circuits, their recall and their comments,
+ * entry into force, files, a change grafted onto the revision being drafted).
  */
-const REVISION_ACTIONS = new Set(['upload', 'working', 'import', 'reclass', 'request', 'approve', 'sign', 'reject', 'delegate', 'comment', 'in_force', 'download', 'graft']);
+const REVISION_ACTIONS = new Set(['upload', 'working', 'import', 'reclass', 'request', 'approve', 'sign', 'reject', 'recall', 'delegate', 'comment', 'in_force', 'download', 'graft']);
 
 /**
  * Journal entries outside the drafting circle (D-14). An entry about a revision records it (audit_log.revision_id) and
