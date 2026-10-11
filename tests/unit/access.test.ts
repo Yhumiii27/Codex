@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canRead, changeAsSeen, inDraftingCircle, isUsableTemplate, mayWorkOnDraft, openRevisionView, readerMaySeeChange, readerMaySeeEntry, readerMaySeeRevision, readerMaySeeVersion, readersApply, type AccessIndex, type Viewer } from '@/lib/access';
+import { canRead, changeAsSeen, deadlineActor, draftTodo, inDraftingCircle, isUsableTemplate, mayWorkOnDraft, openRevisionView, readerMaySeeChange, readerMaySeeEntry, readerMaySeeRevision, readerMaySeeVersion, readersApply, type AccessIndex, type Viewer } from '@/lib/access';
 import { CONF_LEVELS, PERMS, type Perm } from '@/lib/i18n';
 
 // Who sees what: confidentiality levels (D-13), drafting circle (D-14), docs/modele-cible.md §5.
@@ -396,5 +396,46 @@ describe('openRevisionView (D-14, D-26, document record)', () => {
         expect(openRevisionView(true, who, 'owner', rev(status), waiting).wait, `${who.user.id} ${status}`).toEqual({ letter: 'C', author: 'modifier', graft: status });
       }
     }
+  });
+});
+
+describe('draftTodo (G19, revision being drafted)', () => {
+  const rejection = { authorId: 'author' };
+
+  it('a revision sent back by a circuit waits for its author, its designated modifier and the owner', () => {
+    for (const who of ['author', 'modifier', 'owner']) expect(draftTodo(who, { modifierId: 'modifier' }, 'owner', rejection), who).toBe('rejected');
+    expect(draftTodo('owner', { modifierId: null }, 'owner', rejection)).toBe('rejected');
+    for (const who of ['approver', 'manager', 'stranger']) expect(draftTodo(who, { modifierId: 'modifier' }, 'owner', rejection), who).toBeNull();
+  });
+
+  it('never submitted, it waits for the modifier an ECO designated and for the owner, whose draft it is', () => {
+    expect(draftTodo('modifier', { modifierId: 'modifier' }, 'owner', null)).toBe('eco');
+    // Assigned to someone else, it is still a draft of the owner's, who may send it for approval.
+    expect(draftTodo('owner', { modifierId: 'modifier' }, 'owner', null)).toBe('draft');
+    // The owner designated by the ECO drafts it as its modifier.
+    expect(draftTodo('owner', { modifierId: 'owner' }, 'owner', null)).toBe('eco');
+    expect(draftTodo('owner', { modifierId: null }, 'owner', null)).toBe('draft');
+    for (const who of ['author', 'manager', 'stranger']) expect(draftTodo(who, { modifierId: null }, 'owner', null), who).toBeNull();
+  });
+});
+
+describe('deadlineActor (G19, review and expiry dates)', () => {
+  const d = { ownerId: 'owner', processOwnerId: 'process', revInForce: 'B' };
+
+  it('the owner acts on the dates of the document, a change request pending or not', () => {
+    expect(deadlineActor('owner', d, false)).toBe(true);
+    expect(deadlineActor('owner', d, true)).toBe(true);
+    expect(deadlineActor('owner', { ...d, revInForce: null }, false)).toBe(true);
+  });
+
+  it('the process owner, who can only ask for a change: a revision in force and no request pending', () => {
+    expect(deadlineActor('process', d, false)).toBe(true);
+    expect(deadlineActor('process', d, true)).toBe(false);
+    expect(deadlineActor('process', { ...d, revInForce: null }, false)).toBe(false);
+  });
+
+  it('nobody else, records managers included (they follow every date in Archivage)', () => {
+    for (const who of ['manager', 'reader', 'stranger']) expect(deadlineActor(who, d, false), who).toBe(false);
+    expect(deadlineActor('process', { ...d, processOwnerId: null }, false)).toBe(false);
   });
 });

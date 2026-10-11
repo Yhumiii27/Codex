@@ -33,7 +33,7 @@ const fr = {
   delegate_title:'Déléguer l’étape', delegate_to:'Déléguer à',
   hold_on:'Actif depuis le', link_copied:'Lien copié dans le presse-papiers', not_allowed:'Droit requis', no_file:'Aucun fichier joint à cette version — aperçu de démonstration.',
   saved_ok:'Modifications enregistrées', error:'Une erreur est survenue', forbidden:'Vous n’avez pas accès à cet écran avec le rôle simulé.',
-  notif_empty:'Rien de nouveau.', notif_pending:'Validations en attente', notif_recent:'Activité récente',
+  notif_empty:'Rien de nouveau.', notif_recent:'Activité récente',
   label_fr:'Libellé (FR)', label_en:'Libellé (EN)',
   years:'Durée (années)', disposition:'Action à échéance', rule_id:'Code',
   compare_title:'Comparer les versions', current_version:'Version courante', selected_version:'Version sélectionnée', size:'Taille', pages:'Pages', author:'Auteur', date:'Date',
@@ -110,6 +110,8 @@ const fr = {
   obsolete_since:'Obsolète depuis le', do_not_apply:'ne plus appliquer',
   act_perm:'Droit modifié', act_org_add:'Valeur d’organisation ajoutée', act_holder_add:'Titulaire ajouté', act_holder_remove:'Titulaire retiré', act_type:'Type modifié', act_comment:'Commentaire', act_export:'Export CSV',
   target:'Objet', target_permission:'Droit', target_export:'Export', active_label:'Actif', export_rows:'lignes', export_full:'journal complet', export_unfiltered:'sans filtre', export_interrupted:'interrompu après',
+  // « À traiter » (G19)
+  todo_empty:'Rien à traiter pour le moment.', todo_eco:'à rédiger', todo_rejected:'renvoyée en rédaction par', todo_draft:'en brouillon, jamais soumise à validation', todo_assigned:'confiée à', todo_graft:'greffe possible sur la révision',
 };
 
 type Dict = Record<keyof typeof fr, string>;
@@ -144,7 +146,7 @@ const en: Dict = {
   delegate_title:'Delegate the step', delegate_to:'Delegate to',
   hold_on:'Active since', link_copied:'Link copied to the clipboard', not_allowed:'Permission required', no_file:'No file attached to this version — demo preview.',
   saved_ok:'Changes saved', error:'Something went wrong', forbidden:'The simulated role cannot access this screen.',
-  notif_empty:'Nothing new.', notif_pending:'Pending approvals', notif_recent:'Recent activity',
+  notif_empty:'Nothing new.', notif_recent:'Recent activity',
   label_fr:'Label (FR)', label_en:'Label (EN)',
   years:'Duration (years)', disposition:'Action when due', rule_id:'Code',
   compare_title:'Compare versions', current_version:'Current version', selected_version:'Selected version', size:'Size', pages:'Pages', author:'Author', date:'Date',
@@ -221,6 +223,8 @@ const en: Dict = {
   obsolete_since:'Obsolete since', do_not_apply:'no longer applicable',
   act_perm:'Permission changed', act_org_add:'Organisation value added', act_holder_add:'Holder added', act_holder_remove:'Holder removed', act_type:'Type changed', act_comment:'Comment', act_export:'CSV export',
   target:'Target', target_permission:'Permission', target_export:'Export', active_label:'Active', export_rows:'rows', export_full:'full log', export_unfiltered:'no filter', export_interrupted:'interrupted after',
+  // « À traiter » (G19)
+  todo_empty:'Nothing to do for now.', todo_eco:'to draft', todo_rejected:'sent back to drafting by', todo_draft:'drafted, never sent for approval', todo_assigned:'assigned to', todo_graft:'may be grafted onto revision',
 };
 
 export const DICT: Record<Lang, Dict> = { fr, en };

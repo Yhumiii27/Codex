@@ -8,3 +8,4 @@
 .dot { position: absolute; top: 7px; right: 8px; width: 6px; height: 6px; border-radius: 50%; background: var(--color-accent); }
 .notifRow { display: flex; gap: 10px; align-items: flex-start; padding: 6px 8px; margin: 0 -8px; border-radius: var(--radius-md); }
 .notifRow:hover { background: color-mix(in srgb, var(--color-text) 6%, transparent); }
+.pending { display: flex; flex-direction: column; max-height: min(360px, 50vh); overflow-y: auto; margin: 0 -8px; padding: 0 8px; }

@@ -1,8 +1,9 @@
 import 'server-only';
+import { cache } from 'react';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { getDb, schema as s } from '@/db';
 import type { AuditChange, AuditData, AuditTargetKind, AuditValue, Conf } from '@/db/schema';
-import { canRead, changeAsSeen, getAccessIndex, inDraftingCircle, isUsableTemplate, readerMaySeeEntry, readerMaySeeRevision, type AccessIndex } from './access';
+import { canRead, changeAsSeen, deadlineActor, draftTodo, getAccessIndex, inDraftingCircle, isUsableTemplate, mayWorkOnDraft, openRevisionView, readerMaySeeEntry, readerMaySeeRevision, type AccessIndex } from './access';
 import { revLabel } from './codification';
 import type { Ctx } from './context';
 import { addDays, daysBetween, fmtDate, fmtDateTime, fmtSize, fmtWhen, loc, parisStamp, todayIso } from './format';
@@ -95,11 +96,20 @@ async function visibleModified(ids: string[]): Promise<Map<string, string>> {
   return out;
 }
 
-/** Documents the current user may see (records managers: all), most recently modified first. */
-export async function listDocs(ctx: Ctx, opts: { includeHidden?: boolean } = {}): Promise<DocView[]> {
+/**
+ * Documents the current user may see (records managers: all), most recently modified first. Without option, the list is
+ * loaded once per request and shared (the layout, its templates and « À traiter », the page): never sort or change it in
+ * place.
+ */
+export function listDocs(ctx: Ctx, opts: { includeHidden?: boolean } = {}): Promise<DocView[]> {
+  return opts.includeHidden ? loadDocs(ctx, true) : visibleDocs(ctx);
+}
+const visibleDocs = cache((ctx: Ctx) => loadDocs(ctx, false));
+
+async function loadDocs(ctx: Ctx, includeHidden: boolean): Promise<DocView[]> {
   const db = await getDb();
   const [rows, ix, wl] = await Promise.all([db.select().from(s.documents).orderBy(desc(s.documents.modifiedAt), desc(s.documents.id)), getAccessIndex(), workingLabels()]);
-  const shown = rows.filter((d) => opts.includeHidden || canRead(ctx, d, ix)).map((d) => ({ d, circle: inDraftingCircle(ctx, d, ix) }));
+  const shown = rows.filter((d) => includeHidden || canRead(ctx, d, ix)).map((d) => ({ d, circle: inDraftingCircle(ctx, d, ix) }));
   const vm = await visibleModified(shown.filter((x) => !x.circle && x.d.revWorking).map((x) => x.d.id));
   const docs = shown.map((x) => docView(ctx, x.d, wl.get(x.d.id), x.circle, vm.get(x.d.id)));
   // Dates shown outside the drafting circle may differ from modified_at: sort again on what the user sees.
@@ -357,6 +367,107 @@ export function deadlines(ctx: Ctx, docs: DocView[]) {
   return out.sort((a, b) => a.end.localeCompare(b.end));
 }
 export type DeadlineView = ReturnType<typeof deadlines>[number];
+
+// ── What waits for the user (G19) ────────────────────────────────────────
+
+/**
+ * An approval step to decide; a revision to draft again after a rejection, assigned by an ECO, or never submitted; an
+ * accepted change that may be grafted onto the revision being drafted (D-26); a review or an expiry falling due.
+ */
+export type ActionKind = 'step' | 'rejected' | 'eco' | 'graft' | 'draft' | 'review' | 'renew';
+const ACTION_ORDER: readonly ActionKind[] = ['step', 'rejected', 'eco', 'graft', 'draft', 'review', 'renew'];
+
+/** One thing waiting for the user: what to do (`detail`, in their language) and where to do it (`href`). */
+export type MyAction = { key: string; kind: ActionKind; docId: string; docTitle: string; detail: string; href: string; due: string | null };
+
+/**
+ * Everything waiting for the user, the one source of the home's « À traiter », the sidebar badge and the bell (G19).
+ * An item is listed only on a document the user may see (listDocs, D-14) and when the server would let them act:
+ * - steps of running circuits assigned to them, on a document not locked, with the approve permission and the
+ *   Validations screen (decideStep);
+ * - revisions being drafted (draftTodo: sent back by a circuit, assigned by an ECO, never submitted), when they may
+ *   work on the draft of an unlocked document (mayWorkOnDraft) and upload a working version or, once there is one,
+ *   send it for approval (addWorkingVersion, requestValidation);
+ * - changes Vigie accepted while that revision is drafted, which they may graft onto it (openRevisionView, graftChange);
+ * - review and expiry dates within DEADLINE_WINDOW_DAYS, or past, of the unlocked documents they own or own the process
+ *   of (deadlineActor), with the edit permission. End of retention stays with records managers, in Archivage.
+ * Ordered by kind (ACTION_ORDER), then by date. Cached per request (see myTodo).
+ */
+export const myActions = cache(async (ctx: Ctx): Promise<MyAction[]> => {
+  const db = await getDb();
+  const { t } = ctx;
+  const me = ctx.user.id;
+  const [docs, workflows, open, pending, ix] = await Promise.all([
+    listDocs(ctx),
+    listWorkflows(ctx),
+    db.select().from(s.revisions).where(inArray(s.revisions.status, ['draft', 'in_review', 'approved'])),
+    db.select().from(s.changeRequests).where(inArray(s.changeRequests.status, ['submitted', 'accepted'])),
+    getAccessIndex(),
+  ]);
+  const docBy = new Map(docs.map((d) => [d.id, d]));
+  // Revisions being drafted that already have a working version (they may be sent for approval).
+  const draftIds = open.filter((r) => r.status === 'draft').map((r) => r.id);
+  const drafted = draftIds.length ? await db.selectDistinct({ revisionId: s.workingVersions.revisionId }).from(s.workingVersions).where(inArray(s.workingVersions.revisionId, draftIds)) : [];
+  const withVersions = new Set(drafted.map((v) => v.revisionId));
+  const out: MyAction[] = [];
+  const push = (kind: ActionKind, d: DocView, detail: string, href: string, due: string | null = null, key = d.id) =>
+    out.push({ key: `${kind}:${key}`, kind, docId: d.id, docTitle: d.title, detail, href, due });
+
+  if (ctx.screens.workflow && ctx.can('approve')) {
+    for (const w of workflows) {
+      const d = docBy.get(w.docId);
+      if (!d || !w.mine || w.locked || !w.visible) continue;
+      push('step', d, `${d.id} · ${t.rev_short} ${w.letter} · ${t.requested_by} ${w.requester} · ${t.step} : ${w.stepName} · ${t.due} ${w.dueF}`, w.href, w.due, w.id);
+    }
+  }
+
+  for (const r of open) {
+    const d = docBy.get(r.docId);
+    if (!d || r.status !== 'draft' || lockOf(d) || !mayWorkOnDraft(ctx, d, ix)) continue;
+    if (!ctx.can('upload') && !(ctx.can('edit') && withVersions.has(r.id))) continue;
+    // A draft revision with a circuit was sent back by it: the last one names who rejected it (the step it stopped at)
+    // and who drafted it (its first step).
+    const last = workflows.filter((w) => w.revisionId === r.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt) || Number(b.id.slice(2)) - Number(a.id.slice(2)))[0];
+    if (last && last.outcome !== 'rejected') continue;
+    const kind = draftTodo(me, r, d.ownerId, last ? { authorId: last.steps[0]?.assigneeId ?? r.modifierId ?? d.ownerId } : null);
+    if (!kind) continue;
+    const rev = `${d.id} · ${t.rev_short} ${d.workingLabel ?? r.letter}`;
+    const eco = r.changeRef ? ` · ${r.changeRef}` : '';
+    // The owner's draft an ECO assigned to someone else names who was designated to write it.
+    const assigned = r.modifierId && r.modifierId !== me ? ` · ${t.todo_assigned} ${ctx.userName(r.modifierId)}${eco}` : '';
+    const detail = kind === 'rejected' ? `${rev} ${t.todo_rejected} ${last?.current?.assignee ?? '—'}${eco}` : kind === 'eco' ? `${rev} ${t.todo_eco}${eco}` : `${rev} ${t.todo_draft}${assigned}`;
+    push(kind, d, detail, `${d.href}?tab=versions`);
+  }
+
+  if (ctx.can('edit')) {
+    for (const c of pending) {
+      const d = docBy.get(c.docId);
+      if (!d || c.kind !== 'modification' || c.status !== 'accepted' || lockOf(d)) continue;
+      const { wait } = openRevisionView(inDraftingCircle(ctx, d, ix), ctx, d.ownerId, open.find((r) => r.docId === d.id), c);
+      if (wait?.graft === 'yes') push('graft', d, `${d.id} · ${c.ecoRef ?? c.id} ${t.ecr_accepted_l}, ${t.todo_graft} ${wait.letter}`, `${d.href}?tab=requests`);
+    }
+    const changing = new Set(pending.map((c) => c.docId));
+    const own = docs.filter((d) => (d.ownerId === me || d.processOwnerId === me) && !lockOf(d) && deadlineActor(me, d, changing.has(d.id)));
+    for (const x of deadlines(ctx, own)) {
+      if (x.kind === 'retention') continue;
+      const days = x.days >= 0 ? `${x.days} ${t.days_left}` : `${-x.days} ${t.days_late}`;
+      push(x.kind === 'review' ? 'review' : 'renew', x, `${x.id} · ${x.kind === 'review' ? t.dl_review : t.dl_expiry} ${x.endF} · ${days}`, `${x.href}?tab=meta`, x.end);
+    }
+  }
+
+  const rank = (a: MyAction) => ACTION_ORDER.indexOf(a.kind);
+  return out.sort((a, b) => rank(a) - rank(b) || (a.due ?? '9999').localeCompare(b.due ?? '9999') || a.docId.localeCompare(b.docId));
+});
+
+/** « À traiter » with the time it was computed (ms), so the shell keeps the most recent list it was given. */
+export type Todo = { at: number; items: MyAction[] };
+
+/**
+ * myActions for the shell (components/shell/AppProvider.tsx). A client navigation renders the page again but not the
+ * layout: the home page hands its list over, and the badge and the bell show whichever list is the most recent.
+ * Cached per request: the layout and the page of one render get the same list and the same time.
+ */
+export const myTodo = cache(async (ctx: Ctx): Promise<Todo> => ({ at: Date.now(), items: await myActions(ctx) }));
 
 // ── Audit ────────────────────────────────────────────────────────────────
 

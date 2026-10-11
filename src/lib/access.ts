@@ -193,6 +193,30 @@ export function openRevisionView(
 }
 
 /**
+ * What a revision being drafted expects from `userId` (G19), or null. Sent back to drafting by a circuit (`rejection`,
+ * with the author of its drafting step): 'rejected', for that author, the designated modifier and the owner. Never
+ * submitted: 'eco' for the modifier an ECO designated (possibly the owner); 'draft' for the owner otherwise, also when
+ * an ECO designated someone else to write it (the owner may still send it for approval, mayWorkOnDraft). Whether the
+ * user may still work on it (mayWorkOnDraft, permissions, lock) is checked apart.
+ */
+export function draftTodo(userId: string, rev: { modifierId: string | null }, ownerId: string, rejection: { authorId: string } | null): 'rejected' | 'eco' | 'draft' | null {
+  if (rejection) return [rejection.authorId, rev.modifierId, ownerId].includes(userId) ? 'rejected' : null;
+  if (rev.modifierId === userId) return 'eco';
+  return ownerId === userId ? 'draft' : null;
+}
+
+/**
+ * Is the user the one to act on a review or expiry date of the document (G19)? Its owner, who may update the record
+ * (lib/actions.ts updateMeta) or ask for a change; its process owner, who may only ask for a change (requestChange: a
+ * revision in force, no request pending). Records managers follow every date in Archivage. The edit permission, the
+ * lock and access to the document are checked apart.
+ */
+export function deadlineActor(userId: string, d: { ownerId: string; processOwnerId: string | null; revInForce: string | null }, changePending: boolean): boolean {
+  if (d.ownerId === userId) return true;
+  return d.processOwnerId === userId && !!d.revInForce && !changePending;
+}
+
+/**
  * Journal actions that only ever concern one revision (working versions, circuits and their comments, entry into force,
  * files, a change grafted onto the revision being drafted).
  */

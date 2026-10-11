@@ -523,11 +523,24 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
   - circuits ;
   - durées de conservation ;
   - types qui admettent « Public ».
+- **« À traiter »** (G19, 11 octobre) : une seule liste pour l'encart de l'Accueil, la pastille et la cloche
+  (`myActions`, `src/lib/queries.ts`). Une révision en rédaction jamais soumise attend son modificateur désigné par un
+  ECO (« à rédiger ») et son propriétaire, qui peut aussi la soumettre (« en brouillon », avec « confiée à … » quand un
+  ECO a désigné quelqu'un d'autre) ; renvoyée en rédaction par un rejet, elle attend l'auteur de l'étape Rédaction, le
+  modificateur et le propriétaire. Une modification acceptée en attente (D-26) est proposée à la greffe au modificateur
+  de la révision ouverte (à défaut le propriétaire) et à tous les gestionnaires documentaires, qui peuvent la greffer.
+  Les revues et expirations retenues sont celles d'Archivage (dépassées ou à moins de 90 jours), pour le propriétaire
+  et le propriétaire de processus ; la fin de conservation reste aux gestionnaires, dans Archivage. Un élément
+  n'apparaît que si le serveur laisserait l'utilisateur agir (droits du rôle simulé, verrou, cercle de rédaction).
 - **Écarts volontaires avec la maquette** (7 octobre) :
   - le rôle « Gestionnaire documentaire » a le droit « Valider » ;
   - les échéances sont triées par date ;
-  - le point rouge des notifications n'apparaît que s'il y a des validations en attente ;
-  - les documents de démonstration sans fichier affichent « aperçu de démonstration ».
+  - le point rouge des notifications n'apparaît que s'il y a quelque chose à traiter (le 7 octobre : des validations
+    en attente ; depuis le 11 octobre : toute la liste « À traiter ») ;
+  - les documents de démonstration sans fichier affichent « aperçu de démonstration » ;
+  - depuis le 11 octobre, la pastille est sur Accueil, qui porte toute la liste « À traiter », et non plus sur
+    Validations, qui ne montre que les circuits ; l'encart « À traiter » n'a plus de lien « Tout voir » ;
+    l'indicateur « À valider » compte toujours les seules étapes à décider.
 - **Git** (D-23) : premier commit sur une branche `codex-ged-v2` plutôt que sur `main`.
 
 ## Ce qui est explicitement hors périmètre

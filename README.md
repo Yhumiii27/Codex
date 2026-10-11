@@ -62,7 +62,7 @@ quitter l'app et supprimer `~/Library/Application Support/Codex/data`.
 
 | Route | Écran |
 | --- | --- |
-| `/` | Tableau de bord : à valider, documents récents, échéances (conservation, expiration, revue), activité |
+| `/` | Tableau de bord : « À traiter » (étapes à décider, révisions à rédiger ou à reprendre, greffes possibles, revues et expirations des documents dont on est propriétaire ou propriétaire de processus), documents récents, échéances (conservation, expiration, revue), activité. La pastille d'Accueil et la cloche reprennent la même liste |
 | `/explorateur` | Classement par famille, département, projet / programme, type ou origine ; filtres de statut ; aperçu rapide |
 | `/documents/[id]` | Fiche document : aperçu, onglets Projet · Fiche · Révisions · Validation · Demandes · Historique |
 | `/recherche` | Recherche plein texte + facettes (projet, famille, type, origine, rattachement, département, statut, confidentialité), export CSV |

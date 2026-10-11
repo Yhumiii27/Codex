@@ -187,6 +187,7 @@ Constaté. src/app/validations/page.tsx:128 lie directement `decideStep.bind(nul
 </details>
 
 #### 10. « À traiter » : révisions confiées par un ECO, rejets, brouillons et échéances du propriétaire
+- **Fait le 11 octobre 2026** : une seule requête, `myActions` (src/lib/queries.ts), alimente l'encart « À traiter » de l'Accueil, la pastille (déplacée sur Accueil) et la cloche, qui suivent la liste de l'Accueil même après une navigation côté client, avec un lien vers l'endroit où agir pour les étapes de circuit à décider, les révisions en rédaction confiées par un ECO (avec sa référence), renvoyées en rédaction par un rejet ou jamais soumises (pour le propriétaire aussi, « confiée à … » quand un ECO a désigné quelqu'un d'autre), les modifications acceptées à greffer (D-26) et les revues et expirations dépassées ou à moins de 90 jours des documents dont l'utilisateur est propriétaire ou propriétaire de processus, chaque élément n'apparaissant que sur un document qu'il voit (D-14) et quand le serveur le laisserait agir ; les gestionnaires gardent la vue globale des échéances dans Archivage (tests : tests/integration/my-actions.test.ts, tests/unit/access.test.ts, tests/unit/todo.test.ts).
 
 - **Effort** : moyen · **Références** : G19, FON-11
 
@@ -1776,7 +1777,7 @@ Le manque est confirmé. Personne n'est prévenu hors de Codex :
 - d'une échéance de revue ou d'expiration.
 Aucune relance ni escalade n'existe pour une étape en retard (due à +7 jours, actions.ts:437), et `users` n'a pas d'adresse e-mail (schema.ts:35-44).
 À écrire, dans Codex et sans Power Automate (D-06) : une file d'événements, des gabarits FR/EN, des préférences, un déclenchement par planificateur (aucun aujourd'hui), branchés sur SMTP ou sur Microsoft Graph (sendMail, Teams). Restent à décider avec l'utilisateur : le canal (jamais discuté, §6.6 q2), qui alerter et combien de temps avant (M19). Graph suppose Entra ID (O-02).
-Une partie peut se faire sans décision : lister dans « À traiter » et dans la cloche les révisions ouvertes au nom de l'utilisateur par un ECO (G19). Aujourd'hui, `modifierId` n'est lu que pour l'affichage (queries.ts:111 et 201).
+La partie faisable sans décision est faite depuis le 11 octobre 2026 (point 10) : « À traiter » et la cloche listent les révisions ouvertes au nom de l'utilisateur par un ECO, les rejets, les brouillons et les échéances du propriétaire (G19). Restent les notifications hors de l'application, les relances et l'escalade.
 
 <details><summary>Constat dans le code</summary>
 

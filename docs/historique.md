@@ -34,6 +34,7 @@ Conventions :
 | 10 oct. | Tests (Vitest, PGlite en mémoire) et intégration continue | 12 |
 | 11 oct. | Décision D-26 : greffe ou attente d'une modification acceptée pendant une révision ouverte. Étape 1 : couche métier. Étape 2 : fiche document | 13 |
 | 11 oct. | « Mes demandes Vigie » dans l'écran Validations | 14 |
+| 11 oct. | « À traiter » complet : toutes les actions qui attendent l'utilisateur | 15 |
 
 La session a été coupée plusieurs fois par une limite d'usage ou de dépense :
 - le 7 octobre à 13:38, reprise à 17:31 sur « Try again » ;
@@ -670,3 +671,57 @@ qu'il a envoyées à Vigie, jusque-là visibles seulement document par document.
   aucune des deux n'apparaît dans les demandes de Claire Bardet ; Léa Marchand n'en voit aucune, et l'URL de l'une
   d'elles la ramène à sa liste vide ; le lien « Ouvrir dans Vigie » n'apparaît qu'avec `NEXT_PUBLIC_VIGIE_URL` ; la
   vue en anglais.
+
+## 15. « À traiter » complet (11 oct.)
+
+Point 10 de [reste-a-faire.md](reste-a-faire.md) (G19, FON-11) : l'encart « À traiter », la pastille et la cloche ne
+montraient que les étapes de circuit à décider ; une révision ouverte au nom de l'utilisateur par un ECO, un rejet ou
+un brouillon jamais soumis n'étaient listés nulle part, et les échéances n'étaient pas rattachées au propriétaire.
+
+- **Une seule source** (`myActions`, `src/lib/queries.ts`) : la mise en page (pastille, cloche) et l'Accueil (encart,
+  indicateur « À valider ») lisent la même liste, calculée une fois par requête (`myTodo`, avec son heure de calcul).
+  Next ne recalcule pas la mise en page lors d'une navigation côté client, seulement la page : l'Accueil remet donc sa
+  liste à la coque (`TodoSync`, `src/components/shell/AppProvider.tsx`), et la pastille et la cloche affichent la plus
+  récente des deux (`latestTodo`, `src/components/shell/todo.ts`). Un élément né de l'action d'un autre (rejet, étape,
+  ECO accepté) apparaît ainsi en même temps dans l'encart, la pastille et la cloche dès que l'utilisateur revient sur
+  l'Accueil ; sur les autres écrans, la pastille suit la dernière liste reçue (Accueil, rechargement ou action).
+  Chaque élément donne le document, ce qu'il y a à faire et un lien vers l'endroit où agir :
+  - étapes de circuit à décider, comme avant (`/validations?r=W-…`) ;
+  - révisions en rédaction (`draftTodo`, `src/lib/access.ts`), vers l'onglet Révisions de la fiche : confiées par un
+    ECO à leur modificateur désigné, avec la référence ; renvoyées en rédaction par un rejet, pour l'auteur de l'étape
+    Rédaction, le modificateur et le propriétaire, avec le nom de qui a rejeté ; jamais soumises, pour le propriétaire,
+    qui peut aussi la soumettre, avec « confiée à … » et l'ECO quand un ECO a désigné quelqu'un d'autre ;
+  - modifications acceptées en attente qui peuvent être greffées sur la révision en rédaction (D-26,
+    `openRevisionView`), vers l'onglet Demandes ;
+  - revues et expirations dépassées ou à moins de 90 jours (mêmes règles qu'Archivage, `deadlines`) des documents dont
+    l'utilisateur est propriétaire, ou propriétaire de processus s'il peut demander une modification (`deadlineActor`),
+    vers l'onglet Fiche. La fin de conservation et la vue de toutes les échéances restent aux gestionnaires, dans
+    Archivage.
+- **Coût** : la liste des documents visibles (`listDocs` sans option) est chargée une fois par requête et partagée
+  entre la mise en page, ses modèles, « À traiter » et la page ; « À traiter » ne lit les versions de travail que des
+  révisions en brouillon.
+- **Droits** : un élément n'apparaît que sur un document que l'utilisateur voit (`listDocs`, D-14) et quand le serveur
+  le laisserait agir : droit Valider et écran Validations pour une étape ; cercle de rédaction (`mayWorkOnDraft`) et
+  droit Déposer, ou Modifier s'il y a déjà une version de travail, pour une révision ; droit Modifier pour une greffe ou
+  une échéance ; jamais sur un document verrouillé. Un valideur sorti du cercle avec la fin d'un circuit, ou une
+  personne qui simule un autre rôle, ne voit donc plus la révision qu'il a rejetée ou rédigée.
+- **Écran** : l'encart « À traiter » liste tous les éléments (icône selon la nature, titre, détail, « Ouvrir ») et,
+  s'il n'y a rien, « Rien à traiter pour le moment. » ; il n'a plus de lien « Tout voir » vers Validations, qui ne
+  montre que les circuits. La pastille passe de Validations à Accueil, qui porte la liste (écart avec la maquette,
+  noté dans `docs/decisions.md`). La cloche reprend la liste sous « À traiter », avec un défilement au-delà de sa
+  hauteur. L'indicateur « À valider » compte toujours les seules étapes à décider. Textes FR et EN dans `i18n.ts`.
+- **Vérifié** : `npm test` (366 tests, dont les 19 de `tests/integration/my-actions.test.ts`, ceux de `draftTodo` et
+  `deadlineActor` et `tests/unit/todo.test.ts`), `npm run typecheck`, `npm run lint`. Les tests échouent si l'on retire
+  le verrou des greffes ou le contrôle de l'écran Validations sur les étapes (auditeur à qui l'on accorde « Valider »).
+  Dans le navigateur, sur une base de démo neuve : pour Claire Bardet, Lucas Fabre, Gabriel Comte et Antoine Girard,
+  l'encart, la pastille et la cloche donnent les mêmes éléments et les mêmes liens ; Lucas Fabre voit la révision C de
+  `HSE-HLT-026-001` « à rédiger » avec ECO-2026-002, son brouillon `PER-HLT-026-002`, la revue du 15 décembre et
+  l'expiration du permis de levage. Deux sessions : Lucas Fabre est sur l'Explorateur (pastille 4) ; Claire Bardet
+  rejette W-305 ; Lucas Fabre clique sur « Accueil » (navigation côté client, sans rechargement) : l'encart, la
+  pastille et la cloche donnent 5, avec « renvoyée en rédaction par Claire Bardet », et la pastille reste à 5 de retour
+  sur l'Explorateur. Une modification de `PRO-QUA-0002` acceptée par la simulation Vigie pour Antoine Girard : il la
+  voit « à rédiger » avec ECO-2026-004, et Gabriel Comte, propriétaire, « en brouillon, jamais soumise à validation ·
+  confiée à Antoine Girard », avec un lien vers l'onglet Révisions où « Nouvelle version de travail » est actif. Julien
+  Wagner, Léa Marchand et James Holt (auditeur) voient « Rien à traiter pour le moment. », sans pastille ni point
+  rouge ; Antoine Girard, simulé en collaborateur, n'a plus d'étape à décider. Vue en anglais vérifiée.
+
