@@ -1,0 +1,9 @@
+# Left out of the image: local dependencies and builds, local data, secrets, the macOS app.
+.git
+node_modules
+.next
+.data
+.env
+.env.*
+!.env.example
+desktop

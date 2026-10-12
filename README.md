@@ -113,3 +113,18 @@ src/
 Les décisions prises avec l'utilisateur et les questions encore ouvertes sont dans `docs/decisions.md` ; le deck
 d'origine et son audit dans `docs/sources/` et `docs/audit-deck-epc2i.md`. Voir aussi `docs/registre-points-ouverts.md`
 (registre des types) et les points *provisoires* de `docs/modele-cible.md` (organisation, stockage SharePoint).
+
+## Mise en ligne (Docker, Coolify)
+
+Le `Dockerfile` à la racine compile l'application et lance `next start`. Réglages à donner à l'hébergeur :
+
+| Réglage | Valeur |
+| --- | --- |
+| Port interne | `3000` |
+| Volume persistant | `/data` (base PGlite dans `/data/pglite`, fichiers dans `/data/files`) |
+| Variables disponibles au build | `NEXT_PUBLIC_KEYSTONE_URL`, `NEXT_PUBLIC_VIGIE_URL` : adresses publiques de Keystone et de Vigie |
+
+- Les deux adresses sont figées dans l'application au moment du build : après les avoir modifiées, il faut redéployer.
+- Le build télécharge la police Inter depuis Google Fonts : le serveur de build doit avoir accès à Internet.
+- Tant que l'authentification n'est pas branchée, protéger l'accès au niveau de l'hébergeur (authentification HTTP de
+  Coolify, par exemple).
