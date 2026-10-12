@@ -4,8 +4,12 @@ import { useEffect, useOptimistic, useRef, useState, useTransition } from 'react
 import { useRouter } from 'next/navigation';
 import { Icon } from '@/components/ui/Icon';
 import { useApp } from '@/components/shell/AppProvider';
+import { searchUrlWith } from '@/lib/search';
 
-/** The large search field: updates the URL as you type (debounced), keeping the facets selected at that moment. */
+/**
+ * The large search field: updates the URL as you type (debounced), keeping the facets selected at that moment; the
+ * results start again from their first page.
+ */
 export function SearchField({ q }: { q: string }) {
   const { t } = useApp();
   const router = useRouter();
@@ -16,10 +20,7 @@ export function SearchField({ q }: { q: string }) {
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
   const push = (v: string) => {
     if (window.location.pathname !== '/recherche') return;
-    const p = new URLSearchParams(window.location.search);
-    if (v.trim()) p.set('q', v.trim()); else p.delete('q');
-    const qs = p.toString();
-    router.replace(`/recherche${qs ? `?${qs}` : ''}`, { scroll: false });
+    router.replace(searchUrlWith(window.location.search, { q: v.trim() }), { scroll: false });
   };
   return (
     <div style={{ position: 'relative', maxWidth: 720 }}>
@@ -56,15 +57,15 @@ export function FacetCheck({ href, checked, label, count }: { href: string; chec
   );
 }
 
-/** Replaces some parameters of the current /recherche URL (null removes one), keeping the others: typed query, facets… */
+/**
+ * Replaces some parameters of the current /recherche URL (null removes one), keeping the others (typed query,
+ * facets…) but the page: other criteria or another order start from the first one.
+ */
 function useSearchParamsUpdate() {
   const router = useRouter();
   return (set: Record<string, string | null>) => {
     if (window.location.pathname !== '/recherche') return;
-    const p = new URLSearchParams(window.location.search);
-    for (const [k, v] of Object.entries(set)) if (v) p.set(k, v); else p.delete(k);
-    const qs = p.toString();
-    router.replace(`/recherche${qs ? `?${qs}` : ''}`, { scroll: false });
+    router.replace(searchUrlWith(window.location.search, set), { scroll: false });
   };
 }
 

@@ -676,6 +676,27 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     sur la fiche, libération forcée par un gestionnaire documentaire, dépôt refusé à toute autre personne que celle
     qui l'a réservée, mention « Réservé par … »). Elle change la façon de travailler du cercle de rédaction
     (propriétaire, modificateur désigné, gestionnaires) : elle attend l'accord de l'utilisateur.
+- **Listes filtrées et paginées par la base** (12 octobre ; point 50 de `docs/reste-a-faire.md`) :
+  - la recherche, son export, l'explorateur et l'onglet Journal donnent exactement ce que donnait la version en
+    mémoire, gardée comme référence des tests, jusque dans les cas limites : une marque d'ordre d'octet en tête d'un
+    texte libre est ignorée comme le faisait la lecture par PGlite, et un critère contenant un caractère NUL ne trouve
+    rien au lieu de provoquer une erreur ;
+  - 50 résultats par page dans Recherche et dans l'Explorateur ; le nombre de résultats et les comptes des facettes
+    restent ceux de toute la recherche. Changer de critère, de tri ou de texte revient à la première page ; une page
+    au-delà de la dernière montre la dernière. L'export CSV de la recherche garde tous les résultats (écart avec la
+    maquette, qui ne pagine pas) ;
+  - onglet Journal : 100 entrées par page (500 auparavant, sans suite), « Plus récentes » et « Plus anciennes » ;
+    filtres par morceau d'ID de document ou de cible (casse ignorée), personne, action et période en jours, heure de
+    Paris ; l'ID actuel d'un document retrouve les entrées écrites sous ses anciens ID seulement si le lecteur peut
+    lire ce document (sinon il apprendrait son reclassement, D-14) ; l'export CSV reste complet et sans filtre ;
+    un paramètre répété dans l'URL (explorateur, journal) garde sa première valeur, un curseur ou un jour hors de
+    portée est ignoré plutôt que de provoquer une erreur ;
+  - la base replie le texte cherché (accents, casse) et trie les titres selon ses propres tables Unicode et ICU
+    (PGlite : Unicode 16.0, ICU 76), pour la requête comme pour les valeurs : la recherche reste cohérente quelle que
+    soit la version de Node. La référence en mémoire suit celles de Node : identiques sous Node 22 ; sous Node 26
+    (Unicode 17.0), un caractère ajouté par Unicode 17.0 peut être replié autrement par la référence que par la base
+    (README, « Version de Node ») ;
+  - tailles de page et index (trigrammes) choisis sans connaître le volume réel (O-11) : à revoir avec la migration.
 - **Retrait** (D-17) : effets d'un retrait accepté sur le travail en cours (circuit clos, révisions ouvertes annulées).
 - **Documents obsolètes ou archivés** (D-17) : bandeau d'avertissement sur la fiche et dans l'aperçu rapide de
   l'explorateur, suffixe `_OBSOLETE` ou `_ARCHIVE` dans le nom proposé au téléchargement (`docs/modele-cible.md` §4).

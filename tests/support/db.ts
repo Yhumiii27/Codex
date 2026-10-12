@@ -51,6 +51,11 @@ export function setupDb(): () => Db {
   return currentDb;
 }
 
+/** Hands `db` to currentDb() (a database the test file opened and filled itself, the demo seed for one), or none. */
+export function useDb(db: Db | null): void {
+  current = db;
+}
+
 /** The database of the running test, for a mocked getDb(). */
 export function currentDb(): Db {
   if (!current) throw new Error('no test database: call setupDb() at the top of the test file');

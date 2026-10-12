@@ -34,13 +34,15 @@ Conventions :
 | 10 oct. | Tests (Vitest, PGlite en mémoire) et intégration continue | 12 |
 | 11 oct. | Décision D-26 : greffe ou attente d'une modification acceptée pendant une révision ouverte. Étape 1 : couche métier. Étape 2 : fiche document | 13 |
 | 11 oct. | Fonctions du deck (lot 5), une étape par fonction : « Mes demandes Vigie », « À traiter » complet, rejet motivé et rappel, recherches enregistrées partagées, facettes et tri de la recherche, pages par département | 14 |
-| 12 oct. | Points développables de reste-a-faire.md, une étape par point. Étape 1 : dates, format contrôlé et cohérence émission ≤ effet ≤ expiration. Étape 2 : expiration et revue périodique. Étape 3 : lien « remplacé par ». Étape 4 : fiche de visa. Étape 5 : modifications simultanées détectées | 15 |
+| 12 oct. | Lot 6 : points développables de reste-a-faire.md, une étape par point. Étape 1 : dates, format contrôlé et cohérence émission ≤ effet ≤ expiration. Étape 2 : expiration et revue périodique. Étape 3 : lien « remplacé par ». Étape 4 : fiche de visa. Étape 5 : modifications simultanées détectées. Étape 6 : recherche, explorateur et journal filtrés et paginés en base | 15 |
 
 La session a été coupée plusieurs fois par une limite d'usage ou de dépense :
 - le 7 octobre à 13:38, reprise à 17:31 sur « Try again » ;
 - le 7 octobre à 18:07, reprise à 22:43 sur « Try again » ;
 - le 8 octobre à 07:35, pendant les corrections de l'app Mac ;
 - le 8 octobre à 07:44, sur la limite de dépense. La demande de commit, renvoyée aussitôt, a abouti.
+- le 12 octobre vers 13:10, en session cloud, pendant l'étape 6 du lot 6. Le brouillon, mis de côté dans un stash git,
+  a été relu puis repris sur « Try again » (§15.6).
 
 ## 1. Construction depuis la maquette Claude Design (7 oct., 10:58 → 11:39)
 
@@ -989,11 +991,20 @@ enregistrées.
   avant »), le retour aux filtres par défaut rétablit le bandeau ; trois entrées au journal. Vue en anglais vérifiée (« Department
   page », « Departments », « Featured filters »).
 
-## 15. Points développables (12 oct.)
+## 15. Lot 6 (12 oct.)
 
 Points « développables maintenant » de [reste-a-faire.md](reste-a-faire.md), une étape par point, chacune relue avant
 son commit. Aucune question ouverte n'est tranchée : un choix qui en dépend prend l'option la plus prudente et est
 consigné dans [decisions.md](decisions.md) (« Choix de l'assistant non validés explicitement »).
+
+| Étape | Commit | Point | Ce qui change | Choix prudents |
+|---|---|---|---|---|
+| 1. Dates (§15.1) | `71b1da3` | 3 | Dates contrôlées (jour réel, année 0000 refusée) et tenues dans l'ordre émission ≤ effet < expiration, dans les Server Actions, l'import et les dialogues (erreur sous le champ fautif) | « Postérieure » au sens strict ; émission prise comme première mise en vigueur ; bornes du jour limitées aux dates saisies ; demande sans date d'effet d'un document expiré acceptée |
+| 2. Expiration et revue (§15.2) | `b940bd7` | 13 | Indicateurs « Expiré » et « Revue en retard » partout où le document se lit, « Revue effectuée », périodicité de revue par type | Aucun statut nouveau ni automatisme (D-17) ; périodicités vides (O-05) ; effet de l'expiration laissé ouvert (A17) |
+| 3. Liens (§15.3) | `813d7fe` | 16 | « Remplace », « Remplacé par », « Voir aussi » ; remplaçant proposé avec un retrait et lié à son application | Trois natures seulement (M11) ; droits sur les deux documents ; lien et journal invisibles vers un document illisible (D-14) |
+| 4. Fiche de visa (§15.4) | `555761c` | 21 | PDF tiré du journal pour une révision approuvée, depuis l'onglet Révisions | Pas de signature électronique (M04) ; commentaires réservés à qui suit le circuit |
+| 5. Modifications simultanées (§15.5) | `eef9ada` | 20 | Version de la fiche et dernière version de travail vues par les dialogues ; refus d'une action partie d'une vue périmée | Détection optimiste seulement ; réservation d'un brouillon proposée, non appliquée |
+| 6. Listes en base (§15.6) | commit « Lot 6, étape 6 », qui suit `eef9ada` | 50 | Recherche, export, explorateur et journal filtrés, comptés et paginés par la base, avec les mêmes résultats que la version en mémoire, gardée comme référence des tests | Tailles de page provisoires (O-11) ; anciens ID suivis par le filtre du journal pour un document lisible seulement (D-14) ; l'en-tête commun charge encore tous les documents |
 
 ### 15.1 Dates : format contrôlé et cohérence émission ≤ effet ≤ expiration
 
@@ -1317,3 +1328,120 @@ sans savoir de quelle version le déposant était parti. Le constat était toujo
   W-311 sur C.3. Joachim Wagner, hors du cercle, reçoit la version 0 avant comme après, et la même fiche ; Claire
   Bardet, la version réelle. Avant la relecture, sur `CTR-JUR-0001`, deux onglets « Lecteurs désignés » : le second
   reçoit le refus.
+
+### 15.6 Recherche, explorateur et journal filtrés et paginés en base
+
+Point 50 de [reste-a-faire.md](reste-a-faire.md) (G15, M18, FON-04, ARC-01) : la recherche, son export CSV et
+l'explorateur chargeaient tous les documents, appliquaient `canRead` puis leurs filtres en JavaScript (`listDocs`,
+`runSearch`), et l'onglet Journal s'arrêtait à 500 lignes, sans filtre. Le constat était toujours vrai au commit
+`eef9ada`. Un premier essai, coupé par la limite d'usage, avait laissé un brouillon dans un stash git : sa condition
+SQL de visibilité et son test ont été repris tels quels, ses colonnes de recherche sur `documents` remplacées par une
+table, et le stash supprimé.
+
+- **Visibilité en SQL** (`src/lib/access.ts`) : `draftingCircleSql` (cercle de rédaction) et `readableSql`
+  (`canRead` : droit de lecture du rôle, révision en vigueur, niveau de confidentialité, département, équipe projet,
+  lecteurs désignés), en sous-requêtes non corrélées. `canRead` et `inDraftingCircle` restent la référence :
+  `tests/integration/access-sql.test.ts` (documents tirés au hasard, trois tirages) et `seed-sql.test.ts` (base de
+  démo complète) vérifient, pour chaque personne sous chacun des quatre rôles, que les deux choisissent les mêmes
+  documents.
+- **Termes de recherche** (`src/db/schema.ts`, `src/db/index.ts`) : table `document_terms` (document, groupe de
+  pertinence, valeur repliée), écrite par le déclencheur `documents_terms` à la création d'un document et à chaque
+  changement d'un champ cherché (ID et anciens ID, titre, mots-clés, référence externe, ID d'étude, sous-type,
+  organisme source, auteur en texte libre), avec un index trigrammes (`pg_trgm`, fourni avec PGlite) pour « contient ».
+  Le repli `codex_fold` (décomposition, accents retirés, minuscules selon les tables Unicode de la base,
+  `pg_unicode_fast`) est identique à celui de JavaScript sur chaque point de code que les versions d'Unicode de Node et
+  de PGlite attribuent toutes deux, et sur le sigma final ; le repli par défaut de la base en différait sur 97. La base
+  replie aussi la requête : sous Node 26 (Unicode 17.0, PGlite restant en 16.0), une requête repliée par Node ne
+  retrouvait pas un titre contenant une majuscule ajoutée par Unicode 17.0 (U+A7D2, par exemple). Le début de mot (niveau 2 de la pertinence) s'appuie sur
+  une classe de caractères tirée de JavaScript : `[[:alnum:]]` de la base diffère de `[\p{L}\p{N}]` sur plus de
+  83 000 points de code. Le tri par titre et par ID passe par une collation ICU (`codex_fr` : numérique, accents et
+  casse ignorés, non déterministe pour que les égalités gardent l'ordre suivant), identique à `Intl.Collator` sur
+  27 000 chaînes ; l'ICU de PGlite ignore ces options sous leur forme BCP 47 (`fr-u-kn-ks-level1`). Index du journal
+  par date et par document. Migration unique régénérée.
+- **Recherche** (`searchDocs`, `src/lib/queries.ts`) : une seule requête calcule les documents visibles, le texte
+  (pertinence par groupe ; libellé du type dans la langue du lecteur et noms des personnes notés à part, comme le
+  faisait `score`), la période, les comptes de toutes les facettes (`GROUPING SETS`, puis mots-clés et échéances), le
+  total, le tri et la page ; seules les 50 lignes affichées sont lues entières. Les valeurs d'une facette viennent dans
+  l'ordre où la recherche en mémoire les rencontrait. `/recherche?page=2` et boutons de page sous les résultats
+  (`src/components/ui/Pager.tsx`) ; changer de critère, de tri ou de texte revient à la première page ; une page
+  au-delà de la dernière montre la dernière. L'export CSV passe par la même requête, toutes pages, sans comptes.
+- **Explorateur** (`explorerDocs`) : une requête donne le nombre de documents, les nœuds de l'axe, les types du nœud
+  ouvert, les documents expirés ou en retard de revue, les documents filtrés (50 par page, `?page=`) et le document
+  sélectionné, même s'il est sur une autre page ; la sélection et la fermeture de l'aperçu gardent la page.
+- **Journal** (onglet Journal d'Administration, `auditPage`) : filtres par morceau d'ID de document ou de cible (casse
+  ignorée), personne, action et période (jours, heure de Paris), en formulaire GET (`next/form`) ; 100 entrées par
+  page, avec un curseur sur l'heure et l'ID (« Plus récentes », « Plus anciennes », « Les plus récentes »). Le journal
+  est lu par lots jusqu'à remplir la page de ce que `auditForReader` laisse lire : une entrée masquée ne prend pas de
+  place. L'export CSV reste complet, en flux.
+- **Choix prudents** ([decisions.md](decisions.md)) : mêmes résultats que la version en mémoire jusque dans les cas
+  limites (marque d'ordre d'octet en tête d'un texte libre, que le pilote PGlite retire à la lecture : `codex_unbom` ;
+  caractère NUL dans un critère : aucun résultat plutôt qu'une erreur) ; tailles de page provisoires, le volume réel
+  étant inconnu (O-11) ; un ID actuel ne retrouve dans le journal les entrées écrites sous les anciens ID que pour un
+  document que le lecteur peut lire (D-14) ; export du journal complet et sans filtre.
+- **Mesure** (script hors dépôt : base de démo plus 3 000 ou 6 000 documents générés, quatre entrées de journal
+  chacun ; médianes de 5 appels, conteneur cloud à 4 cœurs ; « avant » sur le commit `eef9ada`). Lectures seules :
+
+  | Lecture | 3 000 avant | 3 000 après | 6 000 avant | 6 000 après |
+  |---|---|---|---|---|
+  | `/recherche`, gestionnaire | 187 ms | 59 ms | 376 ms | 112 ms |
+  | `/recherche?q=levage` | 206 ms | 39 ms | 386 ms | 97 ms |
+  | `/recherche?q=a&sort=title` | 201 ms | 156 ms | 423 ms | 206 ms |
+  | `/recherche?type=PRO&keywords=ATEX&sort=id` | 194 ms | 43 ms | 373 ms | 70 ms |
+  | `/recherche?date=modified&from=2026-01-01&sort=due` | 189 ms | 44 ms | 381 ms | 76 ms |
+  | `/recherche`, collaborateur | 228 ms | 49 ms | 377 ms | 93 ms |
+  | `/explorateur`, gestionnaire | 172 ms | 28 ms | 353 ms | 44 ms |
+  | `/explorateur`, collaborateur | 180 ms | 25 ms | 391 ms | 42 ms |
+  | Onglet Journal (500 lignes avant, 100 après) | 11 ms | 8 ms | 13 ms | 9 ms |
+  | Export CSV de la recherche `q=levage` | 206 ms | 117 ms | 386 ms | 173 ms |
+  | Export CSV de toute la base, gestionnaire | 187 ms | 222 ms | 376 ms | 479 ms |
+
+  L'export de toute la base est un peu plus lent : il lit ces milliers de documents entiers après la requête.
+  Chargement complet d'une page dans le serveur de développement, à 3 000 documents : `/recherche` passe de 11,8 s à
+  0,95 s (gestionnaire) et de 8,3 s à 1,0 s (collaborateur), `/recherche?q=a&sort=title` de 12,8 s à 1,1 s,
+  `/explorateur` de 17,5 s à 1,0 s, l'onglet Journal de 1,9 s à 0,85 s : l'essentiel venait du rendu de milliers de
+  lignes. Il reste environ 0,7 s commun à toutes les pages : l'en-tête (ci-dessous).
+- **Relecture** (neuf retours, tous vérifiés puis appliqués) :
+  - la base replie la requête (`codex_fold`) comme les valeurs qu'elle garde. Le test du repli ne compare plus que
+    les points de code que les deux versions d'Unicode attribuent : il échouait sous Node 26 (session locale), qui
+    embarque Unicode 17.0. La suite passe sous Node 22 et sous Node 26.11.1 ;
+  - le champ de recherche de l'en-tête ramène lui aussi à la page 1 (il gardait `page`) : les deux champs et le tri
+    construisent l'URL par la même fonction (`searchUrlWith`, `src/lib/search.ts`) ;
+  - l'explorateur et l'onglet Journal ne gardent qu'une valeur par paramètre (`oneEach`) : un paramètre répété
+    provoquait une erreur 500. Un curseur du journal hors de la plage d'un `serial` est ignoré ; la base convertit les
+    jours de la période en heure de Paris (les années 0001 et 9999 provoquaient une erreur) ;
+  - nouveaux tests : export CSV de plus d'une page appelé par sa route, `pageOf`, `searchHref` et `searchUrlWith`,
+    lecture du journal par lots au-delà de 1 000 entrées masquées, bornes des jours et curseurs ; chacun échoue si
+    l'on retire la règle qu'il vérifie ;
+  - `docs/audit-deck-epc2i.md` : statut de G15 et de la ligne « Slide 7 · 2 » mis à jour.
+- **Reste** (point 50 « fait en partie ») : l'en-tête commun (`src/app/layout.tsx`) charge encore, à chaque chargement
+  complet d'une page, tous les documents visibles (`listDocs`, pour l'activité récente, les modèles et « À traiter »)
+  et tous les circuits avec leurs documents (`listWorkflows`) : 0,19 s à 3 000 documents, 0,4 s à 6 000. Une navigation
+  dans la page (facette, tri, page suivante) ne le recalcule pas. L'Accueil, Archivage, les pages de département et la
+  fiche (documents du projet) lisent aussi `listDocs` ; Validations n'est pas paginé ; le contenu des fichiers n'est
+  pas indexé (G15) ; le passage à Postgres serveur est le point 51.
+- **Vérifié** : `npm test` (714 tests, sous Node 22 et sous Node 26.11.1, dont `tests/integration/access-sql.test.ts`, `search-sql.test.ts`,
+  `seed-sql.test.ts` et `audit-page.test.ts` ; les tests existants de la recherche, des pages de département, des
+  recherches enregistrées et de la revue passent désormais par `searchDocs`, comparé à chaque appel à la version en
+  mémoire), `npm run typecheck`, `npm run lint`. Les tests échouent si l'on retire de la condition SQL l'équipe projet,
+  les modificateurs, la fin d'un circuit, le statut « acceptée » d'une modification ou la révision en vigueur ; de la
+  recherche le score des valeurs extérieures, `codex_unbom` (facettes ou termes), l'ordre des égalités ou de la
+  pertinence, les comptes des facettes, le filtre des autres facettes dans ces comptes, l'ordre de leurs valeurs, le
+  fuseau de Paris, les actions qui datent une fiche, la borne de l'expiration, la collation, la classe des débuts de
+  mot, le choix de l'auteur, l'ordre des mots-clés répétés, l'axe projet par le rattachement, la révision en vigueur
+  des retards de revue, l'ID d'étude des termes ou le repli Unicode de la base ; du journal le départage des entrées
+  de même heure ou la lisibilité exigée pour suivre les anciens ID (essayé sur le code final ; seule survit une
+  mutation sans effet, `>` pour `>=` entre deux dates égales).
+  Dans le navigateur, sur une base de démo neuve : les 148 états capturés avant la modification (Claire Bardet,
+  gestionnaire ; Julien Wagner, collaborateur ; Lucas Fabre, validateur ; James Holt, auditeur, en anglais ; 31
+  recherches et 6 vues de l'explorateur chacun, pages suivies et mises bout à bout) sont identiques après : résultats
+  et leur ordre, nombre de résultats, facettes, comptes et cases cochées, arbre de l'explorateur, compteurs
+  d'échéance. Les 12 exports CSV comparés sont identiques à l'octet près, les 100 premières lignes du journal aussi.
+  Pages 1 et 2 de `/recherche` et de `/explorateur` pour Claire Bardet (63 documents) ; retour en page 1 quand le
+  tri, une facette, le texte (champ de l'écran ou de l'en-tête) ou le statut change ; `?page=99` montre la page 2 ; sélection et fermeture de l'aperçu
+  sur la page 2 ; journal : pages précédente et suivante, filtre « PRO-QUA-0001 » et Julien Wagner (une entrée),
+  « Effacer », période du 6 au 7 octobre ; Julien Wagner n'a ni pagination (40 résultats) ni journal. Après la
+  relecture, sur une base de démo neuve : les 148 états, les 12 exports (appelés avec `page=2` dans l'URL) et les
+  entrées du journal sont toujours identiques à la capture d'avant ; depuis `/recherche?page=2`, une lettre tapée dans
+  l'en-tête, ou Entrée, ramène à la page 1 ; l'explorateur avec `node` ou `sel` répétés, et le journal avec les
+  jours 0001-01-01 et 9999-12-31, un curseur 9999999999 ou `doc` répété répondent 200. Le motif de recherche que la
+  base replie reste servi par l'index trigrammes, et les temps à 3 000 documents ne changent pas.

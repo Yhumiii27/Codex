@@ -3,20 +3,20 @@ import { getCtx } from '@/lib/context';
 import { csv, csvHeaders, csvResponse } from '@/lib/csv';
 import { todayIso } from '@/lib/format';
 import { audit } from '@/lib/lifecycle';
-import { listSearchDocs } from '@/lib/queries';
-import { parseSearch, runSearch } from '@/lib/search';
+import { searchDocs } from '@/lib/queries';
+import { parseSearch } from '@/lib/search';
 
 const filename = () => `codex-recherche-${todayIso()}.csv`;
 
 /**
  * CSV of the advanced search results, same query string as /recherche (query, facets, period, order; visible documents
- * only, in the order of the screen); journaled with its criteria and size.
+ * only, in the order of the screen, every page); journaled with its criteria and size.
  */
 export async function GET(req: Request) {
   const ctx = await getCtx();
   const { t } = ctx;
   const search = parseSearch(new URL(req.url).searchParams);
-  const { results } = runSearch(await listSearchDocs(ctx), search);
+  const { results } = await searchDocs(ctx, search, { all: true });
   const rows = [
     ['ID', t.title_label, t.type, t.family, t.origin, t.attachment, t.project_program, t.department, t.site_label, t.rev_in_force, t.rev_working, t.status,
       t.owner, t.conf, t.keywords, t.modified, t.issued_at, t.effective_at, t.review_due_at, t.expires_at, t.end_date],

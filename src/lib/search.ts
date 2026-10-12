@@ -1,3 +1,4 @@
+import type { TermField } from '@/db/schema';
 import { parseIsoDay } from './format';
 import type { TKey } from './i18n';
 import type { DocView } from './queries';
@@ -82,8 +83,19 @@ export function parseSearch(sp: Record<string, string | string[] | undefined> | 
   return { q: one('q').trim(), facets, period: cleanPeriod(one('date').trim(), one('from'), one('to')), sort: isIn(SORT_KEYS, sort) ? sort : null };
 }
 
-/** URL of a search: one parameter per facet value, so that a value may hold a comma. */
-export function searchHref(s: SearchInput, base = '/recherche'): string {
+/** Parameters of a page's URL, one value each: a repeated parameter keeps its first value. */
+export function oneEach(sp: Record<string, string | string[] | undefined>): Record<string, string | undefined> {
+  return Object.fromEntries(Object.entries(sp).map(([k, v]) => [k, Array.isArray(v) ? v[0] : v]));
+}
+
+/** Page of a list read from its URL (`page`): a whole number from 1, else 1. */
+export function pageOf(v: string | string[] | null | undefined): number {
+  const raw = (Array.isArray(v) ? v[0] : v)?.trim() ?? '';
+  return /^\d{1,6}$/.test(raw) && Number(raw) >= 1 ? Number(raw) : 1;
+}
+
+/** URL of a search: one parameter per facet value, so that a value may hold a comma; `page` from the second one. */
+export function searchHref(s: SearchInput, base = '/recherche', page = 1): string {
   const p = new URLSearchParams();
   if (s.q) p.set('q', s.q);
   for (const k of FACET_KEYS) for (const v of s.facets?.[k] ?? []) p.append(k, v);
@@ -93,8 +105,22 @@ export function searchHref(s: SearchInput, base = '/recherche'): string {
     if (s.period.to) p.set('to', s.period.to);
   }
   if (s.sort) p.set('sort', s.sort);
+  if (page > 1) p.set('page', String(page));
   const qs = p.toString();
   return `${base}${qs ? `?${qs}` : ''}`;
+}
+
+/**
+ * URL of /recherche from the query string of the current one (`current`), with some parameters replaced (`set`; null
+ * or empty removes one) and the others kept, but the page: another text, other criteria or another order start again
+ * from the first page. Used by the search fields (header and screen) and the order of the results.
+ */
+export function searchUrlWith(current: string, set: Record<string, string | null>): string {
+  const p = new URLSearchParams(current);
+  for (const [k, v] of Object.entries(set)) if (v) p.set(k, v); else p.delete(k);
+  p.delete('page');
+  const qs = p.toString();
+  return `/recherche${qs ? `?${qs}` : ''}`;
 }
 
 /**
@@ -146,11 +172,12 @@ export function hasCriteria(s: SearchInput): boolean {
   return !!s.q || FACET_KEYS.some((k) => !!s.facets?.[k]?.length) || !!(s.period && (s.period.from || s.period.to));
 }
 
-const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+/** A text with its accents and case set aside, as the search compares texts (the database folds as codex_fold does). */
+export const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const WORD = /[\p{L}\p{N}]/u;
 
 /** How a field holds the folded query: 3 the whole field, 2 at the start of a word, 1 inside a word, 0 not at all. */
-function hit(field: string | null | undefined, n: string): number {
+export function hit(field: string | null | undefined, n: string): number {
   if (!field) return 0;
   const f = fold(field);
   if (f === n) return 3;
@@ -165,15 +192,52 @@ function hit(field: string | null | undefined, n: string): number {
 const best = (fields: (string | null | undefined)[], n: string) => fields.reduce((m, f) => Math.max(m, hit(f, n)), 0);
 
 /**
- * Relevance of a document for a query, accent- and case-insensitive; 0 when no field holds it. The ID (and former IDs)
- * weighs most, then the title, the keywords, the external reference and study ID, then type, subtype, source
- * organisation, owner and author.
+ * Weight of each group of values in score(), which the database search applies too (lib/queries.ts searchDocs; groups
+ * of document_terms): the ID and former IDs weigh most, then the title, the keywords, the external reference and study
+ * ID, then type, subtype, source organisation, owner and author.
+ */
+export const SCORE_WEIGHT: Record<TermField, number> = { id: 8, title: 4, keyword: 3, ref: 2, other: 1 };
+
+/**
+ * Relevance of a document for a query, accent- and case-insensitive; 0 when no field holds it (see SCORE_WEIGHT).
  */
 export function score(d: DocView, q: string): number {
   const n = fold(q.trim());
   if (!n) return 0;
-  return 8 * best([d.id, ...d.aliases], n) + 4 * best([d.title], n) + 3 * best(d.keywords, n)
-    + 2 * best([d.externalRef, d.studyId], n) + best([d.typeLabel, d.subtype, d.sourceOrg, d.owner, d.author], n);
+  const w = SCORE_WEIGHT;
+  return w.id * best([d.id, ...d.aliases], n) + w.title * best([d.title], n) + w.keyword * best(d.keywords, n)
+    + w.ref * best([d.externalRef, d.studyId], n) + w.other * best([d.typeLabel, d.subtype, d.sourceOrg, d.owner, d.author], n);
+}
+
+let wordClass: string | undefined;
+/**
+ * The characters hit() takes for a word's own: letters and digits of the basic plane, as a bracket expression of
+ * PostgreSQL. hit() reads the character before a match one UTF-16 unit at a time, so a character beyond the basic
+ * plane (a surrogate pair) never counts as one: it is left out. Drawn from this JavaScript engine's own Unicode tables
+ * rather than from the database's classes ([[:alnum:]] counts other characters, ² or combining marks among them).
+ */
+function wordChars(): string {
+  if (wordClass) return wordClass;
+  const hex = (c: number) => `\\u${c.toString(16).padStart(4, '0')}`;
+  let out = '', start = -1;
+  for (let c = 0; c <= 0x10000; c++) {
+    const w = c < 0x10000 && WORD.test(String.fromCharCode(c));
+    if (w && start < 0) start = c;
+    if (!w && start >= 0) {
+      out += start === c - 1 ? hex(start) : `${hex(start)}-${hex(c - 1)}`;
+      start = -1;
+    }
+  }
+  return (wordClass = out);
+}
+
+/**
+ * Start of a regular expression of PostgreSQL that finds a folded query at the start of a word of a folded value, as
+ * hit() scores 2: not right after a letter or digit. The database appends the query it has folded, its ASCII
+ * punctuation escaped (lib/queries.ts wordStartSql).
+ */
+export function wordStartPrefix(): string {
+  return `(?<![${wordChars()}])`;
 }
 
 /** Full-text match (see score); an empty query matches everything. */
@@ -260,6 +324,8 @@ const COMPARE: Record<SortKey, (a: Hit, b: Hit) => number> = {
 /**
  * Results of a search over the documents the user may see, in the order of sortOf() (ties keep the order of `docs`,
  * most recently modified first); `tally(k)` counts the documents per value of facet `k` under every other criterion.
+ * In memory: the reference of lib/queries.ts searchDocs, which the database runs (tests/support/search.ts compares
+ * them).
  */
 export function runSearch(docs: SearchDoc[], s: SearchInput) {
   const q = s.q?.trim() ?? '', facets = s.facets ?? {};

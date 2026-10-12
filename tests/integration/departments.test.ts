@@ -5,10 +5,11 @@ import { setDepartmentFeatured } from '@/lib/actions';
 import { getCtx } from '@/lib/context';
 import { DEFAULT_FEATURED } from '@/lib/departments';
 import { DICT } from '@/lib/i18n';
-import { auditDetailL, departmentPage, listSearchDocs } from '@/lib/queries';
-import { parseSearch, runSearch } from '@/lib/search';
+import { auditDetailL, departmentPage } from '@/lib/queries';
+import { parseSearch } from '@/lib/search';
 import { addDoc, addWorkflow, fixClock, setupDb } from '../support/db';
 import type { Person } from '../support/fixtures';
+import { searchChecked } from '../support/search';
 import { actAs } from '../support/session';
 
 // Department pages (/departements/[code], point 11 of docs/reste-a-faire.md, G12): documents in force, due dates,
@@ -180,9 +181,9 @@ describe('featured filters', () => {
     await setDepartmentFeatured('QUA', ['keywords', 'status']);
     for (const who of ['auditor', 'writer'] as const) {
       const p = await page(who, 'QUA');
-      const docs = await listSearchDocs(await getCtx());
+      const ctx = await getCtx();
       for (const f of p.featured) {
-        for (const v of f.values) expect(runSearch(docs, parseSearch(new URL(v.href, 'http://codex').searchParams)).results.length, `${who} ${f.key} ${v.value}`).toBe(v.count);
+        for (const v of f.values) expect((await searchChecked(ctx, parseSearch(new URL(v.href, 'http://codex').searchParams))).total, `${who} ${f.key} ${v.value}`).toBe(v.count);
       }
       expect(counts(p, 'keywords'), who).toEqual(who === 'writer' ? { ATEX: 2, levage: 1 } : { ATEX: 1, levage: 1 });
     }

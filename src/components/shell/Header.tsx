@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Icon } from '@/components/ui/Icon';
 import { Seg } from '@/components/ui/Seg';
 import { setLang } from '@/lib/actions';
+import { searchUrlWith } from '@/lib/search';
 import { useApp } from './AppProvider';
 import { activeScreen } from './Sidebar';
 import { TODO_ICON } from './todo';
@@ -44,13 +45,11 @@ export function Header({ notif }: { notif: Notif }) {
     return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
   }, [notifOpen]);
 
+  // Another text starts the results again from their first page, as the screen's own field does.
   const go = (value: string, replace: boolean) => {
     const onSearch = window.location.pathname === '/recherche';
     if (replace && !onSearch) return; // the user left the search screen before the debounce fired
-    const next = new URLSearchParams(onSearch ? window.location.search : '');
-    if (value.trim()) next.set('q', value.trim()); else next.delete('q');
-    const qs = next.toString();
-    const url = `/recherche${qs ? `?${qs}` : ''}`;
+    const url = searchUrlWith(onSearch ? window.location.search : '', { q: value.trim() });
     if (replace) router.replace(url, { scroll: false }); else router.push(url);
   };
   // On the search screen the header field drives the results live, like the design's shared query.

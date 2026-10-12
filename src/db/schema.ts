@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { boolean, check, date, integer, jsonb, pgTable, primaryKey, serial, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { boolean, check, date, index, integer, jsonb, pgTable, primaryKey, serial, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 
 // Data model of the GED — see docs/modele-cible.md.
 
@@ -231,6 +231,27 @@ export const documentReaders = pgTable(
   (t) => [primaryKey({ columns: [t.docId, t.userId] })],
 );
 
+/** Group of score() a searched value of the record weighs in (lib/search.ts SCORE_WEIGHT). */
+export type TermField = 'id' | 'title' | 'keyword' | 'ref' | 'other';
+
+/**
+ * Values of the record /recherche searches, one row per value, folded as lib/search.ts fold folds them (accents and
+ * case ignored): ID and former IDs, title, keywords, external reference and study ID, subtype, source organisation and
+ * free-text author. Written by the database whenever a document is inserted or one of these columns changes (trigger
+ * documents_terms, src/db/index.ts), never by the application. Values from elsewhere (type label in the reader's
+ * language, names of the owner and of the author) are matched when the search runs (lib/queries.ts searchDocs).
+ */
+export const documentTerms = pgTable(
+  'document_terms',
+  {
+    docId: text('doc_id').notNull().references(docRef, { onUpdate: 'cascade', onDelete: 'cascade' }),
+    field: text('field').$type<TermField>().notNull(),
+    term: text('term').notNull(),
+  },
+  // Trigrams find the values holding a piece of text (LIKE '%…%') without reading them all.
+  (t) => [index('document_terms_doc').on(t.docId), index('document_terms_term').using('gin', t.term.op('gin_trgm_ops'))],
+);
+
 /** Nature of a link between two documents (lib/links.ts); « Remplacé par » is a `replaces` link read from its target. */
 export type LinkKind = 'replaces' | 'see_also';
 /** A link as one of its documents reads it: it replaces the other, is replaced by it, or refers to it. */
@@ -460,7 +481,12 @@ export const auditLog = pgTable(
     /** Revision the entry is about (working version, circuit, entry into force…); null for the document as a whole (lib/access.ts). */
     revisionId: integer('revision_id'),
   },
-  (t) => [check('audit_log_subject', sql`${t.docId} is not null or (${t.targetKind} is not null and ${t.targetId} is not null)`)],
+  // Newest first (Journal tab, export, activity feeds), and per document (dates shown outside the drafting circle).
+  (t) => [
+    check('audit_log_subject', sql`${t.docId} is not null or (${t.targetKind} is not null and ${t.targetId} is not null)`),
+    index('audit_log_at').on(t.at, t.id),
+    index('audit_log_doc').on(t.docId),
+  ],
 );
 
 export const rolePermissions = pgTable(

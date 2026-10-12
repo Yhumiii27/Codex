@@ -5,10 +5,10 @@ import { recordReview, updateMeta, updateType } from '@/lib/actions';
 import { getCtx } from '@/lib/context';
 import { DICT } from '@/lib/i18n';
 import { approveRevision, promoteDue } from '@/lib/lifecycle';
-import { auditDetailL, deadlines, listAudit, listDocs, listSearchDocs } from '@/lib/queries';
-import { runSearch } from '@/lib/search';
+import { auditDetailL, deadlines, listAudit, listDocs } from '@/lib/queries';
 import { addDoc, fixClock, getDoc, getRevision, journalOf, revisionStatuses, setupDb, viewOf } from '../support/db';
 import type { Person } from '../support/fixtures';
+import { searchChecked } from '../support/search';
 import { actAs } from '../support/session';
 
 // Expiry and periodic review (point 13 of docs/reste-a-faire.md, G36, G37): « Revue effectuée » through its Server
@@ -258,11 +258,11 @@ describe('indicators « Expiré » and « Revue en retard » (no new status, D-1
   it('a facet of the search, counted on the documents the reader may read only', async () => {
     await dated();
     actAs('auditor');
-    const outside = runSearch(await listSearchDocs(await getCtx()), { facets: { overdue: ['expired'] } });
+    const outside = await searchChecked(await getCtx(), { facets: { overdue: ['expired'] } });
     expect(outside.results.map((d) => d.id)).toEqual(['PRO-QUA-0001']);
     expect(Object.fromEntries(outside.tally('overdue'))).toEqual({ expired: 1, review: 1 });
     actAs('writer');
-    const circle = runSearch(await listSearchDocs(await getCtx()), { facets: { overdue: ['expired'] } });
+    const circle = await searchChecked(await getCtx(), { facets: { overdue: ['expired'] } });
     expect(circle.results.map((d) => d.id).sort()).toEqual(['PRO-QUA-0001', 'PRO-QUA-0005']);
   });
 

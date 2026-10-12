@@ -3,10 +3,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { schema as s } from '@/db';
 import { GET } from '@/app/api/export/search/route';
 import { getCtx } from '@/lib/context';
-import { auditDetailL, listDocs, listSearchDocs } from '@/lib/queries';
-import { parseSearch, runSearch, searchHref, type SearchInput } from '@/lib/search';
+import { auditDetailL, listDocs, searchDocs } from '@/lib/queries';
+import { parseSearch, searchHref, type SearchInput } from '@/lib/search';
 import { addDoc, fixClock, setupDb } from '../support/db';
 import type { Person } from '../support/fixtures';
+import { referenceDocs, searchChecked } from '../support/search';
 import { actAs } from '../support/session';
 
 // /recherche (point 12 of docs/reste-a-faire.md): new facets, a period on a date and a chosen order, over the documents
@@ -26,10 +27,10 @@ async function doc(id: string, meta: Meta, spec: Omit<Parameters<typeof addDoc>[
   if (Object.keys(meta).length) await db().update(s.documents).set(meta).where(eq(s.documents.id, id));
 }
 
-/** The search as `who` runs it on /recherche. */
+/** The search as `who` runs it on /recherche, every page, checked against the in-memory search (tests/support/search.ts). */
 async function run(who: Person, search: SearchInput) {
   actAs(who);
-  return runSearch(await listSearchDocs(await getCtx()), search);
+  return searchChecked(await getCtx(), search);
 }
 const ids = (r: { results: { id: string }[] }) => r.results.map((d) => d.id);
 
@@ -87,8 +88,10 @@ describe('period and order (D-14)', () => {
     await doc('PRO-QUA-0002', {}, { revisions: [{ letter: 'A', status: 'in_force' }, { letter: 'B', status: 'approved', effectiveAt: '2026-11-01' }] });
     for (const who of ['auditor', 'owner', 'manager'] as const) {
       actAs(who);
-      const docs = await listSearchDocs(await getCtx());
-      expect(Object.fromEntries(docs.map((d) => [d.id, d.effectiveAt])), who).toEqual({ 'PRO-QUA-0001': '2026-09-12', 'PRO-QUA-0002': '2026-09-10' });
+      const ctx = await getCtx();
+      const want = { 'PRO-QUA-0001': '2026-09-12', 'PRO-QUA-0002': '2026-09-10' };
+      expect(Object.fromEntries((await searchDocs(ctx, {})).results.map((d) => [d.id, d.effectiveAt])), who).toEqual(want);
+      expect(Object.fromEntries((await referenceDocs(ctx)).map((d) => [d.id, d.effectiveAt])), who).toEqual(want);
       expect(ids(await run(who, { facets: {}, period: { field: 'effective', from: '2026-11-01', to: null } })), who).toEqual([]);
     }
   });
@@ -97,7 +100,7 @@ describe('period and order (D-14)', () => {
     await doc('PRO-QUA-0001', {}, { revisions: [{ letter: 'A', status: 'in_force', effectiveAt: '2026-09-12' }] });
     actAs('auditor');
     const ctx = await getCtx();
-    const [searched] = await listSearchDocs(ctx);
+    const { results: [searched] } = await searchDocs(ctx, {});
     const [shared] = await listDocs(ctx);
     expect(searched.effectiveAt).toBe('2026-09-12');
     expect('effectiveAt' in shared).toBe(false);

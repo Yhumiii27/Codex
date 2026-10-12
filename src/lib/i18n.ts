@@ -228,6 +228,10 @@ const fr = {
   working_stale:'La version de travail {label} a été déposée entre-temps par {who} ; rechargez la fiche pour partir de cette version.',
   validate_stale:'La version de travail {label} a été déposée entre-temps par {who} ; rechargez la fiche pour la voir avant de demander la validation.',
   reload_record:'Recharger la fiche',
+  // Lists read page by page (/recherche, /explorateur, Journal tab)
+  pages_nav:'Pages', page_prev:'Page précédente', page_next:'Page suivante', page_of:'Page {n} sur {m}',
+  audit_filter_doc:'Document ou cible', audit_all_users:'Toutes les personnes', audit_all_actions:'Toutes les actions', audit_from:'Du', audit_to:'Au',
+  audit_newer:'Plus récentes', audit_older:'Plus anciennes', audit_latest:'Les plus récentes', audit_none:'Aucune entrée ne correspond à ces critères.',
 };
 
 type Dict = Record<keyof typeof fr, string>;
@@ -457,6 +461,10 @@ const en: Dict = {
   working_stale:'Working version {label} was uploaded in the meantime by {who}; reload the record to start from that version.',
   validate_stale:'Working version {label} was uploaded in the meantime by {who}; reload the record to see it before requesting approval.',
   reload_record:'Reload the record',
+  // Lists read page by page (/recherche, /explorateur, Journal tab)
+  pages_nav:'Pages', page_prev:'Previous page', page_next:'Next page', page_of:'Page {n} of {m}',
+  audit_filter_doc:'Document or target', audit_all_users:'Everyone', audit_all_actions:'All actions', audit_from:'From', audit_to:'To',
+  audit_newer:'Newer', audit_older:'Older', audit_latest:'Most recent', audit_none:'No entry matches these criteria.',
 };
 
 export const DICT: Record<Lang, Dict> = { fr, en };

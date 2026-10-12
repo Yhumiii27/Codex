@@ -5,10 +5,11 @@ import { deleteSavedSearch, saveSearch } from '@/lib/actions';
 import { getCtx } from '@/lib/context';
 import { savedSearchesSeenBy, seesSavedSearch } from '@/lib/access';
 import { DICT } from '@/lib/i18n';
-import { listSavedSearches, listSearchDocs } from '@/lib/queries';
-import { parseSearch, runSearch, type Facets, type SearchInput } from '@/lib/search';
+import { listSavedSearches } from '@/lib/queries';
+import { parseSearch, type Facets, type SearchInput } from '@/lib/search';
 import { addDoc, fixClock, setupDb } from '../support/db';
 import { DEPARTMENTS, PEOPLE, type Person } from '../support/fixtures';
+import { searchChecked } from '../support/search';
 import { actAs } from '../support/session';
 
 // Saved searches of /recherche (point 2 of docs/reste-a-faire.md): whoever may read saves personal searches, seen by
@@ -183,7 +184,7 @@ describe('who sees a saved search', () => {
     const [x] = await listSavedSearches(ctx);
     expect(Object.keys(x).sort()).toEqual(['department', 'facets', 'href', 'id', 'labelL', 'mayDelete', 'q', 'scope', 'title']);
     expect(x.href).toBe('/recherche?type=PRO');
-    expect(runSearch(await listSearchDocs(ctx), parseSearch(new URL(x.href, 'http://codex').searchParams)).results.map((d) => d.id)).toEqual(['PRO-QUA-0001']);
+    expect((await searchChecked(ctx, parseSearch(new URL(x.href, 'http://codex').searchParams))).results.map((d) => d.id)).toEqual(['PRO-QUA-0001']);
   });
 });
 

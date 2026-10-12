@@ -1,6 +1,6 @@
 import 'server-only';
 import { cache } from 'react';
-import { and, eq, inArray, or, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, or, sql, type SQL, type SQLWrapper } from 'drizzle-orm';
 import { getDb, schema as s, type Db } from '@/db';
 import type { Conf } from '@/db/schema';
 import { TEMPLATE_TYPE } from './codes';
@@ -109,6 +109,47 @@ export function canRead(ctx: Viewer, d: AccessDoc, ix: AccessIndex): boolean {
     default:
       return false;
   }
+}
+
+// ── The same rules in SQL ───────────────────────────────────────────────
+// Conditions on the row of `documents` of the query they go in (not aliased), so that lists, counts and pages are
+// filtered by the database (lib/queries.ts searchDocs, explorerDocs, auditPage) instead of loading every document.
+// Each subquery is uncorrelated: Postgres computes it once per query. The functions above stay the reference:
+// tests/integration/access-sql.test.ts and seed-sql.test.ts check, person by person and role by role, that both
+// select the same documents.
+
+const docs = s.documents;
+/** A text column JavaScript reads as true: neither null nor empty. */
+const filled = (c: SQLWrapper) => sql`coalesce(${c}, '') <> ''`;
+
+/** inDraftingCircle as an SQL condition: never null, so that it may be negated. */
+export function draftingCircleSql(v: Viewer): SQL {
+  if (v.seesAll) return sql`true`;
+  const me = v.user.id;
+  return sql`(${docs.ownerId} = ${me}
+    or ${docs.id} in (select r.doc_id from revisions r where r.status in (${sql.join(OPEN_REVISION.map((x) => sql`${x}`), sql`, `)}) and r.modifier_id = ${me})
+    or ${docs.id} in (select w.doc_id from workflows w join workflow_steps x on x.workflow_id = w.id
+      where coalesce(w.outcome, '') = '' and x.assignee_id = ${me} and w.step < (select count(*) from workflow_steps y where y.workflow_id = w.id))
+    or ${docs.id} in (select c.doc_id from change_requests c where c.kind = 'modification' and c.status = 'accepted' and c.modifier_id = ${me}))`;
+}
+
+/**
+ * canRead as an SQL condition, never null. `circle`: draftingCircleSql(v), or a column already holding it. A project
+ * team is the project's manager and whoever holds a function scoped to the project (buildAccessIndex).
+ */
+export function readableSql(v: Viewer, circle: SQL = draftingCircleSql(v)): SQL {
+  if (v.seesAll) return sql`true`;
+  if (!v.can('read')) return circle;
+  const me = v.user.id;
+  const named = sql`${docs.id} in (select r.doc_id from document_readers r where r.user_id = ${me})`;
+  const team = sql`${docs.projectCode} in (select p.code from projects p
+    where p.manager_id = ${me} or p.code in (select h.scope_value from function_holders h where h.user_id = ${me} and h.scope_value is not null))`;
+  const department = v.user.department ? sql`${docs.department} = ${v.user.department} or ` : sql``;
+  return sql`coalesce(${circle} or (${filled(docs.revInForce)} and (
+    ${docs.conf} in ('public', 'restreint', 'interne')
+    or (${docs.conf} = 'confidentiel' and (${department}${team} or ${named}))
+    or (${docs.conf} = 'tres_confidentiel' and ${named})
+  )), false)`;
 }
 
 /** A template offered by "Nouveau depuis un modèle" and accepted by createDocument: FRM in force, active, visible. */

@@ -1,23 +1,25 @@
 import 'server-only';
 import { cache } from 'react';
-import { and, asc, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, or, sql, type SQL, type SQLWrapper } from 'drizzle-orm';
 import { getDb, schema as s } from '@/db';
-import type { AuditChange, AuditData, AuditTargetKind, AuditValue, Conf, LinkRel } from '@/db/schema';
-import { canRead, changeAsSeen, deadlineActor, draftTodo, followsCircuit, getAccessIndex, inDraftingCircle, isUsableTemplate, mayDeleteSearch, mayEditLinks, mayGetApprovalRecord, mayRecall, mayWorkOnDraft, openRevisionView, readerMaySeeEntry, readerMaySeeRevision, savedSearchesSeenBy, type AccessIndex } from './access';
+import type { AuditChange, AuditData, AuditTargetKind, AuditValue, Conf, LinkRel, TermField } from '@/db/schema';
+import { canRead, changeAsSeen, deadlineActor, draftingCircleSql, draftTodo, followsCircuit, getAccessIndex, inDraftingCircle, isUsableTemplate, mayDeleteSearch, mayEditLinks, mayGetApprovalRecord, mayRecall, mayWorkOnDraft, openRevisionView, readableSql, readerMaySeeEntry, readerMaySeeRevision, savedSearchesSeenBy, type AccessIndex } from './access';
 import { visaCircuit, type VisaRecord } from './approval';
 import { revLabel } from './codification';
 import type { Ctx } from './context';
-import { inForceEffect } from './dates';
-import { addDays, clip, daysBetween, fmtDate, fmtDateTime, fmtSize, fmtWhen, loc, nowStamp, parisStamp, todayIso } from './format';
+import { addDays, clip, daysBetween, fmtDate, fmtDateTime, fmtSize, fmtWhen, loc, nowStamp, parisStamp, parseIsoDay, TIME_ZONE, todayIso } from './format';
 import { CONF_LEVELS, MATRIX_ROLE_LABEL, TAGCLS, type T, type TKey } from './i18n';
 import { decisionWait, lockOf, type DecisionWait } from './lifecycle';
 import { LINK_RELS, otherEnd, relOf } from './links';
 import { retainUntil } from './retention';
 import { isExpired, isReviewOverdue } from './review';
 import { featuredFilters, featuredOf } from './departments';
-import { DATE_LABEL, FACET_KEYS, FACET_LABEL, searchHref, SORT_LABEL, type FacetKey, type Facets, type Period, type SearchDoc, type SearchInput, type SortKey } from './search';
+import { DATE_LABEL, FACET_KEYS, FACET_LABEL, fold, hit, SCORE_WEIGHT, searchHref, SORT_LABEL, sortOf, wordStartPrefix, type DateField, type FacetKey, type Facets, type Period, type SearchDoc, type SearchInput, type SortKey } from './search';
 
 type DocRow = typeof s.documents.$inferSelect;
+
+/** `column` is one of `values`, passed as one array (a list of thousands of IDs would make as many parameters). */
+const anyOf = (column: SQLWrapper, values: string[]) => sql`${column} = any(${sql.param(values)}::text[])`;
 
 /**
  * `workingL`: label of the revision being drafted with its last working version ("B.2"), see workingLabels().
@@ -77,13 +79,17 @@ export function docView(ctx: Ctx, d: DocRow, workingL: string | null | undefined
 }
 export type DocView = ReturnType<typeof docView>;
 
-/** Label ("B.2", or "B" before any working version) of the revision being drafted or reviewed, per document. */
-async function workingLabels(docId?: string): Promise<Map<string, string>> {
+/**
+ * Label ("B.2", or "B" before any working version) of the revision being drafted or reviewed, per document: of every
+ * document, or of those of `docIds`.
+ */
+async function workingLabels(docIds?: string[]): Promise<Map<string, string>> {
+  if (docIds && !docIds.length) return new Map();
   const db = await getDb();
   const open = inArray(s.revisions.status, ['draft', 'in_review', 'approved']);
   const [revs, vs] = await Promise.all([
-    db.select({ id: s.revisions.id, docId: s.revisions.docId, letter: s.revisions.letter, status: s.revisions.status }).from(s.revisions).where(docId ? and(open, eq(s.revisions.docId, docId)) : open),
-    db.select({ revisionId: s.workingVersions.revisionId, n: s.workingVersions.n }).from(s.workingVersions).where(docId ? eq(s.workingVersions.docId, docId) : undefined),
+    db.select({ id: s.revisions.id, docId: s.revisions.docId, letter: s.revisions.letter, status: s.revisions.status }).from(s.revisions).where(docIds ? and(open, anyOf(s.revisions.docId, docIds)) : open),
+    db.select({ revisionId: s.workingVersions.revisionId, n: s.workingVersions.n }).from(s.workingVersions).where(docIds ? anyOf(s.workingVersions.docId, docIds) : undefined),
   ]);
   const maxN = new Map<number, number>();
   vs.forEach((v) => maxN.set(v.revisionId, Math.max(maxN.get(v.revisionId) ?? 0, v.n)));
@@ -113,31 +119,6 @@ async function visibleModified(ids: string[]): Promise<Map<string, string>> {
 }
 
 /**
- * Date the revision in force of each document took effect, as its record shows it: the effective date set when it was
- * sent for approval, or the day it entered into force when that came later. Revisions in force only (D-14).
- */
-async function effectiveDates(): Promise<Map<string, string>> {
-  const db = await getDb();
-  const rows = await db.select({ docId: s.revisions.docId, effectiveAt: s.revisions.effectiveAt, inForceAt: s.revisions.inForceAt })
-    .from(s.revisions).where(eq(s.revisions.status, 'in_force'));
-  const out = new Map<string, string>();
-  for (const r of rows) {
-    const at = inForceEffect(r);
-    if (at) out.set(r.docId, at);
-  }
-  return out;
-}
-
-/**
- * Documents of /recherche and of its CSV export: those of listDocs (visible ones only), each with the date its revision
- * in force took effect, on copies that leave the shared list as it is. Read here only: no other screen needs that date.
- */
-export async function listSearchDocs(ctx: Ctx): Promise<SearchDoc[]> {
-  const [docs, eff] = await Promise.all([listDocs(ctx), effectiveDates()]);
-  return docs.map((d) => ({ ...d, effectiveAt: eff.get(d.id) ?? null }));
-}
-
-/**
  * Documents the current user may see (records managers: all), most recently modified first. Without option, the list is
  * loaded once per request and shared (the layout, its templates and « À traiter », the page): never sort or change it in
  * place.
@@ -158,6 +139,315 @@ async function loadDocs(ctx: Ctx, includeHidden: boolean): Promise<DocView[]> {
   return docs;
 }
 
+// ── Lists filtered, counted and paged by the database (/recherche, /explorateur, their exports) ──────
+// The same documents, in the same order, with the same counts as listDocs and lib/search.ts runSearch, which stay the
+// reference (tests/integration/search-sql.test.ts and seed-sql.test.ts compare them), without loading every document:
+// the visibility rules run as access.ts readableSql, and only the rows of the page shown are read whole.
+
+/** Documents per page of /recherche and /explorateur. */
+export const PAGE_SIZE = 50;
+
+const D = s.documents;
+/** A column of documents under its bare name, as the queries on the common table expressions below read it. */
+const col = (c: { name: string }) => sql`${sql.identifier(c.name)}`;
+const list = (xs: readonly string[]) => sql.join(xs.map((x) => sql`${x}`), sql`, `);
+const ALL = sql`true`;
+/** `expr` equals `v`; a value holding a NUL character equals no stored text, and the database refuses it as a parameter. */
+const is = (expr: SQL, v: string) => (v.includes('\0') ? sql`false` : sql`${expr} = ${v}`);
+
+/**
+ * The order of listDocs, which lists then keep for their ties: the date shown (docView, visibleModified), then the
+ * modification date and the ID as the database orders them.
+ */
+const LIST_ORDER = sql`shown desc, ${col(D.modifiedAt)} desc, ${col(D.id)} desc`;
+
+/** The date the revision in force of document `id` took effect, as text (lib/dates.ts inForceEffect). */
+const effectiveOf = (id: SQL) => sql`(select (case when r.effective_at is not null and (r.in_force_at is null or r.effective_at >= r.in_force_at)
+  then r.effective_at else r.in_force_at end)::text from ${s.revisions} r where r.doc_id = ${id} and r.status = 'in_force')`;
+
+/**
+ * Common table expressions `in_circle`, then `vis`: the documents `ctx` may read (access.ts readableSql), with the
+ * columns of documents and what a list filters and sorts them by, as docView gives it: `circle` (inDraftingCircle),
+ * `shown` (the modification date the user sees: outside the drafting circle, a document with an open revision is dated
+ * by visibleModified), `expired` and `review_late` (lib/review.ts, as of `today`), `rank` (place in the order of
+ * listDocs). `effective` adds the date the revision in force took effect (inForceEffect), `score` and `match` a search.
+ */
+function visibleCte(ctx: Ctx, today: string, opts: { effective?: boolean; score?: SQL; match?: SQL } = {}): SQL {
+  const circle = ctx.seesAll ? ALL : sql`${D.id} in (select id from in_circle)`;
+  const shown = sql`(case when not (${circle}) and coalesce(${D.revWorking}, '') <> '' then coalesce(greatest(
+      (select r.in_force_at from ${s.revisions} r where r.doc_id = ${D.id} and r.status = 'in_force'),
+      (select max((a.at at time zone ${TIME_ZONE})::date) from ${s.auditLog} a
+        where a.doc_id = ${D.id} and a.revision_id is null and a.action in (${list(RECORD_ACTIONS)}))
+    ), ${D.modifiedAt}) else ${D.modifiedAt} end)::text`;
+  const expired = sql`(${D.state} = 'active' and ${D.expiresAt} is not null and ${D.expiresAt}::text < ${today})`;
+  const reviewLate = sql`(${D.state} = 'active' and coalesce(${D.revInForce}, '') <> '' and ${D.reviewDueAt} is not null and ${D.reviewDueAt}::text < ${today})`;
+  return sql`in_circle as (select ${D.id} as id from ${D} where ${ctx.seesAll ? sql`false` : draftingCircleSql(ctx)}),
+  vis0 as (
+    select ${D}.*, ${circle} as circle, ${shown} as shown, ${opts.effective ? effectiveOf(sql`${D.id}`) : sql`null::text`} as effective,
+      ${expired} as expired, ${reviewLate} as review_late, ${opts.score ?? sql`0`} as score
+    from ${D} where ${readableSql(ctx, circle)} and ${opts.match ?? ALL}
+  ),
+  vis as (select *, row_number() over (order by ${LIST_ORDER}) as rank from vis0)`;
+}
+
+/**
+ * Regular expression of PostgreSQL that finds the folded query `n` (an SQL text) at the start of a word of a folded
+ * value, as hit() scores 2 (lib/search.ts wordStartPrefix): its ASCII punctuation escaped, anything else standing for
+ * itself.
+ */
+export const wordStartSql = (n: SQL) => sql`(${wordStartPrefix()} || regexp_replace(${n}, ${'([^0-9A-Za-z\\u0080-\\U0010ffff])'}, ${'\\\\\\1'}, 'g'))`;
+
+/**
+ * The text search of runSearch (score, matches) on the folded values of document_terms: `match` holds the documents
+ * score() finds, `score` gives the same relevance. The database folds the query as it folded the values it stores
+ * (codex_fold), so that both follow the same Unicode tables whatever the version of Node. Values that are not the
+ * record's own are scored here, as score() does: the label of the type in the user's language, the names of the owner
+ * and of the author (when it is a person).
+ */
+function textSearch(ctx: Ctx, q: string): { match: SQL; score: SQL } {
+  const n = fold(q);
+  // A NUL character is in no stored text, and the database refuses it as a parameter.
+  if (!n || q.includes('\0')) return { match: sql`false`, score: sql`0` };
+  const folded = sql`codex_fold(${q})`;
+  const like = sql`('%' || replace(replace(replace(${folded}, ${'\\'}, ${'\\\\'}), '%', ${'\\%'}), '_', ${'\\_'}) || '%')`;
+  const scored = (pairs: [string, number][]) => pairs.filter(([, level]) => level > 0);
+  const types = scored(ctx.types.map((ty) => [ty.code, hit(ctx.label('type', ty.code), n)]));
+  const people = scored([...ctx.users.keys()].map((id) => [id, hit(ctx.userName(id), n)]));
+  const levelOf = (key: SQL, pairs: [string, number][]) =>
+    pairs.length ? sql`(case ${key} ${sql.join(pairs.map(([k, level]) => sql`when ${k} then ${sql.raw(String(level))}`), sql` `)} else 0 end)` : sql`0`;
+  const author = sql`(case when coalesce(codex_unbom(${D.authorText}), '') = '' then ${levelOf(sql`coalesce(${D.authorId}, ${D.ownerId})`, people)} else 0 end)`;
+  const elsewhere = sql`greatest(${levelOf(sql`${D.typeCode}`, types)}, ${levelOf(sql`${D.ownerId}`, people)}, ${author})`;
+  const t = s.documentTerms;
+  const level = sql`case when t.term = ${folded} then 3 when t.term ~ ${wordStartSql(folded)} then 2 else 1 end`;
+  const w = (f: TermField) => sql.raw(String(SCORE_WEIGHT[f]));
+  const best = (f: TermField) => sql`coalesce(max(case when t.field = ${f} then t.level end), 0)`;
+  const score = sql`(select ${w('id')} * ${best('id')} + ${w('title')} * ${best('title')} + ${w('keyword')} * ${best('keyword')}
+      + ${w('ref')} * ${best('ref')} + ${w('other')} * greatest(${best('other')}, ${elsewhere})
+    from (select t.field, ${level} as level from ${t} t where t.doc_id = ${D.id} and t.term like ${like}) t)`;
+  // A query the database folds to nothing finds nothing among the stored values, as one JavaScript folds to nothing.
+  return { match: sql`((${folded} <> '' and ${D.id} in (select t.doc_id from ${t} t where t.term like ${like})) or ${elsewhere} > 0)`, score };
+}
+
+/** Values of facet `k` on a row of `hits` (lib/search.ts facetValues), but for keywords and overdue, which hold several. */
+const FACET_SQL: Record<Exclude<FacetKey, 'keywords' | 'overdue'>, SQL> = (() => {
+  // Free text the application did not write itself may start with a byte order mark, which the reference never saw
+  // (codex_unbom, src/db/index.ts); codes and IDs do not.
+  const text = (c: { name: string }) => sql`nullif(codex_unbom(${col(c)}), '')`;
+  return {
+    project: sql`nullif(coalesce(${col(D.projectCode)}, ${col(D.programCode)}), '')`,
+    family: col(D.family), type: col(D.typeCode), subtype: text(D.subtype), origin: col(D.origin), attachment: col(D.attachment),
+    department: col(D.department), site: sql`nullif(${col(D.site)}, '')`, owner: col(D.ownerId),
+    author: sql`coalesce(nullif(codex_unbom(${col(D.authorText)}), ''), nullif(${col(D.authorId)}, ''), nullif(${col(D.ownerId)}, ''))`,
+    status: col(D.status), conf: col(D.conf), lang: sql`nullif(${col(D.lang)}, '')`, source: text(D.sourceOrg), phase: text(D.projectPhase),
+    lot: text(D.workPackage), discipline: text(D.discipline), theme: text(D.researchTheme),
+  };
+})();
+
+/** A facet filter (lib/search.ts passes): a document passes with any of the values chosen. */
+function facetHolds(k: FacetKey, values: string[]): SQL {
+  const vs = values.filter((v) => !v.includes('\0'));
+  if (!vs.length) return sql`false`;
+  if (k === 'keywords') return sql`(${col(D.keywords)} ?| array[${list(vs)}]::text[])`;
+  if (k === 'overdue') {
+    const on = [...(vs.includes('expired') ? [sql`expired`] : []), ...(vs.includes('review') ? [sql`review_late`] : [])];
+    return on.length ? sql`(${sql.join(on, sql` or `)})` : sql`false`;
+  }
+  return sql`(${FACET_SQL[k]} in (${list(vs)}))`;
+}
+
+/** Every facet filter except `skip` (see runSearch tally). */
+function facetsHold(facets: Facets, skip?: FacetKey): SQL {
+  const on = FACET_KEYS.filter((k) => k !== skip && facets[k]?.length).map((k) => facetHolds(k, facets[k]!));
+  return on.length ? sql.join(on, sql` and `) : ALL;
+}
+
+/** Dates of runSearch periods (lib/search.ts dateOf), as text; `shown` is the modification date the user sees. */
+const DATE_SQL: Record<DateField, SQL> = {
+  modified: sql`shown`, issued: sql`${col(D.issuedAt)}::text`, effective: sql`effective`, review: sql`${col(D.reviewDueAt)}::text`, expiry: sql`${col(D.expiresAt)}::text`,
+};
+
+function periodHolds(p: Period | null | undefined): SQL {
+  if (!p || (!p.from && !p.to)) return ALL;
+  const v = DATE_SQL[p.field];
+  return sql`(${v} is not null${p.from ? sql` and ${v} >= ${p.from}` : sql``}${p.to ? sql` and ${v} <= ${p.to}` : sql``})`;
+}
+
+/**
+ * Orders of runSearch (lib/search.ts COMPARE); ties keep the order of listDocs (`rank`). codex_fr sorts as its
+ * Intl.Collator.
+ */
+const SORT_SQL: Record<SortKey, SQL> = {
+  relevance: sql`score desc, rank`,
+  modified: sql`rank`,
+  issued: sql`${col(D.issuedAt)} desc nulls last, rank`,
+  due: sql`least(${col(D.reviewDueAt)}, ${col(D.expiresAt)}) asc nulls last, rank`,
+  id: sql`${col(D.id)} collate codex_fr, rank`,
+  title: sql`${col(D.title)} collate codex_fr, ${col(D.id)} collate codex_fr, rank`,
+};
+
+/** `limit` and `offset` of page `asked`, or of the last one when it lies beyond (`total`: a CTE with the number of rows). */
+const pageWindow = (asked: number) =>
+  sql`limit ${PAGE_SIZE} offset (least(${asked}, greatest(ceil((select n from total) / ${PAGE_SIZE}::numeric)::int, 1)) - 1) * ${PAGE_SIZE}`;
+
+type Listed = { id: string; circle: boolean; shown: string; effective: string | null };
+
+/**
+ * Documents of `entries` as lists show them (docView), in that order, each read whole, five thousand at a time: what
+ * listDocs gives for them.
+ */
+async function viewsOf(ctx: Ctx, entries: Listed[]): Promise<DocView[]> {
+  const db = await getDb();
+  const out: DocView[] = [];
+  for (let i = 0; i < entries.length; i += 5000) {
+    const part = entries.slice(i, i + 5000);
+    const drafting = part.filter((e) => e.circle).map((e) => e.id);
+    const [rows, wl] = await Promise.all([db.select().from(D).where(anyOf(D.id, part.map((e) => e.id))), workingLabels(drafting)]);
+    const byId = new Map(rows.map((d) => [d.id, d]));
+    for (const e of part) {
+      const d = byId.get(e.id);
+      if (d) out.push(docView(ctx, d, wl.get(d.id), e.circle, e.shown));
+    }
+  }
+  return out;
+}
+
+const pages = (total: number, size: number) => Math.max(1, Math.ceil(total / size));
+const clampPage = (page: number | undefined, last: number) => Math.min(Math.max(1, Math.floor(page ?? 1) || 1), last);
+
+/**
+ * Counts per facet value on `hits` under every other facet chosen (runSearch tally), each value with the place its
+ * first document holds in the order of listDocs (`first`), so that the values come in the order runSearch meets them.
+ * One pass over the documents for the facets holding one value each; keywords and dates past due hold several.
+ */
+function talliesSql(facets: Facets): SQL {
+  const single = FACET_KEYS.filter((k): k is keyof typeof FACET_SQL => k !== 'keywords' && k !== 'overdue');
+  // A value counts for facet k only on a document that passes the other facets chosen: null otherwise, as no value.
+  const value = (k: keyof typeof FACET_SQL) => {
+    const others = facetsHold(facets, k);
+    return others === ALL ? sql`(${FACET_SQL[k]})::text` : sql`(case when ${others} then (${FACET_SQL[k]})::text end)`;
+  };
+  const cols = single.map((_, i) => sql.raw(`v${i}`));
+  const which = sql.join(single.map((k, i) => sql`when ${sql.raw(String((2 ** single.length - 1) ^ (2 ** (single.length - 1 - i))))} then ${k}`), sql` `);
+  return sql`select (case g ${which} end)::text as k, coalesce(${sql.join(cols, sql`, `)}) as v, n, first from (
+      select ${sql.join(cols, sql`, `)}, count(*)::int as n, min(rank * 1000000)::float8 as first, grouping(${sql.join(cols, sql`, `)}) as g
+      from (select rank, ${sql.join(single.map((k, i) => sql`${value(k)} as ${cols[i]}`), sql`, `)} from hits) h
+      group by grouping sets (${sql.join(cols.map((c) => sql`(${c})`), sql`, `)})
+    ) t where coalesce(${sql.join(cols, sql`, `)}) is not null
+    union all select 'keywords', e.v, count(distinct h.${col(D.id)})::int, min(h.rank * 1000000 + e.o)::float8
+      from hits h cross join lateral jsonb_array_elements_text(h.${col(D.keywords)}) with ordinality as e(v, o)
+      where ${facetsHold(facets, 'keywords')} group by e.v
+    union all select 'overdue', x.v, count(*)::int, min(h.rank * 1000000 + x.o)::float8
+      from hits h cross join lateral (values ('expired', h.expired, 1), ('review', h.review_late, 2)) as x(v, f, o)
+      where x.f and ${facetsHold(facets, 'overdue')} group by x.v`;
+}
+
+/**
+ * A search of /recherche (lib/search.ts runSearch) run by the database over the documents the user may see, in one
+ * query: the page `page` of the results (PAGE_SIZE each, the last one for a page beyond it), or all of them with `all`
+ * (CSV export, which needs no `counts`); `total` results; `tally(k)` counts the documents per value of facet `k` under
+ * every other criterion, its values in the order runSearch meets them. Only the results returned are read whole.
+ */
+export async function searchDocs(ctx: Ctx, search: SearchInput, opts: { page?: number; all?: boolean; counts?: boolean } = {}) {
+  const db = await getDb();
+  const q = search.q?.trim() ?? '';
+  const facets = search.facets ?? {};
+  const text = q ? textSearch(ctx, q) : null;
+  const sort = SORT_SQL[sortOf(search)];
+  const asked = Math.max(1, Math.floor(opts.page ?? 1) || 1);
+  // The page asked for, or the last one; every result for the export.
+  const window = opts.all ? sql`` : pageWindow(asked);
+  const { rows: [row] } = await db.execute<{ total: number; tallies: { k: FacetKey; v: string; n: number }[]; listed: Listed[] }>(sql`with
+    ${visibleCte(ctx, todayIso(), { effective: search.period?.field === 'effective', ...(text ?? {}) })},
+    hits as (select * from vis where ${periodHolds(search.period)}),
+    total as (select count(*)::int as n from hits where ${facetsHold(facets)}),
+    listed as (
+      select x.ord, x.id, x.circle, x.shown, ${effectiveOf(sql`x.id`)} as effective
+      from (select ${col(D.id)}, circle, shown, row_number() over (order by ${sort}) as ord from hits where ${facetsHold(facets)} order by ${sort} ${window}) x
+    )
+    select (select n from total) as total,
+      ${(opts.counts ?? !opts.all) ? sql`(select coalesce(json_agg(t order by t.k, t.first), '[]') from (${talliesSql(facets)}) t)` : sql`'[]'::json`} as tallies,
+      (select coalesce(json_agg(l order by l.ord), '[]') from listed l) as listed`);
+  const byFacet = new Map<FacetKey, Map<string, number>>();
+  for (const t of row.tallies) {
+    if (!byFacet.has(t.k)) byFacet.set(t.k, new Map());
+    byFacet.get(t.k)!.set(t.v, t.n);
+  }
+  const last = pages(row.total, PAGE_SIZE);
+  const effective = new Map(row.listed.map((e) => [e.id, e.effective]));
+  const results: SearchDoc[] = (await viewsOf(ctx, row.listed)).map((d) => ({ ...d, effectiveAt: effective.get(d.id) ?? null }));
+  const none = new Map<string, number>();
+  return { results, total: row.total, page: opts.all ? 1 : clampPage(asked, last), pages: last, tally: (k: FacetKey) => byFacet.get(k) ?? none };
+}
+export type SearchResults = Awaited<ReturnType<typeof searchDocs>>;
+
+/** Classification axes of /explorateur (docs/modele-cible.md §2). */
+export const EXPLORER_AXES = ['family', 'department', 'project', 'type', 'origin'] as const;
+export type ExplorerAxis = (typeof EXPLORER_AXES)[number];
+/** Status filters of /explorateur; « En révision » covers revisions under review and approved ones waiting for their effective date. */
+export const EXPLORER_STATUSES = ['all', 'in_force', 'in_review', 'draft', 'obsolete', 'archived'] as const;
+export type ExplorerStatus = (typeof EXPLORER_STATUSES)[number];
+/** Dates past due of /explorateur: the record's indicators (lib/review.ts, docView), no status (D-17). */
+export const EXPLORER_DUES = ['expired', 'review_late'] as const;
+export type ExplorerDue = (typeof EXPLORER_DUES)[number];
+/** Node of the project axis for documents attached to neither a project nor a research programme. */
+export const NO_ATTACHMENT = 'none';
+
+/** Node of a document on an axis: the project axis takes the project or programme it is attached to (docView attachedCode). */
+const AXIS_SQL: Record<ExplorerAxis, SQL> = {
+  family: col(D.family),
+  department: col(D.department),
+  project: sql`coalesce(case ${col(D.attachment)} when 'project' then ${col(D.projectCode)} when 'research' then ${col(D.programCode)} end, ${NO_ATTACHMENT})`,
+  type: col(D.typeCode),
+  origin: col(D.origin),
+};
+
+/**
+ * What /explorateur lists, over the documents the user may see: their number (`all`), per node of `axis` (`nodes`, in
+ * the order listDocs meets them) and per type under the selected `node` (`children`, same order), the expired ones
+ * and those with a review overdue (`dues`, over all of them), the documents under the node, the type `sub`, the
+ * status and the due filter (`rows`, the page `page` of PAGE_SIZE, in the order of listDocs; `total`), and `sel` when
+ * the user sees it.
+ */
+export async function explorerDocs(ctx: Ctx, f: { axis: ExplorerAxis; node?: string; sub?: string; status: ExplorerStatus; due?: ExplorerDue; sel?: string; page?: number }) {
+  const db = await getDb();
+  const axis = AXIS_SQL[f.axis];
+  const shown = [
+    ...(f.node ? [is(axis, f.node)] : []),
+    ...(f.sub ? [is(col(D.typeCode), f.sub)] : []),
+    ...(f.status === 'all' ? [] : f.status === 'in_review' ? [sql`${col(D.status)} in ('in_review', 'approved')`] : [sql`${col(D.status)} = ${f.status}`]),
+    ...(f.due ? [f.due === 'expired' ? sql`expired` : sql`review_late`] : []),
+  ];
+  const where = shown.length ? sql.join(shown, sql` and `) : ALL;
+  const asked = Math.max(1, Math.floor(f.page ?? 1) || 1);
+  const { rows: [row] } = await db.execute<{ total: number; counts: { k: string; v: string | null; n: number }[]; listed: Listed[]; sel: Listed[] }>(sql`with
+    ${visibleCte(ctx, todayIso())},
+    total as (select count(*)::int as n from vis where ${where})
+    select (select n from total) as total,
+      (select coalesce(json_agg(t order by t.k, t.first), '[]') from (
+        select 'node' as k, (${axis})::text as v, count(*)::int as n, min(rank) as first from vis group by 2
+        union all select 'child', ${col(D.typeCode)}, count(*)::int, min(rank) from vis where ${f.node && f.axis !== 'type' ? is(axis, f.node) : sql`false`} group by 2
+        union all select 'expired', null, count(*)::int, 0 from vis where expired
+        union all select 'review_late', null, count(*)::int, 0 from vis where review_late
+      ) t) as counts,
+      (select coalesce(json_agg(l order by l.rank), '[]') from (
+        select ${col(D.id)}, circle, shown, null as effective, rank from vis where ${where} order by rank ${pageWindow(asked)}
+      ) l) as listed,
+      (select coalesce(json_agg(x), '[]') from (select ${col(D.id)}, circle, shown, null as effective from vis where ${f.sel ? is(col(D.id), f.sel) : sql`false`}) x) as sel`);
+  const nodes = new Map<string, number>(), children = new Map<string, number>();
+  const dues: Record<ExplorerDue, number> = { expired: 0, review_late: 0 };
+  for (const r of row.counts) {
+    if (r.k === 'node') nodes.set(r.v!, r.n);
+    else if (r.k === 'child') children.set(r.v!, r.n);
+    else dues[r.k as ExplorerDue] = r.n;
+  }
+  const last = pages(row.total, PAGE_SIZE);
+  const [views, [selDoc]] = await Promise.all([viewsOf(ctx, row.listed), viewsOf(ctx, row.sel)]);
+  return {
+    all: [...nodes.values()].reduce((a, b) => a + b, 0), nodes, children, dues,
+    rows: views, total: row.total, page: clampPage(asked, last), pages: last, sel: selDoc as DocView | undefined,
+  };
+}
+
 /** One document, with what the user may do with its drafts. Returns `hidden` when it exists but is not visible. */
 export async function getDoc(ctx: Ctx, id: string): Promise<{ doc: DocView; circle: boolean; ix: AccessIndex } | 'hidden' | null> {
   const db = await getDb();
@@ -171,7 +461,7 @@ export async function getDoc(ctx: Ctx, id: string): Promise<{ doc: DocView; circ
   const ix = await getAccessIndex();
   if (!canRead(ctx, d, ix)) return 'hidden';
   const circle = inDraftingCircle(ctx, d, ix);
-  const [wl, vm] = await Promise.all([workingLabels(d.id), visibleModified(!circle && d.revWorking ? [d.id] : [])]);
+  const [wl, vm] = await Promise.all([workingLabels([d.id]), visibleModified(!circle && d.revWorking ? [d.id] : [])]);
   return { doc: docView(ctx, d, wl.get(d.id), circle, vm.get(d.id)), circle, ix };
 }
 
@@ -842,6 +1132,11 @@ export async function listAudit(ctx: Ctx, opts: { docId?: string; limit?: number
   const ids = opts.docId ? [opts.docId, ...[...current].filter(([, id]) => id === opts.docId).map(([former]) => former)] : [];
   const where = opts.docId ? inArray(s.auditLog.docId, ids) : opts.docsOnly || !ctx.screens.admin ? isNotNull(s.auditLog.docId) : undefined;
   const rows = await auditForReader(ctx, await db.select().from(s.auditLog).where(where).orderBy(desc(s.auditLog.at), desc(s.auditLog.id)).limit(opts.limit ?? 500));
+  return auditViews(ctx, rows, current);
+}
+
+/** Entries as the journal lists show them, in the user's language; `current`: current ID of each former one (currentIds). */
+function auditViews(ctx: Ctx, rows: AuditEntry[], current: Map<string, string>) {
   return rows.map((a) => {
     const local = parisStamp(a.at);
     // An unreadable document is named by the ID of the time only: its current one would tell a reclassification apart.
@@ -862,6 +1157,71 @@ export async function listAudit(ctx: Ctx, opts: { docId?: string; limit?: number
       href: a.docId != null ? `/documents/${encodeURIComponent(currentId ?? a.docId)}` : auditTargetHref(ctx, a.targetKind, a.targetId),
     };
   });
+}
+
+/** Entries per page of the Journal tab. */
+export const AUDIT_PAGE_SIZE = 100;
+/** Highest ID of an entry of the journal (a serial of the database, int4): a cursor beyond it points to none. */
+export const AUDIT_ID_MAX = 2_147_483_647;
+
+/** Filters of the Journal tab: who acted, the action, a piece of a document ID or of a target, days in Paris time. */
+export type AuditFilter = { who?: string; action?: string; doc?: string; from?: string; to?: string };
+
+/**
+ * A page of the Journal tab: entries the user may read (auditForReader), newest first, under the filters `f`,
+ * AUDIT_PAGE_SIZE of them: the newest ones, those just older than entry `before`, or those just newer than entry
+ * `after` (keyset on the time and the ID, as the CSV export reads the journal). `doc` looks for a piece of the ID an
+ * entry was written under, or of its target, case ignored, and finds the entries written under the former IDs of a
+ * document whose current ID holds it, if the user may read it (its current ID would tell a reclassification apart).
+ * `older` and `newer`: the entries to page from, or null when there is nothing beyond (the screen always offers the
+ * newest entries again).
+ */
+export async function auditPage(ctx: Ctx, f: AuditFilter, at: { before?: number; after?: number } = {}) {
+  const db = await getDb();
+  const A = s.auditLog;
+  const current = await currentIds();
+  const empty = { rows: auditViews(ctx, [], current), older: null as number | null, newer: null as number | null };
+  // A NUL character is in no stored text, and the database refuses it as a parameter.
+  if (Object.values(f).some((v) => v?.includes('\0'))) return empty;
+  const conds: SQL[] = [];
+  if (!ctx.screens.admin) conds.push(isNotNull(A.docId));
+  if (f.who) conds.push(eq(A.userId, f.who));
+  if (f.action) conds.push(eq(A.action, f.action));
+  if (f.doc) {
+    const like = `%${f.doc.replace(/[\\%_]/g, '\\$&')}%`;
+    const former = sql`select jsonb_array_elements_text(${D.aliases}) from ${D} where ${D.id} ilike ${like} and ${readableSql(ctx)}`;
+    conds.push(sql`(${A.docId} ilike ${like} or ${A.targetId} ilike ${like} or ${A.docId} in (${former}))`);
+  }
+  // Midnight in Paris, computed by the database: it reads every day a date field accepts, from 0001 to 9999.
+  const day = (v?: string) => (v && parseIsoDay(v) === v ? v : undefined);
+  const since = day(f.from), until = day(f.to);
+  if (since) conds.push(sql`${A.at} >= (${since}::date::timestamp at time zone ${TIME_ZONE})`);
+  if (until) conds.push(sql`${A.at} < ((${until}::date + 1)::timestamp at time zone ${TIME_ZONE})`);
+  const cursor = (v?: number) => (v != null && Number.isSafeInteger(v) && v >= 1 && v <= AUDIT_ID_MAX ? v : undefined);
+  const pivotId = cursor(at.after) ?? cursor(at.before);
+  const [pivot] = pivotId != null ? await db.select({ at: A.at, id: A.id }).from(A).where(eq(A.id, pivotId)) : [];
+  const newer = !!pivot && cursor(at.after) != null;
+  // Read a batch at a time, until one entry more than a page is readable: it tells there is more beyond.
+  const found: AuditEntry[] = [];
+  let from = pivot ?? null;
+  for (;;) {
+    const beyond = from ? (newer ? sql`(${A.at}, ${A.id}) > (${from.at}::timestamptz, ${from.id})` : sql`(${A.at}, ${A.id}) < (${from.at}::timestamptz, ${from.id})`) : undefined;
+    const batch = await db.select().from(A).where(and(...conds, beyond)).orderBy(...(newer ? [asc(A.at), asc(A.id)] : [desc(A.at), desc(A.id)])).limit(500);
+    found.push(...(await auditForReader(ctx, batch)));
+    if (found.length > AUDIT_PAGE_SIZE || batch.length < 500) break;
+    from = batch[batch.length - 1];
+  }
+  const more = found.length > AUDIT_PAGE_SIZE;
+  const page = found.slice(0, AUDIT_PAGE_SIZE);
+  if (newer) page.reverse();
+  const rows = auditViews(ctx, page, current);
+  if (!rows.length) return empty;
+  return {
+    rows,
+    // Coming from a page, there is that page beyond.
+    older: newer || more ? rows[rows.length - 1].id : null,
+    newer: pivot && !newer ? rows[0].id : newer && more ? rows[0].id : null,
+  };
 }
 export type AuditView = Awaited<ReturnType<typeof listAudit>>[number];
 

@@ -21,3 +21,5 @@
 .more[open] > summary::before { content: '− '; }
 .more > summary:hover { color: var(--color-accent); }
 .more[open] > summary { margin-bottom: 3px; }
+/* Previous and next pages of the results, under the last one. */
+.pager { display: flex; justify-content: center; padding: 14px 8px 0; }

@@ -22,23 +22,32 @@ déposés sont stockés dans `.data/files/` (ou dans SharePoint, voir `src/lib/s
   unique (`rm -rf drizzle && npx drizzle-kit generate --name init`) puis `npm run db:reset`.
 - Contrôles : `npm test`, `npm run typecheck`, `npm run lint`, `npm run build`.
 - Intégration continue GitHub Actions (`.github/workflows/ci.yml`) : `npm ci` puis ces contrôles, sous Node 22, à chaque push et PR.
-- Tests : `npm test` lance Vitest une fois (`npm run test:watch` en continu), en une vingtaine de secondes, sans
-  serveur ni réseau et sans toucher à `.data/`.
+- Tests : `npm test` lance Vitest une fois (`npm run test:watch` en continu), en une à deux minutes selon la machine,
+  sans serveur ni réseau et sans toucher à `.data/`.
   - `tests/unit/` : règles pures (identifiants, révisions, visibilité, conservation, recherche, filtres mis en avant
     des départements, dates, expiration et revue périodique, modifications simultanées, types de fichiers).
   - `tests/integration/` : règles métier sur une base PGlite en mémoire, migrée depuis `drizzle/` avec les
-    déclencheurs du journal et de la version des documents (`openDb` dans `src/db/index.ts`) et remplie de données
-    minimales (`tests/support/fixtures.ts`), pas de la base de démo. Identifiants et compteurs, révisions et dates
-    d'effet, cohérence des dates, expiration et revue périodique, circuits, décisions Vigie et webhook, journal en
-    ajout seul, cercle de rédaction, import, recherche, recherches enregistrées, pages par département et
-    modifications simultanées. Seul `tests/integration/dates.test.ts` charge aussi les données de démo (`src/db/seed.ts`), en
-    mémoire, pour en vérifier toutes les dates.
+    déclencheurs du journal, de la version et des termes de recherche des documents (`openDb` dans `src/db/index.ts`)
+    et remplie de données minimales (`tests/support/fixtures.ts`), pas de la base de démo. Identifiants et compteurs,
+    révisions et dates d'effet, cohérence des dates, expiration et revue périodique, circuits, décisions Vigie et
+    webhook, journal en ajout seul et ses pages, cercle de rédaction, import, recherche, recherches enregistrées, pages
+    par département et modifications simultanées. La visibilité en SQL, la recherche et l'explorateur lus par la base
+    sont comparés à leur version en mémoire, qui reste la référence (`access-sql`, `search-sql`, `tests/support/`).
+    `tests/integration/dates.test.ts` et `seed-sql.test.ts` chargent aussi les données de démo (`src/db/seed.ts`), en
+    mémoire, pour en vérifier toutes les dates et y refaire ces comparaisons.
     Les Server Actions y tournent avec `next/headers` et `next/cache` simulés (`tests/support/session.ts`) ;
     l'horloge est figée au 10 octobre 2026.
   - Limite : PGlite n'a qu'une connexion et exécute les transactions l'une après l'autre. Les tests d'attributions
     « simultanées » (`Promise.all`) vérifient l'absence de doublon sous cet entrelacement, pas l'atomicité des
     compteurs entre connexions d'un vrai serveur Postgres (étape 5, O-03) : il faudra un Postgres serveur pour la
     vérifier.
+  - Version de Node : la recherche en base replie les textes (accents, casse) et trie les titres avec les tables
+    Unicode et ICU de PGlite (Unicode 16.0, ICU 76), la version en mémoire qui lui sert de référence avec celles de
+    Node (Node 22 : Unicode 16.0, ICU 77 ; Node 26 : Unicode 17.0, ICU 78). La base replie la requête comme les
+    valeurs qu'elle garde : elle reste cohérente avec elle-même sous toute version de Node. `search-sql.test.ts`
+    compare les deux replis sur les points de code que les deux versions d'Unicode attribuent, et les deux tris : il
+    passe sous Node 22 et sous Node 26 (vérifié avec Node 26.11.1). Un caractère ajouté par Unicode 17.0 peut être
+    replié autrement par la référence en mémoire que par la base.
 
 Variables : voir `.env.example` (Keystone, Vigie, dossier de données, jetons de l'API d'intégration).
 
@@ -67,13 +76,13 @@ quitter l'app et supprimer `~/Library/Application Support/Codex/data`.
 | Route | Écran |
 | --- | --- |
 | `/` | Tableau de bord : « À traiter » (étapes à décider, révisions à rédiger ou à reprendre, greffes possibles, revues et expirations des documents dont on est propriétaire ou propriétaire de processus), documents récents, échéances (conservation, expiration, revue), activité. La pastille d'Accueil et la cloche reprennent la même liste |
-| `/explorateur` | Classement par famille, département, projet / programme, type ou origine ; filtres de statut et d'échéance dépassée (« Expirés », « Revues en retard ») ; aperçu rapide |
+| `/explorateur` | Classement par famille, département, projet / programme, type ou origine ; filtres de statut et d'échéance dépassée (« Expirés », « Revues en retard ») ; 50 documents par page ; aperçu rapide |
 | `/documents/[id]` | Fiche document : aperçu, onglets Projet · Fiche · Révisions · Validation · Demandes · Historique ; indicateurs « Expiré » (raccourcis vers les demandes de modification et de retrait) et « Revue en retard », « Revue effectuée » ; documents liés (« Remplace », « Remplacé par », « Voir aussi »), remplacement proposé avec une demande de retrait et rappelé dans le bandeau d'un document obsolète ; fiche de visa (PDF) de chaque révision approuvée, dans l'onglet Révisions |
-| `/recherche` | Recherche plein texte classée par pertinence + facettes (projet, famille, type, sous-type, origine, rattachement, département, site, propriétaire, auteur, statut, échéance dépassée, confidentialité, langue, mots-clés, organisme source, phase, lot, discipline, thème), période sur une date (modification, émission, effet, révision, expiration), tri au choix, export CSV dans le même ordre ; recherches enregistrées (critères, période et tri) personnelles, ou partagées avec un département ou le groupe par un gestionnaire documentaire |
+| `/recherche` | Recherche plein texte classée par pertinence + facettes (projet, famille, type, sous-type, origine, rattachement, département, site, propriétaire, auteur, statut, échéance dépassée, confidentialité, langue, mots-clés, organisme source, phase, lot, discipline, thème), période sur une date (modification, émission, effet, révision, expiration), tri au choix, 50 résultats par page, export CSV de tous les résultats dans le même ordre ; recherches enregistrées (critères, période et tri) personnelles, ou partagées avec un département ou le groupe par un gestionnaire documentaire |
 | `/departements/[code]` | Page d'un département (`/departements` ouvre celui de l'utilisateur, un sélecteur passe aux autres) : documents en vigueur, échéances, circuits en cours qu'il suit, recherches partagées avec le département et le groupe, filtres mis en avant (valeurs les plus fréquentes, chacune un lien vers la recherche filtrée), le tout limité à ce que l'utilisateur peut lire. Départements provisoires (organigramme attendu) ; filtres par défaut (type, statut, projet), réglables par département dans Administration › Organisation, en attendant le recueil des besoins de chaque métier |
 | `/validations` | Circuits de validation : à valider, mes demandes, en cours, terminées ; approuver / rejeter (motif obligatoire) / déléguer, rappeler sa demande avant la dernière approbation, commentaires. Vue « Mes demandes Vigie » : demandes de modification et de retrait envoyées par l'utilisateur, avec leur statut |
 | `/archivage` | Échéances (archivage, gel juridique, revue effectuée ; filtres « Expirés » et « Revues en retard »), règles de conservation du registre, archives |
-| `/administration` | Registre des types (dont la périodicité de revue), fonctions & circuits, rôles & droits, organisation (départements et leurs filtres mis en avant, sites), modèles (QMS), journal d'audit (CSV) |
+| `/administration` | Registre des types (dont la périodicité de revue), fonctions & circuits, rôles & droits, organisation (départements et leurs filtres mis en avant, sites), modèles (QMS), journal d'audit (filtres par document ou cible, personne, action et période ; 100 entrées par page ; export CSV complet) |
 
 API : `/api/registry` (lu par Keystone), `/api/import` (outil de migration), `/api/integrations/vigie` (décisions
 Vigie), `/api/documents/[id]/file` (fichier d'une version de travail), `/api/documents/[id]/approval?rev=B` (fiche de
@@ -123,13 +132,13 @@ src/
   components/
     shell/             barre latérale, en-tête, contexte client (dialogues, toasts)
     dialogs/           toutes les boîtes de dialogue
-    ui/                icônes de la maquette, contrôle segmenté, steppers, boutons d'action
-  db/                  schéma Drizzle, connexion PGlite, données de démonstration
+    ui/                icônes de la maquette, contrôle segmenté, steppers, boutons d'action, pages d'une liste
+  db/                  schéma Drizzle, connexion PGlite (déclencheurs, termes de recherche repliés), données de démonstration
   lib/
     actions.ts         Server Actions (toutes les mutations + contrôles de droits)
-    queries.ts         lectures et modèles de vue
+    queries.ts         lectures et modèles de vue ; recherche, explorateur et journal filtrés, comptés et paginés par la base
     context.ts         langue, utilisateur et rôle simulés, registre, libellés, droits
-    access.ts          visibilité (confidentialité, cercle de rédaction)
+    access.ts          visibilité (confidentialité, cercle de rédaction), en TypeScript et en condition SQL
     lifecycle.ts       révisions : mise en vigueur, remplacement, décisions Vigie
     links.ts           liens entre documents : remplace / remplacé par, voir aussi
     approval.ts        fiche de visa d'une révision : étapes, délégations, mise en page

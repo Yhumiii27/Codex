@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { beyondBounds, cleanCriteria, cleanPeriod, dueOf, facetValues, hasCriteria, inPeriod, matches, parseSearch, runSearch, score, searchHref, sortOf, type Search, type SearchDoc } from '@/lib/search';
+import { beyondBounds, cleanCriteria, cleanPeriod, dueOf, facetValues, hasCriteria, inPeriod, matches, oneEach, pageOf, parseSearch, runSearch, score, searchHref, searchUrlWith, sortOf, type Search, type SearchDoc } from '@/lib/search';
 
 // Search screen: query, facets, period and order in the URL, accent-insensitive full-text match ranked by relevance.
 
@@ -97,6 +97,42 @@ describe('parseSearch', () => {
     const page: Record<string, string | string[]> = {};
     for (const [k, v] of new URL(href, 'http://x').searchParams) page[k] = k in page ? [page[k]].flat().concat(v) : v;
     expect(parseSearch(page)).toEqual(s);
+  });
+});
+
+describe('pages of a list and URLs of /recherche', () => {
+  it('reads the page from the URL: a whole number from 1, the first of repeated values, else 1', () => {
+    expect(pageOf('2')).toBe(2);
+    expect(pageOf(' 7 ')).toBe(7);
+    expect(pageOf('999999')).toBe(999999);
+    expect(pageOf(['3', '4'])).toBe(3);
+    for (const v of ['0', '-1', 'abc', '1e3', '2.5', '0x10', '', '1234567', undefined, null, []]) expect(pageOf(v), String(v)).toBe(1);
+  });
+
+  it('writes the page from the second one, and the criteria never keep it (saved searches, export)', () => {
+    const s: Search = { q: 'pompe', facets: { type: ['PRO'] }, period: null, sort: 'title' };
+    expect(searchHref(s, '/recherche', 2)).toBe('/recherche?q=pompe&type=PRO&sort=title&page=2');
+    expect(searchHref(s, '/recherche', 1)).toBe('/recherche?q=pompe&type=PRO&sort=title');
+    expect(searchHref({}, '/recherche', 3)).toBe('/recherche?page=3');
+    expect(searchHref(s, '/api/export/search', 2)).toBe('/api/export/search?q=pompe&type=PRO&sort=title&page=2');
+    expect(parseSearch(new URL(searchHref(s, '/recherche', 2), 'http://x').searchParams)).toEqual(s);
+    expect(parseSearch({ page: '2', q: 'pompe' })).toEqual({ q: 'pompe', facets: {}, period: null, sort: null });
+    expect(cleanCriteria({ ...s, page: 2 } as unknown)).toEqual(cleanCriteria(s));
+  });
+
+  it('another text, other criteria or another order start again from the first page (header and screen fields)', () => {
+    expect(searchUrlWith('?page=2&type=PRO&q=pompe', { q: 'vanne' })).toBe('/recherche?type=PRO&q=vanne');
+    expect(searchUrlWith('page=2&q=pompe', { q: '' })).toBe('/recherche');
+    expect(searchUrlWith('', { q: 'pompe' })).toBe('/recherche?q=pompe');
+    expect(searchUrlWith('?q=pompe&page=3&sort=id', { sort: 'title' })).toBe('/recherche?q=pompe&sort=title');
+    expect(searchUrlWith('?q=pompe&page=3&date=issued&from=2026-01-01', { date: null, from: null, to: null })).toBe('/recherche?q=pompe');
+    // The same text again (Enter) starts from the first page too.
+    expect(searchUrlWith('?q=e&page=2', { q: 'e' })).toBe('/recherche?q=e');
+  });
+
+  it('keeps one value per parameter of a page: the first of repeated ones', () => {
+    expect(oneEach({ node: ['qualite', 'hse'], sel: 'PRO-QUA-0001', due: undefined })).toEqual({ node: 'qualite', sel: 'PRO-QUA-0001', due: undefined });
+    expect(oneEach({})).toEqual({});
   });
 });
 

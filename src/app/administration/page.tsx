@@ -1,3 +1,4 @@
+import Form from 'next/form';
 import Link from 'next/link';
 import { Forbidden } from '@/components/ui/Forbidden';
 import { Icon } from '@/components/ui/Icon';
@@ -7,8 +8,9 @@ import { removeFunctionHolder, togglePermission } from '@/lib/actions';
 import { getCtx, type Ctx } from '@/lib/context';
 import { featuredOf } from '@/lib/departments';
 import { ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLE_LABEL, MATRIX_ROLES, PERMS, SIMULATED_MATRIX_ROLES, type TKey } from '@/lib/i18n';
-import { getMatrix, listAudit, listDocs, listFunctionHolders, listTemplates, typeView } from '@/lib/queries';
-import { FACET_LABEL } from '@/lib/search';
+import { AUDIT_ID_MAX, auditPage, getMatrix, listDocs, listFunctionHolders, listTemplates, typeView, type AuditFilter } from '@/lib/queries';
+import { parseIsoDay } from '@/lib/format';
+import { FACET_LABEL, oneEach } from '@/lib/search';
 import { AddValue } from './AddValue';
 import { FamilyFilter } from './FamilyFilter';
 import { countBy, typeSpec } from './shared';
@@ -21,7 +23,8 @@ const TAB_LABEL: Record<Tab, TKey> = { registry: 'registry', functions: 'functio
 const sub = { fontSize: 11 } as const;
 
 export default async function AdminPage({ searchParams }: PageProps<'/administration'>) {
-  const sp = (await searchParams) as Record<string, string | undefined>;
+  // One value per parameter: a repeated one (?doc=a&doc=b) keeps its first.
+  const sp = oneEach(await searchParams);
   const ctx = await getCtx();
   const { t, lang } = ctx;
   if (!ctx.screens.admin) return <Forbidden text={t.forbidden} back={t.back_home} />;
@@ -66,7 +69,7 @@ export default async function AdminPage({ searchParams }: PageProps<'/administra
         {tab === 'roles' && <Roles ctx={ctx} />}
         {tab === 'org' && <Organisation ctx={ctx} />}
         {tab === 'templates' && <Templates ctx={ctx} />}
-        {tab === 'audit' && <Audit ctx={ctx} />}
+        {tab === 'audit' && <Audit ctx={ctx} sp={sp} />}
       </div>
     </div>
   );
@@ -320,24 +323,75 @@ async function Templates({ ctx }: { ctx: Ctx }) {
   );
 }
 
-async function Audit({ ctx }: { ctx: Ctx }) {
-  const { t } = ctx;
-  const rows = await listAudit(ctx, { limit: 500 });
+/**
+ * Journal tab: the entries the user may read, newest first, filtered and paged by the database (lib/queries.ts
+ * auditPage), the filters and the page in the URL; the CSV export above it gives the whole journal.
+ */
+async function Audit({ ctx, sp }: { ctx: Ctx; sp: Record<string, string | undefined> }) {
+  const { t, lang } = ctx;
+  const day = (v?: string) => (v && parseIsoDay(v) === v ? v : undefined);
+  // An entry of the journal: its ID, a serial of the database (int4).
+  const entry = (v?: string) => (v && /^\d{1,10}$/.test(v) && Number(v) <= AUDIT_ID_MAX ? Number(v) : undefined);
+  const f: AuditFilter = { who: sp.who || undefined, action: sp.act || undefined, doc: sp.doc?.trim() || undefined, from: day(sp.from), to: day(sp.to) };
+  const at = { before: entry(sp.before), after: entry(sp.after) };
+  const { rows, older, newer } = await auditPage(ctx, f, at);
+  const filtered = Object.values(f).some(Boolean);
+  const href = (cursor: Record<string, string>) => {
+    const p = new URLSearchParams(Object.entries({ tab: 'audit', who: f.who, act: f.action, doc: f.doc, from: f.from, to: f.to, ...cursor }).filter((e): e is [string, string] => !!e[1]));
+    return `/administration?${p}`;
+  };
+  const people = [...ctx.users.values()].sort((a, b) => a.name.localeCompare(b.name, lang));
+  const actions = (Object.keys(t) as string[]).filter((k) => k.startsWith('act_')).map((k) => ({ key: k.slice(4), label: t[k as TKey] })).sort((a, b) => a.label.localeCompare(b.label, lang));
+  const step = { fontSize: 12, padding: '4px 10px' };
   return (
-    <table className="table" style={{ fontSize: 13 }}>
-      <thead><tr><th>{t.when}</th><th>{t.user}</th><th>{t.action}</th><th>{t.target}</th><th>{t.detail}</th></tr></thead>
-      <tbody>
-        {rows.map((a) => (
-          <tr key={a.id}>
-            <td className="text-muted nowrap tabnum">{a.when}</td>
-            <td>{a.user}</td>
-            <td>{a.actionLabel}</td>
-            {/* The ID the entry was written under; the link opens the document under its current one. */}
-            <td className={a.docId ? 'nowrap' : undefined}><Link href={a.href} className="link-plain" title={a.currentId !== a.docId ? a.currentId ?? undefined : undefined}>{a.ref}</Link></td>
-            <td className="text-muted">{a.detail}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <>
+      {/* Mounted again when the URL changes its filters (Effacer, a link), so that the fields show them. */}
+      <div key={JSON.stringify(f)}>
+        <Form action="/administration" scroll={false} className={styles.auditFilters}>
+          <input type="hidden" name="tab" value="audit" />
+          <input className="input" name="doc" defaultValue={f.doc ?? ''} placeholder={t.audit_filter_doc} aria-label={t.audit_filter_doc} style={{ width: 200 }} />
+          <select className="input" name="who" defaultValue={f.who ?? ''} aria-label={t.user} style={{ width: 'auto' }}>
+            <option value="">{t.audit_all_users}</option>
+            {people.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+          </select>
+          <select className="input" name="act" defaultValue={f.action ?? ''} aria-label={t.action} style={{ width: 'auto' }}>
+            <option value="">{t.audit_all_actions}</option>
+            {actions.map((a) => <option key={a.key} value={a.key}>{a.label}</option>)}
+          </select>
+          <label className={styles.auditDay}><span className="text-muted">{t.audit_from}</span><input className="input" type="date" name="from" defaultValue={f.from ?? ''} max={f.to} /></label>
+          <label className={styles.auditDay}><span className="text-muted">{t.audit_to}</span><input className="input" type="date" name="to" defaultValue={f.to ?? ''} min={f.from} /></label>
+          <button type="submit" className="btn btn-secondary" style={step}>{t.apply}</button>
+          {filtered && <Link href="/administration?tab=audit" className="btn btn-ghost" style={{ fontSize: 12 }}>{t.clear}</Link>}
+        </Form>
+      </div>
+      <table className="table" style={{ fontSize: 13 }}>
+        <thead><tr><th>{t.when}</th><th>{t.user}</th><th>{t.action}</th><th>{t.target}</th><th>{t.detail}</th></tr></thead>
+        <tbody>
+          {rows.map((a) => (
+            <tr key={a.id}>
+              <td className="text-muted nowrap tabnum">{a.when}</td>
+              <td>{a.user}</td>
+              <td>{a.actionLabel}</td>
+              {/* The ID the entry was written under; the link opens the document under its current one. */}
+              <td className={a.docId ? 'nowrap' : undefined}><Link href={a.href} className="link-plain" title={a.currentId !== a.docId ? a.currentId ?? undefined : undefined}>{a.ref}</Link></td>
+              <td className="text-muted">{a.detail}</td>
+            </tr>
+          ))}
+          {rows.length === 0 && <tr><td colSpan={5} className="text-muted" style={{ padding: '16px 8px' }}>{t.audit_none}</td></tr>}
+        </tbody>
+      </table>
+      {(newer != null || older != null || at.before != null || at.after != null) && (
+        <nav aria-label={t.pages_nav} className={styles.auditPager}>
+          {(at.before != null || at.after != null) && <Link href={href({})} className="btn btn-ghost" style={{ fontSize: 12 }}>{t.audit_latest}</Link>}
+          <span style={{ flex: 1 }} />
+          {newer != null
+            ? <Link href={href({ after: String(newer) })} rel="prev" className="btn btn-secondary" style={step}><Icon name="chevronLeft" size={14} />{t.audit_newer}</Link>
+            : <span className="btn btn-secondary" style={{ ...step, opacity: 0.45, cursor: 'default' }} aria-disabled="true"><Icon name="chevronLeft" size={14} />{t.audit_newer}</span>}
+          {older != null
+            ? <Link href={href({ before: String(older) })} rel="next" className="btn btn-secondary" style={step}>{t.audit_older}<Icon name="chevronRight" size={14} /></Link>
+            : <span className="btn btn-secondary" style={{ ...step, opacity: 0.45, cursor: 'default' }} aria-disabled="true">{t.audit_older}<Icon name="chevronRight" size={14} /></span>}
+        </nav>
+      )}
+    </>
   );
 }

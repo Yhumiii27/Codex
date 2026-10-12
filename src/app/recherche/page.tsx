@@ -1,12 +1,13 @@
 import Link from 'next/link';
 import { ActionButton, DialogButton } from '@/components/ui/client';
 import { Icon } from '@/components/ui/Icon';
+import { Pager } from '@/components/ui/Pager';
 import { deleteSavedSearch } from '@/lib/actions';
 import { mayShareSearches } from '@/lib/access';
 import { getCtx } from '@/lib/context';
 import { fmtDate } from '@/lib/format';
-import { facetValueL, listSavedSearches, listSearchDocs, searchCriteriaL, sortL } from '@/lib/queries';
-import { DATE_FIELDS, DATE_LABEL, dueOf, FACET_KEYS, FACET_LABEL, hasCriteria, OVERDUE_KEYS, parseSearch, runSearch, searchHref, SORT_KEYS, sortOf, type FacetKey, type Facets } from '@/lib/search';
+import { facetValueL, listSavedSearches, searchCriteriaL, searchDocs, sortL } from '@/lib/queries';
+import { DATE_FIELDS, DATE_LABEL, dueOf, FACET_KEYS, FACET_LABEL, hasCriteria, OVERDUE_KEYS, pageOf, parseSearch, searchHref, SORT_KEYS, sortOf, type FacetKey, type Facets } from '@/lib/search';
 import { ATTACHMENTS, CONF_LEVELS, ORIGINS, STATUS_KEYS } from '@/lib/i18n';
 import { FacetCheck, PeriodFilter, SearchField, SortSelect } from './SearchClient';
 import styles from './search.module.css';
@@ -20,8 +21,8 @@ export default async function SearchPage({ searchParams }: PageProps<'/recherche
   const { t } = ctx;
   const search = parseSearch(sp);
   const { q, facets, period } = search;
-  const [docs, saved] = await Promise.all([listSearchDocs(ctx), listSavedSearches(ctx)]);
-  const { results, tally } = runSearch(docs, search);
+  // The database filters, counts and sorts the documents the user may see; only the page shown is read whole.
+  const [{ results, total, page, pages, tally }, saved] = await Promise.all([searchDocs(ctx, search, { page: pageOf(sp.page) }), listSavedSearches(ctx)]);
 
   const toggled = (k: FacetKey, v: string): Facets => {
     const cur = facets[k] ?? [];
@@ -132,7 +133,7 @@ export default async function SearchPage({ searchParams }: PageProps<'/recherche
         <div style={{ padding: '18px 24px 10px', display: 'flex', flexDirection: 'column', gap: 12 }}>
           <SearchField q={q} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <span className="text-muted" style={{ fontSize: 12 }}>{results.length} {results.length === 1 ? t.result_one : t.results}</span>
+            <span className="text-muted" style={{ fontSize: 12 }}>{total} {total === 1 ? t.result_one : t.results}</span>
             <span style={{ flex: 1 }} />
             <SortSelect value={sort} options={SORT_KEYS.map((k) => ({ key: k, label: sortL(ctx, k) }))} />
             {hasActive && ctx.can('read') && (
@@ -141,8 +142,9 @@ export default async function SearchPage({ searchParams }: PageProps<'/recherche
             <a href={searchHref(search, '/api/export/search')} className="btn btn-secondary" style={{ fontSize: 12 }}><Icon name="download" size={14} />{t.export_list}</a>
           </div>
         </div>
-        <div style={{ flex: 1, overflow: 'auto', padding: '0 24px 24px' }}>
-          {results.length === 0 && <p className="text-muted" style={{ padding: '20px 8px' }}>{t.no_results}</p>}
+        {/* A page opens at its top: the list is mounted again for each page. */}
+        <div key={page} style={{ flex: 1, overflow: 'auto', padding: '0 24px 24px' }}>
+          {total === 0 && <p className="text-muted" style={{ padding: '20px 8px' }}>{t.no_results}</p>}
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             {results.map((d) => {
               const code = d.attachedCode;
@@ -164,6 +166,7 @@ export default async function SearchPage({ searchParams }: PageProps<'/recherche
               );
             })}
           </div>
+          {pages > 1 && <div className={styles.pager}><Pager t={t} page={page} pages={pages} href={(n) => searchHref(search, '/recherche', n)} /></div>}
         </div>
       </section>
     </div>
