@@ -1,5 +1,5 @@
 {
-  "id": "6c781657-034a-41b9-b50c-258ec412d332",
+  "id": "4106b361-822c-4145-82c1-c4edbcec0555",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -168,6 +168,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "replacement_id": {
+          "name": "replacement_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "source": {
           "name": "source",
           "type": "text",
@@ -258,12 +264,30 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "change_requests_replacement_id_documents_id_fk": {
+          "name": "change_requests_replacement_id_documents_id_fk",
+          "tableFrom": "change_requests",
+          "tableTo": "documents",
+          "columnsFrom": [
+            "replacement_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "cascade"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "change_requests_replacement": {
+          "name": "change_requests_replacement",
+          "value": "\"change_requests\".\"replacement_id\" is null or (\"change_requests\".\"kind\" = 'obsolescence' and \"change_requests\".\"replacement_id\" <> \"change_requests\".\"doc_id\")"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.departments": {
@@ -463,6 +487,126 @@
         "doc_types_review_months": {
           "name": "doc_types_review_months",
           "value": "\"doc_types\".\"review_months\" is null or \"doc_types\".\"review_months\" between 1 and 240"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.document_links": {
+      "name": "document_links",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "source_id": {
+          "name": "source_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_id": {
+          "name": "target_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "document_links_pair": {
+          "name": "document_links_pair",
+          "columns": [
+            {
+              "expression": "least(\"source_id\", \"target_id\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "greatest(\"source_id\", \"target_id\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "document_links_source_id_documents_id_fk": {
+          "name": "document_links_source_id_documents_id_fk",
+          "tableFrom": "document_links",
+          "tableTo": "documents",
+          "columnsFrom": [
+            "source_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "cascade"
+        },
+        "document_links_target_id_documents_id_fk": {
+          "name": "document_links_target_id_documents_id_fk",
+          "tableFrom": "document_links",
+          "tableTo": "documents",
+          "columnsFrom": [
+            "target_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "cascade"
+        },
+        "document_links_created_by_users_id_fk": {
+          "name": "document_links_created_by_users_id_fk",
+          "tableFrom": "document_links",
+          "tableTo": "users",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "document_links_kind": {
+          "name": "document_links_kind",
+          "value": "\"document_links\".\"kind\" in ('replaces', 'see_also')"
+        },
+        "document_links_distinct": {
+          "name": "document_links_distinct",
+          "value": "\"document_links\".\"source_id\" <> \"document_links\".\"target_id\""
         }
       },
       "isRLSEnabled": false

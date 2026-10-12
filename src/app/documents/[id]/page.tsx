@@ -8,15 +8,15 @@ import { Seg } from '@/components/ui/Seg';
 import { VStepper } from '@/components/ui/Stepper';
 import { getDb } from '@/db';
 import { ActionButton, DialogButton, ShareButton } from '@/components/ui/client';
-import { canRead, mayRecordReview, mayWorkOnDraft, openRevisionView, readerMaySeeRevision, readerMaySeeVersion, readersApply } from '@/lib/access';
-import { releaseHold } from '@/lib/actions';
+import { canRead, mayEditLinks, mayRecordReview, mayWorkOnDraft, openRevisionView, readerMaySeeRevision, readerMaySeeVersion, readersApply } from '@/lib/access';
+import { releaseHold, removeDocLink } from '@/lib/actions';
 import { isFinalStatus } from '@/lib/codes';
 import { getCtx } from '@/lib/context';
 import { addDays, fmtDate, todayIso } from '@/lib/format';
 import { ECR_TAGCLS } from '@/lib/i18n';
 import { getProject } from '@/lib/keystone';
 import { decisionWait, defaultModifier, draftersOf } from '@/lib/lifecycle';
-import { decisionWaitL, getDoc, listAudit, listChangeRequests, listDocs, listRevisions, listWorkflows, stateNotice, typeView, type RevisionView } from '@/lib/queries';
+import { decisionWaitL, getDoc, listAudit, listChangeRequests, listDocLinks, listDocs, listRevisions, listWorkflows, stateNotice, typeView, type RevisionView } from '@/lib/queries';
 import { normalizeMime } from '@/lib/storage';
 import { vigieSimulated, vigieUrl } from '@/lib/vigie';
 import { Preview, RevisionsTab, type RevItem } from './DocClient';
@@ -75,13 +75,16 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
   // A former reference (reclassification, migration) resolves to the document under its current ID.
   if (doc.id !== id) redirect(`${doc.href}${sp.tab ? `?tab=${encodeURIComponent(sp.tab)}` : ''}`);
 
-  const [project, revs, workflows, requests, history, projectDocs] = await Promise.all([
+  const [project, revs, workflows, requests, history, projectDocs, links, readable] = await Promise.all([
     doc.attachment === 'project' && doc.projectCode ? getProject(ctx, doc.projectCode) : null,
     listRevisions(ctx, doc.id),
     listWorkflows(ctx),
     listChangeRequests(ctx, { docId: doc.id }),
     listAudit(ctx, { docId: doc.id }),
     doc.attachment === 'project' && doc.projectCode ? listDocs(ctx, { includeHidden: true }) : [],
+    // Links to documents the user may read only (D-14), and the documents they may read, to link or propose as a replacement.
+    listDocLinks(ctx, doc.id),
+    listDocs(ctx),
   ]);
 
   const tabs = TABS.filter((k) => k !== 'project' || project);
@@ -167,9 +170,21 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
   const changeBtn = (cls: string, style?: CSSProperties) => canChange && (
     <DialogButton spec={{ kind: 'change', docId: doc.id, title: doc.title, change: 'modification', openRev: openRev ?? undefined }} className={cls} style={style} icon="pen" deniedTitle={changeLock ?? deny('edit')}>{t.request_change}</DialogButton>
   );
+  // A withdrawal may propose the document that replaces this one: an active one the user may read (lib/links.ts).
+  const byId = (a: { id: string }, b: { id: string }) => a.id.localeCompare(b.id);
+  const others = readable.filter((d) => d.id !== doc.id).sort(byId);
+  const replacements = others.filter((d) => d.state === 'active').map((d) => ({ key: d.id, label: `${d.id} · ${d.title}` }));
   const withdrawBtn = (cls: string, style?: CSSProperties) => canWithdraw && (
-    <DialogButton spec={{ kind: 'change', docId: doc.id, title: doc.title, change: 'obsolescence' }} className={cls} style={style} deniedTitle={changeLock ?? deny('edit')}>{t.request_obsolete}</DialogButton>
+    <DialogButton spec={{ kind: 'change', docId: doc.id, title: doc.title, change: 'obsolescence', replacements }} className={cls} style={style} deniedTitle={changeLock ?? deny('edit')}>{t.request_obsolete}</DialogButton>
   );
+  // Links (lib/actions.ts addDocLink, removeDocLink): the owner and records managers of both documents, unless a legal
+  // hold on either freezes them. A withdrawn document shows what replaces it in its band.
+  const replacedBy = links.filter((l) => l.rel === 'replaced_by');
+  const linksEditable = mayEditLinks(ctx, doc);
+  const linkHold = doc.legalHold ? t.link_hold : undefined;
+  const linkable = others
+    .filter((d) => mayEditLinks(ctx, d) && !links.some((l) => l.doc.id === d.id))
+    .map((d) => ({ key: d.id, label: `${d.id} · ${d.title}`, withdrawn: !!d.obsoleteAt, active: d.state === 'active' }));
   // Periodic review of the revision in force (lib/actions.ts recordReview): its owner, its process owner, records managers.
   // An obsolete or archived document is no longer applied: nothing to review.
   const reviewBtn = (cls: string, style?: CSSProperties) => doc.revInForce && doc.state === 'active' && (
@@ -286,7 +301,10 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
       {notice && (
         <div className={styles.stateNotice} data-state={notice.state} role="note">
           <Icon name={notice.state === 'archived' ? 'archive' : 'info'} size={16} style={{ flex: 'none' }} />
-          <span>{notice.text}</span>
+          <span>
+            {notice.text}
+            {replacedBy.length > 0 && <> · {t.link_replaced_by} {replacedBy.map((l, i) => <Fragment key={l.id}>{i > 0 && ', '}<Link href={l.doc.href} className={styles.noticeLink} title={l.doc.title}>{l.doc.id}</Link></Fragment>)}</>}
+          </span>
         </div>
       )}
       {expiredL && (
@@ -462,11 +480,39 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
                     </div>
                   </section>
                 )}
+                <section style={{ marginTop: 18 }} aria-labelledby="doc-links">
+                  <div className="sec-head" style={{ marginBottom: 4 }}><h6 className="sec-title" id="doc-links">{t.links}</h6><span className="text-muted tabnum" style={{ fontSize: 11 }}>{links.length}</span></div>
+                  {links.length ? (
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      {links.map((l) => (
+                        <div key={l.id} className={`hairline ${styles.pieceRow}`}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div className="text-muted" style={{ fontSize: 11 }}>{l.relL}</div>
+                            <Link href={l.doc.href} className="link-plain ellipsis" style={{ display: 'block', fontSize: 12.5 }} title={l.doc.title}>{l.doc.id} · {l.doc.title}</Link>
+                          </div>
+                          <span className={l.doc.tagClass} style={{ fontSize: 10.5, padding: '2px 8px', flex: 'none' }}>{l.doc.statusLabel}</span>
+                          {linksEditable && l.editable && (
+                            <ActionButton
+                              action={removeDocLink.bind(null, doc.id, l.id)} confirm={t.link_remove_confirm.replace('{id}', l.doc.id)}
+                              className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 8px', flex: 'none' }}
+                              disabled={!!linkHold || l.frozen} title={linkHold ?? (l.frozen ? t.link_hold : undefined)}
+                              ariaLabel={`${t.link_remove} : ${l.relL} ${l.doc.id}`}
+                            >{t.link_remove}</ActionButton>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : <p className="text-muted" style={{ margin: '4px 0 0', fontSize: 12.5 }}>{t.link_none}</p>}
+                </section>
 
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 18 }}>
                   <DialogButton spec={{ kind: 'meta', doc: meta }} icon="pen" deniedTitle={lock ?? deny('edit') ?? (isOwner ? undefined : `${t.not_allowed} : ${t.owner}`)}>{t.edit_meta}</DialogButton>
                   {reviewBtn('btn btn-secondary')}
                   {showReaders && isOwner && <DialogButton spec={{ kind: 'readers', docId: doc.id, readers: readerIds }} icon="lock" deniedTitle={lock ?? deny('edit')}>{t.readers}</DialogButton>}
+                  <DialogButton
+                    spec={{ kind: 'link', docId: doc.id, title: doc.title, withdrawn: !!doc.obsoleteAt, active: doc.state === 'active', candidates: linkable }} icon="plus"
+                    deniedTitle={deny('edit') ?? (linksEditable ? undefined : t.link_reserved) ?? linkHold}
+                  >{t.link_add}</DialogButton>
                   {canRelease && <ActionButton action={releaseHold.bind(null, doc.id)} confirm={`${t.release_hold}${lang === 'fr' ? ' ' : ''}?`}><Icon name="lock" size={14} />{t.release_hold}</ActionButton>}
                 </div>
               </>
@@ -536,6 +582,11 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
                         </div>
                         <div style={{ fontSize: 12.5, marginTop: 6 }}>{r.reason}</div>
                         {r.description && <div className="text-muted" style={{ fontSize: 11.5, marginTop: 2 }}>{r.description}</div>}
+                        {r.replacement && (
+                          <div style={{ fontSize: 11.5, marginTop: 4 }}>
+                            <span className="text-muted">{t.replacement_proposed} : </span><Link href={r.replacement.href} className="link-plain">{r.replacement.id}</Link> <span className="text-muted">· {r.replacement.title}</span>
+                          </div>
+                        )}
                         <div className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>
                           {t.requested_by} {r.requester} · {r.when}
                           {r.ecoRef && ` · ${t.eco_ref} : ${r.ecoRef}`}

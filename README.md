@@ -67,7 +67,7 @@ quitter l'app et supprimer `~/Library/Application Support/Codex/data`.
 | --- | --- |
 | `/` | Tableau de bord : « À traiter » (étapes à décider, révisions à rédiger ou à reprendre, greffes possibles, revues et expirations des documents dont on est propriétaire ou propriétaire de processus), documents récents, échéances (conservation, expiration, revue), activité. La pastille d'Accueil et la cloche reprennent la même liste |
 | `/explorateur` | Classement par famille, département, projet / programme, type ou origine ; filtres de statut et d'échéance dépassée (« Expirés », « Revues en retard ») ; aperçu rapide |
-| `/documents/[id]` | Fiche document : aperçu, onglets Projet · Fiche · Révisions · Validation · Demandes · Historique ; indicateurs « Expiré » (raccourcis vers les demandes de modification et de retrait) et « Revue en retard », « Revue effectuée » |
+| `/documents/[id]` | Fiche document : aperçu, onglets Projet · Fiche · Révisions · Validation · Demandes · Historique ; indicateurs « Expiré » (raccourcis vers les demandes de modification et de retrait) et « Revue en retard », « Revue effectuée » ; documents liés (« Remplace », « Remplacé par », « Voir aussi »), remplacement proposé avec une demande de retrait et rappelé dans le bandeau d'un document obsolète |
 | `/recherche` | Recherche plein texte classée par pertinence + facettes (projet, famille, type, sous-type, origine, rattachement, département, site, propriétaire, auteur, statut, échéance dépassée, confidentialité, langue, mots-clés, organisme source, phase, lot, discipline, thème), période sur une date (modification, émission, effet, révision, expiration), tri au choix, export CSV dans le même ordre ; recherches enregistrées (critères, période et tri) personnelles, ou partagées avec un département ou le groupe par un gestionnaire documentaire |
 | `/departements/[code]` | Page d'un département (`/departements` ouvre celui de l'utilisateur, un sélecteur passe aux autres) : documents en vigueur, échéances, circuits en cours qu'il suit, recherches partagées avec le département et le groupe, filtres mis en avant (valeurs les plus fréquentes, chacune un lien vers la recherche filtrée), le tout limité à ce que l'utilisateur peut lire. Départements provisoires (organigramme attendu) ; filtres par défaut (type, statut, projet), réglables par département dans Administration › Organisation, en attendant le recueil des besoins de chaque métier |
 | `/validations` | Circuits de validation : à valider, mes demandes, en cours, terminées ; approuver / rejeter (motif obligatoire) / déléguer, rappeler sa demande avant la dernière approbation, commentaires. Vue « Mes demandes Vigie » : demandes de modification et de retrait envoyées par l'utilisateur, avec leur statut |
@@ -127,6 +127,7 @@ src/
     context.ts         langue, utilisateur et rôle simulés, registre, libellés, droits
     access.ts          visibilité (confidentialité, cercle de rédaction)
     lifecycle.ts       révisions : mise en vigueur, remplacement, décisions Vigie
+    links.ts           liens entre documents : remplace / remplacé par, voir aussi
     codes.ts           identifiants TYPE-CONTEXTE-SEQ et lettres de révision
     retention.ts       fin de conservation
     review.ts          expiration et revue périodique : indicateurs, prochaine date de revue

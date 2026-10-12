@@ -1,15 +1,16 @@
 import 'server-only';
 import { cache } from 'react';
-import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { getDb, schema as s } from '@/db';
-import type { AuditChange, AuditData, AuditTargetKind, AuditValue, Conf } from '@/db/schema';
-import { canRead, changeAsSeen, deadlineActor, draftTodo, getAccessIndex, inDraftingCircle, isUsableTemplate, mayDeleteSearch, mayRecall, mayWorkOnDraft, openRevisionView, readerMaySeeEntry, readerMaySeeRevision, savedSearchesSeenBy, type AccessIndex } from './access';
+import type { AuditChange, AuditData, AuditTargetKind, AuditValue, Conf, LinkRel } from '@/db/schema';
+import { canRead, changeAsSeen, deadlineActor, draftTodo, getAccessIndex, inDraftingCircle, isUsableTemplate, mayDeleteSearch, mayEditLinks, mayRecall, mayWorkOnDraft, openRevisionView, readerMaySeeEntry, readerMaySeeRevision, savedSearchesSeenBy, type AccessIndex } from './access';
 import { revLabel } from './codification';
 import type { Ctx } from './context';
 import { inForceEffect } from './dates';
 import { addDays, clip, daysBetween, fmtDate, fmtDateTime, fmtSize, fmtWhen, loc, parisStamp, todayIso } from './format';
 import { CONF_LEVELS, MATRIX_ROLE_LABEL, TAGCLS, type T, type TKey } from './i18n';
 import { decisionWait, lockOf, type DecisionWait } from './lifecycle';
+import { LINK_RELS, otherEnd, relOf } from './links';
 import { retainUntil } from './retention';
 import { isExpired, isReviewOverdue } from './review';
 import { featuredFilters, featuredOf } from './departments';
@@ -300,7 +301,7 @@ export async function listChangeRequests(ctx: Ctx, opts: { docId?: string; mine?
   const db = await getDb();
   const where = and(opts.docId ? eq(s.changeRequests.docId, opts.docId) : undefined, opts.mine ? eq(s.changeRequests.requesterId, ctx.user.id) : undefined);
   const all = await db.select().from(s.changeRequests).where(where).orderBy(desc(s.changeRequests.createdAt), desc(s.changeRequests.id));
-  const ids = [...new Set(all.map((r) => r.docId))];
+  const ids = [...new Set(all.flatMap((r) => (r.replacementId ? [r.docId, r.replacementId] : [r.docId])))];
   const revIds = [...new Set(all.flatMap((r) => (r.revisionId == null ? [] : [r.revisionId])))];
   const ix = await getAccessIndex();
   const [docs, revs] = await Promise.all([
@@ -313,7 +314,9 @@ export async function listChangeRequests(ctx: Ctx, opts: { docId?: string; mine?
     const seen = docBy.get(raw.docId);
     if (!seen) return [];
     const { d, circle } = seen;
-    const r = changeAsSeen(circle, raw, raw.revisionId == null ? null : revBy.get(raw.revisionId));
+    // The replacement proposed with a withdrawal, only to who may read it (D-14: a draft stays in its drafting circle).
+    const proposed = raw.replacementId ? docBy.get(raw.replacementId)?.d : undefined;
+    const r = changeAsSeen(circle, { ...raw, replacementId: proposed ? raw.replacementId : null }, raw.revisionId == null ? null : revBy.get(raw.revisionId));
     // Still linked to its revision only when the reader may see that revision (changeAsSeen).
     const rev = r.kind === 'modification' && r.status === 'implemented' && r.revisionId != null ? revBy.get(r.revisionId) : undefined;
     return [{
@@ -333,6 +336,8 @@ export async function listChangeRequests(ctx: Ctx, opts: { docId?: string; mine?
       waitL: acceptedWaitL(ctx.t, r, d, circle),
       /** The revision an applied change is carried by, when the reader sees it: the one it opened, or the one it was grafted onto (D-26). */
       carrier: rev ? { letter: rev.letter, grafted: rev.changeRef !== (r.ecoRef ?? r.id) } : null,
+      /** The replacement proposed with a withdrawal, when the reader may read it. */
+      replacement: proposed ? { id: proposed.id, title: proposed.title, href: `/documents/${encodeURIComponent(proposed.id)}` } : null,
     }];
   });
 }
@@ -389,6 +394,33 @@ export function stateNotice(ctx: Ctx, d: DocView, requests: ChangeRequestView[])
   const archived = d.archivedAt ? `${t.archived_on} ${fmtDate(d.archivedAt, lang)}` : t.st_archived;
   // An obsolete document archived later keeps both facts (obsoleteAt is never cleared).
   return { state: 'archived', text: d.obsoleteAt ? `${archived} · ${obsolete}` : archived };
+}
+
+// ── Links between documents ──────────────────────────────────────────────
+
+/**
+ * Links of a document, as its reader may see them (point 16 of docs/reste-a-faire.md): what the document is to each
+ * other one (lib/links.ts relOf), « remplacé par » first, then « remplace » and « voir aussi », each by ID. A linked
+ * document the reader may not read is left out (canRead): a draft never in force only shows to its drafting circle
+ * (D-14), a confidential one to its audience. Its status is the one its reader sees (docView). `editable`: the user
+ * has the link rights on that other document (mayEditLinks; those on this one are the caller's to check); `frozen`: it
+ * is under legal hold.
+ */
+export async function listDocLinks(ctx: Ctx, docId: string) {
+  const db = await getDb();
+  const rows = await db.select().from(s.documentLinks).where(or(eq(s.documentLinks.sourceId, docId), eq(s.documentLinks.targetId, docId)));
+  const ids = [...new Set(rows.map((l) => otherEnd(l, docId)))];
+  const [docs, ix] = await Promise.all([ids.length ? db.select().from(s.documents).where(inArray(s.documents.id, ids)) : [], getAccessIndex()]);
+  const docBy = new Map(docs.map((d) => [d.id, d]));
+  return rows
+    .flatMap((l) => {
+      const d = docBy.get(otherEnd(l, docId));
+      if (!d || !canRead(ctx, d, ix)) return [];
+      const v = docView(ctx, d, null, inDraftingCircle(ctx, d, ix));
+      const rel: LinkRel = relOf(l, docId);
+      return [{ id: l.id, rel, relL: ctx.t[`link_${rel}`], editable: mayEditLinks(ctx, d), frozen: d.legalHold, doc: { id: v.id, title: v.title, href: v.href, statusLabel: v.statusLabel, tagClass: v.tagClass } }];
+    })
+    .sort((a, b) => LINK_RELS.indexOf(a.rel) - LINK_RELS.indexOf(b.rel) || a.doc.id.localeCompare(b.doc.id));
 }
 
 // ── Deadlines ────────────────────────────────────────────────────────────
@@ -576,7 +608,8 @@ export async function auditForReader(ctx: Ctx, all: AuditRow[]): Promise<AuditEn
   const db = await getDb();
   const current = await currentIds();
   const cur = (id: string) => current.get(id) ?? id;
-  const docIds = [...new Set(rows.flatMap((a) => (a.docId == null ? [] : [cur(a.docId)])))];
+  // Documents the entries are about, and the other end of the links they record.
+  const docIds = [...new Set(rows.flatMap((a) => [...(a.docId == null ? [] : [cur(a.docId)]), ...(a.data?.link ? [cur(a.data.link.other)] : [])]))];
   const revIds = [...new Set(rows.flatMap((a) => (a.revisionId == null ? [] : [a.revisionId])))];
   const [docs, revs, ix] = await Promise.all([
     docIds.length ? db.select().from(s.documents).where(inArray(s.documents.id, docIds)) : [],
@@ -591,6 +624,9 @@ export async function auditForReader(ctx: Ctx, all: AuditRow[]): Promise<AuditEn
     const circle = !!d && inDraftingCircle(ctx, d, ix);
     if (!readerMaySeeEntry(circle, a, a.revisionId == null ? undefined : statusBy.get(a.revisionId))) return [];
     if (!d || !canRead(ctx, d, ix)) return [{ ...a, detail: '', data: null, readable: false }];
+    // A link to a document the reader may not read is not shown on the record: nor is its trace (D-14).
+    const linked = a.data?.link ? docBy.get(cur(a.data.link.other)) : undefined;
+    if (a.data?.link && (!linked || !canRead(ctx, linked, ix))) return [];
     if (!circle && a.data?.changes && !editValuesShown(a.data.doc, d.conf)) {
       return [{ ...a, data: { ...a.data, changes: a.data.changes.map(({ field, scope }) => ({ field, scope })) }, readable: true }];
     }
@@ -711,10 +747,11 @@ function exportL(ctx: Ctx, targetId: string | null, x: NonNullable<AuditData['ex
   return [...(what.length ? what : [t.export_unfiltered]), `${x.interrupted ? `${t.export_interrupted} ` : ''}${x.rows} ${t.export_rows}`].join(' · ');
 }
 
-/** Detail of an entry in the reader's language: its free detail, then its changes or export figures. */
+/** Detail of an entry in the reader's language: its free detail, then the link it records, its changes or export figures. */
 export function auditDetailL(ctx: Ctx, a: Pick<AuditRow, 'detail' | 'data' | 'targetId'>): string {
   const x = a.data;
-  return [a.detail, x?.changes?.length ? x.changes.map((c) => changeL(ctx, c)).join(' ; ') : '', x?.export ? exportL(ctx, a.targetId, x.export) : ''].filter(Boolean).join(' · ');
+  const link = x?.link ? `${ctx.t[`link_${x.link.rel}`]} ${x.link.other}${x.link.skipped ? ` : ${ctx.t[`link_skip_${x.link.skipped}`]}` : ''}` : '';
+  return [a.detail, link, x?.changes?.length ? x.changes.map((c) => changeL(ctx, c)).join(' ; ') : '', x?.export ? exportL(ctx, a.targetId, x.export) : ''].filter(Boolean).join(' · ');
 }
 
 /** Screen where the target of an entry without document is managed. */

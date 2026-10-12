@@ -186,6 +186,25 @@ const fr = {
   review_months_invalid:'Périodicité de revue invalide : un nombre entier de mois, de 1 à 240, ou rien.',
   review_due_periodic:'Laissée vide, elle sera fixée à la mise en vigueur, {n} mois plus tard (périodicité du type).',
   review_due_periodic_in_force:'Laissée vide, aucune revue n’est planifiée : la date ne sera fixée qu’à la mise en vigueur d’une prochaine révision, {n} mois plus tard (périodicité du type).',
+  // Liens entre documents (point 16, M11)
+  links:'Documents liés', link_replaces:'Remplace', link_replaced_by:'Remplacé par', link_see_also:'Voir aussi',
+  link_none:'Aucun document lié.', link_add:'Lier un document', link_title:'Lier un document', link_rel:'Nature du lien', link_other:'Document lié',
+  link_choose:'Choisissez un document', link_no_candidate:'Aucun document ne peut être lié de cette façon.',
+  link_hint:'« Remplace » et « Remplacé par » relient un document retiré par Vigie au document qui le remplace. Pour retirer un document en vigueur, faites une demande de retrait en proposant son remplaçant.',
+  link_hint_withdrawn:'Seul un document retiré (obsolète) peut être remplacé : ce document ne l’est pas.',
+  link_remove:'Retirer', link_remove_confirm:'Retirer le lien avec {id} ?', link_added:'Lien ajouté', link_removed:'Lien retiré',
+  link_reserved:'Un lien s’ajoute ou se retire par le propriétaire des deux documents ou par un gestionnaire documentaire.',
+  link_not_found:'Document lié introuvable.', link_hold:'Document sous gel juridique : ses liens ne changent pas.',
+  link_self:'Un document ne peut pas être lié à lui-même.', link_exists:'Ces deux documents sont déjà liés.',
+  link_not_withdrawn:'Seul un document retiré par Vigie (obsolète) peut être remplacé. Pour un document en vigueur, faites une demande de retrait en proposant son remplaçant.',
+  link_replacer_inactive:'Le document qui remplace doit être actif : un document obsolète ou archivé ne remplace rien.',
+  link_hint_inactive:'Ce document est obsolète ou archivé : il ne remplace rien.',
+  act_link:'Lien ajouté', act_unlink:'Lien retiré', act_link_skipped:'Remplacement non appliqué',
+  link_skip_inactive:'document obsolète, archivé ou introuvable', link_skip_hold:'gel juridique', link_skip_linked:'déjà lié en sens inverse',
+  replacement:'Document de remplacement', replacement_optional:'Document de remplacement (facultatif)', replacement_none:'Aucun',
+  replacement_hint:'Si Vigie accepte le retrait, le document retiré sera « remplacé par » ce document.',
+  replacement_proposed:'Remplacement proposé',
+  replacement_not_found:'Document de remplacement introuvable.', replacement_inactive:'Le document de remplacement est obsolète ou archivé : proposez un document actif.',
 };
 
 type Dict = Record<keyof typeof fr, string>;
@@ -373,6 +392,25 @@ const en: Dict = {
   review_months_invalid:'Invalid review periodicity: a whole number of months from 1 to 240, or nothing.',
   review_due_periodic:'Left empty, it is set on entry into force, {n} months later (the type’s periodicity).',
   review_due_periodic_in_force:'Left empty, no review is planned: the date is only set when a next revision enters into force, {n} months later (the type’s periodicity).',
+  // Links between documents (point 16, M11)
+  links:'Related documents', link_replaces:'Replaces', link_replaced_by:'Replaced by', link_see_also:'See also',
+  link_none:'No related document.', link_add:'Link a document', link_title:'Link a document', link_rel:'Kind of link', link_other:'Linked document',
+  link_choose:'Choose a document', link_no_candidate:'No document can be linked this way.',
+  link_hint:'“Replaces” and “Replaced by” link a document Vigie withdrew to the document that replaces it. To withdraw a document in force, send a withdrawal request naming its replacement.',
+  link_hint_withdrawn:'Only a withdrawn (obsolete) document can be replaced: this one is not.',
+  link_remove:'Remove', link_remove_confirm:'Remove the link with {id}?', link_added:'Link added', link_removed:'Link removed',
+  link_reserved:'A link is added or removed by the owner of both documents or by a records manager.',
+  link_not_found:'Linked document not found.', link_hold:'Document under legal hold: its links do not change.',
+  link_self:'A document cannot be linked to itself.', link_exists:'These two documents are already linked.',
+  link_not_withdrawn:'Only a document Vigie withdrew (obsolete) can be replaced. For a document in force, send a withdrawal request naming its replacement.',
+  link_replacer_inactive:'The replacing document must be active: an obsolete or archived document replaces nothing.',
+  link_hint_inactive:'This document is obsolete or archived: it replaces nothing.',
+  act_link:'Link added', act_unlink:'Link removed', act_link_skipped:'Replacement not applied',
+  link_skip_inactive:'document obsolete, archived or not found', link_skip_hold:'legal hold', link_skip_linked:'already linked the other way',
+  replacement:'Replacement document', replacement_optional:'Replacement document (optional)', replacement_none:'None',
+  replacement_hint:'If Vigie accepts the withdrawal, the withdrawn document will be “replaced by” this document.',
+  replacement_proposed:'Proposed replacement',
+  replacement_not_found:'Replacement document not found.', replacement_inactive:'The replacement document is obsolete or archived: propose an active document.',
 };
 
 export const DICT: Record<Lang, Dict> = { fr, en };

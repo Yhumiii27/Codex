@@ -1563,7 +1563,7 @@ tranché dans le modèle ou le code, ouvert, ou sans objet.
 
 - **Pourquoi** : Les statuts 'Remplacé' et l'ECR/ECO supposent des relations : remplacé par, référence, formulaire lié à une procédure, documents impactés. Le modèle de métadonnées n'en prévoit aucune.
 - **Question** : Quelles relations faut-il gérer : remplace / remplacé par, référence, annexe, enregistrement issu d'une procédure, document impacté par une ECR ? Doivent-elles être obligatoires pour certains statuts ?
-- **Suite** : **Ouvert.** Le lien « remplacé par » proposé par l'assistant le 7 octobre à 17:33 n'est pas implémenté.
+- **Suite** : **Ouvert en partie.** Depuis le 12 octobre 2026, liens « remplace » / « remplacé par » et « voir aussi » entre documents (`document_links`, point 16 de `docs/reste-a-faire.md`) : remplacement proposé à la demande de retrait et lié quand le retrait accepté par Vigie s'applique, ajout et retrait depuis la fiche. Facultatifs, sans caractère obligatoire. Les autres relations (référence, annexe, enregistrement issu d'une procédure, document impacté par une ECR) et l'obligation pour certains statuts restent à décider.
 
 #### M12 — Formats et rendus
 

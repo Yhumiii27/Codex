@@ -1,12 +1,13 @@
 import { and, eq } from 'drizzle-orm';
 import { contextOf, formatId, lettersUpTo, nextLetter } from '@/lib/codes';
 import { parisToUtc } from '@/lib/format';
+import { relOf } from '@/lib/links';
 import { MATRIX_ROLE, type SimRole } from '@/lib/i18n';
 import type { Db } from './index';
 import * as s from './schema';
 import type { Attachment, Conf, Origin, RevStatus } from './schema';
 import { FAMILIES, TYPES } from './registry';
-import { CHANGES, DEMO_DOCS, EVENTS, EXPECTED, VCOMMENTS, type DemoDoc } from './seed-docs';
+import { CHANGES, DEMO_DOCS, EVENTS, EXPECTED, LINKS, VCOMMENTS, type DemoDoc } from './seed-docs';
 import { DEPARTMENTS, FUNCTIONS, HOLDERS, MATRIX, PERM_KEYS, PROGRAMS, PROJECTS, ROLE_KEYS, SAVED, SITES, USERS } from './seed-org';
 
 const loc = ([fr, en]: [string, string]) => ({ fr, en });
@@ -232,6 +233,16 @@ export async function seed(db: Db) {
       createdAt: c.created, decidedAt: c.decided ?? null,
     })));
     CHANGES.forEach((c) => audit.push({ at: c.created, userId: c.requester, action: c.kind === 'modification' ? 'ecr' : 'obsolete', docId: idByKey.get(c.doc)!, detail: c.id }));
+
+    // Links between documents, journaled on both ends as lib/lifecycle.ts journalLink does.
+    for (const [from, to, kind, by, day] of LINKS) {
+      const sourceId = idByKey.get(from)!, targetId = idByKey.get(to)!;
+      await tx.insert(s.documentLinks).values({ sourceId, targetId, kind, createdBy: by, createdAt: day });
+      const at = stamp(day, `${from}>${to}`);
+      const link = { sourceId, targetId, kind };
+      audit.push({ at, userId: by, action: 'link', docId: sourceId, detail: '', data: { link: { rel: relOf(link, sourceId), other: targetId } } });
+      audit.push({ at, userId: by, action: 'link', docId: targetId, detail: '', data: { link: { rel: relOf(link, targetId), other: sourceId } } });
+    }
 
     await tx.insert(s.projectExpected).values(EXPECTED.map((x, sort) => ({ projectCode: x.project, label: loc(x.label), typeCode: x.type, docId: x.doc ? idByKey.get(x.doc)! : null, later: !!x.later, sort })));
     await tx.insert(s.projectEvents).values(EVENTS.map((e) => ({ projectCode: e.project, at: `${e.at}:00`, text: loc(e.text) })));

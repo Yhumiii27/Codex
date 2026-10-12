@@ -245,6 +245,16 @@ export function mayRecordReview(ctx: Viewer, d: { ownerId: string; processOwnerI
 }
 
 /**
+ * May the user add or remove the links of this document (lib/actions.ts addDocLink, removeDocLink)? Its owner and
+ * records managers, with the edit permission; a link needs it on both its documents, since it shows on both records.
+ * Access to both and their legal hold are checked apart; an obsolete or archived document keeps receiving links, which
+ * tell its readers where to go.
+ */
+export function mayEditLinks(ctx: Viewer, d: { ownerId: string }): boolean {
+  return ctx.can('edit') && (ctx.seesAll || d.ownerId === ctx.user.id);
+}
+
+/**
  * Journal actions that only ever concern one revision (working versions, circuits, their recall and their comments,
  * entry into force, files, a change grafted onto the revision being drafted).
  */

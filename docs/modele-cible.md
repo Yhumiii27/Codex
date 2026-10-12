@@ -6,7 +6,7 @@ et des arbitrages du 7 octobre 2026. Ce document fait foi pour l'implémentation
 Certaines règles ci-dessous sont des propositions de l'assistant, implémentées mais **non confirmées par l'utilisateur** :
 authentification Entra ID (§1), code département hors rattachement, largeur et portée du compteur, ID attribué au
 brouillon, alias et nom de fichier (§3), « Remplacé », mise en vigueur automatique, bandeau et nom de téléchargement
-d'un document obsolète ou archivé (§4), partage des recherches enregistrées et pages par département (§5), longueur du
+d'un document obsolète ou archivé, liens « remplace » / « remplacé par » et « voir aussi » (§4), partage des recherches enregistrées et pages par département (§5), longueur du
 motif de rejet et droit de rappeler une demande de validation (§6), lecture stricte de la cohérence des dates,
 indicateurs d'expiration et de revue, « Revue effectuée » et périodicité de revue par type (§7).
 Elles sont listées dans `docs/decisions.md` (« Choix de l'assistant non validés explicitement », question O-09), qui
@@ -86,6 +86,28 @@ Fichier stocké : `{ID}_{indice}.{ext}` (ex. `PRO-QHS-0012_B.2.pdf`).
   cours : circuit clos, révisions ouvertes **Annulées**. Une restauration d'archive rend au
   document son état d'avant (obsolète s'il avait été retiré). La date d'effet est aujourd'hui ou plus tard ; une
   révision approuvée après sa date d'effet prend effet le jour de sa mise en vigueur.
+- **Liens entre documents** (`document_links`, `src/lib/links.ts`). Une révision remplace la précédente sous le même ID
+  (D-11) ; un document qui en remplace un autre, d'un autre ID, lui est lié. Deux natures : **remplace** (lue
+  « remplacé par » depuis l'autre document) et **voir aussi**. Un seul lien par paire de documents, quel qu'en soit le
+  sens, jamais vers soi-même ; les deux bouts suivent un reclassement. Les liens se créent :
+  - à la **demande de retrait** : le demandeur peut proposer un document de remplacement (facultatif), actif et qu'il
+    peut lire ; Codex le garde sur la demande (`change_requests.replacement_id`) et, quand le retrait accepté par Vigie
+    s'applique, le document retiré devient « remplacé par » lui (au nom de Vigie, avec l'ECO). Un lien « voir aussi »
+    entre les deux devient « remplace » ; un refus ne lie rien. Le remplaçant est revérifié à ce moment : s'il n'est
+    plus actif, si l'un des deux documents est sous gel juridique ou si un « remplace » existe en sens inverse, aucun
+    lien n'est créé ni modifié, et le journal du document retiré l'indique (« Remplacement non appliqué ») ;
+  - depuis la **fiche** (onglet Fiche, section « Documents liés ») : ajout ou retrait d'un lien par qui a les droits
+    sur les deux documents (leur propriétaire, ou un gestionnaire documentaire), avec le droit « Modifier », sur des
+    documents qu'il peut lire. Seul un document déjà retiré par Vigie (obsolète, archivé ensuite ou non) peut être
+    « remplacé », et par un document actif : pour un document en vigueur, on passe par la demande de retrait (D-17).
+    Un gel juridique, sur l'un ou l'autre document, fige leurs liens, à l'ajout comme au retrait ; un document
+    obsolète ou archivé en reçoit encore, puisqu'ils disent à ses lecteurs où aller.
+  Chaque ajout ou retrait est journalisé sur les deux documents (« Lien ajouté », « Lien retiré »). La fiche affiche
+  les liens ; le bandeau d'un document obsolète, et celui de l'aperçu rapide, ajoutent « Remplacé par {ID} ». Un
+  document lié que le lecteur ne peut pas lire n'apparaît pas, ni l'entrée du journal qui le nomme, ni le
+  remplacement proposé d'une demande : un brouillon jamais en vigueur reste dans son cercle de rédaction (D-14).
+  Les autres relations (référence, annexe, enregistrement issu d'une procédure, documents touchés par une ECR) et leur
+  caractère obligatoire restent une question de l'audit (M11). *Proposé, non confirmé* (`docs/decisions.md`).
 
 ## 5. Confidentialité et visibilité
 

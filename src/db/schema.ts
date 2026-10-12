@@ -225,6 +225,38 @@ export const documentReaders = pgTable(
   (t) => [primaryKey({ columns: [t.docId, t.userId] })],
 );
 
+/** Nature of a link between two documents (lib/links.ts); « Remplacé par » is a `replaces` link read from its target. */
+export type LinkKind = 'replaces' | 'see_also';
+/** A link as one of its documents reads it: it replaces the other, is replaced by it, or refers to it. */
+export type LinkRel = 'replaces' | 'replaced_by' | 'see_also';
+/**
+ * Why the replacement proposed with a withdrawal was not linked when the withdrawal applied (lib/links.ts
+ * replacementOutcome): no longer active, a legal hold on either document, a « remplace » link the other way already.
+ */
+export type LinkSkip = 'inactive' | 'hold' | 'linked';
+
+/**
+ * Links between two distinct documents (point 16 of docs/reste-a-faire.md): `source` replaces `target`, or each refers
+ * to the other (`see_also`). One record per pair of documents, whatever its direction: no link to itself, no duplicate,
+ * never both « remplace » and « remplacé par ». Both ends follow a reclassification (cascade on documents.id).
+ */
+export const documentLinks = pgTable(
+  'document_links',
+  {
+    id: serial('id').primaryKey(),
+    sourceId: text('source_id').notNull().references(docRef, cascade),
+    targetId: text('target_id').notNull().references(docRef, cascade),
+    kind: text('kind').$type<LinkKind>().notNull(),
+    createdBy: text('created_by').notNull().references(() => users.id),
+    createdAt: date('created_at', { mode: 'string' }).notNull(),
+  },
+  (t) => [
+    check('document_links_kind', sql`${t.kind} in ('replaces', 'see_also')`),
+    check('document_links_distinct', sql`${t.sourceId} <> ${t.targetId}`),
+    uniqueIndex('document_links_pair').on(sql`least(${t.sourceId}, ${t.targetId})`, sql`greatest(${t.sourceId}, ${t.targetId})`),
+  ],
+);
+
 export const revisions = pgTable(
   'revisions',
   {
@@ -345,12 +377,20 @@ export const changeRequests = pgTable(
      */
     revisionId: integer('revision_id').references(() => revisions.id),
     decisionNote: text('decision_note'),
+    /**
+     * Withdrawal only: the document proposed to replace this one, readable by the requester when asked. Once the
+     * withdrawal applies, it becomes a « remplace » link (lib/lifecycle.ts implementChange). Follows a reclassification.
+     */
+    replacementId: text('replacement_id').references(docRef, cascade),
     source: text('source').notNull().default('codex'),
     createdAt: timestamp('created_at', { mode: 'string' }).notNull(),
     decidedAt: timestamp('decided_at', { mode: 'string' }),
   },
-  // One pending request per document.
-  (t) => [uniqueIndex('change_requests_pending').on(t.docId).where(sql`${t.status} in ('submitted', 'accepted')`)],
+  (t) => [
+    // One pending request per document.
+    uniqueIndex('change_requests_pending').on(t.docId).where(sql`${t.status} in ('submitted', 'accepted')`),
+    check('change_requests_replacement', sql`${t.replacementId} is null or (${t.kind} = 'obsolescence' and ${t.replacementId} <> ${t.docId})`),
+  ],
 );
 
 // ── Identifier counters ─────────────────────────────────────────────────
@@ -386,6 +426,12 @@ export type AuditData = {
   export?: { q?: string; facets?: Partial<Record<string, string[]>>; period?: SearchPeriod; sort?: string; rows: number; interrupted?: boolean };
   /** Metadata edit: the document's strictest level across the change, and whether a revision was in force. */
   doc?: { conf: Conf; inForce: boolean };
+  /**
+   * Link added or removed (actions 'link', 'unlink'): this document replaces the other, is replaced by it, or refers to
+   * it; the other under its ID at the time. Shown only to who may read that other document (lib/queries.ts, auditForReader).
+   * `skipped` (action 'link_skipped'): the replacement proposed with a withdrawal was not linked when it applied, and why.
+   */
+  link?: { rel: LinkRel; other: string; skipped?: LinkSkip };
 };
 
 /** Append-only: the database refuses UPDATE, DELETE and TRUNCATE on it (src/db/index.ts). */

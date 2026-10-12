@@ -569,6 +569,43 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     mise en vigueur. Recalculer la date à l'enregistrement serait une règle nouvelle, non retenue sans accord ;
   - données de démo : une vérification périodique expirée (`MNT-CHA-0002`) et une revue en retard
     (`PRO-QUA-0002`, revue prévue le 30 septembre 2026) ont été ajoutées pour montrer les indicateurs.
+- **Liens entre documents** (question M11 de l'audit, 12 octobre ; point 16 de `docs/reste-a-faire.md`,
+  `docs/modele-cible.md` §4) :
+  - trois natures seulement, celles de la fiche du point 16 : « remplace », « remplacé par » (le même lien lu depuis
+    l'autre document) et « voir aussi ». Référence, annexe, enregistrement issu d'une procédure, documents touchés par
+    une ECR et le caractère obligatoire d'un lien restent la question M11 ;
+  - un seul lien par paire de documents, quel qu'en soit le sens ou la nature : un « voir aussi » ne double pas un
+    « remplace », et un retrait accepté avec remplacement proposé transforme en « remplace » un « voir aussi » entre
+    les deux (le journal garde le retrait de l'un et l'ajout de l'autre) ;
+  - le remplacement proposé à la demande de retrait est facultatif, actif (ni obsolète ni archivé) et lisible par le
+    demandeur ; un document qu'il ne peut pas lire reçoit la même réponse qu'un document inexistant. Le lien n'est
+    créé qu'à l'application du retrait accepté (au nom de Vigie, avec l'ECO), pas à la demande : un document encore en
+    vigueur ne se dit pas « remplacé ». Vigie ne reçoit ni ne renvoie ce remplacement : Codex le garde sur la demande
+    (`change_requests.replacement_id`) ; le contrat avec Vigie reste à définir (O-10) ;
+  - le remplacement est revérifié quand le retrait s'applique, parfois longtemps après la demande (acceptation en
+    attente d'un verrou). Codex ne lie rien et ne touche à aucun lien existant entre les deux documents si le
+    remplaçant n'est plus actif (obsolète, archivé) ou s'il est sous gel juridique, ou si un lien « remplace » existe
+    déjà en sens inverse. Le journal du document retiré l'indique (« Remplacement non appliqué », avec la raison).
+    Le lien n'est pas repris à la levée du gel : le propriétaire des deux documents ou un gestionnaire l'ajoute alors
+    depuis la fiche ;
+  - depuis la fiche, seul un document déjà retiré par Vigie (obsolète, archivé ensuite ou non) peut être « remplacé »,
+    et seulement par un document actif, comme à la demande de retrait : un document obsolète ou archivé ne remplace
+    rien. Pour un document en vigueur, il faut passer par la demande de retrait (D-17). Un lien s'affiche sur les deux
+    fiches, et « remplacé par » dans le bandeau du document retiré : ajout et retrait demandent donc les droits sur
+    **les deux documents**, c'est-à-dire en être le propriétaire, ou être gestionnaire documentaire, avec le droit
+    « Modifier », et pouvoir les lire. Le propriétaire d'un remplaçant ne retire donc pas le « remplacé par » posé par
+    Vigie sur un document retiré qui n'est pas à lui ; un « voir aussi » vers le document d'un autre propriétaire
+    passe par un gestionnaire. Le verrou d'un document obsolète ou archivé ne bloque pas ses liens (ils disent à ses
+    lecteurs où aller) ; un gel juridique, sur l'un ou l'autre document, les fige, à l'ajout comme au retrait. Un lien
+    ne date pas la fiche (« Modifié ») ;
+  - visibilité (D-14) : un document lié que le lecteur ne peut pas lire n'apparaît ni dans la section « Documents
+    liés », ni dans le bandeau, ni dans le remplacement proposé d'une demande ; l'entrée de journal qui le nomme est
+    retirée du journal de ce lecteur (fiche, onglet Journal, export). Quand le document lié devient lisible (mise en
+    vigueur d'un brouillon), le lien et son entrée apparaissent ;
+  - l'import (migration) ne transmet pas de liens : un champ de liens serait un contrat à définir avec l'outil de
+    migration (O-11) ; en attendant, ils s'ajoutent depuis les fiches ;
+  - données de démo : un lien « voir aussi » entre la procédure « Levage et manutention sur chantier » et l'arrêté du
+    1er mars 2004 sur la vérification des appareils de levage.
 - **Retrait** (D-17) : effets d'un retrait accepté sur le travail en cours (circuit clos, révisions ouvertes annulées).
 - **Documents obsolètes ou archivés** (D-17) : bandeau d'avertissement sur la fiche et dans l'aperçu rapide de
   l'explorateur, suffixe `_OBSOLETE` ou `_ARCHIVE` dans le nom proposé au téléchargement (`docs/modele-cible.md` §4).

@@ -5,12 +5,13 @@ import { cookies } from 'next/headers';
 import { refresh } from 'next/cache';
 import { getDb, schema as s } from '@/db';
 import type { Attachment, AuditChange, AuditValue, Conf, Disposition, Origin, RetentionTrigger, SearchScope } from '@/db/schema';
-import { buildAccessIndex, canRead, getAccessIndex, inDraftingCircle, isUsableTemplate, mayDeleteSearch, mayRecall, mayRecordReview, maySaveSearch, mayWorkOnDraft, readerMaySeeRevision, readersApply, seesSavedSearch } from './access';
+import { buildAccessIndex, canRead, getAccessIndex, inDraftingCircle, isUsableTemplate, mayDeleteSearch, mayEditLinks, mayRecall, mayRecordReview, maySaveSearch, mayWorkOnDraft, readerMaySeeRevision, readersApply, seesSavedSearch } from './access';
 import { idMatches, nextDocId, nextWorkflowId } from './codification';
 import { COOKIE_LANG, COOKIE_ROLE, COOKIE_USER, getCtx, type Ctx } from './context';
 import { addDays, fmtDate, fmtSize, loc, nowStamp, parseIsoDay, todayIso } from './format';
 import { ATTACHMENTS, CONF_LEVELS, ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLES, ORIGINS, PERMS, SEARCH_SCOPES, SIM_ROLES, SIMULATED_MATRIX_ROLES, type Perm, type SimRole, type TKey } from './i18n';
-import { applyChangeDecision, applyPendingDecision, approveRevision, audit, catchUpEffectiveDates, lockOf, refreshHeadline, type ModifierSwap, type Tx } from './lifecycle';
+import { addLink, applyChangeDecision, applyPendingDecision, approveRevision, audit, catchUpEffectiveDates, journalLink, linkBetween, lockOf, refreshHeadline, type ModifierSwap, type Tx } from './lifecycle';
+import { isLinkRel, linkIssue, otherEnd, replacementIssue, storedLink } from './links';
 import { decisionWaitL } from './queries';
 import { dateIssues, dateIssueText, effectIssue, issueFrom, latestEffect, type DateIssue } from './dates';
 import { cleanFeatured } from './departments';
@@ -744,16 +745,20 @@ export async function addComment(workflowId: string, text: string): Promise<Acti
 /**
  * Asks Vigie for a change (ECR) or the withdrawal of a document in force. Needs the edit permission and a document the
  * user can see: a hidden document answers "not found" before anything about its state. A change may be asked while a
- * revision is open (D-26): once accepted, it waits for that revision or is grafted onto it.
+ * revision is open (D-26): once accepted, it waits for that revision or is grafted onto it. A withdrawal may propose
+ * the document that replaces this one (`replacementId`, optional): an active document the requester may read, which
+ * becomes « remplacé par » once the withdrawal applies (lib/lifecycle.ts implementChange); one they may not read is
+ * answered as one that does not exist.
  */
-export async function requestChange(docId: string, kind: 'modification' | 'obsolescence', reason: string, description: string): Promise<ActionResult> {
+export async function requestChange(docId: string, kind: 'modification' | 'obsolescence', reason: string, description: string, replacementId: string | null = null): Promise<ActionResult> {
   const ctx = await getCtx();
   const why = reason.trim();
-  if (!why || (kind !== 'modification' && kind !== 'obsolescence')) return fail(ctx);
+  const replacement = typeof replacementId === 'string' && replacementId.trim() ? replacementId.trim() : null;
+  if (!why || (kind !== 'modification' && kind !== 'obsolescence') || (replacement && kind !== 'obsolescence')) return fail(ctx);
   if (!ctx.can('edit')) return denied(ctx, 'edit');
   const ix = await getAccessIndex();
   const db = await getDb();
-  const res = await db.transaction(async (tx): Promise<{ err: TKey; extra?: string } | { id: string }> => {
+  const res = await db.transaction(async (tx): Promise<{ err: TKey; extra?: string; field?: string } | { id: string }> => {
     const [d] = await tx.select().from(s.documents).where(eq(s.documents.id, docId));
     if (!d || !canRead(ctx, d, ix)) return { err: 'not_found' };
     const lock = lockOf(d);
@@ -761,11 +766,16 @@ export async function requestChange(docId: string, kind: 'modification' | 'obsol
     if (!d.revInForce) return { err: 'need_in_force' };
     const [pending] = await tx.select().from(s.changeRequests).where(and(eq(s.changeRequests.docId, docId), inArray(s.changeRequests.status, ['submitted', 'accepted'])));
     if (pending) return { err: 'change_pending', extra: pending.id };
-    const id = await submitChange(tx, { kind, docId, requesterId: ctx.user.id, reason: why.slice(0, 300), description: description.trim().slice(0, 4000) });
+    if (replacement) {
+      const [r] = await tx.select().from(s.documents).where(eq(s.documents.id, replacement));
+      const issue = replacementIssue(docId, r && canRead(ctx, r, ix) ? r : null);
+      if (issue) return { err: issue, field: 'replacement' };
+    }
+    const id = await submitChange(tx, { kind, docId, requesterId: ctx.user.id, reason: why.slice(0, 300), description: description.trim().slice(0, 4000), replacementId: replacement });
     await audit(tx, ctx.user.id, kind === 'modification' ? 'ecr' : 'obsolete', docId, id);
     return { id };
   });
-  if ('err' in res) return fail(ctx, res.err, res.extra);
+  if ('err' in res) return res.field ? { ok: false, error: ctx.t[res.err], field: res.field } : fail(ctx, res.err, res.extra);
   refresh();
   return { ok: true, message: `${ctx.t.ecr_sent} : ${res.id}` };
 }
@@ -826,6 +836,72 @@ export async function graftChange(requestId: string): Promise<ActionResult> {
   if ('err' in res) return fail(ctx, res.err);
   refresh();
   return { ok: true, message: `${ctx.t.graft_done} : ${res.ref} → ${res.letter}` };
+}
+
+// ── Links between documents ──────────────────────────────────────────────
+
+/**
+ * Links `docId` to `otherId` from its record (point 16 of docs/reste-a-faire.md): `rel` says what `docId` is to the
+ * other, « remplace », « remplacé par » or « voir aussi ». A link shows on both records, and « remplacé par » in the band
+ * of a withdrawn document: the user must have the rights on both ends (access.ts mayEditLinks: their owner, or a
+ * records manager, with the edit permission), on two documents they may read (one they may not is answered as one that
+ * does not exist). Only a document Vigie withdrew is replaced, by an active one (lib/links.ts linkIssue, D-17); a legal
+ * hold on either freezes their links. One link per pair, journaled on both documents.
+ */
+export async function addDocLink(docId: string, rel: string, otherId: string): Promise<ActionResult> {
+  const ctx = await getCtx();
+  if (!isLinkRel(rel)) return fail(ctx);
+  if (!ctx.can('edit')) return denied(ctx, 'edit');
+  const other = typeof otherId === 'string' ? otherId.trim() : '';
+  const ix = await getAccessIndex();
+  const db = await getDb();
+  const res = await db.transaction(async (tx): Promise<{ err: TKey; field?: string } | { ok: true }> => {
+    const [d] = await tx.select().from(s.documents).where(eq(s.documents.id, docId));
+    if (!d || !canRead(ctx, d, ix)) return { err: 'not_found' };
+    if (!mayEditLinks(ctx, d)) return { err: 'link_reserved' };
+    const [o] = other ? await tx.select().from(s.documents).where(eq(s.documents.id, other)) : [];
+    if (!o || !canRead(ctx, o, ix)) return { err: 'link_not_found', field: 'other' };
+    if (!mayEditLinks(ctx, o)) return { err: 'link_reserved', field: 'other' };
+    if (d.legalHold || o.legalHold) return { err: 'link_hold' };
+    const issue = linkIssue(rel, d, o, !!(await linkBetween(tx, d.id, o.id)));
+    // What the record's document is to the other is the kind chosen; the other end is the document chosen.
+    const onRel = issue === 'link_not_withdrawn' || (issue === 'link_replacer_inactive' && rel === 'replaces');
+    if (issue) return { err: issue, field: onRel ? 'rel' : 'other' };
+    if (!(await addLink(tx, storedLink(d.id, rel, o.id), ctx.user.id))) return { err: 'link_exists', field: 'other' };
+    return { ok: true };
+  });
+  if ('err' in res) return { ok: false, error: ctx.t[res.err], ...(res.field ? { field: res.field } : {}) };
+  refresh();
+  return { ok: true, message: ctx.t.link_added };
+}
+
+/**
+ * Removes a link from the record of `docId`, one of its ends: same rights as addDocLink, on both documents (the owner
+ * of a replacement does not take « remplacé par » off a document withdrawn by Vigie that is not theirs), and a legal
+ * hold on either freezes it. A link to a document the user may not read is not shown to them, and is answered as one
+ * that does not exist. Journaled on both.
+ */
+export async function removeDocLink(docId: string, linkId: number): Promise<ActionResult> {
+  const ctx = await getCtx();
+  if (!ctx.can('edit')) return denied(ctx, 'edit');
+  const ix = await getAccessIndex();
+  const db = await getDb();
+  const res = await db.transaction(async (tx): Promise<{ err: TKey } | { ok: true }> => {
+    const [d] = await tx.select().from(s.documents).where(eq(s.documents.id, docId));
+    if (!d || !canRead(ctx, d, ix)) return { err: 'not_found' };
+    const [l] = Number.isInteger(linkId) ? await tx.select().from(s.documentLinks).where(eq(s.documentLinks.id, linkId)) : [];
+    const [o] = l && (l.sourceId === d.id || l.targetId === d.id) ? await tx.select().from(s.documents).where(eq(s.documents.id, otherEnd(l, d.id))) : [];
+    if (!l || !o || !canRead(ctx, o, ix)) return { err: 'link_not_found' };
+    if (!mayEditLinks(ctx, d) || !mayEditLinks(ctx, o)) return { err: 'link_reserved' };
+    if (d.legalHold || o.legalHold) return { err: 'link_hold' };
+    const [gone] = await tx.delete(s.documentLinks).where(eq(s.documentLinks.id, l.id)).returning();
+    if (!gone) return { err: 'link_not_found' };
+    await journalLink(tx, 'unlink', gone, ctx.user.id);
+    return { ok: true };
+  });
+  if ('err' in res) return fail(ctx, res.err);
+  refresh();
+  return { ok: true, message: ctx.t.link_removed };
 }
 
 // ── Retention ────────────────────────────────────────────────────────────

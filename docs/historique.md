@@ -1103,3 +1103,79 @@ devenu un statut : le retrait reste une demande à Vigie (D-17).
   Archivage la revue de `PRO-QUA-0001` sans date : prochaine revue le 12/10/2029. Sur `PRO-QUA-0001`, en vigueur, le
   dialogue des métadonnées de Gabriel Comte dit « Laissée vide, aucune revue n'est planifiée… ». Vue en anglais
   vérifiée (« Document expired, valid until 30 Sep 2026 »).
+
+### 15.3 Lien « remplacé par » entre documents
+
+Point 16 de [reste-a-faire.md](reste-a-faire.md) (M11 de l'audit) : un document retiré par Vigie (D-17) ne disait pas
+quel autre document, d'un autre ID, le remplaçait, et aucune table ne reliait deux documents. Les révisions d'un même
+document gardent leur statut « Remplacé » (D-11) ; le lien ne concerne que des documents distincts.
+
+- **Modèle** : table `document_links` (source, cible, nature `replaces` ou `see_also`, auteur, jour), un enregistrement
+  orienté par paire : « remplacé par » est le lien `replaces` lu depuis sa cible (`src/lib/links.ts` : `storedLink`,
+  `relOf`, `linkIssue`). La base refuse un lien vers soi-même, une seconde paire dans un sens ou dans l'autre et une
+  nature inconnue ; les deux clés étrangères suivent `documents.id` en cascade, comme les autres tables : un
+  reclassement emporte les liens. Colonne `change_requests.replacement_id` (retrait seulement, jamais le document
+  lui-même). Migration unique régénérée.
+- **Demande de retrait** : champ « Document de remplacement (facultatif) » du dialogue, parmi les documents actifs
+  que le demandeur peut lire ; `requestChange` le contrôle de nouveau (introuvable ou illisible : même réponse ; obsolète
+  ou archivé ; le document lui-même) et le garde sur la demande. Rien n'est lié avant la décision : quand le retrait
+  accepté s'applique, aussitôt ou à la levée d'un verrou, `implementChange` revérifie le remplaçant
+  (`replacementOutcome`) puis crée le lien au nom de Vigie, avec l'ECO, et remplace un « voir aussi » entre les deux.
+  Un remplaçant devenu obsolète ou archivé, un gel juridique sur l'un des deux documents ou un « remplace » en sens
+  inverse ne lient rien et ne touchent à aucun lien : le journal du document retiré dit « Remplacement non appliqué »,
+  avec la raison. Un refus ne lie rien.
+- **Fiche** : section « Documents liés » de l'onglet Fiche (nature, ID et titre, statut tel que le lecteur le voit,
+  « Retirer »), bouton « Lier un document » (dialogue : « Voir aussi », « Remplace », « Remplacé par »). Ajout et
+  retrait demandent les droits sur les deux documents : leur propriétaire, ou un gestionnaire documentaire, avec le
+  droit « Modifier » (`mayEditLinks`, `addDocLink`, `removeDocLink`). Seul un document déjà retiré peut être
+  « remplacé », et par un document actif ; un gel juridique fige les liens des deux documents, à l'ajout comme au
+  retrait. Le bandeau « Obsolète » de la fiche et celui de l'aperçu rapide de l'explorateur ajoutent « Remplacé par
+  {ID} » (lien vers la fiche) ; l'onglet Demandes et « Mes demandes Vigie » montrent le remplacement proposé.
+- **Journal** : « Lien ajouté » et « Lien retiré », sur les deux documents, avec la nature et l'autre document
+  (`audit_log.data.link`, rendu dans la langue du lecteur).
+- **D-14** : un document lié que le lecteur ne peut pas lire (`canRead`) n'apparaît ni dans la section, ni dans le
+  bandeau, ni dans le remplacement proposé ; `auditForReader` retire l'entrée de journal qui le nomme, sur la fiche,
+  dans l'onglet Journal et dans l'export. Un brouillon jamais en vigueur n'est donc vu que de son cercle de rédaction,
+  jusqu'à sa mise en vigueur.
+- **API** ([api.md](api.md)) : le webhook Vigie ne transmet pas le remplacement et n'a pas changé (O-10) ; l'import
+  ne crée pas de liens (O-11).
+- **Données de démo** : « voir aussi » entre `PRO-HSE-0001` (Levage et manutention sur chantier) et `REG-HSE-0001`
+  (arrêté du 1er mars 2004).
+- **Choix prudents** ([decisions.md](decisions.md)) : trois natures seulement (le reste est M11) ; un lien par paire ;
+  lien créé à l'application du retrait et non à la demande, après une nouvelle vérification du remplaçant ;
+  « remplacé » réservé à un document déjà retiré, par un document actif ; droits sur les deux documents ; gel
+  juridique bloquant, y compris pour Vigie ; état obsolète ou archivé non bloquant pour le document remplacé ;
+  entrées de journal masquées avec le document lié.
+- **Relecture** : un propriétaire pouvait écrire « Remplacé par » dans le bandeau du document retiré d'un autre (droits
+  contrôlés sur un seul bout) et le propriétaire d'un remplaçant retirer le lien posé par Vigie : les droits portent
+  désormais sur les deux documents, et le dialogue ne propose que les documents sur lesquels on les a. L'acceptation
+  Vigie supprimait un « voir aussi » d'un document gelé et liait un remplaçant devenu obsolète entre la demande et la
+  décision, sans trace quand un « remplace » existait en sens inverse : corrigé, avec l'entrée « Remplacement non
+  appliqué ». La fiche acceptait « Remplacé par » vers un document obsolète ou archivé, que refusait la demande de
+  retrait : une seule règle, le remplaçant est actif. Tests complétés : gel sur le document de la fiche, retrait de
+  lien sous gel aux deux bouts, acceptation avec remplaçant gelé, demandes croisées, remplaçant archivé avant la
+  décision.
+- **Vérifié** : `npm test` (610 tests, dont `tests/unit/links.test.ts` et `tests/integration/links.test.ts`),
+  `npm run typecheck`, `npm run lint`. Les tests échouent si l'on retire le contrôle `canRead` de `listDocLinks` ou
+  de `auditForReader`, le lien créé à l'application du retrait, la règle « seul un document retiré est remplacé »,
+  le contrôle des droits sur l'autre document (ajout ou retrait), l'un des deux bouts du contrôle de gel, la
+  revérification du remplaçant ou le gel à l'application du retrait (essayé). Dans le navigateur, sur une base de démo neuve : Claire Bardet demande le retrait de `PRO-QUA-0002` en
+  proposant `RSQ-HSE-0001` (en révision, jamais en vigueur ; ni le document lui-même ni un document obsolète ne sont
+  proposés), l'onglet Demandes affiche « Remplacement proposé : RSQ-HSE-0001 · Analyse de risques — atelier de
+  Lyon », puis elle simule l'acceptation : bandeau « Obsolète depuis le 12/10/2026 (ECO-2026-004) — ne plus appliquer
+  · Remplacé par RSQ-HSE-0001 », section « Remplacé par » et, sur `RSQ-HSE-0001`, « Remplace PRO-QUA-0002 » ; même
+  bandeau dans l'aperçu rapide de l'explorateur ; « Lien ajouté · ECO-2026-004 · Remplacé par RSQ-HSE-0001 » au
+  journal. James Holt (auditeur) et Julien Wagner (collaborateur), hors du cercle de `RSQ-HSE-0001`, voient le
+  bandeau sans « Remplacé par », « Aucun document lié », la demande sans remplacement et aucun lien au journal ; la
+  page ne contient pas l'ID. Sur `PRO-HSE-0002` (obsolète), Claire Bardet ajoute puis retire « Remplacé par
+  PRO-HSE-0001 » (« Remplace » ne propose que les documents retirés ; un document déjà lié n'est plus proposé) ; sur
+  un document en vigueur, « Remplacé par » est grisé avec son explication ; Julien Wagner, non propriétaire, voit
+  « Lier un document » grisé (« Un lien s’ajoute ou se retire par le propriétaire des deux documents… ») et aucun
+  « Retirer ». Vue en anglais vérifiée (« Replaced by », « Related documents »). Après relecture, sur une base neuve : même parcours ; Julien Wagner, dans « Lier un
+  document » de sa « Liste des moteurs », ne se voit proposer que ses propres documents, et rien pour « Remplace » ;
+  Olivier Blanc, propriétaire de `RSQ-HSE-0001`, voit « Remplace PRO-QUA-0002 » sans « Retirer » ; sur
+  `PRO-HSE-0002` (obsolète), « Remplace » est grisé (« Ce document est obsolète ou archivé : il ne remplace rien. »)
+  et « Remplacé par » ne propose aucun document obsolète. Retraits croisés de `NRM-QUA-0001` (remplaçant proposé
+  `MNT-CHA-0001`) et de `MNT-CHA-0001`, acceptés dans l'ordre inverse : `NRM-QUA-0001` n'a aucun lien, et son journal
+  dit « Remplacement non appliqué · ECO-2026-005 · Remplacé par MNT-CHA-0001 : document obsolète, archivé ou
+  introuvable ».

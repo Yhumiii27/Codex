@@ -4,9 +4,9 @@ import { useId, useState, type ReactNode } from 'react';
 import { useApp } from '@/components/shell/AppProvider';
 import { Icon } from '@/components/ui/Icon';
 import { Seg } from '@/components/ui/Seg';
-import type { Attachment, Conf, Origin } from '@/db/schema';
+import type { Attachment, Conf, LinkRel, Origin } from '@/db/schema';
 import {
-  addFunctionHolder, addOrgValue, addWorkingVersion, createDocument, decideStep, delegateStep, graftChange, recallValidation, recordReview,
+  addDocLink, addFunctionHolder, addOrgValue, addWorkingVersion, createDocument, decideStep, delegateStep, graftChange, recallValidation, recordReview,
   requestChange, requestValidation, saveSearch, setDepartmentFeatured, setReaders, simulateUser, simulateVigieDecision, updateMeta, updateType,
 } from '@/lib/actions';
 import { contextOf, idMatches, seqWidth } from '@/lib/codes';
@@ -26,7 +26,8 @@ export function Dialogs({ spec }: { spec: DialogSpec }) {
     case 'working': return <WorkingVersion docId={spec.docId} nextLabel={spec.nextLabel} />;
     case 'meta': return <EditMeta doc={spec.doc} />;
     case 'validate': return <RequestValidation docId={spec.docId} title={spec.title} revLabel={spec.revLabel} circuitL={spec.circuitL} minDate={spec.minDate} />;
-    case 'change': return <ChangeRequest docId={spec.docId} title={spec.title} change={spec.change} openRev={spec.openRev} />;
+    case 'change': return <ChangeRequest docId={spec.docId} title={spec.title} change={spec.change} openRev={spec.openRev} replacements={spec.replacements} />;
+    case 'link': return <LinkDocument spec={spec} />;
     case 'delegate': return <Delegate workflowId={spec.workflowId} stepName={spec.stepName} step={spec.step} excluded={spec.excluded} />;
     case 'reject': case 'recall': return <CloseWorkflow spec={spec} />;
     case 'compare': return <Compare current={spec.current} other={spec.other} />;
@@ -501,17 +502,19 @@ function RequestValidation({ docId, title, revLabel, circuitL, minDate }: { docI
   );
 }
 
-function ChangeRequest({ docId, title, change, openRev }: { docId: string; title: string; change: 'modification' | 'obsolescence'; openRev?: { letter: string; status: 'draft' | 'in_review' | 'approved' } }) {
+function ChangeRequest({ docId, title, change, openRev, replacements }: { docId: string; title: string; change: 'modification' | 'obsolescence'; openRev?: { letter: string; status: 'draft' | 'in_review' | 'approved' }; replacements?: { key: string; label: string }[] }) {
   const { t, lang, close } = useApp();
-  const { pending, error, run } = useSubmit();
+  const { pending, error, field, run } = useSubmit();
   return (
     <Modal title={change === 'modification' ? t.request_change : t.request_obsolete} actions={<Actions pending={pending} label={t.send} onCancel={close} form="change-form" />}>
       <form
         id="change-form"
         onSubmit={(e) => {
           e.preventDefault();
-          const fd = new FormData(e.currentTarget);
-          run(() => requestChange(docId, change, String(fd.get('reason') ?? ''), String(fd.get('description') ?? '')));
+          const form = e.currentTarget;
+          const fd = new FormData(form);
+          const replacement = change === 'obsolescence' ? String(fd.get('replacement') ?? '') || null : null;
+          run(() => requestChange(docId, change, String(fd.get('reason') ?? ''), String(fd.get('description') ?? ''), replacement), { form });
         }}
         style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
       >
@@ -530,7 +533,64 @@ function ChangeRequest({ docId, title, change, openRev }: { docId: string; title
         )}
         <Field label={t.ecr_reason}>{(id) => <input id={id} className="input" name="reason" maxLength={300} required />}</Field>
         <Field label={t.ecr_description}>{(id) => <textarea id={id} className="input" name="description" rows={4} maxLength={4000} />}</Field>
-        <ErrorLine error={error} />
+        {/* Withdrawal: the document that replaces this one, linked « remplacé par » once Vigie accepts (lib/lifecycle.ts). */}
+        {change === 'obsolescence' && replacements && (
+          <Field label={t.replacement_optional} hint={t.replacement_hint} error={field === 'replacement' ? error : null}>
+            {(id) => <Select id={id} name="replacement" options={replacements} empty={t.replacement_none} defaultValue="" />}
+          </Field>
+        )}
+        <ErrorLine error={field ? null : error} />
+      </form>
+    </Modal>
+  );
+}
+
+/** Kinds offered by the link dialog, the plainest first. */
+const LINK_ORDER: readonly LinkRel[] = ['see_also', 'replaces', 'replaced_by'];
+
+/**
+ * Links the document to another one from its record (lib/actions.ts addDocLink). « Remplacé par » is offered only for a
+ * document Vigie withdrew, towards an active one; « Remplace » only for an active document, towards a withdrawn one
+ * (lib/links.ts linkIssue). The server checks it all again.
+ */
+function LinkDocument({ spec }: { spec: Extract<DialogSpec, { kind: 'link' }> }) {
+  const { t, close } = useApp();
+  const { pending, error, field, run } = useSubmit();
+  const [rel, setRel] = useState<LinkRel>('see_also');
+  const options = spec.candidates.filter((c) => (rel === 'replaces' ? c.withdrawn : rel === 'replaced_by' ? c.active : true));
+  const off = (k: LinkRel) => (k === 'replaced_by' && !spec.withdrawn) || (k === 'replaces' && !spec.active);
+  const relHint = [!spec.withdrawn && t.link_hint_withdrawn, !spec.active && t.link_hint_inactive].filter(Boolean).join(' ') || undefined;
+  const [other, setOther] = useState('');
+  const chosen = options.some((o) => o.key === other) ? other : '';
+  return (
+    <Modal title={t.link_title} width={560} actions={<Actions pending={pending} label={t.link_add} onCancel={close} form="link-form" disabled={!chosen} />}>
+      <form
+        id="link-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const form = e.currentTarget;
+          run(() => addDocLink(spec.docId, rel, chosen), { form });
+        }}
+        style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
+      >
+        <div>
+          <div style={{ fontSize: 13 }}>{spec.title}</div>
+          <div className="text-muted sub tabnum">{spec.docId}</div>
+        </div>
+        <p className="text-muted" style={{ margin: 0, fontSize: 12.5 }}>{t.link_hint}</p>
+        <Field label={t.link_rel} radio hint={relHint} error={field === 'rel' ? error : null}>
+          <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+            {LINK_ORDER.map((k) => (
+              <label key={k} className="radio" style={{ fontSize: 13, opacity: off(k) ? 0.5 : 1 }}>
+                <input type="radio" name="rel" checked={rel === k} disabled={off(k)} onChange={() => setRel(k)} /><span className="dot" />{t[`link_${k}`]}
+              </label>
+            ))}
+          </div>
+        </Field>
+        <Field label={t.link_other} error={field === 'other' ? error : null} hint={options.length ? undefined : t.link_no_candidate}>
+          {(id) => <Select id={id} name="other" value={chosen} onChange={setOther} options={options} empty={t.link_choose} disabled={!options.length} />}
+        </Field>
+        <ErrorLine error={field ? null : error} />
       </form>
     </Modal>
   );

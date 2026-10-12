@@ -27,7 +27,11 @@ export function vigieSimulated(): boolean {
   return !process.env.VIGIE_API_URL;
 }
 
-export type ChangeInput = { kind: 'modification' | 'obsolescence'; docId: string; requesterId: string; reason: string; description: string; source?: string };
+/**
+ * A request as Codex sends it. `replacementId`: for a withdrawal, the document proposed to replace this one, kept by
+ * Codex and linked when the withdrawal applies (lib/lifecycle.ts); what Vigie should receive of it is not settled (O-10).
+ */
+export type ChangeInput = { kind: 'modification' | 'obsolescence'; docId: string; requesterId: string; reason: string; description: string; replacementId?: string | null; source?: string };
 
 /** Registers a request with Vigie and mirrors it; returns its Vigie reference. */
 export async function submitChange(tx: Tx, input: ChangeInput): Promise<string> {

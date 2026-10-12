@@ -20,5 +20,7 @@
   border-radius: var(--radius-md); box-shadow: inset 3px 0 0 var(--color-accent);
 }
 .stateNotice[data-state='archived'] { color: var(--color-neutral-100); background: color-mix(in srgb, var(--color-text) 9%, transparent); box-shadow: inset 3px 0 0 var(--color-neutral-400); }
+.noticeLink { color: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+.noticeLink:hover { color: var(--color-accent-100); }
 /* Dates past due (expired, review overdue): a filter under the tree, combined with the status bar. */
 .due { flex: none; border-top: 1px solid var(--color-divider); padding: 10px 8px 12px; display: flex; flex-direction: column; gap: 1px; }

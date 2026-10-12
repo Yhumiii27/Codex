@@ -1,11 +1,12 @@
 import 'server-only';
 import { and, asc, eq, inArray, isNull, lt, lte, ne, or } from 'drizzle-orm';
 import { schema as s, type Db } from '@/db';
-import type { AuditData, AuditTargetKind } from '@/db/schema';
+import type { AuditData, AuditTargetKind, LinkKind } from '@/db/schema';
 import { buildAccessIndex, canRead, type AccessIndex } from './access';
 import { nextLetter } from './codification';
 import { nowStamp, todayIso } from './format';
 import { DICT, MATRIX_ROLE, type Perm, type SimRole } from './i18n';
+import { relOf, replacementOutcome, storedLink } from './links';
 import { reviewAfter } from './review';
 
 // Revision lifecycle (docs/modele-cible.md §4): draft → in_review → approved → in_force, previous in force → superseded.
@@ -27,6 +28,62 @@ export type AuditSubject = string | { kind: AuditTargetKind; id: string };
 export async function audit(tx: Tx, userId: string, action: string, subject: AuditSubject, detail = '', revisionId: number | null = null, data: AuditData | null = null) {
   const about = typeof subject === 'string' ? { docId: subject } : { targetKind: subject.kind, targetId: subject.id };
   await tx.insert(s.auditLog).values({ at: new Date().toISOString(), userId, action, ...about, detail, data, revisionId });
+}
+
+// ── Links between documents ─────────────────────────────────────────────
+
+type LinkRow = { sourceId: string; targetId: string; kind: LinkKind };
+
+/**
+ * Journals a link added or removed on both its documents, by `actorId`: each entry says what that document is to the
+ * other (lib/links.ts relOf) and names the other under its current ID. About the documents as a whole (no revision);
+ * a reader who may not read the other document does not get the entry (lib/queries.ts auditForReader, D-14).
+ * `detail`: what caused it, such as the change order of a withdrawal.
+ */
+export async function journalLink(tx: Tx, action: 'link' | 'unlink', link: LinkRow, actorId: string, detail = '') {
+  for (const [docId, other] of [[link.sourceId, link.targetId], [link.targetId, link.sourceId]]) {
+    await audit(tx, actorId, action, docId, detail, null, { link: { rel: relOf(link, docId), other } });
+  }
+}
+
+/** The link between two documents, in either direction, or undefined. */
+export async function linkBetween(tx: Tx, a: string, b: string) {
+  const [l] = await tx.select().from(s.documentLinks).where(or(and(eq(s.documentLinks.sourceId, a), eq(s.documentLinks.targetId, b)), and(eq(s.documentLinks.sourceId, b), eq(s.documentLinks.targetId, a))));
+  return l;
+}
+
+/**
+ * Writes a link and journals it; false when the pair is already linked (a concurrent request wrote it first: the
+ * database keeps one link per pair, document_links_pair).
+ */
+export async function addLink(tx: Tx, link: LinkRow, actorId: string, detail = ''): Promise<boolean> {
+  const [row] = await tx.insert(s.documentLinks).values({ ...link, createdBy: actorId, createdAt: todayIso() }).onConflictDoNothing().returning({ id: s.documentLinks.id });
+  if (!row) return false;
+  await journalLink(tx, 'link', link, actorId, detail);
+  return true;
+}
+
+/**
+ * An accepted withdrawal makes the replacement proposed with it a « remplace » link (D-17): the withdrawn document is
+ * « remplacé par » it, by Vigie, with its change order. Checked again now (lib/links.ts replacementOutcome): a
+ * replacement no longer active, a legal hold on either document or a « remplace » link the other way leaves every link
+ * as it is, and the withdrawn document's journal says the replacement was not applied, and why. Otherwise a « voir
+ * aussi » link between the two gives way to it.
+ */
+async function linkReplacement(tx: Tx, doc: DocRow, replacementId: string, actorId: string, ref: string) {
+  const [r] = await tx.select().from(s.documents).where(eq(s.documents.id, replacementId));
+  const cur = await linkBetween(tx, doc.id, replacementId);
+  const outcome = replacementOutcome(doc.id, doc, r, cur);
+  if (outcome === 'present') return;
+  if (outcome !== 'link') {
+    await audit(tx, actorId, 'link_skipped', doc.id, ref, null, { link: { rel: 'replaced_by', other: replacementId, skipped: outcome } });
+    return;
+  }
+  if (cur) {
+    await tx.delete(s.documentLinks).where(eq(s.documentLinks.id, cur.id));
+    await journalLink(tx, 'unlink', cur, actorId, ref);
+  }
+  await addLink(tx, storedLink(doc.id, 'replaced_by', replacementId), actorId, ref);
 }
 
 export type LockKey = 'locked_archived' | 'locked_obsolete' | 'locked_hold';
@@ -206,8 +263,9 @@ export type ModifierSwap = { setAside: string; modifierId: string; mayDraft: boo
 /**
  * Carries out an accepted request on an unlocked document: a change opens the next revision for the modifier (the one
  * Vigie named, else the default one), a withdrawal closes the work in progress (running workflows end, open revisions are
- * cancelled) and makes the document obsolete. The request becomes 'implemented', a change linked to the revision it
- * opened. `swap`: the designated author was set aside for the default one (applyPendingDecision), which the journal records.
+ * cancelled) and makes the document obsolete, « remplacé par » the replacement proposed with the request, if any. The
+ * request becomes 'implemented', a change linked to the revision it opened. `swap`: the designated author was set aside
+ * for the default one (applyPendingDecision), which the journal records.
  */
 async function implementChange(tx: Tx, req: ChangeRow, doc: DocRow, actorId: string, swap: ModifierSwap | null = null) {
   // Claimed first: a request applies once, even if two transactions reach it or applying it looks at the pending
@@ -240,6 +298,7 @@ async function implementChange(tx: Tx, req: ChangeRow, doc: DocRow, actorId: str
     await tx.update(s.documents).set({ state: 'obsolete', obsoleteAt: at.slice(0, 10), modifiedAt: at.slice(0, 10) }).where(eq(s.documents.id, req.docId));
     await cancelOpenRevisions(tx, req.docId);
     await audit(tx, actorId, 'obsolete', req.docId, ref);
+    if (req.replacementId) await linkReplacement(tx, doc, req.replacementId, actorId, ref);
   }
   // decidedAt stays the date of Vigie's decision when it was recorded before it could apply.
   await tx.update(s.changeRequests).set({ decidedAt: req.decidedAt ?? at, ecoRef: req.ecoRef, modifierId, revisionId, decisionNote: req.decisionNote }).where(eq(s.changeRequests.id, req.id));

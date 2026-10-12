@@ -12,6 +12,9 @@
   color: var(--color-neutral-100); background: color-mix(in srgb, var(--color-text) 9%, transparent);
   border-bottom-color: var(--color-divider); box-shadow: inset 3px 0 0 var(--color-neutral-400);
 }
+/* The document that replaces a withdrawn one, in its band (« Remplacé par »). */
+.noticeLink { color: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+.noticeLink:hover { color: var(--color-accent-100); }
 /* Shortcuts of a band (requests to Vigie on an expired document, review done), on its right. */
 .noticeActions { flex: none; margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
 /* A change waiting for the revision open (D-26): the wait, then why it can no longer be grafted; the graft button sits right. */

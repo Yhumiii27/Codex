@@ -213,6 +213,10 @@ respecter.
 - le statut affiché du document (via `refreshHeadline`) et une entrée **Import** au journal d'audit, au nom de
   l'utilisateur système `codex`.
 
+L'import ne crée pas de liens entre documents (« remplace », « voir aussi ») : le corps n'a pas de champ pour eux, et
+en ajouter un serait un contrat à définir avec l'outil de migration (O-11). Les liens entre documents repris
+s'ajoutent depuis leurs fiches (section « Documents liés »).
+
 ### Réponses
 
 | Code | Corps |
@@ -296,7 +300,18 @@ gestionnaire documentaire peut aussi simuler la décision depuis la fiche docume
 | Demande | Acceptée | Refusée |
 |---|---|---|
 | Modification | Codex ouvre la révision suivante en **Brouillon**, attribuée au modificateur, avec la référence ECO ; la demande passe **Appliquée**, rattachée à cette révision. Si une révision est déjà ouverte, voir « Révision déjà ouverte » ci-dessous. | La demande passe **Refusée**. |
-| Retrait | Le document passe **Obsolète** ; un circuit en cours est clos (commentaire « document retiré ») et les révisions ouvertes passent **Annulées** ; la demande passe **Appliquée**. | La demande passe **Refusée**. |
+| Retrait | Le document passe **Obsolète** ; un circuit en cours est clos (commentaire « document retiré ») et les révisions ouvertes passent **Annulées** ; la demande passe **Appliquée**. Si la demande proposait un document de remplacement, le document retiré devient « remplacé par » lui (voir ci-dessous). | La demande passe **Refusée** ; aucun lien n'est créé. |
+
+**Remplacement proposé.** Une demande de retrait faite depuis la fiche peut proposer le document qui remplace celui-ci
+(facultatif : un document actif que le demandeur peut lire). Codex le garde sur sa copie de la demande
+(`change_requests.replacement_id`) ; le webhook ne le transmet pas et ne peut pas le modifier. Quand l'acceptation
+s'applique (aussitôt, ou à la levée d'un verrou), Codex crée le lien « remplace » du remplaçant vers le document retiré,
+au nom de `vigie`, avec la référence ECO (à défaut celle de la demande), et l'inscrit au journal des deux documents
+(« Lien ajouté »). Le remplaçant est revérifié à ce moment : s'il n'est plus actif (obsolète, archivé), si l'un des
+deux documents est sous gel juridique, ou si un lien « remplace » existe déjà en sens inverse, Codex ne crée ni ne
+modifie aucun lien et l'écrit au journal du document retiré (« Remplacement non appliqué », avec la raison). Les
+réponses du webhook n'en disent rien. Ce que Vigie devrait recevoir ou décider de ce remplacement
+n'est pas défini : le contrat de Vigie reste ouvert (O-10), et rien n'est ajouté au corps décrit ci-dessus.
 
 **Document verrouillé.** Si le document est archivé, obsolète ou sous gel juridique quand l'acceptation arrive, elle ne
 peut pas s'appliquer tout de suite. Codex l'enregistre quand même : la demande passe **Acceptée**, avec la référence

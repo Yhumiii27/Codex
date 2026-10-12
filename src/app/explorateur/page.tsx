@@ -1,9 +1,10 @@
+import { Fragment } from 'react';
 import Link from 'next/link';
 import { Icon } from '@/components/ui/Icon';
 import { Seg } from '@/components/ui/Seg';
 import { ClickRow, DialogButton } from '@/components/ui/client';
 import { getCtx, type Ctx } from '@/lib/context';
-import { listChangeRequests, listDocs, stateNotice, type DocView } from '@/lib/queries';
+import { listChangeRequests, listDocLinks, listDocs, stateNotice, type DocView } from '@/lib/queries';
 import styles from './explorer.module.css';
 
 // Classification axes (docs/modele-cible.md §2) and status filters of the explorer.
@@ -110,6 +111,8 @@ export default async function ExplorerPage({ searchParams }: PageProps<'/explora
   const selHasFile = !!selDoc && (!!selDoc.revInForce || selDoc.status === 'approved' || selDoc.workingLabel !== selDoc.revWorking);
   // Obsolete or archived: the same warning as on the record; the withdrawal's change order is only looked up then.
   const notice = selDoc && selDoc.state !== 'active' ? stateNotice(ctx, selDoc, selDoc.obsoleteAt ? await listChangeRequests(ctx, { docId: selDoc.id }) : []) : null;
+  // And what replaces a withdrawn one, among the documents the user may read (lib/queries.ts listDocLinks).
+  const replacedBy = notice && selDoc?.obsoleteAt ? (await listDocLinks(ctx, selDoc.id)).filter((l) => l.rel === 'replaced_by') : [];
   const here: Params = { ...base, node, sub };
   const noUpload = ctx.can('upload') ? undefined : `${t.not_allowed} : ${t.perm_upload}`;
   const axisLabel: Record<Axis, { short: string; full: string }> = {
@@ -250,7 +253,10 @@ export default async function ExplorerPage({ searchParams }: PageProps<'/explora
           {notice && (
             <div className={styles.stateNotice} data-state={notice.state} role="note">
               <Icon name={notice.state === 'archived' ? 'archive' : 'info'} size={14} style={{ flex: 'none', marginTop: 1 }} />
-              <span>{notice.text}</span>
+              <span>
+                {notice.text}
+                {replacedBy.length > 0 && <> · {t.link_replaced_by} {replacedBy.map((l, i) => <Fragment key={l.id}>{i > 0 && ', '}<Link href={l.doc.href} className={styles.noticeLink} title={l.doc.title}>{l.doc.id}</Link></Fragment>)}</>}
+              </span>
             </div>
           )}
           <dl className="dl" style={{ gap: '7px 14px', fontSize: 12 }}>

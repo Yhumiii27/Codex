@@ -23,6 +23,7 @@ export function MyChangeRequests({ t, views, requests, selected, href }: { t: T;
         [t.eco_ref, c.ecoRef],
         [t.modifier, c.modifier],
         [t.ecr_note, c.decisionNote],
+        [t.replacement_proposed, c.replacement ? `${c.replacement.id} · ${c.replacement.title}` : null],
       ] as const).filter((x): x is readonly [string, string] => !!x[1])
     : [];
   // What the status means now: waiting for Vigie, waiting to apply (in words this reader may be given), or where it went.
