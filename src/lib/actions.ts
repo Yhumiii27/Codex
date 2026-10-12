@@ -12,12 +12,14 @@ import { addDays, fmtSize, loc, nowStamp, parseIsoDay, todayIso } from './format
 import { ATTACHMENTS, CONF_LEVELS, ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLES, ORIGINS, PERMS, SEARCH_SCOPES, SIM_ROLES, SIMULATED_MATRIX_ROLES, type Perm, type SimRole, type TKey } from './i18n';
 import { applyChangeDecision, applyPendingDecision, approveRevision, audit, catchUpEffectiveDates, lockOf, refreshHeadline, type ModifierSwap, type Tx } from './lifecycle';
 import { decisionWaitL } from './queries';
+import { dateIssues, dateIssueText, effectIssue, issueFrom, latestEffect, type DateIssue } from './dates';
 import { cleanFeatured } from './departments';
 import { beyondBounds, cleanCriteria, hasCriteria, type SearchInput } from './search';
 import { discardFile, fileColumns, nameStoredFile, readStored, renameDocFiles, stageFile, stageUpload, type StagedFile } from './storage';
 import { submitChange, vigieSimulated } from './vigie';
 
-export type ActionResult = { ok: true; href?: string; message?: string } | { ok: false; error: string };
+/** `field`: the form field the error is about, when the dialog can show it there. */
+export type ActionResult = { ok: true; href?: string; message?: string } | { ok: false; error: string; field?: string };
 
 type DocRow = typeof s.documents.$inferSelect;
 
@@ -29,6 +31,11 @@ const docHref = (id: string, tab?: string) => `/documents/${encodeURIComponent(i
 
 function fail(ctx: Ctx, key: TKey = 'error', extra?: string): ActionResult {
   return { ok: false, error: extra ? `${ctx.t[key]} : ${extra}` : ctx.t[key] };
+}
+
+/** A date that breaks a rule of lib/dates.ts, with the field to correct. */
+function dateFail(ctx: Ctx, issue: DateIssue): ActionResult {
+  return { ok: false, error: dateIssueText(ctx.t, ctx.lang, issue), field: issue.field === 'effective' ? 'effectiveAt' : issue.field };
 }
 
 function denied(ctx: Ctx, perm: Perm): ActionResult {
@@ -154,7 +161,14 @@ function validateFields(ctx: Ctx, f: Fields, currentType?: string): ActionResult
   if (f.site && !ctx.sites.some((x) => x.key === f.site)) return fail(ctx);
   if (!ctx.users.has(f.ownerId) || ctx.users.get(f.ownerId)!.isSystem) return fail(ctx);
   if (f.processOwnerId && !ctx.users.has(f.processOwnerId)) return fail(ctx);
-  return null;
+  // Dates: real calendar days, sent by the form as YYYY-MM-DD (a Server Action can be called with anything).
+  for (const [k, label] of [['reviewDueAt', 'review_due_at'], ['expiresAt', 'expires_at'], ['receivedAt', 'received_at']] as const) {
+    const v = f[k];
+    if (v && parseIsoDay(v) !== v) return { ok: false, error: `${ctx.t[label]} : ${ctx.t.date_malformed}`, field: k };
+  }
+  // The rule that needs no revision (a reception in the future); createDocument and updateMeta check the others.
+  const dated = dateIssues({ ...f, issuedAt: null, effective: null }, todayIso())[0];
+  return dated ? dateFail(ctx, dated) : null;
 }
 
 // ── Documents ────────────────────────────────────────────────────────────
@@ -179,6 +193,9 @@ export async function createDocument(fd: FormData): Promise<ActionResult> {
   const f = readFields(ctx, fd);
   const invalid = validateFields(ctx, f);
   if (invalid) return invalid;
+  // A new document is issued today at the earliest: its expiry and its review come after.
+  const dated = dateIssues({ ...f, issuedAt: null, issueFrom: todayIso(), effective: null }, todayIso())[0];
+  if (dated) return dateFail(ctx, dated);
   const type = ctx.typeByCode.get(f.typeCode)!;
   const file = uploadedFile(fd);
   const templateId = opt(fd, 'templateId');
@@ -318,9 +335,21 @@ export async function updateMeta(fd: FormData): Promise<ActionResult> {
   if (invalid) return invalid;
   const type = ctx.typeByCode.get(f.typeCode)!;
   const reclassified = f.typeCode !== d.typeCode || f.attachment !== d.attachment || f.projectCode !== d.projectCode || f.programCode !== d.programCode || f.department !== d.department;
-  const res = await db.transaction(async (tx): Promise<{ err: TKey } | { id: string }> => {
+  const res = await db.transaction(async (tx): Promise<{ err: TKey } | { date: DateIssue } | { id: string }> => {
     if (reclassified && (await activeWorkflow(tx, docId))) return { err: 'circuit_running' };
     const revs = await tx.select().from(s.revisions).where(eq(s.revisions.docId, docId));
+    // Dates the dialog edits, against the issue date and the revisions' effective dates on record (which it does not
+    // edit): every date, changed or not. Then the dates this edit enters, against what can only happen from today on:
+    // the approval of a revision in review, the first issue of a document not issued yet. A date left as it is is not
+    // held to these, which time alone may break (an expired document under renewal keeps its expiry until then).
+    const today = todayIso();
+    const ahead = latestEffect(revs, today);
+    const entered = { reviewDueAt: f.reviewDueAt !== d.reviewDueAt ? f.reviewDueAt : null, expiresAt: f.expiresAt !== d.expiresAt ? f.expiresAt : null, receivedAt: null };
+    const dated = [
+      ...dateIssues({ ...f, issuedAt: d.issuedAt, effective: latestEffect(revs) }, today),
+      ...dateIssues({ ...entered, issuedAt: d.issuedAt, issueFrom: issueFrom(d.issuedAt, ahead, today), effective: ahead }, today),
+    ].find((i) => i.field !== 'effective');
+    if (dated) return { date: dated };
     const everApproved = revs.some((r) => r.approvedAt);
     let id = docId;
     if (!everApproved && !idMatches(docId, f)) {
@@ -347,6 +376,7 @@ export async function updateMeta(fd: FormData): Promise<ActionResult> {
     return { id };
   });
   if ('err' in res) return fail(ctx, res.err);
+  if ('date' in res) return dateFail(ctx, res.date);
   const newId = res.id;
   // Stored files follow the new ID (outside the transaction, as every store call).
   if (newId !== docId) await renameDocFiles(newId);
@@ -428,7 +458,7 @@ export async function requestValidation(docId: string, effectiveAt: string | nul
   const ix = await getAccessIndex();
   const db = await getDb();
 
-  type Res = { id: string } | { href: string } | { err: TKey; extra?: string };
+  type Res = { id: string } | { href: string } | { err: TKey; extra?: string } | { date: DateIssue };
   const res = await db.transaction(async (tx): Promise<Res> => {
     const [d] = await tx.select().from(s.documents).where(eq(s.documents.id, docId));
     if (!d || !canRead(ctx, d, ix)) return { err: 'not_found' };
@@ -444,6 +474,9 @@ export async function requestValidation(docId: string, effectiveAt: string | nul
     if (!rev || rev.status !== 'draft') return { err: 'not_draft' };
     const versions = await tx.select().from(s.workingVersions).where(eq(s.workingVersions.revisionId, rev.id)).orderBy(desc(s.workingVersions.n));
     if (!versions.length) return { err: 'need_file' };
+    // Issue ≤ effect ≤ expiry: an effective date before the expiry; the first issue before the expiry and the review.
+    const late = effectIssue(d, effective, todayIso());
+    if (late) return { date: late };
     const type = ctx.typeByCode.get(d.typeCode);
     if (!type) return { err: 'error' };
     // A circuit without approval puts the revision in force at once: that is publishing.
@@ -480,6 +513,7 @@ export async function requestValidation(docId: string, effectiveAt: string | nul
     return { id };
   });
   if ('href' in res) return { ok: true, href: res.href };
+  if ('date' in res) return dateFail(ctx, res.date);
   if ('err' in res) return res.err === 'perm_publish' ? denied(ctx, 'publish') : fail(ctx, res.err, res.extra);
   refresh();
   return { ok: true, href: `/validations?f=requested&r=${encodeURIComponent(res.id)}` };

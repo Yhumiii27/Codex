@@ -63,6 +63,7 @@ La table `saved_searches` (src/db/schema.ts:339-345) n'a que id, label, q, facet
 </details>
 
 #### 3. Dates : contrôle de format côté serveur et cohérence émission ≤ effet ≤ expiration
+- **Fait le 12 octobre 2026** : les dates saisies, demandées à la validation ou importées sont contrôlées (jour AAAA-MM-JJ réel, année 0000 refusée, au lieu d'une erreur SQL) puis tenues dans l'ordre émission ≤ effet < expiration par `src/lib/dates.ts` (expiration après l'émission et la date d'effet, révision après l'émission, réception ni future ni après l'émission, document pas encore émis daté au plus tôt d'aujourd'hui ou de sa date d'effet, révision en revue sans date prenant effet à son approbation), dans `validateFields`, `createDocument`, `updateMeta`, `requestValidation` (date d'effet avant l'expiration ; demande sans date d'un document expiré acceptée, pour le renouvellement) et l'import, avec un message FR et EN par règle affiché sous le champ fautif. Reste : une approbation qui arrive après l'expiration (sans date d'effet, ou quand la date d'effet est passée) met encore la révision en vigueur, et le dialogue de métadonnées demande alors de reporter l'expiration ; l'expiration ne déclenche toujours rien (point 13). Choix non confirmés dans docs/decisions.md ; tests : tests/unit/dates.test.ts, tests/integration/dates.test.ts.
 
 - **Effort** : faible · **Références** : MET-03, règle 12 (§4.6)
 

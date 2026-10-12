@@ -177,6 +177,21 @@ actif, il admet l'origine, le rattachement et le niveau de confidentialité ; le
 document externe a un organisme source ; département, site, propriétaire et lecteurs existent. Toutes les erreurs sont
 renvoyées ensemble.
 
+Les dates sont des jours `AAAA-MM-JJ` (un horodatage ISO garde son jour ; l'année 0000 est refusée) et doivent se
+suivre (`src/lib/dates.ts`), contrôlées telles qu'elles seront enregistrées, valeurs par défaut comprises (`issuedAt`
+vaut `inForceAt` pour une révision déjà en vigueur) :
+- `inForceAt` n'est pas antérieure à `issuedAt` (`effective_before_issued`, sur `inForceAt`) ;
+- `expiresAt` est postérieure à `issuedAt` (`expires_before_issued`) et à `inForceAt` (`expires_before_effective`) ;
+- `reviewDueAt` est postérieure à `issuedAt` (`review_before_issued`) ;
+- `receivedAt` n'est ni future (`received_in_future`) ni postérieure à `issuedAt` (`received_after_issued`) ;
+- sans `issuedAt`, un document pas encore émis le sera au plus tôt à `inForceAt` à venir ou, pour un brouillon, le
+  jour de l'import : `reviewDueAt` est postérieure à ce jour (`review_before_first_issue`), comme `expiresAt` pour un
+  brouillon (`expires_before_first_issue`).
+
+« Postérieure » s'entend au sens strict : une expiration ou une révision le jour de l'émission est refusée ; une
+réception ou une mise en vigueur le jour de l'émission est admise. Le message de chaque problème donne la date à
+respecter.
+
 ### Ce que crée l'import
 
 - le document, avec l'identifiant suivant libre pour le couple (type, contexte), la classe de conservation du type et
@@ -210,7 +225,10 @@ renvoyées ensemble.
 
 Codes de `issues[].code` : `required`, `invalid_type`, `too_long`, `invalid_date`, `invalid_value`, `invalid_letter`,
 `unknown_type`, `unknown_department`, `unknown_site`, `unknown_user`, `type_mismatch`, `conf_not_allowed`,
-`project_required`, `program_required`, `source_required`, `readers_conf`. Avertissement (`warnings[].code`) : `ignored`.
+`project_required`, `program_required`, `source_required`, `readers_conf`, `effective_before_issued`,
+`expires_before_issued`, `expires_before_effective`, `expires_before_first_issue`, `review_before_issued`,
+`review_before_first_issue`, `received_in_future`, `received_after_issued`. Avertissement (`warnings[].code`) :
+`ignored`.
 
 Le 409 `duplicate` rend l'outil de migration rejouable : un document déjà repris renvoie son identifiant Codex sans être
 recréé. Seul ce code vaut « déjà migré ». Les imports s'enregistrent un par un, même envoyés en parallèle : deux envois

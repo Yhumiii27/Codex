@@ -71,9 +71,12 @@ export function todayLong(lang: Lang): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-/** A real calendar day "YYYY-MM-DD" (an ISO timestamp keeps its day), or null: "2026-02-30" is refused. */
+/**
+ * A real calendar day "YYYY-MM-DD" (an ISO timestamp keeps its day), or null: "2026-02-30" is refused, and so is the
+ * year 0000, which has no day in Postgres.
+ */
 export function parseIsoDay(v: string | null | undefined): string | null {
-  const day = v && /^\d{4}-\d{2}-\d{2}(?:[T ].*)?$/.test(v) ? v.slice(0, 10) : '';
+  const day = v && /^\d{4}-\d{2}-\d{2}(?:[T ].*)?$/.test(v) && !v.startsWith('0000') ? v.slice(0, 10) : '';
   return day && !Number.isNaN(Date.parse(`${day}T12:00:00Z`)) && new Date(`${day}T12:00:00Z`).toISOString().slice(0, 10) === day ? day : null;
 }
 

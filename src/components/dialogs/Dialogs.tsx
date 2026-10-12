@@ -57,18 +57,25 @@ function ErrorLine({ error }: { error: string | null }) {
 
 /**
  * A labelled field. Pass a function to receive the id of the control the label names (input, select, textarea); any
- * other content (segments, radios, check boxes, read-only text) becomes a group named by the label.
+ * other content (segments, radios, check boxes, read-only text) becomes a group named by the label. `error`: what the
+ * server refused in this field, shown under it (its id is `${id}-error`, for the control's aria-describedby).
  */
-function Field({ label, children, span, hint, radio }: { label: ReactNode; children: ReactNode | ((id: string) => ReactNode); span?: boolean; hint?: ReactNode; radio?: boolean }) {
+function Field({ label, children, span, hint, radio, error }: { label: ReactNode; children: ReactNode | ((id: string) => ReactNode); span?: boolean; hint?: ReactNode; radio?: boolean; error?: string | null }) {
   const id = useId();
   return (
     <div className={span ? 'field span-2' : 'field'}>
       {typeof children === 'function'
         ? <><label htmlFor={id}>{label}</label>{children(id)}</>
         : <><span id={id} className="field-label">{label}</span><div role={radio ? 'radiogroup' : 'group'} aria-labelledby={id}>{children}</div></>}
-      {hint && <div className="text-muted field-hint">{hint}</div>}
+      {hint && !error && <div className="text-muted field-hint">{hint}</div>}
+      {error && <p id={`${id}-error`} className="form-error field-hint" role="alert">{error}</p>}
     </div>
   );
+}
+
+/** Date input of a metadata field; marked invalid, and described by the error under it, when the server refused it. */
+function DateInput({ id, name, value, error }: { id: string; name: string; value: string | null | undefined; error?: string | null }) {
+  return <input id={id} className="input" type="date" name={name} defaultValue={value ?? ''} aria-invalid={error ? true : undefined} aria-describedby={error ? `${id}-error` : undefined} />;
 }
 
 /** Small overline that opens a group of fields inside a form grid. */
@@ -142,7 +149,7 @@ function IdPrefix({ prefix, width }: { prefix: string; width: number }) {
  * Every classification and metadata field of a document, laid out on the dialog grid.
  * Controlled where a field drives others (origin, attachment, type, confidentiality…); the rest are plain inputs.
  */
-function DocFields({ types, st, set, doc, preset, withOwner, locked, lockType }: {
+function DocFields({ types, st, set, doc, preset, withOwner, locked, lockType, fieldError }: {
   /** Types the document may take (active ones, plus its current type when editing). */
   types: TypeOpt[];
   st: Classif;
@@ -155,6 +162,8 @@ function DocFields({ types, st, set, doc, preset, withOwner, locked, lockType }:
   locked?: string;
   /** A piece Keystone expects: its type is fixed, only the origins that type admits are offered. */
   lockType?: boolean;
+  /** The field the server refused (a date out of format or out of order) and why. */
+  fieldError?: { field: string; error: string } | null;
 }) {
   const { t, lang, data } = useApp();
   const lockProject = !!preset?.projectCode;
@@ -167,6 +176,7 @@ function DocFields({ types, st, set, doc, preset, withOwner, locked, lockType }:
   const confHint = st.conf === 'restreint' ? t.conf_hint_restreint : st.conf === 'confidentiel' ? t.conf_hint_conf : st.conf === 'tres_confidentiel' ? t.conf_hint_tres : undefined;
   const segOpt = { padding: '6px 12px', fontSize: 12.5 };
   const frozen = (label: string) => <div style={{ minHeight: 34, display: 'flex', alignItems: 'center' }}><span className="tag tag-neutral">{label}</span></div>;
+  const errorOf = (name: string) => (fieldError?.field === name ? fieldError.error : null);
 
   return (
     <div className="form-grid">
@@ -231,11 +241,11 @@ function DocFields({ types, st, set, doc, preset, withOwner, locked, lockType }:
       <Field label={t.language}>
         {(id) => <Select id={id} name="lang" defaultValue={doc ? doc.lang ?? '' : lang} options={[{ key: 'fr', label: t.lang_fr }, { key: 'en', label: t.lang_en }]} empty="—" />}
       </Field>
-      <Field label={t.review_due_at}>
-        {(id) => <input id={id} className="input" type="date" name="reviewDueAt" defaultValue={doc?.reviewDueAt ?? ''} />}
+      <Field label={t.review_due_at} error={errorOf('reviewDueAt')}>
+        {(id) => <DateInput id={id} name="reviewDueAt" value={doc?.reviewDueAt} error={errorOf('reviewDueAt')} />}
       </Field>
-      <Field label={t.expires_at}>
-        {(id) => <input id={id} className="input" type="date" name="expiresAt" defaultValue={doc?.expiresAt ?? ''} />}
+      <Field label={t.expires_at} error={errorOf('expiresAt')}>
+        {(id) => <DateInput id={id} name="expiresAt" value={doc?.expiresAt} error={errorOf('expiresAt')} />}
       </Field>
 
       {withOwner && (
@@ -258,8 +268,8 @@ function DocFields({ types, st, set, doc, preset, withOwner, locked, lockType }:
           <Field label={t.external_ref}>
             {(id) => <input id={id} className="input" name="externalRef" defaultValue={doc?.externalRef ?? ''} />}
           </Field>
-          <Field label={t.received_at}>
-            {(id) => <input id={id} className="input" type="date" name="receivedAt" defaultValue={doc?.receivedAt ?? ''} />}
+          <Field label={t.received_at} error={errorOf('receivedAt')}>
+            {(id) => <DateInput id={id} name="receivedAt" value={doc?.receivedAt} error={errorOf('receivedAt')} />}
           </Field>
           {!withOwner && (
             <Field label={t.author_text} hint={t.author_text_hint}>
@@ -316,7 +326,7 @@ type Mode = 'template' | 'file' | 'blank';
 
 function NewDocument({ preset }: { preset: NewPreset }) {
   const { t, data, close } = useApp();
-  const { pending, error, run } = useSubmit();
+  const { pending, error, field, run } = useSubmit();
   const lockProject = !!preset?.projectCode;
   const types = data.types.filter((x) => x.active);
   // Explicit mode first; otherwise a preset (piece expected by Keystone, new template…) usually comes with its own file.
@@ -344,7 +354,7 @@ function NewDocument({ preset }: { preset: NewPreset }) {
     <Modal title={t.new_doc} width={680} actions={<Actions pending={pending} label={t.create_doc} onCancel={close} form="new-form" disabled={!st.typeCode || (mode === 'template' && !tplId)} />}>
       <form
         id="new-form"
-        onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); run(() => createDocument(fd)); }}
+        onSubmit={(e) => { e.preventDefault(); const form = e.currentTarget; const fd = new FormData(form); run(() => createDocument(fd), { form }); }}
         style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
       >
         {lockProject && (
@@ -383,7 +393,7 @@ function NewDocument({ preset }: { preset: NewPreset }) {
         {mode === 'file' && <FilePicker label={t.choose_file} required />}
         {mode === 'blank' && <div className="text-muted" style={{ fontSize: 12.5 }}>{t.blank_hint}</div>}
 
-        <DocFields types={types} st={st} set={set} preset={preset} lockType={lockType} />
+        <DocFields types={types} st={st} set={set} preset={preset} lockType={lockType} fieldError={field && error ? { field, error } : null} />
 
         {st.typeCode && (
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', paddingTop: 10, borderTop: '1px solid var(--color-divider)' }}>
@@ -392,7 +402,7 @@ function NewDocument({ preset }: { preset: NewPreset }) {
             <span className="text-muted sub">{t.id_seq_hint}</span>
           </div>
         )}
-        <ErrorLine error={error} />
+        <ErrorLine error={field ? null : error} />
       </form>
     </Modal>
   );
@@ -402,7 +412,7 @@ function NewDocument({ preset }: { preset: NewPreset }) {
 
 function EditMeta({ doc }: { doc: MetaDoc }) {
   const { t, data, close } = useApp();
-  const { pending, error, run } = useSubmit();
+  const { pending, error, field, run } = useSubmit();
   // A type withdrawn from the register stays available to the documents that already have it.
   const types = data.types.filter((x) => x.active || x.code === doc.typeCode);
   const [st, setSt] = useState<Classif>(() => normalize(types, {
@@ -418,7 +428,7 @@ function EditMeta({ doc }: { doc: MetaDoc }) {
     <Modal title={t.edit_meta} width={680} actions={<Actions pending={pending} label={t.save} onCancel={close} form="meta-form" disabled={!st.typeCode} />}>
       <form
         id="meta-form"
-        onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); run(() => updateMeta(fd)); }}
+        onSubmit={(e) => { e.preventDefault(); const form = e.currentTarget; const fd = new FormData(form); run(() => updateMeta(fd), { form }); }}
         style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
       >
         <input type="hidden" name="docId" value={doc.id} />
@@ -431,8 +441,8 @@ function EditMeta({ doc }: { doc: MetaDoc }) {
           )}
           {moved && !doc.idMayChange && <span className="text-muted">{t.id_frozen}</span>}
         </div>
-        <DocFields types={types} st={st} set={set} doc={doc} withOwner locked={doc.classificationLocked ? t.circuit_running : undefined} />
-        <ErrorLine error={error} />
+        <DocFields types={types} st={st} set={set} doc={doc} withOwner locked={doc.classificationLocked ? t.circuit_running : undefined} fieldError={field && error ? { field, error } : null} />
+        <ErrorLine error={field ? null : error} />
       </form>
     </Modal>
   );

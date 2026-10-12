@@ -7,7 +7,7 @@ Certaines règles ci-dessous sont des propositions de l'assistant, implémentée
 authentification Entra ID (§1), code département hors rattachement, largeur et portée du compteur, ID attribué au
 brouillon, alias et nom de fichier (§3), « Remplacé », mise en vigueur automatique, bandeau et nom de téléchargement
 d'un document obsolète ou archivé (§4), partage des recherches enregistrées et pages par département (§5), longueur du
-motif de rejet et droit de rappeler une demande de validation (§6).
+motif de rejet et droit de rappeler une demande de validation (§6), lecture stricte de la cohérence des dates (§7).
 Elles sont listées dans `docs/decisions.md` (« Choix de l'assistant non validés explicitement », question O-09), qui
 prévaut en cas de doute.
 
@@ -186,6 +186,20 @@ Champs selon le contexte :
 - Projet : code projet, phase, lot / work package, discipline.
 - Recherche : programme, thème, ID étude / essai, statut publication / PI.
 - Interne : propriétaire de processus (facultatif).
+
+**Dates.** Chacune est un jour du calendrier (AAAA-MM-JJ). La date d'émission est la première mise en vigueur du
+document et ne change plus ; elles se suivent ainsi : émission ≤ effet < expiration. L'expiration est postérieure à
+l'émission et à la date d'effet de la révision (en vigueur, ou approuvée ou en revue) ; la date de révision est
+postérieure à l'émission ; la réception d'un document externe n'est ni future ni postérieure à l'émission. Un
+document pas encore émis le sera au plus tôt aujourd'hui, ou à la date d'effet de la révision qui l'émettra : son
+expiration et sa date de révision suivent ce jour. Une révision en revue sans date d'effet prendra effet à son
+approbation, au plus tôt aujourd'hui. Une demande de validation avec une date d'effet n'est acceptée que si cette date
+précède l'expiration ; sans date d'effet, celle d'un document déjà émis est acceptée même s'il a expiré
+(renouvellement : l'expiration se reporte une fois la nouvelle révision en vigueur). La saisie, la demande de
+validation et l'import refusent une date qui enfreint ces règles, en disant laquelle corriger (`src/lib/dates.ts`) ;
+les bornes qui dépendent du jour ne s'appliquent qu'à une date saisie ou modifiée. *Proposé, non confirmé* : le sens
+strict de « postérieure », la date d'émission prise comme borne de la réception, et ces bornes (`docs/decisions.md`).
+Ce qui se passe à l'expiration reste ouvert (audit, A17).
 
 ## 8. Conservation
 

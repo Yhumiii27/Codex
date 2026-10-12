@@ -6,6 +6,7 @@ import type { AuditChange, AuditData, AuditTargetKind, AuditValue, Conf } from '
 import { canRead, changeAsSeen, deadlineActor, draftTodo, getAccessIndex, inDraftingCircle, isUsableTemplate, mayDeleteSearch, mayRecall, mayWorkOnDraft, openRevisionView, readerMaySeeEntry, readerMaySeeRevision, savedSearchesSeenBy, type AccessIndex } from './access';
 import { revLabel } from './codification';
 import type { Ctx } from './context';
+import { inForceEffect } from './dates';
 import { addDays, clip, daysBetween, fmtDate, fmtDateTime, fmtSize, fmtWhen, loc, parisStamp, todayIso } from './format';
 import { CONF_LEVELS, MATRIX_ROLE_LABEL, TAGCLS, type T, type TKey } from './i18n';
 import { decisionWait, lockOf, type DecisionWait } from './lifecycle';
@@ -107,7 +108,7 @@ async function effectiveDates(): Promise<Map<string, string>> {
     .from(s.revisions).where(eq(s.revisions.status, 'in_force'));
   const out = new Map<string, string>();
   for (const r of rows) {
-    const at = r.effectiveAt && (!r.inForceAt || r.effectiveAt >= r.inForceAt) ? r.effectiveAt : r.inForceAt;
+    const at = inForceEffect(r);
     if (at) out.set(r.docId, at);
   }
   return out;

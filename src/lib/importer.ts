@@ -5,6 +5,7 @@ import { getDb, schema as s, type Db } from '@/db';
 import type { Attachment, Conf, Origin, RevStatus } from '@/db/schema';
 import { readersApply } from './access';
 import { contextOf, nextDocId, reserveDocId, seqWidth } from './codification';
+import { dateIssues, dateIssueText } from './dates';
 import { fmtSize, parseIsoDay, todayIso } from './format';
 import { ATTACHMENTS, CONF_LEVELS, DICT, ORIGINS } from './i18n';
 import { audit, refreshHeadline, type Tx } from './lifecycle';
@@ -110,6 +111,17 @@ export type ImportInput = {
 };
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+
+/**
+ * Dates of the imported revision as they are recorded: in force on `inForceAt` (by default the issue date, then the
+ * day of the import), approved until that date when it is still to come; the issue date defaults to that entry into
+ * force, once it has happened.
+ */
+function recordedDates(v: Pick<ImportInput, 'status' | 'inForceAt' | 'issuedAt'>, today: string) {
+  const inForceAt = v.status === 'in_force' ? v.inForceAt ?? v.issuedAt ?? today : null;
+  const revStatus: RevStatus = v.status === 'draft' ? 'draft' : inForceAt! > today ? 'approved' : 'in_force';
+  return { inForceAt, revStatus, issuedAt: v.issuedAt ?? (revStatus === 'in_force' ? inForceAt : null) };
+}
 
 /** Validates the `meta` part: shape, then the rules of the register (type admits origin, attachment, confidentiality…). */
 function parseImportMeta(raw: unknown, refs: Refs): { value: ImportInput | null; issues: Issue[]; warnings: Issue[] } {
@@ -249,6 +261,18 @@ function parseImportMeta(raw: unknown, refs: Refs): { value: ImportInput | null;
     inForceAt: drop('inForceAt', f.inForceAt, status !== 'draft'),
   };
 
+  // Coherence of the dates as they will be recorded, defaults included (lib/dates.ts: issue ≤ effect ≤ expiry…). A
+  // document not issued yet will be on its entry into force still to come, or, for a draft, today at the earliest.
+  if (status) {
+    const today = todayIso();
+    const rec = recordedDates({ status, inForceAt: value.inForceAt, issuedAt: f.issuedAt }, today);
+    const effective = rec.inForceAt ? { letter, at: rec.inForceAt } : null;
+    const from = rec.issuedAt ? null : rec.inForceAt ?? today;
+    for (const i of dateIssues({ issuedAt: rec.issuedAt, issueFrom: from, effective, reviewDueAt: f.reviewDueAt, expiresAt: f.expiresAt, receivedAt: value.receivedAt }, today)) {
+      issues.push({ field: i.field === 'effective' ? 'inForceAt' : i.field, code: i.rule, message: dateIssueText(DICT.fr, 'fr', i) });
+    }
+  }
+
   if (issues.length || !legacyRef || !title || !typeCode || !origin || !attachment || !department || !ownerId || !conf || !status) {
     return { value: null, issues, warnings };
   }
@@ -325,8 +349,7 @@ export async function importDocument(raw: unknown, file: ImportFile | null): Pro
   const today = todayIso();
 
   // In force on its date; a date still to come leaves the revision approved until lifecycle.promoteDue puts it in force.
-  const inForceAt = v.status === 'in_force' ? v.inForceAt ?? v.issuedAt ?? today : null;
-  const revStatus: RevStatus = v.status === 'draft' ? 'draft' : inForceAt! > today ? 'approved' : 'in_force';
+  const { inForceAt, revStatus, issuedAt } = recordedDates(v, today);
   const createdAt = v.createdAt ?? v.issuedAt ?? (revStatus === 'in_force' ? inForceAt! : today);
   const modifiedAt = [v.modifiedAt ?? (revStatus === 'in_force' ? inForceAt! : today), createdAt].sort().at(-1)!;
   const label = revStatus === 'draft' ? `${v.letter}.1` : v.letter;
@@ -352,7 +375,7 @@ export async function importDocument(raw: unknown, file: ImportFile | null): Pro
         projectCode: v.projectCode, programCode: v.programCode, family: type.family, typeCode: type.code, subtype: v.subtype,
         department: v.department, site: v.site, ownerId: v.ownerId, authorId: v.authorId, authorText: v.authorText,
         conf: v.conf, keywords: v.keywords, lang: v.lang, status: revStatus,
-        issuedAt: v.issuedAt ?? (revStatus === 'in_force' ? inForceAt : null), reviewDueAt: v.reviewDueAt, expiresAt: v.expiresAt,
+        issuedAt, reviewDueAt: v.reviewDueAt, expiresAt: v.expiresAt,
         retentionYears: type.retentionYears, retentionTrigger: type.retentionTrigger, retentionDisposition: type.retentionDisposition,
         sourceOrg: v.sourceOrg, externalRef: v.externalRef, receivedAt: v.receivedAt,
         projectPhase: v.projectPhase, workPackage: v.workPackage, discipline: v.discipline,

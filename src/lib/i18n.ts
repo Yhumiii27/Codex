@@ -148,6 +148,21 @@ const fr = {
   featured_add:'Ajouter un filtre', featured_invalid:'Filtres non valides : 6 au plus, chacun une seule fois.',
   featured_hint:'Sur la page du département, chaque filtre donne ses valeurs les plus fréquentes, avec un lien vers la recherche filtrée. Le choix propre à chaque métier viendra du recueil des besoins par département.',
   act_dept_featured:'Filtres mis en avant modifiés',
+  // Dates : format et cohérence (émission ≤ effet ≤ expiration)
+  date_malformed:'date invalide, saisissez un jour du calendrier (AAAA-MM-JJ).',
+  expires_before_issued:'La date d’expiration doit être postérieure à la date d’émission du document ({date}) : choisissez une date plus tardive.',
+  expires_before_effective:'La date d’expiration doit être postérieure à la date d’effet de la révision {rev} ({date}) : choisissez une date plus tardive.',
+  effective_before_issued:'La révision {rev} ne peut pas entrer en vigueur avant la date d’émission du document ({date}), qui est sa première mise en vigueur : corrigez l’une des deux dates.',
+  review_before_issued:'La date de révision doit être postérieure à la date d’émission du document ({date}) : choisissez une date plus tardive.',
+  received_in_future:'La date de réception ne peut pas être dans le futur : choisissez aujourd’hui ou une date passée.',
+  received_after_issued:'La date de réception ne peut pas être postérieure à la date d’émission du document ({date}) : choisissez cette date ou une date antérieure.',
+  expires_before_approval:'La révision {rev}, en cours de validation, prendra effet à son approbation, au plus tôt le {date} : choisissez une date d’expiration plus tardive.',
+  expires_before_first_issue:'Le document n’est pas encore émis ; il le sera au plus tôt le {date} : choisissez une date d’expiration plus tardive.',
+  review_before_first_issue:'Le document n’est pas encore émis ; il le sera au plus tôt le {date} : choisissez une date de révision plus tardive.',
+  effective_after_expiry:'La date d’effet doit précéder l’expiration du document, le {date} : choisissez une date antérieure ; sinon, la date d’expiration doit d’abord être reportée dans les métadonnées, par le propriétaire du document ou un gestionnaire documentaire.',
+  approval_after_expiry:'Le document n’est pas encore émis : il le sera à l’approbation de cette révision, au plus tôt aujourd’hui, après son expiration le {date}. La date d’expiration doit d’abord être reportée dans les métadonnées, par le propriétaire du document ou un gestionnaire documentaire.',
+  effective_after_review:'Le document n’est pas encore émis : il le sera à la date d’effet, après sa date de révision, le {date}. Choisissez une date d’effet antérieure ; sinon, la date de révision doit d’abord être reportée dans les métadonnées, par le propriétaire du document ou un gestionnaire documentaire.',
+  approval_after_review:'Le document n’est pas encore émis : il le sera à l’approbation de cette révision, au plus tôt aujourd’hui, après sa date de révision, le {date}. La date de révision doit d’abord être reportée dans les métadonnées, par le propriétaire du document ou un gestionnaire documentaire.',
 };
 
 type Dict = Record<keyof typeof fr, string>;
@@ -297,6 +312,21 @@ const en: Dict = {
   featured_add:'Add a filter', featured_invalid:'Invalid filters: 6 at most, each one once.',
   featured_hint:'On the department page, each filter gives its most frequent values, with a link to the filtered search. The choice for each business will come from the survey of each department’s needs.',
   act_dept_featured:'Featured filters changed',
+  // Dates: format and coherence (issue ≤ effect ≤ expiry)
+  date_malformed:'invalid date, enter a calendar day (YYYY-MM-DD).',
+  expires_before_issued:'The expiry date must be after the document’s issue date ({date}): choose a later date.',
+  expires_before_effective:'The expiry date must be after the effective date of revision {rev} ({date}): choose a later date.',
+  effective_before_issued:'Revision {rev} cannot enter into force before the document’s issue date ({date}), which is its first entry into force: correct one of the two dates.',
+  review_before_issued:'The review date must be after the document’s issue date ({date}): choose a later date.',
+  received_in_future:'The received date cannot be in the future: choose today or an earlier date.',
+  received_after_issued:'The received date cannot be after the document’s issue date ({date}): choose that date or an earlier one.',
+  expires_before_approval:'Revision {rev}, under approval, will take effect when approved, on {date} at the earliest: choose a later expiry date.',
+  expires_before_first_issue:'The document is not issued yet; it will be on {date} at the earliest: choose a later expiry date.',
+  review_before_first_issue:'The document is not issued yet; it will be on {date} at the earliest: choose a later review date.',
+  effective_after_expiry:'The effective date must come before the document expires on {date}: choose an earlier date; otherwise, the expiry date must first be moved in the metadata, by the document’s owner or a records manager.',
+  approval_after_expiry:'The document is not issued yet: it will be when this revision is approved, today at the earliest, after it expires on {date}. The expiry date must first be moved in the metadata, by the document’s owner or a records manager.',
+  effective_after_review:'The document is not issued yet: it will be on the effective date, after its review date, {date}. Choose an earlier effective date; otherwise, the review date must first be moved in the metadata, by the document’s owner or a records manager.',
+  approval_after_review:'The document is not issued yet: it will be when this revision is approved, today at the earliest, after its review date, {date}. The review date must first be moved in the metadata, by the document’s owner or a records manager.',
 };
 
 export const DICT: Record<Lang, Dict> = { fr, en };

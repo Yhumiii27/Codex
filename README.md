@@ -28,8 +28,10 @@ déposés sont stockés dans `.data/files/` (ou dans SharePoint, voir `src/lib/s
     des départements, dates, types de fichiers).
   - `tests/integration/` : règles métier sur une base PGlite en mémoire, migrée depuis `drizzle/` avec le déclencheur
     du journal (`openDb` dans `src/db/index.ts`) et remplie de données minimales (`tests/support/fixtures.ts`), pas de
-    la base de démo. Identifiants et compteurs, révisions et dates d'effet, circuits, décisions Vigie et webhook,
-    journal en ajout seul, cercle de rédaction, import, recherche, recherches enregistrées et pages par département.
+    la base de démo. Identifiants et compteurs, révisions et dates d'effet, cohérence des dates, circuits, décisions
+    Vigie et webhook, journal en ajout seul, cercle de rédaction, import, recherche, recherches enregistrées et pages
+    par département. Seul `tests/integration/dates.test.ts` charge aussi les données de démo (`src/db/seed.ts`), en
+    mémoire, pour en vérifier toutes les dates.
     Les Server Actions y tournent avec `next/headers` et `next/cache` simulés (`tests/support/session.ts`) ;
     l'horloge est figée au 10 octobre 2026.
   - Limite : PGlite n'a qu'une connexion et exécute les transactions l'une après l'autre. Les tests d'attributions
@@ -80,7 +82,8 @@ Tout l'état d'écran est dans l'URL (onglets, filtres, sélection) : les liens 
 ## Ce qui est réel / simulé
 
 - **Persisté** : création codifiée (`TYPE-CONTEXTE-SEQ`, depuis un modèle, un fichier ou sans fichier), versions de
-  travail (A.1, A.2…), métadonnées et reclassement (nouvel identifiant tant qu'aucune révision n'a été approuvée),
+  travail (A.1, A.2…), métadonnées (dates contrôlées : format, et émission ≤ effet < expiration) et reclassement
+  (nouvel identifiant tant qu'aucune révision n'a été approuvée),
   lecteurs désignés, demandes de validation et décisions (mise en vigueur à l'approbation ou à la date d'effet),
   délégation, commentaires, demandes de modification et de retrait, archivage, gel juridique, matrice des droits,
   registre des types (circuit, confidentialité, conservation), titulaires des fonctions, départements (et filtres mis

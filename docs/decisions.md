@@ -513,6 +513,29 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     départements ; 6 au plus par département ;
   - les régler est réservé à qui a le droit « Administrer » (Administration › Organisation), comme le reste de
     l'organisation ; aucun choix par métier n'est fait à la place des départements.
+- **Cohérence des dates** (règle 12 de l'audit, « émission ≤ effet ≤ expiration », 12 octobre ; point 3 de
+  `docs/reste-a-faire.md`) :
+  - la date d'émission est la première mise en vigueur du document dans Codex (`docs/api.md`) : la réception d'un
+    document externe ne peut pas la suivre, le même jour étant admis ;
+  - « postérieure » est pris au sens strict : une expiration ou une revue le jour même de l'émission, et une
+    expiration le jour de la date d'effet, sont refusées ;
+  - un document pas encore émis le sera au plus tôt aujourd'hui, ou à la date d'effet de la révision qui l'émettra :
+    son expiration et sa date de révision doivent suivre ce jour (création, métadonnées, demande de validation, import
+    d'un brouillon ou d'une mise en vigueur à venir) ;
+  - la date d'effet qui borne l'expiration est la plus tardive de la révision en vigueur et d'une révision approuvée
+    ou en revue ; une révision en revue sans date d'effet prendra effet à son approbation, au plus tôt aujourd'hui :
+    une expiration saisie pendant son circuit doit suivre ce jour ;
+  - sans date d'effet, la demande de validation d'un document déjà émis est acceptée, même s'il a expiré
+    (renouvellement) : la nouvelle expiration se saisit une fois la révision en vigueur, et les lecteurs ne la voient
+    pas pendant le circuit (D-14). Le dialogue de métadonnées la demande alors. Ce qui se passe à l'expiration reste
+    une question de l'audit (A17, « alerte, passage Obsolète, renouvellement ») ; rien n'est tranché ici ;
+  - une date incohérente avec les dates enregistrées (émission, dates d'effet) bloque l'enregistrement des
+    métadonnées tant qu'elle n'est pas corrigée, même si l'on ne la modifie pas ; le dialogue désigne le champ. Les
+    bornes qui dépendent du jour (document pas encore émis, révision en revue sans date d'effet) ne s'appliquent qu'à
+    une date saisie ou modifiée : le temps seul ne bloque pas l'enregistrement d'une date laissée telle quelle ;
+  - les messages de la demande de validation ne supposent pas le droit de modifier les métadonnées : ils disent que
+    le report se fait par le propriétaire du document ou un gestionnaire documentaire ;
+  - l'import refuse aussi une mise en vigueur antérieure à la date d'émission.
 - **Retrait** (D-17) : effets d'un retrait accepté sur le travail en cours (circuit clos, révisions ouvertes annulées).
 - **Documents obsolètes ou archivés** (D-17) : bandeau d'avertissement sur la fiche et dans l'aperçu rapide de
   l'explorateur, suffixe `_OBSOLETE` ou `_ARCHIVE` dans le nom proposé au téléchargement (`docs/modele-cible.md` §4).

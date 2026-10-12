@@ -57,21 +57,31 @@ export function Modal({ title, children, actions, width = 520, style }: { title:
   );
 }
 
-/** Runs a server action from a dialog: pending state, inline error, then close, navigate and toast. */
+/**
+ * Runs a server action from a dialog: pending state, inline error, then close, navigate and toast. An error about one
+ * field (`field`) is returned as such, for the dialog to show it under that field, which gets the focus in `form`.
+ */
 export function useSubmit() {
   const { t, close, toast } = useApp();
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [field, setField] = useState<string | null>(null);
   /** `staleError`: an error meaning the page is out of date (the step moved on): close, say so, refresh the page. */
-  const run = (fn: () => Promise<ActionResult>, opts: { keepOpen?: boolean; staleError?: string } = {}) =>
+  const run = (fn: () => Promise<ActionResult>, opts: { keepOpen?: boolean; staleError?: string; form?: HTMLFormElement } = {}) =>
     start(async () => {
       setError(null);
+      setField(null);
       try {
         const r = await fn();
         if (!r.ok) {
           if (opts.staleError && r.error === opts.staleError) { close(); toast(r.error, true); router.refresh(); return; }
           setError(r.error);
+          const input = r.field ? opts.form?.elements.namedItem(r.field) : null;
+          if (r.field && input instanceof HTMLElement) {
+            setField(r.field);
+            input.focus();
+          }
           return;
         }
         if (!opts.keepOpen) close();
@@ -81,7 +91,7 @@ export function useSubmit() {
         setError(t.error);
       }
     });
-  return { pending, error, run };
+  return { pending, error, field, run };
 }
 
 export type SelectOption = { key: string; label: string; group?: string };

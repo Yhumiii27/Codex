@@ -34,6 +34,7 @@ Conventions :
 | 10 oct. | Tests (Vitest, PGlite en mémoire) et intégration continue | 12 |
 | 11 oct. | Décision D-26 : greffe ou attente d'une modification acceptée pendant une révision ouverte. Étape 1 : couche métier. Étape 2 : fiche document | 13 |
 | 11 oct. | Fonctions du deck (lot 5), une étape par fonction : « Mes demandes Vigie », « À traiter » complet, rejet motivé et rappel, recherches enregistrées partagées, facettes et tri de la recherche, pages par département | 14 |
+| 12 oct. | Points développables de reste-a-faire.md, une étape par point. Étape 1 : dates, format contrôlé et cohérence émission ≤ effet ≤ expiration | 15 |
 
 La session a été coupée plusieurs fois par une limite d'usage ou de dépense :
 - le 7 octobre à 13:38, reprise à 17:31 sur « Try again » ;
@@ -987,3 +988,63 @@ enregistrées.
   avant pour ce département » (sur RHU, sans document lisible, Julien Wagner garde « Aucune valeur à mettre en
   avant »), le retour aux filtres par défaut rétablit le bandeau ; trois entrées au journal. Vue en anglais vérifiée (« Department
   page », « Departments », « Featured filters »).
+
+## 15. Points développables (12 oct.)
+
+Points « développables maintenant » de [reste-a-faire.md](reste-a-faire.md), une étape par point, chacune relue avant
+son commit. Aucune question ouverte n'est tranchée : un choix qui en dépend prend l'option la plus prudente et est
+consigné dans [decisions.md](decisions.md) (« Choix de l'assistant non validés explicitement »).
+
+### 15.1 Dates : format contrôlé et cohérence émission ≤ effet ≤ expiration
+
+Point 3 de [reste-a-faire.md](reste-a-faire.md) (MET-03, règle 12 de l'audit) : une Server Action acceptait n'importe
+quelle chaîne pour une date (erreur SQL à l'enregistrement), et aucune règle ne liait les dates entre elles.
+
+- **Règles** (`src/lib/dates.ts`) : expiration postérieure à l'émission et à la date d'effet de la révision (la plus
+  tardive de la révision en vigueur et d'une révision approuvée ou en revue), révision postérieure à l'émission,
+  réception ni future ni postérieure à l'émission, mise en vigueur au plus tôt à l'émission (import). Un document pas
+  encore émis le sera au plus tôt aujourd'hui, ou à la date d'effet de la révision qui l'émettra (`issueFrom`) ; une
+  révision en revue sans date d'effet prendra effet à son approbation, au plus tôt aujourd'hui (`latestEffect` avec
+  la date du jour). Un message FR et EN par règle donne la date à respecter et dit quoi corriger.
+- **Server Actions** (`src/lib/actions.ts`) : `validateFields` refuse une date qui n'est pas un jour `AAAA-MM-JJ`
+  (`parseIsoDay`, qui refuse aussi l'année 0000 ; « Date d'expiration : date invalide… ») et une réception future.
+  `createDocument` refuse une expiration ou une révision au plus tard le jour même. `updateMeta` vérifie, dans sa
+  transaction, toutes les dates contre l'émission et les dates d'effet enregistrées, puis les seules dates saisies ou
+  modifiées contre ce qui dépend du jour (document pas encore émis, révision en revue sans date d'effet) : le temps
+  seul ne bloque pas une date laissée telle quelle. `requestValidation` refuse une date d'effet égale ou postérieure à
+  l'expiration et, pour un document pas encore émis, une expiration ou une révision au plus tard le jour où la
+  révision l'émettra (sa date d'effet, ou aujourd'hui). L'erreur porte le champ (`ActionResult.field`).
+- **Import** (`src/lib/importer.ts`) : mêmes règles sur les dates telles qu'elles seront enregistrées (`recordedDates`,
+  partagé avec `importDocument`), y compris pour un brouillon ou une mise en vigueur à venir, un code par règle,
+  renvoyé avec les autres problèmes (`docs/api.md`).
+- **Dialogues** : à la création et dans les métadonnées, l'erreur s'affiche sous le champ fautif, qui reçoit le focus,
+  `aria-invalid` et une bordure d'accent ; ailleurs, en bas du dialogue comme avant.
+- **Données de démo** : le devis Nordvolt (`RFQ-HLT-026-001`) était reçu le 28 juin, après sa date d'émission du
+  12 juin : il l'est désormais le 10 juin. Base de démo remise à zéro ; toutes ses dates respectent les règles, y
+  compris celles qui dépendent du jour.
+- **Choix prudents** (`docs/decisions.md`, `docs/modele-cible.md` §7) : « postérieure » au sens strict ; date
+  d'émission prise comme première mise en vigueur, donc comme borne de la réception ; bornes du jour limitées aux
+  dates saisies. Sans date d'effet, la demande de validation d'un document déjà émis est acceptée même s'il a expiré
+  (renouvellement) : la nouvelle expiration se saisit une fois la révision en vigueur, et l'effet de l'expiration
+  reste ouvert (audit, A17).
+- **Relecture** : neuf constats, dont deux en double, tous retenus. Une expiration saisie pendant une revue sans date d'effet était
+  acceptée même passée ; la date de révision d'un document pas encore émis n'était comparée à rien (création,
+  métadonnées, demande de validation, import d'une mise en vigueur à venir) ; l'année 0000 passait le contrôle de
+  format et finissait en erreur SQL ; aucun test ne vérifiait le format de la réception. La demande sans date d'effet
+  d'un document expiré n'est plus refusée : elle bloquait le renouvellement, ou obligeait à publier la nouvelle
+  expiration avant l'approbation (D-14). Les messages de la demande de validation ne supposent plus le droit de
+  modifier les métadonnées. La limite restante est mieux décrite (ci-dessous).
+- **Reste** : une approbation qui arrive après l'expiration (sans date d'effet, ou quand la date d'effet est passée)
+  met encore la révision en vigueur ; le dialogue de métadonnées demande alors de reporter l'expiration. L'expiration
+  ne déclenche toujours rien (point 13).
+- **Vérifié** : `npm test` (535 tests, dont les 19 de `tests/unit/dates.test.ts` et les 37 de
+  `tests/integration/dates.test.ts`, qui passent aussi toutes les dates de la base de démo aux règles), `npm run
+  typecheck`, `npm run lint`. Les tests échouent si l'on retire l'une des vérifications (essayé pour le format de la
+  réception, l'année 0000, les bornes du jour de `updateMeta` et de `createDocument`, la révision en revue sans date,
+  la demande de validation d'un document pas encore émis et l'import d'une mise en vigueur à venir). Dans le
+  navigateur, sur une base de démo neuve : Claire Bardet saisit une expiration au 31/12/2021 sur `PRO-QUA-0001` (émis
+  le 03/02/2022) : « La date d'expiration doit être postérieure à la date d'émission du document (03/02/2022) :
+  choisissez une date plus tardive. » sous le champ, qui a le focus ; la fiche est inchangée. Julien Wagner ne peut
+  plus fixer au 01/01/2020 l'expiration de `PRT-R2601-001`, en revue et jamais émis (« La révision A, en cours de
+  validation, prendra effet à son approbation… »), et une création avec une date de révision passée est refusée sous
+  ce champ.

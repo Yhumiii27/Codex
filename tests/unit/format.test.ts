@@ -83,6 +83,10 @@ describe('calendar arithmetic', () => {
     expect(parseIsoDay('2026-10-05T09:00:00Z')).toBe('2026-10-05');
     expect(parseIsoDay('2026-10-05 09:00')).toBe('2026-10-05');
     for (const v of ['2026-02-30', '2027-02-29', '2026-13-01', '2026-1-5', '05/10/2026', '2026-10-05x', '', null, undefined]) expect(parseIsoDay(v), String(v)).toBeNull();
+    // Year 0000 has no day in Postgres ("date/time field value out of range"); year 0001 has.
+    expect(parseIsoDay('0000-01-01')).toBeNull();
+    expect(parseIsoDay('0000-06-15T08:00:00Z')).toBeNull();
+    expect(parseIsoDay('0001-01-01')).toBe('0001-01-01');
   });
 });
 
