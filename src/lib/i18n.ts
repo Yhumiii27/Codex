@@ -205,6 +205,24 @@ const fr = {
   replacement_hint:'Si Vigie accepte le retrait, le document retiré sera « remplacé par » ce document.',
   replacement_proposed:'Remplacement proposé',
   replacement_not_found:'Document de remplacement introuvable.', replacement_inactive:'Le document de remplacement est obsolète ou archivé : proposez un document actif.',
+  // Fiche de visa : preuve d'approbation d'une révision (point 21, P08)
+  visa:'Fiche de visa', visa_hint:'Preuve d’approbation de la révision (PDF), extraite du journal de Codex', act_visa:'Fiche de visa éditée',
+  visa_extract:'Extrait du journal de Codex', visa_identification:'Identification', visa_id:'Identifiant', visa_state:'État du document', visa_eco:'Références ECO',
+  visa_dates:'Dates', visa_created:'Création', visa_approved:'Approbation', visa_in_force:'Mise en vigueur', visa_superseded:'Remplacée le',
+  visa_effect_on_entry:'À la mise en vigueur', visa_legacy:'Dans l’ancien système',
+  visa_imported:'Révision reprise de l’ancien système (référence {ref}) le {date} : son approbation a eu lieu dans l’ancien système. Codex n’en a repris ni les visas ni les dates.',
+  visa_migrated:'Reprise', visa_migrated_draft:'{date}, en brouillon, de l’ancien système (référence {ref})',
+  visa_circuit:'Circuit de validation', visa_no_circuit:'Aucun circuit de validation n’est enregistré dans Codex pour cette révision.',
+  visa_no_step:'Circuit sans étape d’approbation : la révision est approuvée dès la demande.',
+  visa_requested:'Demandé par {who} le {when}', visa_outcome_approved:'Approuvé le {when}', visa_outcome_rejected:'Rejeté par {who} le {when}',
+  visa_outcome_recalled:'Rappelé par {who} le {when}', visa_outcome_running:'En cours', visa_reject_reason:'Motif du rejet', visa_recall_reason:'Motif du rappel',
+  visa_step_submitted:'Soumise pour validation', visa_step_approved:'Approuvée', visa_step_rejected:'Rejetée', visa_step_recalled:'Non décidée : demande rappelée',
+  visa_step_closed:'Non décidée : circuit clos', visa_step_pending:'En attente de décision', visa_step_not_reached:'Non atteinte',
+  visa_delegated:'Déléguée par {from} à {to} le {when}',
+  visa_comments_withheld_one:'1 commentaire, lisible dans le circuit par ses participants et les gestionnaires documentaires.',
+  visa_comments_withheld:'{n} commentaires, lisibles dans le circuit par ses participants et les gestionnaires documentaires.',
+  visa_issued:'Extrait du journal de Codex édité le {when} par {who}.',
+  visa_no_signature:'Cette fiche ne porte pas de signature électronique : elle reproduit ce que le journal de Codex enregistre sur l’approbation de la révision.',
 };
 
 type Dict = Record<keyof typeof fr, string>;
@@ -411,6 +429,24 @@ const en: Dict = {
   replacement_hint:'If Vigie accepts the withdrawal, the withdrawn document will be “replaced by” this document.',
   replacement_proposed:'Proposed replacement',
   replacement_not_found:'Replacement document not found.', replacement_inactive:'The replacement document is obsolete or archived: propose an active document.',
+  // Approval record of a revision (point 21, P08)
+  visa:'Approval record', visa_hint:'Proof of approval of the revision (PDF), extracted from the Codex journal', act_visa:'Approval record issued',
+  visa_extract:'Extract from the Codex journal', visa_identification:'Identification', visa_id:'Identifier', visa_state:'Document state', visa_eco:'ECO references',
+  visa_dates:'Dates', visa_created:'Created', visa_approved:'Approval', visa_in_force:'Entry into force', visa_superseded:'Superseded on',
+  visa_effect_on_entry:'On entry into force', visa_legacy:'In the legacy system',
+  visa_imported:'Revision migrated from the legacy system (reference {ref}) on {date}: it was approved in the legacy system. Codex took over neither its approvals nor their dates.',
+  visa_migrated:'Migrated', visa_migrated_draft:'{date}, as a draft, from the legacy system (reference {ref})',
+  visa_circuit:'Approval workflow', visa_no_circuit:'No approval workflow is recorded in Codex for this revision.',
+  visa_no_step:'Workflow without an approval step: the revision is approved as soon as it is requested.',
+  visa_requested:'Requested by {who} on {when}', visa_outcome_approved:'Approved on {when}', visa_outcome_rejected:'Rejected by {who} on {when}',
+  visa_outcome_recalled:'Recalled by {who} on {when}', visa_outcome_running:'In progress', visa_reject_reason:'Reason for rejection', visa_recall_reason:'Reason for recall',
+  visa_step_submitted:'Sent for approval', visa_step_approved:'Approved', visa_step_rejected:'Rejected', visa_step_recalled:'Not decided: request recalled',
+  visa_step_closed:'Not decided: workflow closed', visa_step_pending:'Awaiting decision', visa_step_not_reached:'Not reached',
+  visa_delegated:'Delegated by {from} to {to} on {when}',
+  visa_comments_withheld_one:'1 comment, readable in the workflow by its participants and the records managers.',
+  visa_comments_withheld:'{n} comments, readable in the workflow by its participants and the records managers.',
+  visa_issued:'Extract from the Codex journal issued on {when} by {who}.',
+  visa_no_signature:'This record bears no electronic signature: it reproduces what the Codex journal records about the approval of the revision.',
 };
 
 export const DICT: Record<Lang, Dict> = { fr, en };

@@ -131,6 +131,26 @@ export function readerMaySeeRevision(circle: boolean, revStatus: string | null |
 }
 
 /**
+ * May the user have the approval record of a revision (lib/approval.ts, « fiche de visa »)? Only once it was approved,
+ * and only if they see it (readerMaySeeRevision): outside the drafting circle, the revision in force and those it
+ * replaced (D-14). Reading the document itself (canRead) is checked apart.
+ */
+export function mayGetApprovalRecord(circle: boolean, rev: { status: string; approvedAt: string | null }): boolean {
+  return !!rev.approvedAt && readerMaySeeRevision(circle, rev.status);
+}
+
+/**
+ * Does the user follow a circuit: records managers follow every one, others the ones they take part in, as its
+ * requester or the holder of one of its steps (after any delegation)? Only they open it in /validations (listWorkflows
+ * `visible`, which also needs the document and the revision to be readable), comment on it, and read on the approval
+ * record the text of its comments and who held the steps never decided. Whether they may read the document and see the
+ * revision is checked apart.
+ */
+export function followsCircuit(ctx: Viewer, w: { requesterId: string }, steps: readonly { assigneeId: string }[]): boolean {
+  return ctx.seesAll || w.requesterId === ctx.user.id || steps.some((x) => x.assigneeId === ctx.user.id);
+}
+
+/**
  * Does a reader see the change order and designated author of a change request (D-14)? Outside the drafting circle,
  * only once the revision carrying the change (the one it opened, or the open one it was grafted onto, D-26) is in force
  * or superseded; never while an accepted change waits to apply, which would tell a revision is open or about to open.
@@ -256,9 +276,9 @@ export function mayEditLinks(ctx: Viewer, d: { ownerId: string }): boolean {
 
 /**
  * Journal actions that only ever concern one revision (working versions, circuits, their recall and their comments,
- * entry into force, files, a change grafted onto the revision being drafted).
+ * entry into force, files, a change grafted onto the revision being drafted, the approval record issued for it).
  */
-const REVISION_ACTIONS = new Set(['upload', 'working', 'import', 'reclass', 'request', 'approve', 'sign', 'reject', 'recall', 'delegate', 'comment', 'in_force', 'download', 'graft']);
+const REVISION_ACTIONS = new Set(['upload', 'working', 'import', 'reclass', 'request', 'approve', 'sign', 'reject', 'recall', 'delegate', 'comment', 'in_force', 'download', 'graft', 'visa']);
 
 /**
  * Journal entries outside the drafting circle (D-14). An entry about a revision records it (audit_log.revision_id) and

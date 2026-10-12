@@ -7,7 +7,7 @@ Certaines règles ci-dessous sont des propositions de l'assistant, implémentée
 authentification Entra ID (§1), code département hors rattachement, largeur et portée du compteur, ID attribué au
 brouillon, alias et nom de fichier (§3), « Remplacé », mise en vigueur automatique, bandeau et nom de téléchargement
 d'un document obsolète ou archivé, liens « remplace » / « remplacé par » et « voir aussi » (§4), partage des recherches enregistrées et pages par département (§5), longueur du
-motif de rejet et droit de rappeler une demande de validation (§6), lecture stricte de la cohérence des dates,
+motif de rejet, droit de rappeler une demande de validation et fiche de visa (§6), lecture stricte de la cohérence des dates,
 indicateurs d'expiration et de revue, « Revue effectuée » et périodicité de revue par type (§7).
 Elles sont listées dans `docs/decisions.md` (« Choix de l'assistant non validés explicitement », question O-09), qui
 prévaut en cas de doute.
@@ -197,6 +197,20 @@ sortent du cercle de rédaction (§5) :
   « Rappelé », issue distincte du rejet, et la révision peut être soumise de nouveau. Un clic sur une étape déjà
   décidée entre-temps ne fait rien.
 *Proposé, non confirmé* : la longueur du motif et qui peut rappeler (`docs/decisions.md`).
+
+**Preuve d'approbation (fiche de visa).** Une révision approuvée a une fiche PDF, `{ID}_{lettre}_VISA.pdf`, tirée du
+journal (`GET /api/documents/[id]/approval?rev=B`, onglet Révisions) : identification de la révision, références ECO,
+dates de création, d'approbation, d'effet, de mise en vigueur et de remplacement, puis chacun de ses circuits (rejetés
+et rappelés compris) avec, par étape, la fonction, le titulaire, la décision, son moment et les délégations, l'issue,
+le motif et les commentaires. Une révision importée déjà approuvée y est dite approuvée dans l'ancien système ; une
+révision importée en brouillon puis approuvée dans Codex garde sa date d'approbation et son circuit. La fiche se donne
+à qui lit le document et voit la révision (§5 : hors du cercle de rédaction, la révision en vigueur et celles qu'elle a
+remplacées), et chaque édition est journalisée sur la révision. Elle ne montre à chacun que ce que Codex lui montre
+déjà : le texte des commentaires d'un circuit et le titulaire d'une étape jamais décidée ne vont qu'à qui suit ce
+circuit (gestionnaire documentaire, demandeur, titulaire d'une étape) ; les autres lecteurs lisent le nombre de
+commentaires.
+Sans signature électronique (M04 ouverte), elle se présente comme un extrait du journal de Codex. *Proposé, non
+confirmé* (`docs/decisions.md`).
 
 ## 7. Métadonnées
 

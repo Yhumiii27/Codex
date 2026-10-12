@@ -5,7 +5,7 @@ import { cookies } from 'next/headers';
 import { refresh } from 'next/cache';
 import { getDb, schema as s } from '@/db';
 import type { Attachment, AuditChange, AuditValue, Conf, Disposition, Origin, RetentionTrigger, SearchScope } from '@/db/schema';
-import { buildAccessIndex, canRead, getAccessIndex, inDraftingCircle, isUsableTemplate, mayDeleteSearch, mayEditLinks, mayRecall, mayRecordReview, maySaveSearch, mayWorkOnDraft, readerMaySeeRevision, readersApply, seesSavedSearch } from './access';
+import { buildAccessIndex, canRead, followsCircuit, getAccessIndex, inDraftingCircle, isUsableTemplate, mayDeleteSearch, mayEditLinks, mayRecall, mayRecordReview, maySaveSearch, mayWorkOnDraft, readerMaySeeRevision, readersApply, seesSavedSearch } from './access';
 import { idMatches, nextDocId, nextWorkflowId } from './codification';
 import { COOKIE_LANG, COOKIE_ROLE, COOKIE_USER, getCtx, type Ctx } from './context';
 import { addDays, fmtDate, fmtSize, loc, nowStamp, parseIsoDay, todayIso } from './format';
@@ -728,8 +728,7 @@ export async function addComment(workflowId: string, text: string): Promise<Acti
     getAccessIndex(),
   ]);
   if (!d || !canRead(ctx, d, ix) || !readerMaySeeRevision(inDraftingCircle(ctx, d, ix), rev?.status)) return fail(ctx, 'not_found');
-  const involved = wf.w.requesterId === ctx.user.id || wf.steps.some((x) => x.assigneeId === ctx.user.id);
-  if (!(ctx.seesAll || involved)) return fail(ctx, 'not_allowed');
+  if (!followsCircuit(ctx, wf.w, wf.steps)) return fail(ctx, 'not_allowed');
   await db.transaction(async (tx) => {
     await tx.insert(s.workflowComments).values({ workflowId, authorId: ctx.user.id, at: todayIso(), text: body.slice(0, 2000) });
     // The entry names the circuit, not the text: the comment stays readable where it was written. The circuit's

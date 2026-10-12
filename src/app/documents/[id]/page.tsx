@@ -8,7 +8,7 @@ import { Seg } from '@/components/ui/Seg';
 import { VStepper } from '@/components/ui/Stepper';
 import { getDb } from '@/db';
 import { ActionButton, DialogButton, ShareButton } from '@/components/ui/client';
-import { canRead, mayEditLinks, mayRecordReview, mayWorkOnDraft, openRevisionView, readerMaySeeRevision, readerMaySeeVersion, readersApply } from '@/lib/access';
+import { canRead, mayEditLinks, mayGetApprovalRecord, mayRecordReview, mayWorkOnDraft, openRevisionView, readerMaySeeRevision, readerMaySeeVersion, readersApply } from '@/lib/access';
 import { releaseHold, removeDocLink } from '@/lib/actions';
 import { isFinalStatus } from '@/lib/codes';
 import { getCtx } from '@/lib/context';
@@ -222,6 +222,8 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
     return {
       id: r.id, letter: r.letter, statusLabel: r.statusLabel, tagClass: r.tagClass,
       lines: [dates.length ? dates.join(' · ') : `${t.created} ${r.createdF}`, ...(who.length ? [who.join(' · ')] : [])],
+      // Proof of its approval (api/documents/[id]/approval): once approved, for whoever sees the revision.
+      visa: mayGetApprovalRecord(circle, r) ? `/api/documents/${encodeURIComponent(doc.id)}/approval?rev=${encodeURIComponent(r.letter)}` : null,
       // Working versions belong to the drafting circle; others get the final file of the revision in force, under its letter.
       versions: circle
         ? r.versions.map((v) => ({ ...lite(v), current: v.id === current?.id }))

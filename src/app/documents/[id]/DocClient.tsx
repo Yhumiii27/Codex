@@ -78,6 +78,8 @@ export type RevItem = {
   lines: string[];
   /** Working versions newest first (drafting circle); outside it, only the final file of the revision in force; null otherwise. */
   versions: RevVersion[] | null;
+  /** Address of its approval record (PDF), once approved; null otherwise. */
+  visa: string | null;
 };
 
 /**
@@ -97,6 +99,11 @@ export function RevisionsTab({ docId, revisions, current }: { docId: string; rev
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <span style={{ fontSize: 13, fontWeight: 500 }}>{t.rev_short} {r.letter}</span>
               <span className={r.tagClass} style={{ fontSize: 10.5, padding: '2px 8px' }}>{r.statusLabel}</span>
+              {r.visa && (
+                <a href={r.visa} className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 8px', marginLeft: 'auto' }} title={t.visa_hint} aria-label={`${t.visa} ${r.letter}`}>
+                  <Icon name="download" size={12} />{t.visa}
+                </a>
+              )}
             </div>
             {r.lines.map((l) => <div key={l} className="text-muted" style={{ fontSize: 11, marginTop: 3 }}>{l}</div>)}
             {r.versions && r.versions.length > 0 && (

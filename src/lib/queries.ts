@@ -3,11 +3,12 @@ import { cache } from 'react';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { getDb, schema as s } from '@/db';
 import type { AuditChange, AuditData, AuditTargetKind, AuditValue, Conf, LinkRel } from '@/db/schema';
-import { canRead, changeAsSeen, deadlineActor, draftTodo, getAccessIndex, inDraftingCircle, isUsableTemplate, mayDeleteSearch, mayEditLinks, mayRecall, mayWorkOnDraft, openRevisionView, readerMaySeeEntry, readerMaySeeRevision, savedSearchesSeenBy, type AccessIndex } from './access';
+import { canRead, changeAsSeen, deadlineActor, draftTodo, followsCircuit, getAccessIndex, inDraftingCircle, isUsableTemplate, mayDeleteSearch, mayEditLinks, mayGetApprovalRecord, mayRecall, mayWorkOnDraft, openRevisionView, readerMaySeeEntry, readerMaySeeRevision, savedSearchesSeenBy, type AccessIndex } from './access';
+import { visaCircuit, type VisaRecord } from './approval';
 import { revLabel } from './codification';
 import type { Ctx } from './context';
 import { inForceEffect } from './dates';
-import { addDays, clip, daysBetween, fmtDate, fmtDateTime, fmtSize, fmtWhen, loc, parisStamp, todayIso } from './format';
+import { addDays, clip, daysBetween, fmtDate, fmtDateTime, fmtSize, fmtWhen, loc, nowStamp, parisStamp, todayIso } from './format';
 import { CONF_LEVELS, MATRIX_ROLE_LABEL, TAGCLS, type T, type TKey } from './i18n';
 import { decisionWait, lockOf, type DecisionWait } from './lifecycle';
 import { LINK_RELS, otherEnd, relOf } from './links';
@@ -212,6 +213,62 @@ export async function listRevisions(ctx: Ctx, docId: string) {
 }
 export type RevisionView = Awaited<ReturnType<typeof listRevisions>>[number];
 
+/**
+ * Approval record of a revision (lib/approval.ts, « fiche de visa »), as /api/documents/[id]/approval serves it. The
+ * document as getDoc finds it (a former ID resolves to it; one the user may not read gives null), then its revision
+ * `letter`, only if it was approved and the user sees it (access.ts mayGetApprovalRecord: outside the drafting circle,
+ * the revision in force or one it replaced, D-14). Its circuits with their steps, and the journal entries of the
+ * revision (moments of the decisions, delegations, import), visible to whoever sees the revision, make the record, in
+ * the user's language. The text of a circuit's comments and the holders of its steps never decided go only to whoever
+ * follows that circuit (access.ts followsCircuit), as in /validations. Null otherwise: the route answers as for a
+ * document that does not exist.
+ */
+export async function approvalRecord(ctx: Ctx, id: string, letter: string): Promise<{ docId: string; letter: string; revisionId: number; record: VisaRecord } | null> {
+  const res = await getDoc(ctx, id);
+  if (!res || res === 'hidden') return null;
+  const { doc, circle } = res;
+  const rev = (await listRevisions(ctx, doc.id)).find((r) => r.letter === letter);
+  if (!rev || !mayGetApprovalRecord(circle, rev)) return null;
+  const db = await getDb();
+  const [wfs, entries] = await Promise.all([
+    db.select().from(s.workflows).where(eq(s.workflows.revisionId, rev.id)),
+    db.select().from(s.auditLog).where(eq(s.auditLog.revisionId, rev.id)).orderBy(asc(s.auditLog.at), asc(s.auditLog.id)),
+  ]);
+  const ids = wfs.map((w) => w.id);
+  const [steps, comments] = ids.length
+    ? await Promise.all([
+      db.select().from(s.workflowSteps).where(inArray(s.workflowSteps.workflowId, ids)),
+      db.select().from(s.workflowComments).where(inArray(s.workflowComments.workflowId, ids)).orderBy(asc(s.workflowComments.id)),
+    ])
+    : [[], []];
+  const journal = entries.map((e) => ({ at: parisStamp(e.at), userId: e.userId, action: e.action, detail: e.detail }));
+  // A revision migrated from the legacy system (lib/importer.ts): its import entry says when it came. It was approved
+  // there unless it came as a draft, which only a circuit of Codex can have approved since (lib/lifecycle.ts approveRevision).
+  const imported = journal.find((e) => e.action === 'import');
+  const approvedInCodex = wfs.some((w) => w.outcome === 'approved');
+  const order = (w: (typeof wfs)[number]) => Number(/\d+/.exec(w.id)?.[0] ?? 0);
+  const { t, lang } = ctx;
+  const record: VisaRecord = {
+    doc: {
+      id: doc.id, title: doc.title, type: `${doc.typeCode} · ${doc.typeLabel}`, context: doc.contextL, owner: doc.owner, conf: doc.confL,
+      state: doc.state === 'obsolete' ? `${t.st_obsolete} · ${fmtDate(doc.obsoleteAt, lang)}` : doc.state === 'archived' ? `${t.st_archived} · ${fmtDate(doc.archivedAt, lang)}` : null,
+    },
+    rev: {
+      letter: rev.letter, status: rev.statusLabel, createdAt: rev.createdAt, approvedAt: rev.approvedAt, effectiveAt: rev.effectiveAt, inForceAt: rev.inForceAt,
+      supersededAt: rev.supersededAt, modifier: rev.modifier, changeRefs: rev.changeRefs,
+    },
+    imported: imported ? { at: imported.at, legacyRef: doc.legacyRef ?? imported.detail.split(' → ')[0], approved: !approvedInCodex } : null,
+    circuits: [...wfs]
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || order(a) - order(b))
+      .map((w) => {
+        const its = steps.filter((x) => x.workflowId === w.id);
+        return visaCircuit(w, its, comments.filter((c) => c.workflowId === w.id), journal, lang, ctx.userName, followsCircuit(ctx, w, its));
+      }),
+    issued: { at: nowStamp(), by: ctx.user.name },
+  };
+  return { docId: doc.id, letter: rev.letter, revisionId: rev.id, record };
+}
+
 // ── Workflows ────────────────────────────────────────────────────────────
 
 /**
@@ -244,7 +301,6 @@ export const listWorkflows = cache(async (ctx: Ctx) => {
       };
     });
     const cur = ws[w.step];
-    const involved = w.requesterId === ctx.user.id || ws.some((x) => x.assigneeId === ctx.user.id);
     const doc = docBy.get(w.docId);
     const rev = revBy.get(w.revisionId);
     const outcomeL = w.outcome === 'approved' ? t.wf_approved : w.outcome === 'rejected' ? t.wf_rejected : w.outcome === 'recalled' ? t.wf_recalled : null;
@@ -277,7 +333,7 @@ export const listWorkflows = cache(async (ctx: Ctx) => {
        * Records managers follow every workflow; others the ones they take part in, as long as they may read the
        * document and see the revision (D-14: once the circuit is over, its approvers leave the drafting circle).
        */
-      visible: ctx.seesAll || (involved && !!doc && canRead(ctx, doc, ix) && readerMaySeeRevision(inDraftingCircle(ctx, doc, ix), rev?.status)),
+      visible: followsCircuit(ctx, w, ws) && (ctx.seesAll || (!!doc && canRead(ctx, doc, ix) && readerMaySeeRevision(inDraftingCircle(ctx, doc, ix), rev?.status))),
       progress: `${Math.min(w.step, ws.length)}/${ws.length}`,
       comments: comments.filter((c) => c.workflowId === w.id).map((c) => {
         const who = ctx.userName(c.authorId);

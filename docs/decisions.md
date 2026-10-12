@@ -606,6 +606,43 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     migration (O-11) ; en attendant, ils s'ajoutent depuis les fiches ;
   - données de démo : un lien « voir aussi » entre la procédure « Levage et manutention sur chantier » et l'arrêté du
     1er mars 2004 sur la vérification des appareils de levage.
+- **Fiche de visa** (P08 et M05 de l'audit, 12 octobre ; point 21 de `docs/reste-a-faire.md`, `docs/modele-cible.md`
+  §6) :
+  - elle n'existe que pour une révision approuvée (en vigueur, remplacée, approuvée en attente de sa date d'effet, ou
+    annulée après approbation) : une révision en rédaction ou en revue n'a pas de preuve d'approbation, même pour son
+    cercle de rédaction, qui suit son circuit dans l'onglet Validation ;
+  - elle se donne à qui lit le document et voit la révision (D-14) : hors du cercle de rédaction, la révision en
+    vigueur et celles qu'elle a remplacées. Un auditeur l'obtient donc avec son seul droit « Lire ». Pour un document
+    obsolète ou archivé, la règle est celle du fichier : qui peut encore le consulter n'est pas tranché (A13, P07), rien
+    ne change de ce côté ;
+  - elle ne montre à chacun que ce que Codex lui montre déjà ailleurs. Tout lecteur de la révision y lit les circuits,
+    leur issue et leur motif (comme dans l'onglet Validation), ainsi que les décisions, leurs titulaires et les
+    délégations (comme dans l'Historique). Le texte des commentaires d'un circuit, et le titulaire d'une étape jamais
+    décidée (non atteinte, ou laissée sans décision par un rappel ou une clôture), ne vont qu'à qui suit ce circuit :
+    gestionnaire documentaire, demandeur ou titulaire d'une de ses étapes, la règle de l'écran Validations. Les autres
+    lecteurs, propriétaire et auditeurs compris, lisent seulement le nombre de commentaires et le fait qu'ils se lisent
+    dans le circuit. Faut-il donner ces commentaires à tout lecteur de la révision, et donc élargir leur diffusion
+    au-delà de ce que montre l'application ? La question est à poser à l'utilisateur ;
+  - pas de signature électronique, ni cachet, ni empreinte : la question de la signature reste ouverte (M04). La fiche
+    dit qu'elle est un extrait du journal de Codex, édité tel jour par telle personne, et qu'elle ne porte pas de
+    signature électronique ;
+  - chaque édition est journalisée sous une action propre, « Fiche de visa éditée » (plutôt que « Téléchargement »),
+    rattachée à la révision : hors du cercle, elle n'apparaît qu'une fois la révision en vigueur. Une requête HEAD ne
+    journalise rien ;
+  - contenu : tous les circuits de la révision, dans l'ordre, rejetés et rappelés compris ; pour chaque étape, le
+    titulaire final (après délégation), sa décision et son moment, pris dans le journal à la minute près, sinon le jour
+    gardé sur l'étape ; les délégations lues dans le journal (« déléguée par … à … le … ») ; l'issue du circuit et son
+    motif ; ses commentaires (pour qui suit le circuit), y compris ceux que Codex écrit au rejet ou au rappel, qui
+    répètent le motif ;
+  - une révision importée déjà approuvée dit que son approbation a eu lieu dans l'ancien système, sans date
+    d'approbation : l'import ne transmet ni approbateurs ni date d'approbation (champ `legacyApproval`, point 99, qui
+    attend O-11). Une révision importée en brouillon, puis approuvée par un circuit de Codex, garde sa date
+    d'approbation et son circuit ; la fiche dit seulement quand elle a été reprise en brouillon de l'ancien système. On
+    distingue les deux cas ainsi : seul un circuit de Codex approuve une révision dans Codex, donc une révision importée
+    sans circuit approuvé l'a été dans l'ancien système. Une révision sans circuit ni import (l'historique des données
+    de démo) dit qu'aucun circuit n'est enregistré dans Codex ;
+  - langue de l'interface du lecteur, PDF en téléchargement (`{ID}_{lettre}_VISA.pdf`), même pour un document obsolète
+    ou archivé (pas de suffixe `_OBSOLETE` ou `_ARCHIVE` : l'état du document figure dans la fiche).
 - **Retrait** (D-17) : effets d'un retrait accepté sur le travail en cours (circuit clos, révisions ouvertes annulées).
 - **Documents obsolètes ou archivés** (D-17) : bandeau d'avertissement sur la fiche et dans l'aperçu rapide de
   l'explorateur, suffixe `_OBSOLETE` ou `_ARCHIVE` dans le nom proposé au téléchargement (`docs/modele-cible.md` §4).

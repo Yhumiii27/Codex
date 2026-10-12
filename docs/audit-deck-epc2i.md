@@ -1527,7 +1527,7 @@ tranché dans le modèle ou le code, ouvert, ou sans objet.
 
 - **Pourquoi** : La traçabilité est un objectif (slide 3) mais n'est pas spécifiée. Les audits ISO et les inspections ICPE ou pyrotechniques demandent de prouver qui a consulté, modifié ou approuvé quoi.
 - **Question** : Quels événements faut-il tracer (consultation, téléchargement, modification de métadonnées, décisions, changement de droits) ? Combien de temps garde-t-on ce journal ? Qui peut le consulter ? Faut-il un export pour les auditeurs ?
-- **Suite** : **Ouvert** : journal partiel, voir G48. L'export du journal est réservé à l'administration.
+- **Suite** : **Ouvert** : journal partiel, voir G48. L'export du journal est réservé à l'administration. Depuis le 12 octobre 2026, la fiche de visa d'une révision approuvée dit qui l'a approuvée et quand, délégations comprises, à tout lecteur de la révision (point 21 de `docs/reste-a-faire.md`).
 
 #### M06 — Diffusion et prise de connaissance
 
@@ -1671,7 +1671,7 @@ Relevés par le critique de complétude.
 
 **P08.** Diffusion, accusé de réception et partage client : la spec Keystone attend déjà de Codex une liste de diffusion, une preuve d'approbation, un journal de téléchargements et un accusé de réception client via le portail client Keystone (M14). La critique propose Power Pages pour le partage externe sans citer ce portail, et l'analyse d'écart ne traite pas du tout la diffusion.
 
-- **Suite** : **Ouvert.**
+- **Suite** : **Ouvert en partie.** Depuis le 12 octobre 2026, la preuve d'approbation existe : fiche de visa PDF d'une révision approuvée, tirée du journal, sans signature électronique (M04) (point 21 de `docs/reste-a-faire.md`). Les téléchargements de fichiers étaient déjà journalisés. Restent la liste de diffusion, l'accusé de réception client et le portail client Keystone (M14).
 
 **P09.** Lecture des slides 6 à 9 : chaque slide porte le logo d'un outil (6 SharePoint, 7 bibliothèque, 8 Power Automate, 9 à 11 Power Apps), ce qui suggère quatre chantiers découpés par outil plutôt qu'un plan unique. La critique y voit une contradiction d'ordre ; les exigences (MIG-08) fusionnent les étapes en une seule séquence. Aucune analyse ne relève non plus le « … » de la slide 7, qui laisse la liste des réglages de la bibliothèque ouverte.
 

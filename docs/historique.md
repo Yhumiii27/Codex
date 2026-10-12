@@ -1179,3 +1179,69 @@ document gardent leur statut « Remplacé » (D-11) ; le lien ne concerne que de
   `MNT-CHA-0001`) et de `MNT-CHA-0001`, acceptés dans l'ordre inverse : `NRM-QUA-0001` n'a aucun lien, et son journal
   dit « Remplacement non appliqué · ECO-2026-005 · Remplacé par MNT-CHA-0001 : document obsolète, archivé ou
   introuvable ».
+
+### 15.4 Preuve d'approbation d'une révision (fiche de visa)
+
+Point 21 de [reste-a-faire.md](reste-a-faire.md) (P08 et M05 de l'audit) : aucune route ni action n'exportait le
+circuit d'une révision, et `simplePdf` ne savait écrire qu'une page, sans retour à la ligne.
+
+- **Route** : `GET /api/documents/[id]/approval?rev=B` sert en téléchargement `{ID}_{lettre}_VISA.pdf`. Elle passe par
+  `approvalRecord` (`src/lib/queries.ts`) : `getDoc` comme la route fichier (ancien ID résolu ; document illisible :
+  404), puis la révision par sa lettre, à condition qu'elle ait été approuvée et que l'utilisateur la voie
+  (`mayGetApprovalRecord`, `src/lib/access.ts` : hors du cercle de rédaction, révision en vigueur ou remplacée, D-14).
+  Lettre absente ou mal formée, révision en rédaction ou en revue : 404. HEAD fait les mêmes contrôles sans construire
+  ni journaliser la fiche. Chaque édition est journalisée (« Fiche de visa éditée », action `visa`), sur la révision.
+- **Contenu** (`src/lib/approval.ts`) : ID, titre, révision et statut, type, rattachement, propriétaire,
+  confidentialité, état du document s'il est obsolète ou archivé, modificateur désigné, références ECO (D-26 : celle
+  qui a ouvert la révision et celles greffées), dates de création, d'approbation, d'effet, de mise en vigueur et de
+  remplacement. Puis chaque circuit de la révision, rejetés et rappelés compris : demandeur et moment de la demande,
+  issue (par qui, quand), motif, chaque étape (fonction, titulaire, décision, moment pris dans le journal, sinon le jour
+  de l'étape), délégations lues dans le journal (`delegate`, « Déléguée par … à … le … ») et commentaires. Révision
+  importée déjà approuvée : « son approbation a eu lieu dans l'ancien système » ; révision importée en brouillon puis
+  approuvée par un circuit de Codex : sa vraie date d'approbation, son circuit et une ligne « Reprise … en brouillon, de
+  l'ancien système » ; révision sans circuit : « Aucun circuit de validation n'est enregistré dans Codex ». Pas de
+  signature électronique (M04) : la fiche se dit extrait du journal de Codex, édité tel jour par telle personne. Langue
+  du lecteur ; pied de page numéroté ; titre du PDF.
+- **Ce que voit chaque lecteur** : la fiche ne montre à chacun que ce que Codex lui montre déjà. Le texte des
+  commentaires d'un circuit et le titulaire d'une étape jamais décidée ne vont qu'à qui suit ce circuit
+  (`followsCircuit`, `src/lib/access.ts` : gestionnaire documentaire, demandeur ou titulaire d'une étape, la règle de
+  `/validations`, désormais partagée avec `listWorkflows` et `addComment`). Les autres lecteurs, propriétaire et
+  auditeurs compris, lisent « 1 commentaire, lisible dans le circuit par ses participants et les gestionnaires
+  documentaires ». Les issues, motifs, décisions, titulaires et délégations restent pour tous : l'onglet Validation et
+  l'Historique les montraient déjà.
+- **PDF** (`src/lib/pdf.ts`) : retour à la ligne mesuré sur les largeurs des polices Helvetica et Helvetica-Bold (un
+  mot trop long est coupé, une espace insécable tient « 1 200 € » ensemble), accents et glyphes WinAnsi (œ, €,
+  guillemets), substituts pour quelques caractères hors WinAnsi, colonne de libellés, gras, plusieurs pages avec pied de
+  page, titre lu par les lecteurs PDF ; un intitulé n'est jamais laissé seul en bas de page. Le fichier de remplacement
+  des documents de démonstration reste une page.
+- **Fiche** : bouton « Fiche de visa » sur chaque révision approuvée de l'onglet Révisions (`DocClient.tsx`), absent
+  pour une révision en rédaction ou en revue.
+- **Choix prudents** ([decisions.md](decisions.md)) : fiche réservée aux révisions approuvées ; donnée à tout lecteur
+  de la révision, mais commentaires et titulaires des étapes jamais décidées réservés à qui suit le circuit (élargir
+  leur diffusion est une question à poser) ; action de journal propre, rattachée à la révision ; aucune date
+  d'approbation pour une révision importée déjà approuvée (champ `legacyApproval`, point 99, O-11) ; pas de suffixe
+  d'état dans le nom ; pas de signature ni d'empreinte (M04).
+- **Relecture** : deux défauts corrigés avant le commit. Un brouillon importé puis approuvé dans Codex était dit
+  « approuvé dans l'ancien système », sans sa vraie date d'approbation. Le texte des commentaires de circuit allait à
+  tout lecteur de la révision, alors que l'application le réserve au circuit. Un test couvre aussi une révision qui
+  porte deux ECO, l'un greffé (D-26).
+- **Vérifié** : `npm test` (654 tests, dont `tests/unit/pdf.test.ts`, `tests/unit/approval.test.ts` et
+  `tests/integration/approval.test.ts` ; le PDF y est relu par `tests/support/pdf.ts`, qui suit la table xref,
+  l'arbre des pages et les flux), `npm run typecheck`, `npm run lint`. Les tests échouent si l'on retire le contrôle de
+  visibilité de la révision, celui de l'approbation, celui de lecture du document, la ligne de journal ou son
+  rattachement à la révision, ou la mention de l'import, si l'on donne les commentaires à tout lecteur, si l'on dit
+  approuvé dans l'ancien système un brouillon importé puis approuvé dans Codex, ou si l'on ne garde que l'ECO qui a
+  ouvert la révision (essayé). Dans le navigateur, sur une base de démo neuve :
+  James Holt (auditeur, hors du cercle) voit cinq boutons « Fiche de visa » sur `PRO-QUA-0001` (E en vigueur, A à D
+  remplacées) et télécharge `PRO-QUA-0001_E_VISA.pdf` ; `pdftotext` y lit le circuit W-308 (demande de Gabriel Comte
+  le 28/01/2026 09:12, approbations d'Hélène Sauvage et d'Hélène Costa avec leur heure), la mention d'extrait du journal
+  et l'absence de signature ; `pdfinfo` donne le titre ; l'Historique montre « Fiche de visa éditée · E ». La révision D
+  dit « Aucun circuit de validation n'est enregistré ». Sur `BOM-HLT-026-002`, Claire Bardet voit le brouillon B sans
+  bouton et reçoit 404 pour sa fiche ; Julien Wagner (hors du cercle) ne voit pas B, reçoit 404 pour sa fiche et 200
+  pour celle de A. La révision D en revue de `BOM-HLT-026-001` donne 404 à James Holt. Vue en anglais vérifiée
+  (« Approval record », « Approved on »). Un PDF de deux pages (motif de près de 2 000 caractères) est lu par
+  `pdftotext` sans perte, accents et pieds de page compris. Après relecture, sur `BOM-HLT-026-001` : Antoine Girard
+  approuve la dernière étape du circuit W-301 depuis Validations, la révision D entre en vigueur ; Julien Wagner
+  (demandeur) et Claire Bardet (gestionnaire) lisent dans `BOM-HLT-026-001_D_VISA.pdf` le commentaire « Révision prête
+  pour vérification… », James Holt (auditeur, hors du circuit) y lit « 1 commentaire, lisible dans le circuit par ses
+  participants et les gestionnaires documentaires », et chacun l'approbation d'Antoine Girard avec son heure.
