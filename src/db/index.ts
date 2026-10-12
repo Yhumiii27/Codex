@@ -30,15 +30,37 @@ create or replace trigger audit_log_no_truncate before truncate on audit_log for
 `;
 
 /**
- * Opens a database with the schema of drizzle/ and the append-only journal, but no data: on disk under `dataDir`, or in
- * memory without one. getDb() opens the application's database with it and seeds it; integration tests
- * (tests/integration) open throwaway in-memory databases with it, so they run against the same schema and triggers.
+ * documents.version follows every change of a document's row, whatever path writes it (metadata, lifecycle, Vigie,
+ * hold, archive): one step per UPDATE that changes something. A statement that sets the version itself still moves it
+ * by one step. The record's dialogs send it back to detect concurrent edits (lib/concurrency.ts).
+ * An UPDATE that leaves the row as it was is skipped, as Postgres' suppress_redundant_updates_trigger does: the row
+ * keeps its version and the transaction that last changed it (its xmin), whose journal entries name who changed it
+ * (lib/actions.ts lastChangedBy). Installed at every start, like the journal's triggers.
+ */
+const DOCUMENT_VERSION = `
+create or replace function documents_version() returns trigger language plpgsql as $$
+begin
+  if new is not distinct from old then
+    return null;
+  end if;
+  new.version := old.version + 1;
+  return new;
+end $$;
+create or replace trigger documents_version before update on documents for each row execute function documents_version();
+`;
+
+/**
+ * Opens a database with the schema of drizzle/, the append-only journal and the version of documents, but no data: on
+ * disk under `dataDir`, or in memory without one. getDb() opens the application's database with it and seeds it;
+ * integration tests (tests/integration) open throwaway in-memory databases with it, so they run against the same
+ * schema and triggers.
  */
 export async function openDb(dataDir?: string): Promise<Db> {
   const client = new PGlite(dataDir);
   const db = drizzle(client, { schema });
   await migrate(db, { migrationsFolder: path.join(process.cwd(), 'drizzle') });
   await client.exec(AUDIT_APPEND_ONLY);
+  await client.exec(DOCUMENT_VERSION);
   return db;
 }
 

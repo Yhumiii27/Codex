@@ -6,7 +6,7 @@ import { decideStep, recallValidation, requestValidation } from '@/lib/actions';
 import { getCtx } from '@/lib/context';
 import { DICT, type SimRole } from '@/lib/i18n';
 import { getDoc as getRecord, listAudit, listWorkflows, myActions } from '@/lib/queries';
-import { addDoc, fixClock, getDoc, getRevision, journalOf, revisionStatuses, setupDb } from '../support/db';
+import { addDoc, baseOf, fixClock, getDoc, getRevision, journalOf, revisionStatuses, setupDb } from '../support/db';
 import type { Person } from '../support/fixtures';
 import { actAs } from '../support/session';
 
@@ -36,7 +36,7 @@ async function act<R>(who: Person, fn: () => Promise<R>, role?: SimRole): Promis
  */
 async function running() {
   await addDoc(db(), { id: ID, revisions: [{ letter: 'A', status: 'in_force' }, { letter: 'B', status: 'draft', modifierId: 'writer', changeRef: ECO, versions: ['writer'] }] });
-  expect(await act('writer', () => requestValidation(ID, null))).toMatchObject({ ok: true });
+  expect(await act('writer', async () => requestValidation(ID, null, await baseOf(db(), ID)))).toMatchObject({ ok: true });
   expect(await revisionStatuses(db(), ID)).toEqual({ A: 'in_force', B: 'in_review' });
 }
 
@@ -63,7 +63,7 @@ async function seenBy(who: Person, id = 'W-1', role?: SimRole) {
 /** Revision A, the first one, drafted by the owner and sent for approval: nothing in force yet, the record reads « En revue ». */
 async function firstRevision() {
   await addDoc(db(), { id: ID, revisions: [{ letter: 'A', status: 'draft', versions: ['owner'] }] });
-  expect(await act('owner', () => requestValidation(ID, null))).toMatchObject({ ok: true });
+  expect(await act('owner', async () => requestValidation(ID, null, await baseOf(db(), ID)))).toMatchObject({ ok: true });
   expect(await getDoc(db(), ID)).toMatchObject({ status: 'in_review', revWorking: 'A', revInForce: null });
 }
 
@@ -188,7 +188,7 @@ describe('recalling a request (docs/modele-cible.md §6)', () => {
     expect(await revisionStatuses(db(), ID)).toEqual({ A: 'in_force', B: 'draft' });
 
     // B may be sent for approval again: a new circuit.
-    expect(await act('writer', () => requestValidation(ID, null))).toEqual({ ok: true, href: '/validations?f=requested&r=W-2' });
+    expect(await act('writer', async () => requestValidation(ID, null, await baseOf(db(), ID)))).toEqual({ ok: true, href: '/validations?f=requested&r=W-2' });
     expect(await workflow('W-2')).toMatchObject({ outcome: null, step: 1 });
   });
 
@@ -251,7 +251,7 @@ describe('recalling a request (docs/modele-cible.md §6)', () => {
     expect(await act('writer', () => recallValidation('W-1', 1))).toEqual({ ok: false, error: t.wrong_step });
     expect(await workflow()).toMatchObject({ outcome: 'rejected', closedBy: 'head' });
 
-    expect(await act('writer', () => requestValidation(ID, null))).toMatchObject({ ok: true });
+    expect(await act('writer', async () => requestValidation(ID, null, await baseOf(db(), ID)))).toMatchObject({ ok: true });
     expect(await act('head', () => decideStep('W-2', true, 1))).toEqual({ ok: true });
     expect(await act('quality', () => decideStep('W-2', true, 2))).toEqual({ ok: true });
     expect(await workflow('W-2')).toMatchObject({ outcome: 'approved', closedBy: 'quality', closedAt: '2026-10-10' });
@@ -283,7 +283,7 @@ describe('recalling a request (docs/modele-cible.md §6)', () => {
     actAs('owner');
     expect((await myActions(await getCtx())).map((a) => [a.kind, a.note])).toEqual([['recalled', null]]);
 
-    expect(await act('writer', () => requestValidation(ID, null))).toMatchObject({ ok: true });
+    expect(await act('writer', async () => requestValidation(ID, null, await baseOf(db(), ID)))).toMatchObject({ ok: true });
     const long = `Voir les remarques ${'détaillées '.repeat(40)}`;
     expect(await act('head', () => decideStep('W-2', false, 1, long))).toEqual({ ok: true });
     actAs('owner');

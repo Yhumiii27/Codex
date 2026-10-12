@@ -5,7 +5,7 @@ import { buildAccessIndex } from '@/lib/access';
 import { decideStep, delegateStep, requestValidation } from '@/lib/actions';
 import { DICT } from '@/lib/i18n';
 import { promoteDue } from '@/lib/lifecycle';
-import { addDoc, fixClock, getDoc, getRevision, revisionStatuses, setClock, setupDb } from '../support/db';
+import { addDoc, baseOf, fixClock, getDoc, getRevision, revisionStatuses, setClock, setupDb } from '../support/db';
 import type { Person } from '../support/fixtures';
 import { actAs } from '../support/session';
 
@@ -51,7 +51,7 @@ const change = (modifier: Person, authors: Person[]) =>
 
 async function launch(by: Person) {
   actAs(by);
-  return requestValidation(ID, null);
+  return requestValidation(ID, null, await baseOf(db(), ID));
 }
 
 describe('requestValidation: resolving the circuit (D-15)', () => {
@@ -196,7 +196,7 @@ describe('effective date chosen at launch (D-11, docs/modele-cible.md §4)', () 
   it('keeps the revision « Approuvé » after the last approval until its effective date, then puts it in force', async () => {
     await change('writer', ['writer']);
     actAs('owner');
-    expect((await requestValidation(ID, '2026-10-20')).ok).toBe(true);
+    expect((await requestValidation(ID, '2026-10-20', await baseOf(db(), ID))).ok).toBe(true);
     expect(await getRevision(db(), ID, 'B')).toMatchObject({ status: 'in_review', effectiveAt: '2026-10-20' });
     expect(await steps('W-1')).toEqual(['writer', 'head', 'quality']);
     actAs('head');
@@ -221,7 +221,7 @@ describe('effective date chosen at launch (D-11, docs/modele-cible.md §4)', () 
   ])('refuses %s as effective date, and writes nothing', async (_, date) => {
     await change('writer', ['writer']);
     actAs('owner');
-    expect(await requestValidation(ID, date)).toEqual({ ok: false, error: t.invalid_date });
+    expect(await requestValidation(ID, date, await baseOf(db(), ID))).toEqual({ ok: false, error: t.invalid_date });
     expect(await revisionStatuses(db(), ID)).toEqual({ A: 'in_force', B: 'draft' });
     expect((await getRevision(db(), ID, 'B')).effectiveAt).toBeNull();
     expect(await db().select().from(s.workflows)).toEqual([]);

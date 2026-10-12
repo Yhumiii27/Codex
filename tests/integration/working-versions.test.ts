@@ -7,7 +7,7 @@ import { addWorkingVersion, createDocument } from '@/lib/actions';
 import { DICT } from '@/lib/i18n';
 import { applyChangeDecision } from '@/lib/lifecycle';
 import { submitChange } from '@/lib/vigie';
-import { addDoc, fixClock, getDoc, journalOf, revisionStatuses, setupDb } from '../support/db';
+import { addDoc, fixClock, getDoc, journalOf, revisionStatuses, setupDb, viewOf } from '../support/db';
 import type { Person } from '../support/fixtures';
 import { actAs } from '../support/session';
 
@@ -46,9 +46,11 @@ function form(fields: Record<string, string | File>): FormData {
   return fd;
 }
 
+/** `who` uploads a working version from the record as it is now (its last working version, viewOf). */
 async function upload(who: Person, docId = ID, comment = '') {
   actAs(who);
-  return addWorkingVersion(form({ docId, file: pdf(), comment }));
+  const { baseRevision, baseVersion } = await viewOf(db(), docId);
+  return addWorkingVersion(form({ docId, file: pdf(), comment, baseRevision, baseVersion }));
 }
 
 /** Working versions of the document: label, author, stored file name (null without file). */

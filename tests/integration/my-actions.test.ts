@@ -6,7 +6,7 @@ import { getCtx } from '@/lib/context';
 import { DICT, MATRIX_ROLE, type SimRole } from '@/lib/i18n';
 import { applyChangeDecision } from '@/lib/lifecycle';
 import { myActions } from '@/lib/queries';
-import { addDoc, addWorkflow, fixClock, setupDb } from '../support/db';
+import { addDoc, addWorkflow, baseOf, fixClock, setupDb } from '../support/db';
 import type { Person } from '../support/fixtures';
 import { actAs } from '../support/session';
 
@@ -111,7 +111,7 @@ describe('revisions being drafted', () => {
     await addDoc(db(), { id: ID, revisions: [{ letter: 'A', status: 'draft', versions: ['owner'] }] });
     expect(await todo('owner')).toEqual([{ key: `draft:${ID}`, kind: 'draft', docId: ID, docTitle: ID, href: `/documents/${ID}?tab=versions`, due: null, note: null, detail: `${ID} · ${t.rev_short} A.1 ${t.todo_draft}` }]);
     for (const who of ['writer', 'head', 'manager'] as const) expect(await kinds(who), who).toEqual([]);
-    expect(await act('owner', () => requestValidation(ID, null))).toMatchObject({ ok: true });
+    expect(await act('owner', async () => requestValidation(ID, null, await baseOf(db(), ID)))).toMatchObject({ ok: true });
     expect(await kinds('owner')).toEqual([]);
     expect(await kinds('head')).toEqual([`step ${ID}`]);
   });
@@ -132,7 +132,7 @@ describe('revisions being drafted', () => {
 
   it('a revision sent back by a circuit waits for its author and the owner, with who rejected it, until sent again', async () => {
     await drafting({ modifier: 'writer', authors: ['writer'] });
-    expect(await act('writer', () => requestValidation(ID, null))).toMatchObject({ ok: true });
+    expect(await act('writer', async () => requestValidation(ID, null, await baseOf(db(), ID)))).toMatchObject({ ok: true });
     expect(await kinds('writer')).toEqual([]);
     expect(await act('head', () => decideStep('W-1', false, 1, 'Tableau 3 à corriger'))).toEqual({ ok: true });
     // Who sent it back, and why on a line of its own (the reason of a rejection is required).
@@ -144,7 +144,7 @@ describe('revisions being drafted', () => {
     }
     // The approvers left the drafting circle with the circuit (D-14): nothing for them, nor for a records manager.
     for (const who of ['head', 'quality', 'manager'] as const) expect(await kinds(who), who).toEqual([]);
-    expect(await act('writer', () => requestValidation(ID, null))).toMatchObject({ ok: true });
+    expect(await act('writer', async () => requestValidation(ID, null, await baseOf(db(), ID)))).toMatchObject({ ok: true });
     expect(await kinds('writer')).toEqual([]);
     expect(await kinds('owner')).toEqual([]);
     expect(await kinds('head')).toEqual([`step ${ID}`]);
@@ -153,7 +153,7 @@ describe('revisions being drafted', () => {
   it('not for an author of the revision who is no longer in its drafting circle (D-14)', async () => {
     // A records manager wrote B.1; the owner sent it for approval and the head of department rejected it.
     await drafting({ authors: ['manager'] });
-    expect(await act('owner', () => requestValidation(ID, null))).toMatchObject({ ok: true });
+    expect(await act('owner', async () => requestValidation(ID, null, await baseOf(db(), ID)))).toMatchObject({ ok: true });
     expect(await act('head', () => decideStep('W-1', false, 1, 'Hors périmètre'))).toEqual({ ok: true });
     expect(await kinds('manager')).toEqual([`rejected ${ID}`]);
     expect(await kinds('owner')).toEqual([`rejected ${ID}`]);
@@ -195,7 +195,7 @@ describe('accepted change waiting for the revision being drafted (D-26)', () => 
 
   it('no longer once the revision is in review', async () => {
     await waiting();
-    expect(await act('owner', () => requestValidation(ID, null))).toMatchObject({ ok: true });
+    expect(await act('owner', async () => requestValidation(ID, null, await baseOf(db(), ID)))).toMatchObject({ ok: true });
     expect(await kinds('owner')).toEqual([]);
     expect(await kinds('manager')).toEqual([]);
   });

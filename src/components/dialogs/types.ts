@@ -48,6 +48,11 @@ export type MetaDoc = {
   inForce: boolean;
   /** An approval workflow is running: type and context (which resolved its approvers) cannot change. */
   classificationLocked: boolean;
+  /**
+   * Version of the record shown (documents.version), sent back to detect a change since (lib/concurrency.ts); 0 for
+   * whoever may not edit it, outside the drafting circle (D-14).
+   */
+  version: number;
 };
 
 /** A working version or revision file, for the compare dialog. */
@@ -61,11 +66,17 @@ export type DialogSpec =
   | { kind: 'new'; preset?: { mode?: 'template' | 'file' | 'blank'; projectCode?: string; expectedId?: number; typeCode?: string; title?: string; label?: string; templateId?: string } }
   | { kind: 'notes' }
   | { kind: 'user' }
-  /** Next working version (e.g. B.3) of the revision being drafted. */
-  | { kind: 'working'; docId: string; nextLabel: string }
+  /**
+   * Next working version (e.g. B.3) of the revision being drafted. `base`: that revision and the number of the last
+   * working version shown (0 before the first), sent back so that one uploaded since is not passed over.
+   */
+  | { kind: 'working'; docId: string; nextLabel: string; base: { revisionId: number; n: number } }
   | { kind: 'meta'; doc: MetaDoc }
-  /** Request approval of the revision being drafted, with an optional effective date (`minDate`: today, Paris time). */
-  | { kind: 'validate'; docId: string; title: string; revLabel: string; circuitL: string; minDate: string }
+  /**
+   * Request approval of the revision being drafted, with an optional effective date (`minDate`: today, Paris time).
+   * `base`: as for an upload, the last working version shown, so that the circuit does not start on one uploaded since.
+   */
+  | { kind: 'validate'; docId: string; title: string; revLabel: string; circuitL: string; minDate: string; base: { revisionId: number; n: number } }
   /**
    * Change request (ECR) or withdrawal request, both sent to Vigie. `openRev`: for a change asked while a revision is
    * open, that revision and its status (an accepted change waits for its entry into force, or may be grafted onto it
@@ -88,8 +99,8 @@ export type DialogSpec =
    */
   | { kind: 'reject' | 'recall'; workflowId: string; step: number; stepName: string; docId: string; title: string; letter: string }
   | { kind: 'compare'; current: VersionLite; other: VersionLite }
-  /** Named readers of a confidential or "très confidentiel" document. */
-  | { kind: 'readers'; docId: string; readers: string[] }
+  /** Named readers of a confidential or "très confidentiel" document; `version`: of the record shown (lib/concurrency.ts). */
+  | { kind: 'readers'; docId: string; readers: string[]; version: number }
   /**
    * Records manager simulating Vigie's decision on a change request. `modifierId`: the author proposed by default;
    * `drafters`: the people who may draft the document, the only ones offered as author; `deferred`: that an acceptance

@@ -9,7 +9,7 @@ import { DICT } from '@/lib/i18n';
 import { applyChangeDecision, applyPendingDecision, approveRevision, cancelOpenRevisions, promoteDue } from '@/lib/lifecycle';
 import { acceptedWaitL, decisionWaitL, listAudit, listChangeRequests, listRevisions } from '@/lib/queries';
 import { submitChange } from '@/lib/vigie';
-import { addDoc, addWorkflow, fixClock, getChange, getDoc, getRevision, journalOf, revisionStatuses, setClock, setupDb, type DocSpec } from '../support/db';
+import { addDoc, addWorkflow, baseOf, fixClock, getChange, getDoc, getRevision, journalOf, revisionStatuses, setClock, setupDb, type DocSpec } from '../support/db';
 import type { Person } from '../support/fixtures';
 import { actAs } from '../support/session';
 
@@ -120,7 +120,7 @@ describe('waiting: the change opens the next revision once B is in force or canc
     await withOpen('draft', { typeCode: 'COR' });
     const id = await waiting();
     actAs('manager');
-    expect((await requestValidation(ID, null)).ok).toBe(true);
+    expect((await requestValidation(ID, null, await baseOf(db(), ID))).ok).toBe(true);
     expect(await revisionStatuses(db(), ID)).toEqual({ A: 'superseded', B: 'in_force', C: 'draft' });
     expect((await getChange(db(), id)).status).toBe('implemented');
   });
@@ -428,7 +428,7 @@ describe('drafting circle (D-14)', () => {
     fd.set('docId', ID);
     fd.set('file', new File(['%PDF-1.4\n%%EOF'], 'b.pdf', { type: 'application/pdf' }));
     expect(await addWorkingVersion(fd)).toEqual({ ok: false, error: t.not_allowed });
-    expect(await requestValidation(ID, null)).toEqual({ ok: false, error: t.not_allowed });
+    expect(await requestValidation(ID, null, await baseOf(db(), ID))).toEqual({ ok: false, error: t.not_allowed });
     expect(await graftChange(id)).toEqual({ ok: false, error: t.not_allowed });
     expect(await journalOf(db(), ID)).toEqual(before);
 

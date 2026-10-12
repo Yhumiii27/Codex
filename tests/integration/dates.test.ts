@@ -8,7 +8,7 @@ import { dateIssues, effectIssue, issueFrom, latestEffect } from '@/lib/dates';
 import { todayIso } from '@/lib/format';
 import { DICT } from '@/lib/i18n';
 import { importDocument } from '@/lib/importer';
-import { addDoc, fixClock, getDoc, getRevision, journalOf, revisionStatuses, setClock, setupDb } from '../support/db';
+import { addDoc, baseOf, fixClock, getDoc, getRevision, journalOf, revisionStatuses, setClock, setupDb, viewOf } from '../support/db';
 import { actAs, cookieStore } from '../support/session';
 
 // Dates of a document (point 3 of docs/reste-a-faire.md; docs/audit-deck-epc2i.md §4.6, rule 12: issue ≤ effect ≤
@@ -34,9 +34,9 @@ function form(fields: Record<string, string>): FormData {
 }
 
 /** The owner submits the metadata form of the document with these fields. */
-function edit(fields: Record<string, string>, id = ID) {
+async function edit(fields: Record<string, string>, id = ID) {
   actAs('owner');
-  return updateMeta(form({ docId: id, ...fields }));
+  return updateMeta(form({ docId: id, version: (await viewOf(db(), id)).version, ...fields }));
 }
 
 /** The document's dates and its journal entries, to show that a refused edit wrote nothing. */
@@ -172,7 +172,7 @@ describe('updateMeta: coherence with the issue and the effective date', () => {
     await addDoc(db(), { id: ID });
     actAs('owner');
     (await cookieStore()).set(COOKIE_LANG, 'en');
-    expect(await updateMeta(form({ docId: ID, expiresAt: '2026-09-01' }))).toEqual({ ok: false, error: 'The expiry date must be after the document’s issue date (10 Sep 2026): choose a later date.', field: 'expiresAt' });
+    expect(await updateMeta(form({ docId: ID, version: (await viewOf(db(), ID)).version, expiresAt: '2026-09-01' }))).toEqual({ ok: false, error: 'The expiry date must be after the document’s issue date (10 Sep 2026): choose a later date.', field: 'expiresAt' });
   });
 });
 
@@ -182,9 +182,9 @@ describe('requestValidation: the revision takes effect before the document expir
     await addDoc(db(), { id: ID, revisions: [{ letter: 'A', status: 'in_force', versions: ['owner'] }, { letter: 'B', status: 'draft', versions: ['writer'] }] });
     await db().update(s.documents).set({ expiresAt }).where(eq(s.documents.id, ID));
   }
-  const request = (effectiveAt: string | null) => {
+  const request = async (effectiveAt: string | null) => {
     actAs('owner');
-    return requestValidation(ID, effectiveAt);
+    return requestValidation(ID, effectiveAt, await baseOf(db(), ID));
   };
   const nothingWritten = async () => {
     expect(await revisionStatuses(db(), ID)).toEqual({ A: 'in_force', B: 'draft' });
@@ -227,10 +227,10 @@ describe('requestValidation: the revision takes effect before the document expir
     await addDoc(db(), { id: ID, revisions: [{ letter: 'A', status: 'in_force', versions: ['owner'] }, { letter: 'B', status: 'draft', modifierId: 'writer', versions: ['writer'] }] });
     await db().update(s.documents).set({ expiresAt: '2026-12-01' }).where(eq(s.documents.id, ID));
     actAs('writer');
-    const res = await requestValidation(ID, '2026-12-15');
+    const res = await requestValidation(ID, '2026-12-15', await baseOf(db(), ID));
     expect(res).toEqual({ ok: false, error: t.effective_after_expiry.replace('{date}', '01/12/2026'), field: 'effectiveAt' });
     expect(t.effective_after_expiry).toContain('par le propriétaire du document ou un gestionnaire documentaire');
-    expect(await updateMeta(form({ docId: ID, expiresAt: '2027-12-01' }))).toMatchObject({ ok: false });
+    expect(await updateMeta(form({ docId: ID, version: (await viewOf(db(), ID)).version, expiresAt: '2027-12-01' }))).toMatchObject({ ok: false });
   });
 });
 
@@ -240,9 +240,9 @@ describe('requestValidation: a document not issued yet is issued by this revisio
     await addDoc(db(), { id: COR, typeCode: 'COR', revisions: [{ letter: 'A', status: 'draft', versions: ['owner'] }] });
     if (Object.keys(dates).length) await db().update(s.documents).set(dates).where(eq(s.documents.id, COR));
   }
-  const request = (effectiveAt: string | null) => {
+  const request = async (effectiveAt: string | null) => {
     actAs('manager');
-    return requestValidation(COR, effectiveAt);
+    return requestValidation(COR, effectiveAt, await baseOf(db(), COR));
   };
   const nothingWritten = async () => {
     expect(await revisionStatuses(db(), COR)).toEqual({ A: 'draft' });

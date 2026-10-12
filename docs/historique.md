@@ -34,7 +34,7 @@ Conventions :
 | 10 oct. | Tests (Vitest, PGlite en mémoire) et intégration continue | 12 |
 | 11 oct. | Décision D-26 : greffe ou attente d'une modification acceptée pendant une révision ouverte. Étape 1 : couche métier. Étape 2 : fiche document | 13 |
 | 11 oct. | Fonctions du deck (lot 5), une étape par fonction : « Mes demandes Vigie », « À traiter » complet, rejet motivé et rappel, recherches enregistrées partagées, facettes et tri de la recherche, pages par département | 14 |
-| 12 oct. | Points développables de reste-a-faire.md, une étape par point. Étape 1 : dates, format contrôlé et cohérence émission ≤ effet ≤ expiration | 15 |
+| 12 oct. | Points développables de reste-a-faire.md, une étape par point. Étape 1 : dates, format contrôlé et cohérence émission ≤ effet ≤ expiration. Étape 2 : expiration et revue périodique. Étape 3 : lien « remplacé par ». Étape 4 : fiche de visa. Étape 5 : modifications simultanées détectées | 15 |
 
 La session a été coupée plusieurs fois par une limite d'usage ou de dépense :
 - le 7 octobre à 13:38, reprise à 17:31 sur « Try again » ;
@@ -1245,3 +1245,75 @@ circuit d'une révision, et `simplePdf` ne savait écrire qu'une page, sans reto
   (demandeur) et Claire Bardet (gestionnaire) lisent dans `BOM-HLT-026-001_D_VISA.pdf` le commentaire « Révision prête
   pour vérification… », James Holt (auditeur, hors du circuit) y lit « 1 commentaire, lisible dans le circuit par ses
   participants et les gestionnaires documentaires », et chacun l'approbation d'Antoine Girard avec son heure.
+
+### 15.5 Modifications simultanées détectées
+
+Point 20 de [reste-a-faire.md](reste-a-faire.md) (D-12) : `updateMeta` réécrivait tous les champs du formulaire sans
+vérifier que la fiche n'avait pas changé depuis son ouverture, et `addWorkingVersion` empilait une version de travail
+sans savoir de quelle version le déposant était parti. Le constat était toujours vrai au commit `555761c`.
+
+- **Version de la fiche** : colonne `documents.version` (entier, 1 à la création ; migration unique régénérée). Un
+  déclencheur `documents_version`, posé à chaque démarrage comme ceux du journal (`src/db/index.ts`), la relève d'un
+  cran à chaque `UPDATE` qui change réellement la ligne, quel que soit le chemin (métadonnées, revue, cycle de vie,
+  Vigie, gel, archivage). Une écriture qui ne change rien (un `refreshHeadline` sans effet, le second dépôt du jour)
+  est ignorée par la base, comme le fait `suppress_redundant_updates_trigger` de Postgres : la ligne garde sa version
+  et la transaction de sa dernière modification (`xmin`). `setReaders` la relève à la main : les lecteurs désignés
+  sont rangés à part.
+- **Métadonnées et lecteurs désignés** : le dialogue de métadonnées renvoie la version en champ caché, celui des
+  lecteurs en argument de `setReaders`. Les deux actions la comparent après les contrôles d'accès et de verrou, puis
+  de nouveau dans leur transaction (`select … for update`), et refusent sans rien écrire : « Ce document a été modifié
+  entre-temps par … ; rechargez la fiche » (`stale`, ou `stale_anon` sans nom). Un formulaire sans version est refusé
+  de même ; un formulaire sur l'ancien ID d'un document reclassé entre-temps aussi, plutôt que « Document
+  introuvable », pour qui pouvait encore agir (sinon `not_found`, comme avant).
+- **Versions de travail** : le dialogue de dépôt renvoie la révision et le numéro de la dernière version qu'il a
+  montrée (`baseRevision`, `baseVersion`). `addWorkingVersion` refuse, avant d'envoyer le fichier au stockage puis
+  dans sa transaction (le fichier déjà stocké est alors retiré), un dépôt qui ne part pas de la dernière version :
+  « La version de travail A.3 a été déposée entre-temps par … ; rechargez la fiche pour partir de cette version »
+  (`working_stale`). Les deux versions restent conservées une fois la seconde déposée en connaissance de cause (D-12).
+- **Demande de validation** : le dialogue renvoie aussi la dernière version de travail montrée ; `requestValidation`
+  la contrôle dans sa transaction et refuse : « … rechargez la fiche pour la voir avant de demander la validation »
+  (`validate_stale`). Un circuit ne part plus, et un type sans circuit n'entre plus en vigueur, sur une version que le
+  demandeur n'a pas vue.
+- **Qui est nommé** : l'auteur de la dernière modification de la fiche (`lastChangedBy`, `src/lib/actions.ts`) :
+  les entrées du journal écrites dans la transaction qui a modifié la ligne en dernier (même `xmin`), de préférence
+  sur ce document et d'une personne plutôt que de Codex ou Vigie (`changeAuthor`, `src/lib/concurrency.ts`).
+  Personne n'est nommé quand cette transaction n'a rien journalisé. Ces refus ne vont qu'au cercle de rédaction, qui
+  lit tout le journal (D-14).
+- **Hors du cercle de rédaction** : `docView` donne la version 0, et la fiche ne la met dans le dialogue de
+  métadonnées que pour qui peut le valider (propriétaire, gestionnaire) : elle bouge aussi avec le travail sur le
+  brouillon (dépôt, révision ouverte), que les autres lecteurs ne voient pas (D-14).
+- **Dialogue** : l'erreur reste affichée avec la saisie et un bouton « Recharger la fiche », qui ferme le dialogue et
+  recharge la page (`useSubmit`, `reload`, `src/components/dialogs/Modal.tsx`).
+- **Non fait** : la réservation d'un brouillon (Réserver / Libérer), qui change la façon de travailler ; elle est
+  proposée à l'utilisateur dans [decisions.md](decisions.md) (« Modifications simultanées »). Le point 20 reste « fait
+  en partie ».
+- **Choix prudents** ([decisions.md](decisions.md)) : détection optimiste seulement, refus sans fusion ni reprise
+  automatique ; toute modification de la fiche périme un dialogue de métadonnées ouvert avant, même sur d'autres
+  champs ; refus d'un dépôt ou d'une demande de validation même quand la version plus récente vient de la même
+  personne ; formulaire sans version refusé ; aucun nom quand la modification n'est pas journalisée.
+- **Relecture** : quatre constats appliqués. La version partait vers tout lecteur de la fiche dans le dialogue de
+  métadonnées et bougeait avec le travail sur le brouillon (D-14) : elle vaut désormais 0 hors du cercle. Le refus
+  nommait l'auteur de la dernière entrée du journal non exclue, même sans effet sur la fiche (demande de modification,
+  second dépôt du jour, étape intermédiaire) : il nomme désormais l'auteur de la transaction qui a modifié la ligne.
+  `requestValidation` lançait le circuit sur une version déposée depuis l'ouverture du dialogue : il la contrôle. La
+  garde D-14 de l'ancien ID n'était testée que pour `updateMeta` : `addWorkingVersion` et `setReaders` le sont aussi.
+- **Vérifié** : `npm test` (691 tests, dont `tests/unit/concurrency.test.ts` et
+  `tests/integration/concurrent-edits.test.ts`, deux sessions simulées par `actAs` qui partent de la même vue),
+  `npm run typecheck`, `npm run lint`. Les tests qui appellent `updateMeta`, `addWorkingVersion` ou
+  `requestValidation` envoient désormais la vue courante (`viewOf`, `baseOf`, `tests/support/db.ts`).
+  Les tests échouent si l'on retire le déclencheur ou le saut des mises à jour sans effet, la comparaison de
+  `updateMeta` ou de `setReaders` (avant ou dans la transaction, la seconde atteinte en glissant une modification à
+  l'ouverture de la transaction), la relève de version de `setReaders`, le contrôle de la version de base d'un dépôt
+  (avant ou dans la transaction) ou d'une demande de validation, le retrait du fichier refusé, la recherche de
+  l'auteur par transaction, la préférence pour une personne plutôt que Codex, le masquage de la version hors du
+  cercle, ou la garde de l'ancien ID de `addWorkingVersion` et `setReaders` (essayé).
+  Dans le navigateur, sur une base de démo neuve, deux contextes sur la même fiche : sur `PRO-QUA-0002`, Gabriel
+  Comte enregistre un nouveau titre, Joachim Wagner demande ensuite une modification, puis Claire Bardet, dont le
+  dialogue était ouvert, reçoit « Ce document a été modifié entre-temps par Gabriel Comte ; rechargez la fiche. » avec
+  « Recharger la fiche » ; son enregistrement passe ensuite. Sur `HSE-HLT-026-001` (révision C en brouillon), Lucas
+  Fabre dépose C.2, puis Claire Bardet reçoit « La version de travail C.2 a été déposée entre-temps par Lucas Fabre ;
+  rechargez la fiche pour partir de cette version. » ; son dialogue « Demander la validation » ouvert sur C.2 reçoit,
+  après le dépôt de C.3, « … rechargez la fiche pour la voir avant de demander la validation. », et rechargé, lance
+  W-311 sur C.3. Joachim Wagner, hors du cercle, reçoit la version 0 avant comme après, et la même fiche ; Claire
+  Bardet, la version réelle. Avant la relecture, sur `CTR-JUR-0001`, deux onglets « Lecteurs désignés » : le second
+  reçoit le refus.

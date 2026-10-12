@@ -23,15 +23,15 @@ export function Dialogs({ spec }: { spec: DialogSpec }) {
     case 'new': return <NewDocument preset={spec.preset} />;
     case 'notes': return <Notes />;
     case 'user': return <UserSwitcher />;
-    case 'working': return <WorkingVersion docId={spec.docId} nextLabel={spec.nextLabel} />;
+    case 'working': return <WorkingVersion docId={spec.docId} nextLabel={spec.nextLabel} base={spec.base} />;
     case 'meta': return <EditMeta doc={spec.doc} />;
-    case 'validate': return <RequestValidation docId={spec.docId} title={spec.title} revLabel={spec.revLabel} circuitL={spec.circuitL} minDate={spec.minDate} />;
+    case 'validate': return <RequestValidation docId={spec.docId} title={spec.title} revLabel={spec.revLabel} circuitL={spec.circuitL} minDate={spec.minDate} base={spec.base} />;
     case 'change': return <ChangeRequest docId={spec.docId} title={spec.title} change={spec.change} openRev={spec.openRev} replacements={spec.replacements} />;
     case 'link': return <LinkDocument spec={spec} />;
     case 'delegate': return <Delegate workflowId={spec.workflowId} stepName={spec.stepName} step={spec.step} excluded={spec.excluded} />;
     case 'reject': case 'recall': return <CloseWorkflow spec={spec} />;
     case 'compare': return <Compare current={spec.current} other={spec.other} />;
-    case 'readers': return <Readers docId={spec.docId} readers={spec.readers} />;
+    case 'readers': return <Readers docId={spec.docId} readers={spec.readers} version={spec.version} />;
     case 'vigie': return <VigieDecision requestId={spec.requestId} docTitle={spec.docTitle} change={spec.change} modifierId={spec.modifierId} drafters={spec.drafters} deferred={spec.deferred} />;
     case 'graft': return <Graft spec={spec} />;
     case 'review': return <RecordReview spec={spec} />;
@@ -55,8 +55,17 @@ function Actions({ pending, label, onCancel, form, disabled }: { pending: boolea
   );
 }
 
-function ErrorLine({ error }: { error: string | null }) {
-  return error ? <p className="form-error" role="alert">{error}</p> : null;
+/** The server's refusal; for one from an outdated view (`onReload`, useSubmit), a button that reloads the record. */
+function ErrorLine({ error, onReload }: { error: string | null; onReload?: () => void }) {
+  const { t } = useApp();
+  if (!error) return null;
+  if (!onReload) return <p className="form-error" role="alert">{error}</p>;
+  return (
+    <p className="form-error" role="alert" style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+      <span>{error}</span>
+      <button type="button" className="btn btn-ghost btn-sm" onClick={onReload}>{t.reload_record}</button>
+    </p>
+  );
 }
 
 /**
@@ -418,7 +427,7 @@ function NewDocument({ preset }: { preset: NewPreset }) {
 
 function EditMeta({ doc }: { doc: MetaDoc }) {
   const { t, data, close } = useApp();
-  const { pending, error, field, run } = useSubmit();
+  const { pending, error, field, run, reload } = useSubmit();
   // A type withdrawn from the register stays available to the documents that already have it.
   const types = data.types.filter((x) => x.active || x.code === doc.typeCode);
   const [st, setSt] = useState<Classif>(() => normalize(types, {
@@ -438,6 +447,7 @@ function EditMeta({ doc }: { doc: MetaDoc }) {
         style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
       >
         <input type="hidden" name="docId" value={doc.id} />
+        <input type="hidden" name="version" value={doc.version} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 12.5 }}>
           <span className="tag tag-neutral tabnum">{doc.id}</span>
           {moved && doc.idMayChange && (
@@ -448,7 +458,7 @@ function EditMeta({ doc }: { doc: MetaDoc }) {
           {moved && !doc.idMayChange && <span className="text-muted">{t.id_frozen}</span>}
         </div>
         <DocFields types={types} st={st} set={set} doc={doc} withOwner locked={doc.classificationLocked ? t.circuit_running : undefined} fieldError={field && error ? { field, error } : null} />
-        <ErrorLine error={field ? null : error} />
+        <ErrorLine error={field ? null : error} onReload={reload} />
       </form>
     </Modal>
   );
@@ -456,35 +466,37 @@ function EditMeta({ doc }: { doc: MetaDoc }) {
 
 // ── Working version, approval, change requests ───────────────────────────
 
-function WorkingVersion({ docId, nextLabel }: { docId: string; nextLabel: string }) {
+function WorkingVersion({ docId, nextLabel, base }: { docId: string; nextLabel: string; base: { revisionId: number; n: number } }) {
   const { t, close } = useApp();
-  const { pending, error, run } = useSubmit();
+  const { pending, error, run, reload } = useSubmit();
   return (
     <Modal title={t.new_working_version} actions={<Actions pending={pending} label={t.upload} onCancel={close} form="working-form" />}>
       <form id="working-form" onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); run(() => addWorkingVersion(fd)); }} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <input type="hidden" name="docId" value={docId} />
+        <input type="hidden" name="baseRevision" value={base.revisionId} />
+        <input type="hidden" name="baseVersion" value={base.n} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5 }}>
           <span className="tag tag-neutral tabnum">{docId}</span>
           <span className="text-muted" style={{ marginLeft: 'auto' }}>{t.working_version} → <span style={{ color: 'var(--color-accent-300)' }}>{nextLabel}</span></span>
         </div>
         <FilePicker label={t.choose_file} required />
         <Field label={t.version_comment}>{(id) => <textarea id={id} className="input" name="comment" rows={3} />}</Field>
-        <ErrorLine error={error} />
+        <ErrorLine error={error} onReload={reload} />
       </form>
     </Modal>
   );
 }
 
-function RequestValidation({ docId, title, revLabel, circuitL, minDate }: { docId: string; title: string; revLabel: string; circuitL: string; minDate: string }) {
+function RequestValidation({ docId, title, revLabel, circuitL, minDate, base }: { docId: string; title: string; revLabel: string; circuitL: string; minDate: string; base: { revisionId: number; n: number } }) {
   const { t, close } = useApp();
-  const { pending, error, run } = useSubmit();
+  const { pending, error, run, reload } = useSubmit();
   const [effective, setEffective] = useState('');
   return (
     <Modal
       title={t.request_title}
       actions={<>
         <button type="button" className="btn btn-secondary" onClick={close}>{t.cancel}</button>
-        <button type="button" className="btn btn-primary" disabled={pending} onClick={() => run(() => requestValidation(docId, effective || null))}>{t.request_validation}</button>
+        <button type="button" className="btn btn-primary" disabled={pending} onClick={() => run(() => requestValidation(docId, effective || null, base))}>{t.request_validation}</button>
       </>}
     >
       <div>
@@ -497,7 +509,7 @@ function RequestValidation({ docId, title, revLabel, circuitL, minDate }: { docI
       <Field label={t.effective_at} hint={t.effective_hint}>
         {(id) => <input id={id} className="input" type="date" min={minDate} value={effective} onChange={(e) => setEffective(e.target.value)} />}
       </Field>
-      <ErrorLine error={error} />
+      <ErrorLine error={error} onReload={reload} />
     </Modal>
   );
 }
@@ -671,9 +683,9 @@ function Compare({ current, other }: { current: VersionLite; other: VersionLite 
   );
 }
 
-function Readers({ docId, readers }: { docId: string; readers: string[] }) {
+function Readers({ docId, readers, version }: { docId: string; readers: string[]; version: number }) {
   const { t, data, close } = useApp();
-  const { pending, error, run } = useSubmit();
+  const { pending, error, run, reload } = useSubmit();
   const [sel, setSel] = useState(() => new Set(readers));
   const toggle = (id: string) => setSel((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   return (
@@ -683,7 +695,7 @@ function Readers({ docId, readers }: { docId: string; readers: string[] }) {
       actions={<>
         <span className="text-muted" style={{ fontSize: 12, marginRight: 'auto', alignSelf: 'center' }}>{sel.size} {t.selected}</span>
         <button type="button" className="btn btn-secondary" onClick={close}>{t.cancel}</button>
-        <button type="button" className="btn btn-primary" disabled={pending} onClick={() => run(() => setReaders(docId, [...sel]))}>{t.save}</button>
+        <button type="button" className="btn btn-primary" disabled={pending} onClick={() => run(() => setReaders(docId, [...sel], version))}>{t.save}</button>
       </>}
     >
       <p className="text-muted" style={{ margin: 0, fontSize: 12.5 }}>{t.readers_hint}</p>
@@ -696,7 +708,7 @@ function Readers({ docId, readers }: { docId: string; readers: string[] }) {
           </label>
         ))}
       </div>
-      <ErrorLine error={error} />
+      <ErrorLine error={error} onReload={reload} />
     </Modal>
   );
 }

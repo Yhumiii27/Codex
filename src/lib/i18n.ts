@@ -223,6 +223,11 @@ const fr = {
   visa_comments_withheld:'{n} commentaires, lisibles dans le circuit par ses participants et les gestionnaires documentaires.',
   visa_issued:'Extrait du journal de Codex édité le {when} par {who}.',
   visa_no_signature:'Cette fiche ne porte pas de signature électronique : elle reproduit ce que le journal de Codex enregistre sur l’approbation de la révision.',
+  // Concurrent changes (lib/concurrency.ts)
+  stale:'Ce document a été modifié entre-temps par {who} ; rechargez la fiche.', stale_anon:'Ce document a été modifié entre-temps ; rechargez la fiche.',
+  working_stale:'La version de travail {label} a été déposée entre-temps par {who} ; rechargez la fiche pour partir de cette version.',
+  validate_stale:'La version de travail {label} a été déposée entre-temps par {who} ; rechargez la fiche pour la voir avant de demander la validation.',
+  reload_record:'Recharger la fiche',
 };
 
 type Dict = Record<keyof typeof fr, string>;
@@ -447,6 +452,11 @@ const en: Dict = {
   visa_comments_withheld:'{n} comments, readable in the workflow by its participants and the records managers.',
   visa_issued:'Extract from the Codex journal issued on {when} by {who}.',
   visa_no_signature:'This record bears no electronic signature: it reproduces what the Codex journal records about the approval of the revision.',
+  // Concurrent changes (lib/concurrency.ts)
+  stale:'This document was changed in the meantime by {who}; reload the record.', stale_anon:'This document was changed in the meantime; reload the record.',
+  working_stale:'Working version {label} was uploaded in the meantime by {who}; reload the record to start from that version.',
+  validate_stale:'Working version {label} was uploaded in the meantime by {who}; reload the record to see it before requesting approval.',
+  reload_record:'Reload the record',
 };
 
 export const DICT: Record<Lang, Dict> = { fr, en };

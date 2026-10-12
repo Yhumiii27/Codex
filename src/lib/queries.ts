@@ -23,11 +23,14 @@ type DocRow = typeof s.documents.$inferSelect;
  * `workingL`: label of the revision being drafted with its last working version ("B.2"), see workingLabels().
  * `circle`: whether the user belongs to the document's drafting circle; outside it, no revision is being drafted (D-14).
  * `shownModified`: outside the circle, the date of the last change the user may see (visibleModified), when it differs.
+ * `version` (lib/concurrency.ts): 0 outside the circle, where nobody may edit the record; it moves with the drafting
+ * too (an upload, a revision opened or sent for approval), which stays within the circle (D-14).
  */
 export function docView(ctx: Ctx, d: DocRow, workingL: string | null | undefined, circle: boolean, shownModified?: string) {
   const { t, lang, label } = ctx;
   const revWorking = circle ? d.revWorking : null;
   const modifiedAt = (!circle && shownModified) || d.modifiedAt;
+  const version = circle ? d.version : 0;
   const typeLabel = label('type', d.typeCode), familyLabel = label('family', d.family);
   const contextL = d.attachment === 'project' ? `${d.projectCode} · ${label('project', d.projectCode)}` : d.attachment === 'research' ? `${d.programCode} · ${label('program', d.programCode)}` : label('department', d.department);
   const until = retainUntil(d);
@@ -37,6 +40,7 @@ export function docView(ctx: Ctx, d: DocRow, workingL: string | null | undefined
     ...d,
     revWorking,
     modifiedAt,
+    version,
     typeLabel, familyLabel, contextL,
     departmentL: label('department', d.department),
     siteL: d.site ? label('site', d.site) : '—',

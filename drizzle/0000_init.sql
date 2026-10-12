@@ -126,6 +126,7 @@ CREATE TABLE "documents" (
 	"archived_at" date,
 	"created_at" date NOT NULL,
 	"modified_at" date NOT NULL,
+	"version" integer DEFAULT 1 NOT NULL,
 	CONSTRAINT "documents_legacy_ref_unique" UNIQUE("legacy_ref")
 );
 --> statement-breakpoint

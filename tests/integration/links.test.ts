@@ -6,7 +6,7 @@ import { getCtx } from '@/lib/context';
 import { DICT } from '@/lib/i18n';
 import { applyChangeDecision, applyPendingDecision, approveRevision } from '@/lib/lifecycle';
 import { listAudit, listChangeRequests, listDocLinks } from '@/lib/queries';
-import { addDoc, fixClock, getChange, getDoc, getRevision, journalOf, setupDb } from '../support/db';
+import { addDoc, fixClock, getChange, getDoc, getRevision, journalOf, setupDb, viewOf } from '../support/db';
 import type { Person } from '../support/fixtures';
 import { actAs } from '../support/session';
 
@@ -235,6 +235,7 @@ describe('a draft replacement stays within its drafting circle (D-14)', () => {
     actAs('writer2');
     const fd = new FormData();
     fd.set('docId', NEW);
+    fd.set('version', (await viewOf(db(), NEW)).version);
     fd.set('department', 'ING');
     expect(await updateMeta(fd)).toMatchObject({ ok: true, message: `${t.act_reclass} : PRO-ING-0001` });
     expect(await links()).toEqual([{ sourceId: 'PRO-ING-0001', targetId: OLD, kind: 'replaces' }]);

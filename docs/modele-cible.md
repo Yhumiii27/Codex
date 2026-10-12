@@ -8,7 +8,8 @@ authentification Entra ID (§1), code département hors rattachement, largeur et
 brouillon, alias et nom de fichier (§3), « Remplacé », mise en vigueur automatique, bandeau et nom de téléchargement
 d'un document obsolète ou archivé, liens « remplace » / « remplacé par » et « voir aussi » (§4), partage des recherches enregistrées et pages par département (§5), longueur du
 motif de rejet, droit de rappeler une demande de validation et fiche de visa (§6), lecture stricte de la cohérence des dates,
-indicateurs d'expiration et de revue, « Revue effectuée » et périodicité de revue par type (§7).
+indicateurs d'expiration et de revue, « Revue effectuée » et périodicité de revue par type, détection des
+modifications simultanées (§4, §7).
 Elles sont listées dans `docs/decisions.md` (« Choix de l'assistant non validés explicitement », question O-09), qui
 prévaut en cas de doute.
 
@@ -57,6 +58,11 @@ Fichier stocké : `{ID}_{indice}.{ext}` (ex. `PRO-QHS-0012_B.2.pdf`).
 ## 4. Révisions et cycle de vie
 
 - Révisions en lettres (A, B, … Z, AA…), **versions de travail** `A.1`, `A.2`… pendant la rédaction.
+  Les dialogues de dépôt et de demande de validation renvoient la dernière version de travail qu'ils ont montrée : si
+  une autre a été déposée depuis, le dépôt ou la demande est refusé avec son numéro et son auteur (« rechargez la
+  fiche »), sans rien enregistrer ; un circuit ne part pas sur une version que le demandeur n'a pas vue. Le brouillon
+  n'est pas réservé pendant la rédaction (réservation proposée, à confirmer). *Proposé, non confirmé*
+  (`docs/decisions.md`).
 - Une révision garde l'ID et le nom du document. Toute révision passe par un circuit de validation.
 - Statuts de révision : **Brouillon** → **En révision** (circuit lancé) → **Approuvé** → **En vigueur** (à la date
   d'effet, ou immédiatement sans date) ; la révision précédente passe **Remplacé**.
@@ -263,6 +269,15 @@ document reste une demande à Vigie (D-17), et rien ne part seul à l'échéance
 
 *Proposé, non confirmé* : le jour où un document devient expiré, les personnes qui enregistrent une revue, l'unité et
 l'usage de la périodicité, dont l'absence de recalcul quand les métadonnées vident la date (`docs/decisions.md`).
+
+**Modifications simultanées** (`src/lib/concurrency.ts`). Chaque document porte une version, qui change à toute
+modification de sa fiche, par n'importe quel chemin (métadonnées, lecteurs désignés, revue, circuit, mise en vigueur,
+Vigie, gel, archivage). Les dialogues de métadonnées et de lecteurs désignés la renvoient : si la fiche a changé
+depuis leur ouverture, l'enregistrement est refusé sans rien écrire, avec « Ce document a été modifié entre-temps
+par … ; rechargez la fiche » (l'auteur de la dernière modification de la fiche, tel que le journal l'enregistre dans
+la même opération ; personne quand elle n'y figure pas), et le dialogue garde la saisie en proposant de recharger.
+La version ne va qu'au cercle de rédaction (D-14) : elle change aussi avec le travail sur le brouillon. Détection
+optimiste seulement : rien n'est réservé. *Proposé, non confirmé* (`docs/decisions.md`).
 
 ## 8. Conservation
 

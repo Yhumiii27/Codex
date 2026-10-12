@@ -643,6 +643,39 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     de démo) dit qu'aucun circuit n'est enregistré dans Codex ;
   - langue de l'interface du lecteur, PDF en téléchargement (`{ID}_{lettre}_VISA.pdf`), même pour un document obsolète
     ou archivé (pas de suffixe `_OBSOLETE` ou `_ARCHIVE` : l'état du document figure dans la fiche).
+- **Modifications simultanées** (12 octobre ; point 20 de `docs/reste-a-faire.md`, `docs/modele-cible.md` §4 et §7) :
+  - détection optimiste seulement : rien n'est réservé pendant qu'un dialogue est ouvert. Une modification faite
+    depuis une vue périmée de la fiche est refusée, sans rien écrire, et le dialogue garde la saisie en proposant
+    « Recharger la fiche » ; la saisie n'est ni fusionnée ni reprise automatiquement ;
+  - la version d'un document change à toute modification réelle de sa fiche, quel qu'en soit l'auteur ou le chemin
+    (métadonnées, revue, lecteurs désignés, demande de validation, rejet ou rappel, approbation finale et mise en
+    vigueur, décision de Vigie, gel, archivage, et le premier dépôt du jour, qui date la fiche « Modifié ») : un
+    dialogue de métadonnées ouvert avant l'une d'elles est périmé, même si elle ne touche pas les champs saisis. Une
+    écriture qui ne change rien à la fiche (approbation d'une étape intermédiaire, second dépôt du jour, demande de
+    modification à Vigie) ne la fait pas changer : la base ignore une mise à jour sans effet ;
+  - les métadonnées et les lecteurs désignés suivent cette règle (les lecteurs, rangés à part, changent la version de
+    la fiche) ; les liens, la revue périodique et les décisions de circuit ne la vérifient pas : ils ne réécrivent pas
+    un formulaire entier (un lien existe une fois par paire, une revue ne fixe que la prochaine date de revue, une
+    décision vérifie déjà l'étape vue) ;
+  - un dépôt de version de travail est refusé dès qu'une version plus récente que la dernière montrée par le dialogue
+    existe, avec son numéro et son auteur, même si son auteur est la même personne (deux onglets) ; les deux versions
+    restent conservées une fois la seconde déposée en connaissance de cause (D-12). Une demande de validation suit la
+    même règle (« rechargez la fiche pour la voir avant de demander la validation ») : un circuit ne part pas, et un
+    type sans circuit (correspondance, photos) n'entre pas en vigueur, sur une version que le demandeur n'a pas vue ;
+  - la personne nommée est l'auteur de la dernière modification de la fiche : celui dont l'action l'a modifiée, que le
+    journal enregistre dans la même opération ; une personne plutôt que Codex quand Codex met la révision en vigueur
+    dans l'opération d'une approbation ; Codex, ou Vigie, quand ils l'ont modifiée seuls (mise en vigueur à la date
+    d'effet, décision reçue). Une écriture qui n'a pas changé la fiche (téléchargement, demande de modification,
+    second dépôt du jour) ne nomme pas son auteur ; une modification que le journal n'enregistre pas ne nomme
+    personne. Seul le cercle de rédaction reçoit ce refus et la version de la fiche (D-14) : elle change aussi avec le
+    travail sur le brouillon (dépôt, révision ouverte ou envoyée en validation), et vaut 0 pour les autres lecteurs ;
+  - un formulaire sans version (page ouverte avant cette règle) est refusé de la même façon, sans nommer personne ;
+    un formulaire sur l'ancien ID d'un document reclassé entre-temps reçoit ce refus plutôt que « Document
+    introuvable », pour qui pouvait encore modifier le document ;
+  - **proposé, non appliqué, à confirmer** : la réservation d'une révision en brouillon (« Réserver » et « Libérer »
+    sur la fiche, libération forcée par un gestionnaire documentaire, dépôt refusé à toute autre personne que celle
+    qui l'a réservée, mention « Réservé par … »). Elle change la façon de travailler du cercle de rédaction
+    (propriétaire, modificateur désigné, gestionnaires) : elle attend l'accord de l'utilisateur.
 - **Retrait** (D-17) : effets d'un retrait accepté sur le travail en cours (circuit clos, révisions ouvertes annulées).
 - **Documents obsolètes ou archivés** (D-17) : bandeau d'avertissement sur la fiche et dans l'aperçu rapide de
   l'explorateur, suffixe `_OBSOLETE` ou `_ARCHIVE` dans le nom proposé au téléchargement (`docs/modele-cible.md` §4).

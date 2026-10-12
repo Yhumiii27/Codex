@@ -6,7 +6,7 @@ import { nextDocId } from '@/lib/codification';
 import type { IdInput } from '@/lib/codes';
 import { importDocument } from '@/lib/importer';
 import { promoteDue } from '@/lib/lifecycle';
-import { addDoc, fixClock, getDoc, getRevisions, journalOf, revisionStatuses, setClock, setupDb } from '../support/db';
+import { addDoc, fixClock, getDoc, getRevisions, journalOf, revisionStatuses, setClock, setupDb, viewOf } from '../support/db';
 import { actAs } from '../support/session';
 
 // Import of legacy documents for the migration tool (D-21, docs/api.md "Import"), on the identifier rules of D-09 /
@@ -121,10 +121,11 @@ describe('importDocument: replays', () => {
 // reference it was imported from and the ID the import gave it. Only the first one is a replay.
 describe('importDocument: replays after a reclassification (D-10)', () => {
   /** The owner moves a document to the ING department through the metadata form (Server Action updateMeta). */
-  function moveToIng(id: string) {
+  async function moveToIng(id: string) {
     actAs('owner');
     const fd = new FormData();
     fd.set('docId', id);
+    fd.set('version', (await viewOf(db(), id)).version);
     fd.set('department', 'ING');
     return updateMeta(fd);
   }

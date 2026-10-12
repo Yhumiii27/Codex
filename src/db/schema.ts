@@ -192,6 +192,12 @@ export const documents = pgTable('documents', {
   archivedAt: date('archived_at', { mode: 'string' }),
   createdAt: date('created_at', { mode: 'string' }).notNull(),
   modifiedAt: date('modified_at', { mode: 'string' }).notNull(),
+  /**
+   * Raised by the database at every change of the row, whatever writes it (trigger documents_version, src/db/index.ts),
+   * and by hand when the named readers change. The record's dialogs send it back: an edit from an outdated view is
+   * refused (lib/actions.ts updateMeta, setReaders; lib/concurrency.ts). Shown to the drafting circle only (docView).
+   */
+  version: integer('version').notNull().default(1),
 });
 
 const docRef = () => documents.id;

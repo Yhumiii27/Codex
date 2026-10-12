@@ -152,6 +152,27 @@ export async function getDoc(db: Db, id: string) {
   return d;
 }
 
+/**
+ * What the record's dialogs send back of the view they were opened from (lib/concurrency.ts), read now: the version of
+ * the document (metadata, readers), and the last working version of the revision being drafted (upload).
+ */
+export async function viewOf(db: Db, id: string) {
+  const d = await getDoc(db, id);
+  const open = (await getRevisions(db, id)).findLast((r) => r.status === 'draft' || r.status === 'in_review' || r.status === 'approved');
+  const versions = open ? await db.select({ n: s.workingVersions.n }).from(s.workingVersions).where(eq(s.workingVersions.revisionId, open.id)) : [];
+  return {
+    version: String(d.version),
+    baseRevision: open ? String(open.id) : '',
+    baseVersion: String(Math.max(0, ...versions.map((v) => v.n))),
+  };
+}
+
+/** The last working version the approval request dialog shows (requestValidation's `base`), read now; null without one. */
+export async function baseOf(db: Db, id: string) {
+  const { baseRevision, baseVersion } = await viewOf(db, id);
+  return baseRevision ? { revisionId: Number(baseRevision), n: Number(baseVersion) } : null;
+}
+
 /** Revisions of a document, oldest first. */
 export async function getRevisions(db: Db, docId: string) {
   return db.select().from(s.revisions).where(eq(s.revisions.docId, docId)).orderBy(asc(s.revisions.id));

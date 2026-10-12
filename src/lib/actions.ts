@@ -7,6 +7,7 @@ import { getDb, schema as s } from '@/db';
 import type { Attachment, AuditChange, AuditValue, Conf, Disposition, Origin, RetentionTrigger, SearchScope } from '@/db/schema';
 import { buildAccessIndex, canRead, followsCircuit, getAccessIndex, inDraftingCircle, isUsableTemplate, mayDeleteSearch, mayEditLinks, mayRecall, mayRecordReview, maySaveSearch, mayWorkOnDraft, readerMaySeeRevision, readersApply, seesSavedSearch } from './access';
 import { idMatches, nextDocId, nextWorkflowId } from './codification';
+import { changeAuthor, seenVersion, seenWorkingBase, staleText, workingIssue, workingStaleText, type WorkingBase } from './concurrency';
 import { COOKIE_LANG, COOKIE_ROLE, COOKIE_USER, getCtx, type Ctx } from './context';
 import { addDays, fmtDate, fmtSize, loc, nowStamp, parseIsoDay, todayIso } from './format';
 import { ATTACHMENTS, CONF_LEVELS, ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLES, ORIGINS, PERMS, SEARCH_SCOPES, SIM_ROLES, SIMULATED_MATRIX_ROLES, type Perm, type SimRole, type TKey } from './i18n';
@@ -20,8 +21,11 @@ import { beyondBounds, cleanCriteria, hasCriteria, type SearchInput } from './se
 import { discardFile, fileColumns, nameStoredFile, readStored, renameDocFiles, stageFile, stageUpload, type StagedFile } from './storage';
 import { submitChange, vigieSimulated } from './vigie';
 
-/** `field`: the form field the error is about, when the dialog can show it there. */
-export type ActionResult = { ok: true; href?: string; message?: string } | { ok: false; error: string; field?: string };
+/**
+ * `field`: the form field the error is about, when the dialog can show it there. `stale`: the view the request came
+ * from is out of date (lib/concurrency.ts): the dialog offers to reload the record.
+ */
+export type ActionResult = { ok: true; href?: string; message?: string } | { ok: false; error: string; field?: string; stale?: true };
 
 type DocRow = typeof s.documents.$inferSelect;
 
@@ -74,6 +78,35 @@ async function workingRevision(tx: Tx, docId: string) {
 async function activeWorkflow(tx: Tx, docId: string) {
   const wfs = await tx.select().from(s.workflows).where(eq(s.workflows.docId, docId));
   return wfs.find((w) => !w.outcome) ?? null;
+}
+
+// ── Concurrent changes (lib/concurrency.ts) ──────────────────────────────
+
+/**
+ * Who made the last change of a document's record: the author of the journal entries written in the transaction that
+ * last changed its row (the row's xmin; the database skips an update that changes nothing, src/db/index.ts), chosen by
+ * lib/concurrency.ts changeAuthor. Null when that change wrote no entry. Only for the drafting circle, who reads every
+ * entry (D-14): the actions that refuse an outdated view are reserved to it.
+ */
+async function lastChangedBy(tx: Tx, ctx: Ctx, docId: string): Promise<string | null> {
+  const entries = await tx.select({ userId: s.auditLog.userId, docId: s.auditLog.docId }).from(s.auditLog)
+    .innerJoin(s.documents, and(eq(s.documents.id, docId), sql`${s.auditLog}.xmin = ${s.documents}.xmin`))
+    .orderBy(desc(s.auditLog.id));
+  return changeAuthor(entries, docId, (u) => !!ctx.users.get(u)?.isSystem);
+}
+
+/** Refusal of a write from an outdated view: nothing written, the dialog offers to reload the record. */
+function stale(ctx: Ctx, who: string | null): ActionResult {
+  return { ok: false, error: staleText(ctx.t, who ? ctx.userName(who) : null), stale: true };
+}
+
+/**
+ * A request about a document under an ID it no longer has: reclassified since the view it came from (former IDs are
+ * kept as aliases and never handed out again). Outdated for whoever may still make it (`may`), not found for others.
+ */
+async function movedSince(tx: Tx, ctx: Ctx, id: string, may: (d: DocRow) => boolean): Promise<ActionResult> {
+  const [d] = id ? await tx.select().from(s.documents).where(sql`${s.documents.aliases} @> ${JSON.stringify([id])}::jsonb`) : [];
+  return d && may(d) ? stale(ctx, await lastChangedBy(tx, ctx, d.id)) : fail(ctx, 'not_found');
 }
 
 // ── Session (simulated) ──────────────────────────────────────────────────
@@ -260,27 +293,48 @@ export async function createDocument(fd: FormData): Promise<ActionResult> {
   return { ok: true, href: docHref(id, f.attachment === 'project' ? 'project' : 'meta'), message: `${ctx.t.id_preview} : ${id}` };
 }
 
-/** Next working version (A.2, A.3…) of the revision being drafted. */
+/**
+ * An upload or an approval request (`from`) from a dialog that did not show the last working version of the revision
+ * drafted (`rev`), as its `base` says (lib/concurrency.ts workingIssue): refused, naming the version uploaded since and
+ * its author, or as an outdated record (another revision, no base). Null when the base is the last version.
+ */
+async function uploadBehind(tx: Tx, ctx: Ctx, docId: string, rev: { id: number; letter: string }, base: WorkingBase | null, from: 'upload' | 'validate' = 'upload'): Promise<ActionResult | null> {
+  const [latest] = await tx.select().from(s.workingVersions).where(eq(s.workingVersions.revisionId, rev.id)).orderBy(desc(s.workingVersions.n)).limit(1);
+  const issue = workingIssue(base, rev, latest);
+  if (issue === 'newer') return { ok: false, error: workingStaleText(ctx.t, `${rev.letter}.${latest.n}`, ctx.userName(latest.authorId), from), stale: true };
+  return issue ? stale(ctx, base ? await lastChangedBy(tx, ctx, docId) : null) : null;
+}
+
+/**
+ * Next working version (A.2, A.3…) of the revision being drafted. The dialog sends the last working version it showed
+ * (`baseRevision`, `baseVersion`): when another was uploaded since, the upload is refused with its label and author,
+ * rather than added on top of a version its author has not seen (D-12 keeps both).
+ */
 export async function addWorkingVersion(fd: FormData): Promise<ActionResult> {
   const ctx = await getCtx();
   if (!ctx.can('upload')) return denied(ctx, 'upload');
   const docId = str(fd, 'docId');
   const file = uploadedFile(fd);
   if (!file) return fail(ctx, 'choose_file');
+  const base = seenWorkingBase(fd.get('baseRevision'), fd.get('baseVersion'));
   const db = await getDb();
   const ix = await getAccessIndex();
   const [d] = await db.select().from(s.documents).where(eq(s.documents.id, docId));
+  if (!d) return movedSince(db, ctx, docId, (x) => canRead(ctx, x, ix) && mayWorkOnDraft(ctx, x, ix));
   // Access first: a document the user cannot see gives nothing away, not even its lock.
-  if (!d || !canRead(ctx, d, ix)) return fail(ctx, 'not_found');
+  if (!canRead(ctx, d, ix)) return fail(ctx, 'not_found');
   if (!mayWorkOnDraft(ctx, d, ix)) return fail(ctx, 'not_allowed');
   const lock = lockOf(d);
   if (lock) return fail(ctx, lock);
   const open = await workingRevision(db, docId);
   if (!open) return fail(ctx, 'need_in_force');
   if (open.status !== 'draft') return fail(ctx, 'not_draft');
+  // Before the file goes to the store, and again in the transaction.
+  const behind = await uploadBehind(db, ctx, docId, open, base);
+  if (behind) return behind;
   const staged = await stageUpload(file);
   const comment = str(fd, 'comment');
-  const res = await withStaged(staged, () => db.transaction(async (tx): Promise<{ err: TKey } | { label: string }> => {
+  const res = await withStaged(staged, () => db.transaction(async (tx): Promise<{ err: TKey } | { behind: ActionResult } | { label: string }> => {
     // Checked again inside the transaction: a validation request or another upload may have come in during the upload.
     const [cur] = await tx.select().from(s.documents).where(eq(s.documents.id, docId));
     if (!cur) return { err: 'not_found' };
@@ -288,6 +342,8 @@ export async function addWorkingVersion(fd: FormData): Promise<ActionResult> {
     if (locked) return { err: locked };
     const rev = await workingRevision(tx, docId);
     if (!rev || rev.id !== open.id || rev.status !== 'draft') return { err: 'not_draft' };
+    const late = await uploadBehind(tx, ctx, docId, rev, base);
+    if (late) return { behind: late };
     const [{ max }] = await tx.select({ max: sql<number>`coalesce(max(${s.workingVersions.n}), 0)::int` }).from(s.workingVersions).where(eq(s.workingVersions.revisionId, rev.id));
     const n = max + 1;
     await tx.insert(s.workingVersions).values({ revisionId: rev.id, docId, n, comment: comment || { fr: 'Nouvelle version de travail', en: 'New working version' }, authorId: ctx.user.id, date: todayIso(), ...fileColumns(staged) });
@@ -295,9 +351,9 @@ export async function addWorkingVersion(fd: FormData): Promise<ActionResult> {
     await audit(tx, ctx.user.id, 'working', docId, `${rev.letter}.${n} · ${fmtSize(staged.size, 'fr')}`, rev.id);
     return { label: `${rev.letter}.${n}` };
   }));
-  if ('err' in res) {
+  if (!('label' in res)) {
     await discardFile(staged);
-    return fail(ctx, res.err);
+    return 'err' in res ? fail(ctx, res.err) : res.behind;
   }
   await nameStoredFile(staged, docId, res.label);
   refresh();
@@ -321,23 +377,33 @@ async function releasePieces(tx: Tx, docId: string, f: Fields) {
 /**
  * Edit metadata. Until a revision has been approved, a change of type or context re-codifies the document.
  * Type and context resolve the approval circuit: they cannot change while a workflow runs.
+ * The form sends back the version of the record it was filled from (`version`): every field it sends overwrites the
+ * stored one, so a record changed since is refused as outdated, with nothing written (lib/concurrency.ts).
  */
 export async function updateMeta(fd: FormData): Promise<ActionResult> {
   const ctx = await getCtx();
   if (!ctx.can('edit')) return denied(ctx, 'edit');
   const docId = str(fd, 'docId');
+  const seen = seenVersion(fd.get('version'));
   const db = await getDb();
+  const ix = await getAccessIndex();
+  const mayEdit = (x: DocRow) => ctx.seesAll || x.ownerId === ctx.user.id;
   const [d] = await db.select().from(s.documents).where(eq(s.documents.id, docId));
-  if (!d || !canRead(ctx, d, await getAccessIndex())) return fail(ctx, 'not_found');
-  if (!(ctx.seesAll || d.ownerId === ctx.user.id)) return fail(ctx, 'not_allowed');
+  if (!d) return movedSince(db, ctx, docId, (x) => canRead(ctx, x, ix) && mayEdit(x));
+  if (!canRead(ctx, d, ix)) return fail(ctx, 'not_found');
+  if (!mayEdit(d)) return fail(ctx, 'not_allowed');
   const lock = lockOf(d);
   if (lock) return fail(ctx, lock);
+  if (d.version !== seen) return stale(ctx, seen === null ? null : await lastChangedBy(db, ctx, docId));
   const f = readFields(ctx, fd, d);
   const invalid = validateFields(ctx, f, d.typeCode);
   if (invalid) return invalid;
   const type = ctx.typeByCode.get(f.typeCode)!;
   const reclassified = f.typeCode !== d.typeCode || f.attachment !== d.attachment || f.projectCode !== d.projectCode || f.programCode !== d.programCode || f.department !== d.department;
-  const res = await db.transaction(async (tx): Promise<{ err: TKey } | { date: DateIssue } | { id: string }> => {
+  const res = await db.transaction(async (tx): Promise<{ err: TKey } | { date: DateIssue } | { id: string } | { stale: string | null }> => {
+    // Again where it is written: what changed since the check above would be overwritten by the form's fields.
+    const [cur] = await tx.select({ version: s.documents.version }).from(s.documents).where(eq(s.documents.id, docId)).for('update');
+    if (cur?.version !== seen) return { stale: cur ? await lastChangedBy(tx, ctx, docId) : null };
     if (reclassified && (await activeWorkflow(tx, docId))) return { err: 'circuit_running' };
     const revs = await tx.select().from(s.revisions).where(eq(s.revisions.docId, docId));
     // Dates the dialog edits, against the issue date and the revisions' effective dates on record (which it does not
@@ -379,6 +445,7 @@ export async function updateMeta(fd: FormData): Promise<ActionResult> {
   });
   if ('err' in res) return fail(ctx, res.err);
   if ('date' in res) return dateFail(ctx, res.date);
+  if ('stale' in res) return stale(ctx, res.stale);
   const newId = res.id;
   // Stored files follow the new ID (outside the transaction, as every store call).
   if (newId !== docId) await renameDocFiles(newId);
@@ -386,24 +453,39 @@ export async function updateMeta(fd: FormData): Promise<ActionResult> {
   return { ok: true, message: newId !== docId ? `${ctx.t.act_reclass} : ${newId}` : ctx.t.saved_ok, href: newId !== docId ? docHref(newId, 'meta') : undefined };
 }
 
-/** Named readers of a confidential or "très confidentiel" document (owner or records manager, with the edit permission). */
-export async function setReaders(docId: string, userIds: string[]): Promise<ActionResult> {
+/**
+ * Named readers of a confidential or "très confidentiel" document (owner or records manager, with the edit permission).
+ * `version`: the version of the record the dialog showed; the list replaces the stored one, so a record changed since
+ * is refused as outdated, as by updateMeta (lib/concurrency.ts).
+ */
+export async function setReaders(docId: string, userIds: string[], version: number): Promise<ActionResult> {
   const ctx = await getCtx();
   if (!ctx.can('edit')) return denied(ctx, 'edit');
+  const seen = seenVersion(version);
   const db = await getDb();
+  const ix = await getAccessIndex();
+  const mayEdit = (x: DocRow) => ctx.seesAll || x.ownerId === ctx.user.id;
   const [d] = await db.select().from(s.documents).where(eq(s.documents.id, docId));
-  if (!d || !canRead(ctx, d, await getAccessIndex())) return fail(ctx, 'not_found');
-  if (!(ctx.seesAll || d.ownerId === ctx.user.id)) return fail(ctx, 'not_allowed');
+  if (!d) return movedSince(db, ctx, docId, (x) => canRead(ctx, x, ix) && mayEdit(x));
+  if (!canRead(ctx, d, ix)) return fail(ctx, 'not_found');
+  if (!mayEdit(d)) return fail(ctx, 'not_allowed');
   const lock = lockOf(d);
   if (lock) return fail(ctx, lock);
+  if (d.version !== seen) return stale(ctx, seen === null ? null : await lastChangedBy(db, ctx, docId));
   const ids = dedupe(userIds).filter((u) => ctx.users.has(u) && !ctx.users.get(u)!.isSystem);
   // Below "confidentiel" readers have no effect: leftovers can only be removed.
   if (ids.length && !readersApply(d.conf)) return fail(ctx, 'conf_not_allowed');
-  await db.transaction(async (tx) => {
+  const res = await db.transaction(async (tx): Promise<{ stale: string | null } | null> => {
+    const [cur] = await tx.select({ version: s.documents.version }).from(s.documents).where(eq(s.documents.id, docId)).for('update');
+    if (cur?.version !== seen) return { stale: cur ? await lastChangedBy(tx, ctx, docId) : null };
     await tx.delete(s.documentReaders).where(eq(s.documentReaders.docId, docId));
     if (ids.length) await tx.insert(s.documentReaders).values(ids.map((userId) => ({ docId, userId })));
+    // The readers are kept apart from the row: its version is raised here, for the dialogs open on the record.
+    await tx.update(s.documents).set({ version: sql`${s.documents.version} + 1` }).where(eq(s.documents.id, docId));
     await audit(tx, ctx.user.id, 'edit', docId, `${ctx.t.readers} (${ids.length})`);
+    return null;
   });
+  if (res) return stale(ctx, res.stale);
   refresh();
   return { ok: true, message: ctx.t.saved_ok };
 }
@@ -495,17 +577,22 @@ async function resolveFunction(tx: Tx, ctx: Ctx, key: string, d: DocRow, exclude
   return candidates.find((u) => !taken.has(u)) ?? candidates[0] ?? null;
 }
 
-/** Starts the circuit of the document's type on the revision being drafted. Every check runs inside the transaction. */
-export async function requestValidation(docId: string, effectiveAt: string | null): Promise<ActionResult> {
+/**
+ * Starts the circuit of the document's type on the revision being drafted. Every check runs inside the transaction.
+ * `base`: the last working version the dialog showed (as for an upload, lib/concurrency.ts): the circuit does not start
+ * on a version uploaded since, which its requester has not seen.
+ */
+export async function requestValidation(docId: string, effectiveAt: string | null, base: WorkingBase | null): Promise<ActionResult> {
   const ctx = await getCtx();
   if (!ctx.can('edit')) return denied(ctx, 'edit');
+  const seen = seenWorkingBase(base?.revisionId, base?.n);
   // Effective date: a real day, today or later (approveRevision moves it to the approval day if the circuit outlasts it).
   const effective = effectiveAt ? parseIsoDay(effectiveAt) : null;
   if (effectiveAt && (!effective || effective < todayIso())) return fail(ctx, 'invalid_date');
   const ix = await getAccessIndex();
   const db = await getDb();
 
-  type Res = { id: string } | { href: string } | { err: TKey; extra?: string } | { date: DateIssue };
+  type Res = { id: string } | { href: string } | { err: TKey; extra?: string } | { date: DateIssue } | { behind: ActionResult };
   const res = await db.transaction(async (tx): Promise<Res> => {
     const [d] = await tx.select().from(s.documents).where(eq(s.documents.id, docId));
     if (!d || !canRead(ctx, d, ix)) return { err: 'not_found' };
@@ -519,6 +606,8 @@ export async function requestValidation(docId: string, effectiveAt: string | nul
     if (withdrawal) return { err: 'change_pending', extra: withdrawal.id };
     const rev = await workingRevision(tx, docId);
     if (!rev || rev.status !== 'draft') return { err: 'not_draft' };
+    const behind = await uploadBehind(tx, ctx, docId, rev, seen, 'validate');
+    if (behind) return { behind };
     const versions = await tx.select().from(s.workingVersions).where(eq(s.workingVersions.revisionId, rev.id)).orderBy(desc(s.workingVersions.n));
     if (!versions.length) return { err: 'need_file' };
     // Issue ≤ effect ≤ expiry: an effective date before the expiry; the first issue before the expiry and the review.
@@ -560,6 +649,7 @@ export async function requestValidation(docId: string, effectiveAt: string | nul
     return { id };
   });
   if ('href' in res) return { ok: true, href: res.href };
+  if ('behind' in res) return res.behind;
   if ('date' in res) return dateFail(ctx, res.date);
   if ('err' in res) return res.err === 'perm_publish' ? denied(ctx, 'publish') : fail(ctx, res.err, res.extra);
   refresh();

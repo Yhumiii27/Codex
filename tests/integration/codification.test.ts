@@ -6,7 +6,7 @@ import { nextDocId, nextNumber, nextWorkflowId, reserveDocId } from '@/lib/codif
 import type { IdInput } from '@/lib/codes';
 import { DICT } from '@/lib/i18n';
 import { submitChange } from '@/lib/vigie';
-import { addDoc, addWorkflow, fixClock, getDoc, getRevisions, journalOf, setClock, setupDb, type DocSpec } from '../support/db';
+import { addDoc, addWorkflow, fixClock, getDoc, getRevisions, journalOf, setClock, setupDb, viewOf, type DocSpec } from '../support/db';
 import { actAs } from '../support/session';
 
 // Identifiers on a real database (D-09, D-10, docs/modele-cible.md §3; counters of step 5): one counter per
@@ -105,10 +105,11 @@ describe('updateMeta: reclassification (D-10, docs/modele-cible.md §3 and §6)'
   const t = DICT.fr;
 
   /** The owner submits the metadata form with these fields; the others keep their stored values. */
-  function edit(id: string, fields: Record<string, string>) {
+  async function edit(id: string, fields: Record<string, string>) {
     actAs('owner');
     const fd = new FormData();
     fd.set('docId', id);
+    fd.set('version', (await viewOf(db(), id)).version);
     for (const [k, v] of Object.entries(fields)) fd.set(k, v);
     return updateMeta(fd);
   }

@@ -149,17 +149,19 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
   // The revision being drafted exists for its drafting circle only (D-14).
   const wip = circle && working ? `${t.rev_short} ${working.label} ${t.in_progress}` : null;
 
-  const workingBtn = drafting && (
-    <DialogButton spec={{ kind: 'working', docId: doc.id, nextLabel: `${drafting.letter}.${(drafting.file?.n ?? 0) + 1}` }} icon="upload" deniedTitle={lock ?? deny('upload') ?? draftReserved}>
+  // The last working version the dialogs show: an upload or an approval request that missed a later one is refused.
+  const base = drafting && { revisionId: drafting.id, n: drafting.file?.n ?? 0 };
+  const workingBtn = drafting && base && (
+    <DialogButton spec={{ kind: 'working', docId: doc.id, nextLabel: `${drafting.letter}.${base.n + 1}`, base }} icon="upload" deniedTitle={lock ?? deny('upload') ?? draftReserved}>
       {t.new_working_version}
     </DialogButton>
   );
   // A circuit already running: follow it (in Validations when the user takes part, else in the Validation tab).
   const validateBtn = (cls: string) => running
     ? <Link href={running.visible ? running.href : tabHref('approval')} className={cls}><Icon name="check" size={14} />{t.follow_workflow}</Link>
-    : drafting && (
+    : drafting && base && (
       <DialogButton
-        spec={{ kind: 'validate', docId: doc.id, title: doc.title, revLabel: drafting.label, circuitL, minDate: todayIso() }}
+        spec={{ kind: 'validate', docId: doc.id, title: doc.title, revLabel: drafting.label, circuitL, minDate: todayIso(), base }}
         className={cls} icon="check" deniedTitle={lock ?? deny('edit') ?? draftReserved ?? (type && !type.circuit.length ? deny('publish') : undefined) ?? (drafting.versions.length ? undefined : t.need_file)}
       >{t.request_validation}</DialogButton>
     );
@@ -241,6 +243,8 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
     idMayChange: !revs.some((r) => r.approvedAt),
     inForce: !!doc.revInForce,
     classificationLocked: circle && !!runningAny,
+    // Only for whoever may edit the record (in the drafting circle): it moves with the drafting too (docView, D-14).
+    version: isOwner ? doc.version : 0,
   };
   const readerIds = [...ix.readers(doc.id)];
   // Named readers count for confidential levels; leftovers on a lower level stay listed so they can be removed.
@@ -510,7 +514,7 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 18 }}>
                   <DialogButton spec={{ kind: 'meta', doc: meta }} icon="pen" deniedTitle={lock ?? deny('edit') ?? (isOwner ? undefined : `${t.not_allowed} : ${t.owner}`)}>{t.edit_meta}</DialogButton>
                   {reviewBtn('btn btn-secondary')}
-                  {showReaders && isOwner && <DialogButton spec={{ kind: 'readers', docId: doc.id, readers: readerIds }} icon="lock" deniedTitle={lock ?? deny('edit')}>{t.readers}</DialogButton>}
+                  {showReaders && isOwner && <DialogButton spec={{ kind: 'readers', docId: doc.id, readers: readerIds, version: doc.version }} icon="lock" deniedTitle={lock ?? deny('edit')}>{t.readers}</DialogButton>}
                   <DialogButton
                     spec={{ kind: 'link', docId: doc.id, title: doc.title, withdrawn: !!doc.obsoleteAt, active: doc.state === 'active', candidates: linkable }} icon="plus"
                     deniedTitle={deny('edit') ?? (linksEditable ? undefined : t.link_reserved) ?? linkHold}

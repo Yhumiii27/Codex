@@ -7,7 +7,7 @@ import { DICT } from '@/lib/i18n';
 import { approveRevision, promoteDue } from '@/lib/lifecycle';
 import { auditDetailL, deadlines, listAudit, listDocs, listSearchDocs } from '@/lib/queries';
 import { runSearch } from '@/lib/search';
-import { addDoc, fixClock, getDoc, getRevision, journalOf, revisionStatuses, setupDb } from '../support/db';
+import { addDoc, fixClock, getDoc, getRevision, journalOf, revisionStatuses, setupDb, viewOf } from '../support/db';
 import type { Person } from '../support/fixtures';
 import { actAs } from '../support/session';
 
@@ -214,6 +214,7 @@ describe('entry into force: the review date from the type’s periodicity', () =
     actAs('owner');
     const fd = new FormData();
     fd.set('docId', ID);
+    fd.set('version', (await viewOf(db(), ID)).version);
     fd.set('reviewDueAt', '');
     expect(await updateMeta(fd)).toMatchObject({ ok: true });
     expect((await getDoc(db(), ID)).reviewDueAt).toBeNull();

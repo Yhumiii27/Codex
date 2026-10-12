@@ -366,6 +366,7 @@ Le manque est réel. Aujourd'hui, on ne peut changer le propriétaire que docume
 </details>
 
 #### 20. Modifications simultanées : métadonnées écrasées sans avertissement, brouillon sans réservation
+- **Fait en partie le 12 octobre 2026** : détection optimiste, sans réservation : `documents.version`, relevée par la base à chaque modification réelle de la fiche (déclencheur `documents_version`, `src/db/index.ts`) et réservée au cercle de rédaction (D-14), est renvoyée par les dialogues de métadonnées et de lecteurs désignés, et la dernière version de travail montrée par ceux de dépôt et de demande de validation ; `updateMeta`, `setReaders`, `addWorkingVersion` et `requestValidation` refusent sans rien écrire une action partie d'une vue périmée (« Ce document a été modifié entre-temps par … ; rechargez la fiche », ou la version de travail déposée entre-temps et son auteur), en nommant l'auteur de la dernière modification d'après le journal de la même transaction, et le dialogue propose « Recharger la fiche » (`src/lib/concurrency.ts`, `tests/integration/concurrent-edits.test.ts`). **Reste** : la réservation d'un brouillon (Réserver / Libérer), qui change la façon de travailler, proposée à l'utilisateur dans `docs/decisions.md` (« Modifications simultanées »).
 
 - **Effort** : moyen · **Références** : D-12
 

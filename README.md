@@ -25,12 +25,13 @@ déposés sont stockés dans `.data/files/` (ou dans SharePoint, voir `src/lib/s
 - Tests : `npm test` lance Vitest une fois (`npm run test:watch` en continu), en une vingtaine de secondes, sans
   serveur ni réseau et sans toucher à `.data/`.
   - `tests/unit/` : règles pures (identifiants, révisions, visibilité, conservation, recherche, filtres mis en avant
-    des départements, dates, expiration et revue périodique, types de fichiers).
-  - `tests/integration/` : règles métier sur une base PGlite en mémoire, migrée depuis `drizzle/` avec le déclencheur
-    du journal (`openDb` dans `src/db/index.ts`) et remplie de données minimales (`tests/support/fixtures.ts`), pas de
-    la base de démo. Identifiants et compteurs, révisions et dates d'effet, cohérence des dates, expiration et revue
-    périodique, circuits, décisions Vigie et webhook, journal en ajout seul, cercle de rédaction, import, recherche,
-    recherches enregistrées et pages par département. Seul `tests/integration/dates.test.ts` charge aussi les données de démo (`src/db/seed.ts`), en
+    des départements, dates, expiration et revue périodique, modifications simultanées, types de fichiers).
+  - `tests/integration/` : règles métier sur une base PGlite en mémoire, migrée depuis `drizzle/` avec les
+    déclencheurs du journal et de la version des documents (`openDb` dans `src/db/index.ts`) et remplie de données
+    minimales (`tests/support/fixtures.ts`), pas de la base de démo. Identifiants et compteurs, révisions et dates
+    d'effet, cohérence des dates, expiration et revue périodique, circuits, décisions Vigie et webhook, journal en
+    ajout seul, cercle de rédaction, import, recherche, recherches enregistrées, pages par département et
+    modifications simultanées. Seul `tests/integration/dates.test.ts` charge aussi les données de démo (`src/db/seed.ts`), en
     mémoire, pour en vérifier toutes les dates.
     Les Server Actions y tournent avec `next/headers` et `next/cache` simulés (`tests/support/session.ts`) ;
     l'horloge est figée au 10 octobre 2026.
@@ -90,7 +91,9 @@ Tout l'état d'écran est dans l'URL (onglets, filtres, sélection) : les liens 
   prochaine date de revue sans créer de révision), archivage, gel juridique, matrice des droits, registre des types
   (circuit, confidentialité, conservation, périodicité de revue), titulaires des fonctions, départements (et filtres mis
   en avant sur leur page) et sites. L'expiration et la revue en retard sont des indicateurs, sans nouveau statut : le
-  retrait reste une demande à Vigie.
+  retrait reste une demande à Vigie. Métadonnées, lecteurs désignés, versions de travail et demandes de validation
+  refusent une action faite depuis une fiche périmée (« modifié entre-temps par … ; rechargez la fiche »), sans
+  réserver le brouillon.
   Chacune de ces actions alimente le journal d'audit, de même que les téléchargements et les deux exports CSV. Le
   journal est en ajout seul : la base refuse toute modification ou suppression (déclencheur posé au démarrage,
   `src/db/index.ts`), et un reclassement ne réécrit pas les entrées, qui gardent l'identifiant de leur époque.
@@ -134,6 +137,7 @@ src/
     codes.ts           identifiants TYPE-CONTEXTE-SEQ et lettres de révision
     retention.ts       fin de conservation
     review.ts          expiration et revue périodique : indicateurs, prochaine date de revue
+    concurrency.ts     modifications simultanées : version vue par un dialogue, version de travail de base
     search.ts          recherche : facettes, période, tri, pertinence
     departments.ts     pages par département : filtres mis en avant
     storage.ts         stockage des fichiers (disque local ou SharePoint)

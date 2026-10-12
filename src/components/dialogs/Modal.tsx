@@ -67,16 +67,20 @@ export function useSubmit() {
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [field, setField] = useState<string | null>(null);
+  const [outdated, setOutdated] = useState(false);
   /** `staleError`: an error meaning the page is out of date (the step moved on): close, say so, refresh the page. */
   const run = (fn: () => Promise<ActionResult>, opts: { keepOpen?: boolean; staleError?: string; form?: HTMLFormElement } = {}) =>
     start(async () => {
       setError(null);
       setField(null);
+      setOutdated(false);
       try {
         const r = await fn();
         if (!r.ok) {
           if (opts.staleError && r.error === opts.staleError) { close(); toast(r.error, true); router.refresh(); return; }
           setError(r.error);
+          // The record changed since the dialog opened: the entries stay on screen until the user chooses to reload.
+          setOutdated(!!r.stale);
           const input = r.field ? opts.form?.elements.namedItem(r.field) : null;
           if (r.field && input instanceof HTMLElement) {
             setField(r.field);
@@ -91,7 +95,9 @@ export function useSubmit() {
         setError(t.error);
       }
     });
-  return { pending, error, field, run };
+  /** After a refusal from an outdated view (ActionResult `stale`): closes the dialog and reloads the record; else undefined. */
+  const reload = outdated ? () => { close(); router.refresh(); } : undefined;
+  return { pending, error, field, run, reload };
 }
 
 export type SelectOption = { key: string; label: string; group?: string };

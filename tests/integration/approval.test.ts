@@ -8,7 +8,7 @@ import { importDocument } from '@/lib/importer';
 import { applyChangeDecision } from '@/lib/lifecycle';
 import { listAudit } from '@/lib/queries';
 import { submitChange } from '@/lib/vigie';
-import { addDoc, fixClock, getChange, getRevision, journalOf, revisionStatuses, setupDb } from '../support/db';
+import { addDoc, baseOf, fixClock, getChange, getRevision, journalOf, revisionStatuses, setupDb } from '../support/db';
 import type { Person } from '../support/fixtures';
 import { readPdf } from '../support/pdf';
 import { actAs, cookieStore } from '../support/session';
@@ -44,9 +44,9 @@ async function act<R>(who: Person, fn: () => Promise<R>, role?: SimRole): Promis
  */
 async function approvedWithHistory() {
   await addDoc(db(), { id: ID, revisions: [{ letter: 'A', status: 'in_force', versions: ['owner'] }, { letter: 'B', status: 'draft', modifierId: 'writer', changeRef: ECO, versions: ['writer'] }] });
-  expect(await act('writer', () => requestValidation(ID, null))).toMatchObject({ ok: true });
+  expect(await act('writer', async () => requestValidation(ID, null, await baseOf(db(), ID)))).toMatchObject({ ok: true });
   expect(await act('head', () => decideStep('W-1', false, 1, REASON))).toEqual({ ok: true });
-  expect(await act('writer', () => requestValidation(ID, null))).toMatchObject({ ok: true });
+  expect(await act('writer', async () => requestValidation(ID, null, await baseOf(db(), ID)))).toMatchObject({ ok: true });
   expect(await act('head', () => delegateStep('W-2', 'director', 1))).toEqual({ ok: true });
   expect(await act('director', () => decideStep('W-2', true, 1))).toEqual({ ok: true });
   expect(await act('quality', () => addComment('W-2', COMMENT))).toEqual({ ok: true });
@@ -164,7 +164,7 @@ describe('the approval record of an approved revision', () => {
     await db().transaction((tx) => applyChangeDecision(tx, ecr, { accepted: true, ecoRef: ECO_GRAFTED, modifierId: 'writer', note: 'CCB' }, 'vigie'));
     expect(await act('manager', () => graftChange(ecr))).toMatchObject({ ok: true });
     expect(await getChange(db(), ecr)).toMatchObject({ status: 'implemented', revisionId: (await getRevision(db(), ID, 'B')).id });
-    expect(await act('writer', () => requestValidation(ID, null))).toMatchObject({ ok: true });
+    expect(await act('writer', async () => requestValidation(ID, null, await baseOf(db(), ID)))).toMatchObject({ ok: true });
     expect(await act('head', () => decideStep('W-1', true, 1))).toEqual({ ok: true });
     expect(await act('quality', () => decideStep('W-1', true, 2))).toEqual({ ok: true });
     expect(await revisionStatuses(db(), ID)).toEqual({ A: 'superseded', B: 'in_force' });
@@ -248,7 +248,7 @@ describe('a revision migrated from the legacy system', () => {
     // Not approved yet: no record.
     expect((await fetchRecord('owner', id, '?rev=B')).status).toBe(404);
     await db().insert(s.workingVersions).values({ revisionId: b.id, docId: id, n: 1, comment: { fr: 'Reprise', en: 'Migrated' }, authorId: 'owner', date: '2026-10-10' });
-    expect(await act('owner', () => requestValidation(id, null))).toMatchObject({ ok: true });
+    expect(await act('owner', async () => requestValidation(id, null, await baseOf(db(), id)))).toMatchObject({ ok: true });
     expect(await act('head', () => decideStep('W-1', true, 1))).toEqual({ ok: true });
     expect(await act('quality', () => decideStep('W-1', true, 2))).toEqual({ ok: true });
     expect(await revisionStatuses(db(), id)).toEqual({ B: 'in_force' });
