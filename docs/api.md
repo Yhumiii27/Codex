@@ -81,6 +81,7 @@ Réponse **200** (extrait) :
         "disposition": "review", "dispositionLabels": { "fr": "Revue", "en": "Review" },
         "basis": "…"
       },
+      "reviewMonths": null,
       "confAllowed": ["restreint", "interne", "confidentiel"],
       "confDefault": "restreint",
       "iso": "8.3 Conception et développement",
@@ -103,6 +104,7 @@ Réponse **200** (extrait) :
 | `subtypes` | Sous-types proposés (`{fr, en}`), saisie libre possible. |
 | `circuit` | Étapes d'approbation après l'auteur, dans l'ordre, par fonction (`scope` : `global`, `department`, `project`, `research`). Liste vide : approbation immédiate. |
 | `retention` | Règle de conservation : durée en années (`null` : sans durée fixe), événement déclencheur, sort final, fondement. |
+| `reviewMonths` | Périodicité de revue en mois (1 à 240), `null` sans périodicité (valeur par défaut de tous les types, en attendant les arbitrages du registre). Un document qui entre en vigueur sans date de révision la reçoit, comptée depuis sa mise en vigueur ; « Revue effectuée » sans date saisie la compte depuis le jour de la revue. |
 | `confAllowed` / `confDefault` | Niveaux de confidentialité admis et niveau proposé par défaut. |
 | `iso` | Clause ISO 9001 (ou `null`). |
 | `clientDeliverable` | Livrable client. |

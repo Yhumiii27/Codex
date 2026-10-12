@@ -3,14 +3,17 @@ import Link from 'next/link';
 import { Forbidden } from '@/components/ui/Forbidden';
 import { Seg } from '@/components/ui/Seg';
 import { ActionButton, DialogButton } from '@/components/ui/client';
+import { mayRecordReview } from '@/lib/access';
 import { restoreArchived } from '@/lib/actions';
 import { getCtx } from '@/lib/context';
-import { fmtDate } from '@/lib/format';
+import { addDays, fmtDate, todayIso } from '@/lib/format';
 import { deadlines, listDocs } from '@/lib/queries';
 import { countBy, typeSpec } from '../administration/shared';
 import { DueTable, type DueRow } from './DueTable';
 
 const TABS = ['due', 'rules', 'archives'] as const;
+/** Deadlines shown: all of them, or those past due as the record's indicators say (lib/review.ts): expired, review overdue. */
+const DUE_FILTERS = ['all', 'expired', 'review_late'] as const;
 
 export default async function RetentionPage({ searchParams }: PageProps<'/archivage'>) {
   const sp = (await searchParams) as Record<string, string | undefined>;
@@ -32,14 +35,34 @@ export default async function RetentionPage({ searchParams }: PageProps<'/archiv
 
   if (tab === 'due') {
     // End of retention, expiry (permits, certificates, contracts) and periodic review falling due within 90 days.
-    const rows: DueRow[] = deadlines(ctx, docs).map((x) => ({
-      id: x.id, kind: x.kind, title: x.title, contextL: x.contextL, typeLabel: x.typeLabel,
-      kindL: t[`due_${x.kind}`], detail: x.kind === 'retention' ? x.retentionL : '',
-      endF: x.endF, days: x.days, actionLabel: x.actionLabel, held: x.legalHold, href: x.href,
-    }));
+    const filter = (DUE_FILTERS as readonly string[]).includes(sp.f ?? '') ? (sp.f as (typeof DUE_FILTERS)[number]) : 'all';
+    const tomorrow = addDays(todayIso(), 1);
+    const rows: DueRow[] = deadlines(ctx, docs)
+      .filter((x) => filter === 'all' || (x.overdue && x.kind === (filter === 'expired' ? 'expiry' : 'review')))
+      .map((x) => ({
+        id: x.id, kind: x.kind, title: x.title, contextL: x.contextL, typeLabel: x.typeLabel,
+        kindL: t[`due_${x.kind}`], detail: x.kind === 'retention' ? x.retentionL : '',
+        endF: x.endF, days: x.days, actionLabel: x.actionLabel, held: x.legalHold, href: x.href,
+        overdueL: x.overdue ? (x.kind === 'expiry' ? t.ind_expired : t.ind_review_late) : null,
+        // A review falling due may be recorded from here (lib/actions.ts recordReview), by whom the record allows it.
+        review: x.kind === 'review' ? {
+          spec: { kind: 'review', docId: x.id, title: x.title, letter: x.revInForce ?? '', reviewDueAt: x.reviewDueAt, months: ctx.typeByCode.get(x.typeCode)?.reviewMonths ?? null, minDate: tomorrow },
+          denied: x.legalHold ? t.locked_hold : !ctx.can('edit') ? `${t.not_allowed} : ${t.perm_edit}` : mayRecordReview(ctx, x) ? undefined : t.review_reserved,
+        } : null,
+      }));
+    const filters = (
+      <Seg
+        name="dueF"
+        value={filter}
+        ariaLabel={t.ret_due}
+        style={{ flex: 'none' }}
+        optStyle={{ padding: '6px 12px', fontSize: 12.5 }}
+        options={DUE_FILTERS.map((k) => ({ key: k, label: t[`f_${k}`], href: `/archivage${k === 'all' ? '' : `?f=${k}`}` }))}
+      />
+    );
     return (
       <div className="screen" style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }} data-screen-label="Archivage">
-        <DueTable tabs={tabs} rows={rows} canArchive={canArchive} />
+        <DueTable tabs={tabs} filters={filters} rows={rows} canArchive={canArchive} />
       </div>
     );
   }

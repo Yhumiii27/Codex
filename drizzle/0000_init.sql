@@ -52,11 +52,13 @@ CREATE TABLE "doc_types" (
 	"retention_basis" text DEFAULT '' NOT NULL,
 	"conf_allowed" jsonb NOT NULL,
 	"conf_default" text NOT NULL,
+	"review_months" integer,
 	"iso" text,
 	"client_deliverable" boolean DEFAULT false NOT NULL,
 	"source" text DEFAULT 'deck' NOT NULL,
 	"active" boolean DEFAULT true NOT NULL,
-	"sort" integer DEFAULT 0 NOT NULL
+	"sort" integer DEFAULT 0 NOT NULL,
+	CONSTRAINT "doc_types_review_months" CHECK ("doc_types"."review_months" is null or "doc_types"."review_months" between 1 and 240)
 );
 --> statement-breakpoint
 CREATE TABLE "document_readers" (

@@ -11,6 +11,7 @@ import { addDays, clip, daysBetween, fmtDate, fmtDateTime, fmtSize, fmtWhen, loc
 import { CONF_LEVELS, MATRIX_ROLE_LABEL, TAGCLS, type T, type TKey } from './i18n';
 import { decisionWait, lockOf, type DecisionWait } from './lifecycle';
 import { retainUntil } from './retention';
+import { isExpired, isReviewOverdue } from './review';
 import { featuredFilters, featuredOf } from './departments';
 import { DATE_LABEL, FACET_KEYS, FACET_LABEL, searchHref, SORT_LABEL, type FacetKey, type Facets, type Period, type SearchDoc, type SearchInput, type SortKey } from './search';
 
@@ -29,6 +30,7 @@ export function docView(ctx: Ctx, d: DocRow, workingL: string | null | undefined
   const contextL = d.attachment === 'project' ? `${d.projectCode} · ${label('project', d.projectCode)}` : d.attachment === 'research' ? `${d.programCode} · ${label('program', d.programCode)}` : label('department', d.department);
   const until = retainUntil(d);
   const years = d.retentionYears != null ? `${d.retentionYears} ${t.years_short} · ` : '';
+  const today = todayIso();
   return {
     ...d,
     revWorking,
@@ -54,6 +56,12 @@ export function docView(ctx: Ctx, d: DocRow, workingL: string | null | undefined
     issuedF: fmtDate(d.issuedAt, lang),
     expiresF: fmtDate(d.expiresAt, lang),
     reviewDueF: fmtDate(d.reviewDueAt, lang),
+    /**
+     * Indicators on dates every reader of the record sees (lib/review.ts): an active document past its expiry date, or
+     * past its review date with a revision in force. No status changes: withdrawing it remains Vigie's (D-17).
+     */
+    expired: isExpired(d, today),
+    reviewOverdue: isReviewOverdue(d, today),
     retainUntil: until,
     untilF: until ? fmtDate(until, lang) : d.retentionTrigger === 'permanent' || d.retentionDisposition === 'permanent' ? t.disp_permanent : '—',
     retentionL: `${years}${t[`trig_${d.retentionTrigger}` as TKey]} · ${t[`disp_${d.retentionDisposition}` as TKey]}`,
@@ -76,8 +84,8 @@ async function workingLabels(docId?: string): Promise<Map<string, string>> {
   return new Map(revs.map((r) => [r.docId, maxN.has(r.id) ? revLabel(r.letter, r.status, maxN.get(r.id)) : r.letter]));
 }
 
-/** Journal actions on the record itself (no revision) that move documents.modified_at. */
-const RECORD_ACTIONS = ['edit', 'archive', 'restore'];
+/** Journal actions on the record itself (no revision) that move documents.modified_at (a recorded review sets the next date). */
+const RECORD_ACTIONS = ['edit', 'reviewed', 'archive', 'restore'];
 
 /**
  * documents.modified_at also moves with drafting work (working versions, validation requests). Outside the drafting
@@ -389,19 +397,24 @@ export const DEADLINE_WINDOW_DAYS = 90;
 
 /**
  * What falls due within 90 days (or is overdue): end of retention (action from the retention class),
- * expiry of permits, certificates and contracts (renew), planned periodic review (review).
+ * expiry of permits, certificates and contracts (renew), planned periodic review (review). `overdue`: the expiry or
+ * review indicator of the record (docView, lib/review.ts), never set for an end of retention; `dueL`: the label of the
+ * date, which says so (« Expiré, valable jusqu’au », « Revue en retard, prévue le »).
  */
 export function deadlines(ctx: Ctx, docs: DocView[]) {
+  const { t } = ctx;
   const today = todayIso();
   const limit = addDays(today, DEADLINE_WINDOW_DAYS);
-  const out: (DocView & { kind: 'retention' | 'expiry' | 'review'; end: string; endF: string; days: number; action: string; actionLabel: string })[] = [];
+  const out: (DocView & { kind: 'retention' | 'expiry' | 'review'; end: string; endF: string; days: number; action: string; actionLabel: string; overdue: boolean; dueL: string })[] = [];
   for (const d of docs) {
-    const push = (kind: 'retention' | 'expiry' | 'review', end: string, action: string) =>
-      out.push({ ...d, kind, end, endF: fmtDate(end, ctx.lang), days: daysBetween(today, end), action, actionLabel: d.legalHold ? ctx.t.hold : ctx.t[`x_${action}` as TKey] });
+    const push = (kind: 'retention' | 'expiry' | 'review', end: string, action: string, overdue = false) => out.push({
+      ...d, kind, end, endF: fmtDate(end, ctx.lang), days: daysBetween(today, end), action, actionLabel: d.legalHold ? t.hold : t[`x_${action}` as TKey], overdue,
+      dueL: kind === 'retention' ? t.until : kind === 'expiry' ? (overdue ? t.dl_expired : t.dl_expiry) : overdue ? t.dl_review_late : t.dl_review,
+    });
     if (d.retainUntil && d.retainUntil <= limit) push('retention', d.retainUntil, d.retentionDisposition === 'destroy' ? 'destroy' : d.retentionDisposition === 'review' ? 'review' : 'archive');
     if (d.state !== 'active') continue;
-    if (d.expiresAt && d.expiresAt <= limit) push('expiry', d.expiresAt, 'renew');
-    if (d.reviewDueAt && d.reviewDueAt <= limit && d.revInForce) push('review', d.reviewDueAt, 'review');
+    if (d.expiresAt && d.expiresAt <= limit) push('expiry', d.expiresAt, 'renew', d.expired);
+    if (d.reviewDueAt && d.reviewDueAt <= limit && d.revInForce) push('review', d.reviewDueAt, 'review', d.reviewOverdue);
   }
   return out.sort((a, b) => a.end.localeCompare(b.end));
 }
@@ -436,7 +449,9 @@ export type MyAction = { key: string; kind: ActionKind; docId: string; docTitle:
  *   working version or, once there is one, send it for approval (addWorkingVersion, requestValidation);
  * - changes Vigie accepted while that revision is drafted, which they may graft onto it (openRevisionView, graftChange);
  * - review and expiry dates within DEADLINE_WINDOW_DAYS, or past, of the unlocked documents they own or own the process
- *   of (deadlineActor), with the edit permission. End of retention stays with records managers, in Archivage.
+ *   of (deadlineActor: the process owner records a review, and only asks for a change on an expiry), with the edit
+ *   permission; an overdue one is worded as the record's indicator. End of retention stays with records managers, in
+ *   Archivage.
  * Ordered by kind (ACTION_ORDER), then by date. Cached per request (see myTodo).
  */
 export const myActions = cache(async (ctx: Ctx): Promise<MyAction[]> => {
@@ -498,11 +513,12 @@ export const myActions = cache(async (ctx: Ctx): Promise<MyAction[]> => {
       if (wait?.graft === 'yes') push('graft', d, `${d.id} · ${c.ecoRef ?? c.id} ${t.ecr_accepted_l}, ${t.todo_graft} ${wait.letter}`, `${d.href}?tab=requests`);
     }
     const changing = new Set(pending.map((c) => c.docId));
-    const own = docs.filter((d) => (d.ownerId === me || d.processOwnerId === me) && !lockOf(d) && deadlineActor(me, d, changing.has(d.id)));
+    const own = docs.filter((d) => (d.ownerId === me || d.processOwnerId === me) && !lockOf(d));
     for (const x of deadlines(ctx, own)) {
-      if (x.kind === 'retention') continue;
+      if (x.kind === 'retention' || !deadlineActor(me, x, x.kind, changing.has(x.id))) continue;
       const days = x.days >= 0 ? `${x.days} ${t.days_left}` : `${-x.days} ${t.days_late}`;
-      push(x.kind === 'review' ? 'review' : 'renew', x, `${x.id} · ${x.kind === 'review' ? t.dl_review : t.dl_expiry} ${x.endF} · ${days}`, `${x.href}?tab=meta`, x.end);
+      // Worded as the record's indicator once overdue (dueL): « Expiré, valable jusqu’au … », « Revue en retard, prévue le … ».
+      push(x.kind === 'review' ? 'review' : 'renew', x, `${x.id} · ${x.dueL} ${x.endF} · ${days}`, `${x.href}?tab=meta`, x.end);
     }
   }
 
@@ -606,13 +622,13 @@ const CHANGE_LABEL: Record<string, TKey> = {
   reviewDueAt: 'review_due_at', expiresAt: 'expires_at', sourceOrg: 'source_org', externalRef: 'external_ref', receivedAt: 'received_at',
   projectPhase: 'project_phase', workPackage: 'work_package', discipline: 'discipline', researchTheme: 'research_theme', studyId: 'study_id',
   ipStatus: 'ip_status', processOwnerId: 'process_owner', retention: 'retention', circuit: 'circuit', confAllowed: 'conf_allowed', confDefault: 'conf_default',
-  featured: 'featured_filters',
+  featured: 'featured_filters', reviewMonths: 'review_months',
 };
 
 /** One stored value of a change, in the reader's language. */
 function changeValueL(ctx: Ctx, field: string, v: AuditValue | undefined): string {
   const { t } = ctx;
-  if (v == null || (Array.isArray(v) && !v.length)) return field === 'circuit' ? t.no_approval : field === 'featured' ? t.featured_none : '—';
+  if (v == null || (Array.isArray(v) && !v.length)) return field === 'circuit' ? t.no_approval : field === 'featured' ? t.featured_none : field === 'reviewMonths' ? t.review_months_none : '—';
   if (typeof v === 'boolean') return field === 'granted' ? (v ? '✓' : '✕') : v ? t.active_label : t.inactive;
   if (Array.isArray(v)) return v.map((x) => changeValueL(ctx, field, x)).join(field === 'circuit' ? ' → ' : ', ');
   if (typeof v === 'object') {
@@ -630,6 +646,7 @@ function changeValueL(ctx: Ctx, field: string, v: AuditValue | undefined): strin
     case 'circuit': return ctx.label('function', v);
     // Facets a department page puts forward ('default': those of every department without its own, lib/departments.ts).
     case 'featured': return v === 'default' ? t.featured_default : t[FACET_LABEL[v as FacetKey]] ?? v;
+    case 'reviewMonths': return `${v} ${t.months_short}`;
     default: return v;
   }
 }
@@ -641,7 +658,7 @@ function changeL(ctx: Ctx, c: AuditChange): string {
   return `${label ? `${label} : ` : ''}${changeValueL(ctx, c.field, c.before)} → ${changeValueL(ctx, c.field, c.after)}`;
 }
 
-const FACET_PREFIX: Partial<Record<FacetKey, string>> = { origin: 'or_', attachment: 'att_', status: 'st_', conf: 'conf_', lang: 'lang_' };
+const FACET_PREFIX: Partial<Record<FacetKey, string>> = { origin: 'or_', attachment: 'att_', status: 'st_', overdue: 'overdue_', conf: 'conf_', lang: 'lang_' };
 
 /** A facet value of /recherche as the reader reads it: reference labels, people's names, coded values translated. */
 export function facetValueL(ctx: Ctx, k: FacetKey, v: string): string {
@@ -762,6 +779,8 @@ export function typeView(ctx: Ctx, x: typeof s.docTypes.$inferSelect) {
     circuitL: x.circuit.length ? x.circuit.map((k) => ctx.label('function', k)).join(' → ') : ctx.t.no_approval,
     subtypesL: x.subtypes.map((st) => (fr ? st.fr : st.en)),
     retentionL: `${x.retentionYears != null ? `${x.retentionYears} ${ctx.t.years_short} · ` : ''}${ctx.t[`trig_${x.retentionTrigger}` as TKey]} · ${ctx.t[`disp_${x.retentionDisposition}` as TKey]}`,
+    /** Periodic review of the type, « 36 mois », or « — » without one. */
+    reviewL: x.reviewMonths ? `${x.reviewMonths} ${ctx.t.months_short}` : '—',
     confL: x.confAllowed.map((c) => ctx.t[`conf_${c}` as TKey]).join(', '),
     confDefaultL: ctx.t[`conf_${x.confDefault}` as TKey],
   };

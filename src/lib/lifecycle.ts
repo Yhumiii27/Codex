@@ -6,6 +6,7 @@ import { buildAccessIndex, canRead, type AccessIndex } from './access';
 import { nextLetter } from './codification';
 import { nowStamp, todayIso } from './format';
 import { DICT, MATRIX_ROLE, type Perm, type SimRole } from './i18n';
+import { reviewAfter } from './review';
 
 // Revision lifecycle (docs/modele-cible.md §4): draft → in_review → approved → in_force, previous in force → superseded.
 
@@ -52,7 +53,9 @@ export async function refreshHeadline(tx: Tx, docId: string) {
 /**
  * Puts an approved revision in force; the one it replaces becomes "Remplacé". A revision already in force is left
  * alone (two requests promoting it at once). An effective date already past becomes the day it actually entered into force.
- * A change Vigie accepted while this revision was open then opens the next one (D-26, applyPendingDecision).
+ * A document without a review date gets one from its type's periodicity, counted from that day (lib/review.ts); a date
+ * already set is left as it is. A change Vigie accepted while this revision was open then opens the next one (D-26,
+ * applyPendingDecision).
  */
 export async function putInForce(tx: Tx, rev: RevRow, date: string) {
   const [cur] = await tx.select().from(s.revisions).where(eq(s.revisions.id, rev.id));
@@ -60,8 +63,12 @@ export async function putInForce(tx: Tx, rev: RevRow, date: string) {
   await tx.update(s.revisions).set({ status: 'superseded', supersededAt: date }).where(and(eq(s.revisions.docId, rev.docId), eq(s.revisions.status, 'in_force'), ne(s.revisions.id, rev.id)));
   await tx.update(s.revisions).set({ status: 'in_force', inForceAt: date, effectiveAt: cur.effectiveAt && cur.effectiveAt < date ? date : cur.effectiveAt }).where(eq(s.revisions.id, rev.id));
   const [d] = await tx.select().from(s.documents).where(eq(s.documents.id, rev.docId));
-  await tx.update(s.documents).set({ issuedAt: d?.issuedAt ?? date, modifiedAt: date }).where(eq(s.documents.id, rev.docId));
+  const [type] = d && !d.reviewDueAt ? await tx.select({ reviewMonths: s.docTypes.reviewMonths }).from(s.docTypes).where(eq(s.docTypes.code, d.typeCode)) : [];
+  const planned = type ? reviewAfter(date, type.reviewMonths) : null;
+  await tx.update(s.documents).set({ issuedAt: d?.issuedAt ?? date, modifiedAt: date, ...(planned ? { reviewDueAt: planned } : {}) }).where(eq(s.documents.id, rev.docId));
   await audit(tx, 'codex', 'in_force', rev.docId, rev.letter, rev.id);
+  // About the document as a whole, whose revision is now in force: every reader of the record sees it (D-14).
+  if (d && planned) await audit(tx, 'codex', 'review_planned', rev.docId, rev.letter, null, { changes: [{ field: 'reviewDueAt', before: null, after: planned }], doc: { conf: d.conf, inForce: true } });
   await refreshHeadline(tx, rev.docId);
   await applyPendingDecision(tx, rev.docId);
 }

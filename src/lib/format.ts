@@ -93,6 +93,15 @@ export function addYears(iso: string, years: number): string {
   return `${y + years}-${String(m).padStart(2, '0')}-${String(Math.min(d, last)).padStart(2, '0')}`;
 }
 
+/** Same day `months` later; a day the target month lacks falls back to its last day (31 January + 1 → 28 or 29 February). */
+export function addMonths(iso: string, months: number): string {
+  const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
+  const target = new Date(Date.UTC(y, m - 1 + months, 1));
+  const ty = target.getUTCFullYear(), tm = target.getUTCMonth() + 1;
+  const last = new Date(Date.UTC(ty, tm, 0)).getUTCDate();
+  return `${ty}-${String(tm).padStart(2, '0')}-${String(Math.min(d, last)).padStart(2, '0')}`;
+}
+
 export function daysBetween(from: string, to: string): number {
   return Math.round((Date.parse(`${to.slice(0, 10)}T12:00:00Z`) - Date.parse(`${from.slice(0, 10)}T12:00:00Z`)) / 86400000);
 }

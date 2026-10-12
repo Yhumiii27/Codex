@@ -25,12 +25,12 @@ déposés sont stockés dans `.data/files/` (ou dans SharePoint, voir `src/lib/s
 - Tests : `npm test` lance Vitest une fois (`npm run test:watch` en continu), en une vingtaine de secondes, sans
   serveur ni réseau et sans toucher à `.data/`.
   - `tests/unit/` : règles pures (identifiants, révisions, visibilité, conservation, recherche, filtres mis en avant
-    des départements, dates, types de fichiers).
+    des départements, dates, expiration et revue périodique, types de fichiers).
   - `tests/integration/` : règles métier sur une base PGlite en mémoire, migrée depuis `drizzle/` avec le déclencheur
     du journal (`openDb` dans `src/db/index.ts`) et remplie de données minimales (`tests/support/fixtures.ts`), pas de
-    la base de démo. Identifiants et compteurs, révisions et dates d'effet, cohérence des dates, circuits, décisions
-    Vigie et webhook, journal en ajout seul, cercle de rédaction, import, recherche, recherches enregistrées et pages
-    par département. Seul `tests/integration/dates.test.ts` charge aussi les données de démo (`src/db/seed.ts`), en
+    la base de démo. Identifiants et compteurs, révisions et dates d'effet, cohérence des dates, expiration et revue
+    périodique, circuits, décisions Vigie et webhook, journal en ajout seul, cercle de rédaction, import, recherche,
+    recherches enregistrées et pages par département. Seul `tests/integration/dates.test.ts` charge aussi les données de démo (`src/db/seed.ts`), en
     mémoire, pour en vérifier toutes les dates.
     Les Server Actions y tournent avec `next/headers` et `next/cache` simulés (`tests/support/session.ts`) ;
     l'horloge est figée au 10 octobre 2026.
@@ -66,13 +66,13 @@ quitter l'app et supprimer `~/Library/Application Support/Codex/data`.
 | Route | Écran |
 | --- | --- |
 | `/` | Tableau de bord : « À traiter » (étapes à décider, révisions à rédiger ou à reprendre, greffes possibles, revues et expirations des documents dont on est propriétaire ou propriétaire de processus), documents récents, échéances (conservation, expiration, revue), activité. La pastille d'Accueil et la cloche reprennent la même liste |
-| `/explorateur` | Classement par famille, département, projet / programme, type ou origine ; filtres de statut ; aperçu rapide |
-| `/documents/[id]` | Fiche document : aperçu, onglets Projet · Fiche · Révisions · Validation · Demandes · Historique |
-| `/recherche` | Recherche plein texte classée par pertinence + facettes (projet, famille, type, sous-type, origine, rattachement, département, site, propriétaire, auteur, statut, confidentialité, langue, mots-clés, organisme source, phase, lot, discipline, thème), période sur une date (modification, émission, effet, révision, expiration), tri au choix, export CSV dans le même ordre ; recherches enregistrées (critères, période et tri) personnelles, ou partagées avec un département ou le groupe par un gestionnaire documentaire |
+| `/explorateur` | Classement par famille, département, projet / programme, type ou origine ; filtres de statut et d'échéance dépassée (« Expirés », « Revues en retard ») ; aperçu rapide |
+| `/documents/[id]` | Fiche document : aperçu, onglets Projet · Fiche · Révisions · Validation · Demandes · Historique ; indicateurs « Expiré » (raccourcis vers les demandes de modification et de retrait) et « Revue en retard », « Revue effectuée » |
+| `/recherche` | Recherche plein texte classée par pertinence + facettes (projet, famille, type, sous-type, origine, rattachement, département, site, propriétaire, auteur, statut, échéance dépassée, confidentialité, langue, mots-clés, organisme source, phase, lot, discipline, thème), période sur une date (modification, émission, effet, révision, expiration), tri au choix, export CSV dans le même ordre ; recherches enregistrées (critères, période et tri) personnelles, ou partagées avec un département ou le groupe par un gestionnaire documentaire |
 | `/departements/[code]` | Page d'un département (`/departements` ouvre celui de l'utilisateur, un sélecteur passe aux autres) : documents en vigueur, échéances, circuits en cours qu'il suit, recherches partagées avec le département et le groupe, filtres mis en avant (valeurs les plus fréquentes, chacune un lien vers la recherche filtrée), le tout limité à ce que l'utilisateur peut lire. Départements provisoires (organigramme attendu) ; filtres par défaut (type, statut, projet), réglables par département dans Administration › Organisation, en attendant le recueil des besoins de chaque métier |
 | `/validations` | Circuits de validation : à valider, mes demandes, en cours, terminées ; approuver / rejeter (motif obligatoire) / déléguer, rappeler sa demande avant la dernière approbation, commentaires. Vue « Mes demandes Vigie » : demandes de modification et de retrait envoyées par l'utilisateur, avec leur statut |
-| `/archivage` | Échéances (archivage, gel juridique), règles de conservation du registre, archives |
-| `/administration` | Registre des types, fonctions & circuits, rôles & droits, organisation (départements et leurs filtres mis en avant, sites), modèles (QMS), journal d'audit (CSV) |
+| `/archivage` | Échéances (archivage, gel juridique, revue effectuée ; filtres « Expirés » et « Revues en retard »), règles de conservation du registre, archives |
+| `/administration` | Registre des types (dont la périodicité de revue), fonctions & circuits, rôles & droits, organisation (départements et leurs filtres mis en avant, sites), modèles (QMS), journal d'audit (CSV) |
 
 API : `/api/registry` (lu par Keystone), `/api/import` (outil de migration), `/api/integrations/vigie` (décisions
 Vigie), `/api/documents/[id]/file` (fichier d'une version de travail), `/api/export/*` (CSV).
@@ -85,9 +85,11 @@ Tout l'état d'écran est dans l'URL (onglets, filtres, sélection) : les liens 
   travail (A.1, A.2…), métadonnées (dates contrôlées : format, et émission ≤ effet < expiration) et reclassement
   (nouvel identifiant tant qu'aucune révision n'a été approuvée),
   lecteurs désignés, demandes de validation et décisions (mise en vigueur à l'approbation ou à la date d'effet),
-  délégation, commentaires, demandes de modification et de retrait, archivage, gel juridique, matrice des droits,
-  registre des types (circuit, confidentialité, conservation), titulaires des fonctions, départements (et filtres mis
-  en avant sur leur page) et sites.
+  délégation, commentaires, demandes de modification et de retrait, revue périodique (« Revue effectuée », qui fixe la
+  prochaine date de revue sans créer de révision), archivage, gel juridique, matrice des droits, registre des types
+  (circuit, confidentialité, conservation, périodicité de revue), titulaires des fonctions, départements (et filtres mis
+  en avant sur leur page) et sites. L'expiration et la revue en retard sont des indicateurs, sans nouveau statut : le
+  retrait reste une demande à Vigie.
   Chacune de ces actions alimente le journal d'audit, de même que les téléchargements et les deux exports CSV. Le
   journal est en ajout seul : la base refuse toute modification ou suppression (déclencheur posé au démarrage,
   `src/db/index.ts`), et un reclassement ne réécrit pas les entrées, qui gardent l'identifiant de leur époque.
@@ -127,6 +129,7 @@ src/
     lifecycle.ts       révisions : mise en vigueur, remplacement, décisions Vigie
     codes.ts           identifiants TYPE-CONTEXTE-SEQ et lettres de révision
     retention.ts       fin de conservation
+    review.ts          expiration et revue périodique : indicateurs, prochaine date de revue
     search.ts          recherche : facettes, période, tri, pertinence
     departments.ts     pages par département : filtres mis en avant
     storage.ts         stockage des fichiers (disque local ou SharePoint)

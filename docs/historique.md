@@ -1048,3 +1048,58 @@ quelle chaîne pour une date (erreur SQL à l'enregistrement), et aucune règle 
   plus fixer au 01/01/2020 l'expiration de `PRT-R2601-001`, en revue et jamais émis (« La révision A, en cours de
   validation, prendra effet à son approbation… »), et une création avec une date de révision passée est refusée sous
   ce champ.
+
+### 15.2 Expiration et revue périodique : effet sur le cycle de vie
+
+Point 13 de [reste-a-faire.md](reste-a-faire.md) (G36, G37, WFL-07) : les dates d'expiration et de révision n'étaient
+que des échéances, sans indicateur, sans moyen d'enregistrer une revue et sans périodicité par type. Rien n'est
+devenu un statut : le retrait reste une demande à Vigie (D-17).
+
+- **Règles** (`src/lib/review.ts`) : un document actif est « Expiré » le lendemain de sa date d'expiration ; sa revue
+  est « en retard » le lendemain de sa date de révision, s'il a une révision en vigueur. `docView` porte les deux
+  indicateurs (`expired`, `reviewOverdue`) : ils ne valent que pour les documents que l'utilisateur lit déjà (D-14).
+- **Écrans** : étiquettes sur la fiche, dans l'explorateur, son aperçu rapide et la recherche ; bandeau sur la fiche,
+  avec « Demander une modification » et « Demander le retrait » pour un document expiré et « Revue effectuée » pour
+  une revue en retard ; filtre « Échéance dépassée » de l'explorateur, sous le plan de classement et combiné au statut
+  (« Expirés », « Revues en retard », `?due=`), filtres d'Archivage (`?f=`) ; facette « Échéance dépassée » de la
+  recherche (`?overdue=`), enregistrable et exportable. « À traiter », l'Accueil et les pages de département disent
+  « Expiré, valable jusqu'au … » et « Revue en retard, prévue le … » (`deadlines().dueL`).
+- **Revue effectuée** (`recordReview`, src/lib/actions.ts) : depuis la fiche (bandeau, onglet Fiche) ou Archivage,
+  par le propriétaire, le propriétaire de processus ou un gestionnaire documentaire avec le droit « Modifier »
+  (`mayRecordReview`, src/lib/access.ts), sur un document lisible, non verrouillé, avec une révision en vigueur.
+  Commentaire facultatif ; prochaine date saisie, postérieure à aujourd'hui, ou périodicité du type ; aucune révision
+  créée ; entrée « Revue effectuée » au journal du document. Le propriétaire de processus reçoit désormais ses revues
+  dans « À traiter ».
+- **Périodicité** : colonne `doc_types.review_months` (mois, 1 à 240, vide par défaut, migration unique régénérée),
+  colonne « Revue » et champ du dialogue de type dans Administration › Registre des types (journalisé), champ
+  `reviewMonths` de `/api/registry`. `putInForce` fixe la date de révision d'un document qui n'en a pas (entrée
+  « Prochaine revue fixée ») ; une date déjà saisie est gardée. Le dialogue de création l'annonce sous la date de
+  révision ; celui des métadonnées d'un document en vigueur prévient qu'une date vidée ne laisse aucune revue
+  planifiée avant la prochaine révision (`reviewDueHint`, src/lib/review.ts). Aucune valeur n'est mise dans le registre : ni le deck, ni la spec Keystone, ni
+  [registre-points-ouverts.md](registre-points-ouverts.md) n'en donnent (O-05).
+- **Données de démo** : vérification générale périodique d'un pont roulant (`MNT-CHA-0002`) expirée le 30 septembre ;
+  revue de `PRO-QUA-0002` (Traitement des non-conformités) prévue le 30 septembre.
+- **Choix prudents** ([decisions.md](decisions.md)) : jour de l'expiration encore valide ; indicateurs sur les seuls
+  documents actifs ; une date de révision déjà saisie n'est pas recalculée à la mise en vigueur ; l'import reprend les
+  dates telles quelles ; vider la date dans les métadonnées ne la recalcule pas ; ce qui doit se passer à
+  l'expiration (A17) reste ouvert.
+- **Relecture** : les deux filtres, d'abord ajoutés à la barre de statut de l'explorateur, renvoyaient « Nouveau » à la
+  ligne à 1440 px ; ils forment désormais un filtre à part sous le plan de classement, et l'en-tête retrouve les
+  positions d'avant (mesurées à 1280, 1440, 1600 et 1920 px, avec et sans aperçu rapide). L'aide « elle sera fixée à
+  la mise en vigueur » ne s'affiche plus pour un document déjà en vigueur, à qui elle promettait un calcul qui n'a pas
+  lieu. « Expiré depuis le 30/09 » contredisait la règle (le 30/09, le document est encore valide) : les écrans disent
+  « valable jusqu'au ».
+- **Vérifié** : `npm test` (577 tests, dont `tests/unit/review.test.ts` et `tests/integration/review.test.ts`),
+  `npm run typecheck`, `npm run lint`. Les tests échouent si l'on retire le contrôle des droits de `recordReview`, le
+  calcul de `putInForce` ou la règle du propriétaire de processus dans « À traiter » (essayé). Dans le navigateur,
+  sur une base de démo neuve : Claire Bardet voit `MNT-CHA-0002` sous « Expirés » dans l'explorateur (seul, et rien
+  avec « Brouillons »), avec l'étiquette, dans la recherche (« Échéance dépassée : Expiré 1 ») et dans Archivage ; sa
+  fiche porte le bandeau « Document expiré, valable jusqu'au 30/09/2026 : à renouveler par une demande de
+  modification, ou à retirer. » et ses deux raccourcis. Julien Wagner, collaborateur, voit la revue en retard de `PRO-QUA-0002` mais « Revue effectuée » lui est
+  refusé (« Revue réservée au propriétaire du document… »). Gabriel Comte, propriétaire, la trouve dans « À traiter »
+  (« Revue en retard, prévue le 30/09/2026 · 12 j de retard »), l'enregistre au 30/09/2027 avec un commentaire :
+  bandeau retiré, fiche datée du jour, entrée au journal, lue aussi par Julien Wagner. Claire Bardet règle la
+  périodicité de PRO à 36 mois (300 refusé sous le champ), la voit annoncée à la création, puis enregistre depuis
+  Archivage la revue de `PRO-QUA-0001` sans date : prochaine revue le 12/10/2029. Sur `PRO-QUA-0001`, en vigueur, le
+  dialogue des métadonnées de Gabriel Comte dit « Laissée vide, aucune revue n'est planifiée… ». Vue en anglais
+  vérifiée (« Document expired, valid until 30 Sep 2026 »).

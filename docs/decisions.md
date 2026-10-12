@@ -536,6 +536,39 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
   - les messages de la demande de validation ne supposent pas le droit de modifier les métadonnées : ils disent que
     le report se fait par le propriétaire du document ou un gestionnaire documentaire ;
   - l'import refuse aussi une mise en vigueur antérieure à la date d'émission.
+- **Expiration et revue périodique** (G36, G37, question A17 de l'audit, 12 octobre ; point 13 de
+  `docs/reste-a-faire.md`, `docs/modele-cible.md` §7) :
+  - aucun nouveau statut ni automatisme : « Expiré » et « Revue en retard » sont des indicateurs ; le passage à
+    Obsolète reste une demande à Vigie (D-17), que la fiche d'un document expiré propose en raccourci, comme la
+    demande de modification qui le renouvellera. Ce qui doit se passer à l'expiration (A17 : alerte, passage Obsolète,
+    renouvellement) n'est pas tranché ;
+  - un document devient expiré le lendemain de sa date d'expiration : le jour même, il est encore valide, comme le
+    comptent les échéances (« 0 j restants »), et les écrans le disent « valable jusqu'au » cette date ; seuls les
+    documents actifs portent les indicateurs (un document obsolète ou archivé ne s'applique plus), et la revue en
+    retard suppose une révision en vigueur ;
+  - dans l'explorateur, « Expirés » et « Revues en retard » forment un filtre « Échéance dépassée » sous le plan de
+    classement (`?due=`), combiné au filtre de statut, plutôt que deux valeurs de plus dans la barre de statut, qui
+    garde la largeur de la maquette ;
+  - « Revue effectuée » est réservée au propriétaire, au propriétaire de processus et aux gestionnaires documentaires
+    (la fiche du point 13 nommait le propriétaire et le gestionnaire), avec le droit « Modifier », sur un document
+    non verrouillé qui a une révision en vigueur. Elle ne crée pas de révision ; elle date la fiche (« Modifié ») et
+    se journalise sur le document entier, visible de ses lecteurs, valeurs comprises (D-14) ; commentaire facultatif
+    de 2 000 caractères au plus ; la prochaine date est postérieure à aujourd'hui, ou, sans date saisie, la
+    périodicité du type comptée depuis le jour de la revue. Dans « À traiter », le propriétaire de processus reçoit
+    désormais toujours ses revues (il peut les enregistrer) ; pour une expiration, il ne la reçoit toujours que s'il
+    peut demander une modification ;
+  - la périodicité de revue est un nombre de mois (1 à 240) porté par le type, vide pour tous les types : ni le deck,
+    ni la spec Keystone, ni `docs/registre-points-ouverts.md` n'en donnent de valeur (O-05, comme les durées de
+    conservation, O-07). Elle ne fixe la date de révision à la mise en vigueur que si celle-ci est vide : une date
+    saisie, même passée, n'est pas recalculée, si bien qu'une nouvelle révision en vigueur ne vaut pas revue ; à la
+    création, le dialogue l'annonce sans pré-remplir la date ; l'import (migration) reprend les dates telles quelles,
+    sauf une révision approuvée à venir, qui reçoit la périodicité à sa mise en vigueur ;
+  - modifier les métadonnées n'applique pas la périodicité : vider la date de révision d'un document en vigueur le
+    laisse sans revue planifiée (ni « Revue en retard », ni échéance) jusqu'à la mise en vigueur d'une prochaine
+    révision. Le dialogue des métadonnées le dit pour un document en vigueur, et n'annonce le calcul qu'avant toute
+    mise en vigueur. Recalculer la date à l'enregistrement serait une règle nouvelle, non retenue sans accord ;
+  - données de démo : une vérification périodique expirée (`MNT-CHA-0002`) et une revue en retard
+    (`PRO-QUA-0002`, revue prévue le 30 septembre 2026) ont été ajoutées pour montrer les indicateurs.
 - **Retrait** (D-17) : effets d'un retrait accepté sur le travail en cours (circuit clos, révisions ouvertes annulées).
 - **Documents obsolètes ou archivés** (D-17) : bandeau d'avertissement sur la fiche et dans l'aperçu rapide de
   l'explorateur, suffixe `_OBSOLETE` ou `_ARCHIVE` dans le nom proposé au téléchargement (`docs/modele-cible.md` §4).

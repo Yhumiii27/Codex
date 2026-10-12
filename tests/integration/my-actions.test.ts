@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { describe, expect, it, vi } from 'vitest';
 import { schema as s } from '@/db';
-import { decideStep, graftChange, requestChange, requestValidation } from '@/lib/actions';
+import { decideStep, graftChange, recordReview, requestChange, requestValidation } from '@/lib/actions';
 import { getCtx } from '@/lib/context';
 import { DICT, MATRIX_ROLE, type SimRole } from '@/lib/i18n';
 import { applyChangeDecision } from '@/lib/lifecycle';
@@ -217,9 +217,10 @@ describe('review and expiry dates', () => {
 
   it('wait for the owner and the process owner, overdue or within 90 days, with a link to the record', async () => {
     await dated();
+    // Past due, worded as the record's indicator (point 13): « Expiré, valable jusqu’au … ».
     const items = [
       { key: `review:${ID}`, kind: 'review', docId: ID, docTitle: ID, href: `/documents/${ID}?tab=meta`, due: '2026-11-30', note: null, detail: `${ID} · ${t.dl_review} 30/11/2026 · 51 ${t.days_left}` },
-      { key: `renew:${ID}`, kind: 'renew', docId: ID, docTitle: ID, href: `/documents/${ID}?tab=meta`, due: '2026-10-01', note: null, detail: `${ID} · ${t.dl_expiry} 01/10/2026 · 9 ${t.days_late}` },
+      { key: `renew:${ID}`, kind: 'renew', docId: ID, docTitle: ID, href: `/documents/${ID}?tab=meta`, due: '2026-10-01', note: null, detail: `${ID} · ${t.dl_expired} 01/10/2026 · 9 ${t.days_late}` },
     ];
     expect(await todo('owner')).toEqual(items);
     expect(await todo('writer')).toEqual(items);
@@ -238,11 +239,19 @@ describe('review and expiry dates', () => {
     expect(await kinds('owner')).toEqual([]);
   });
 
-  it('the process owner, who can only ask for a change, not while one is pending', async () => {
+  it('the process owner records the review, and on an expiry can only ask for a change, not while one is pending', async () => {
     await dated();
     expect(await act('writer2', () => requestChange(ID, 'modification', 'Mise à jour', ''))).toMatchObject({ ok: true });
-    expect(await kinds('writer')).toEqual([]);
+    expect(await kinds('writer')).toEqual([`review ${ID}`]);
     expect(await kinds('owner')).toEqual([`review ${ID}`, `renew ${ID}`]);
+  });
+
+  it('a review past due is worded as the record says it, « Revue en retard », and leaves once recorded', async () => {
+    await dated({ reviewDueAt: '2026-09-30', expiresAt: null });
+    expect((await todo('owner')).map((a) => a.detail)).toEqual([`${ID} · ${t.dl_review_late} 30/09/2026 · 10 ${t.days_late}`]);
+    expect(await act('writer', () => recordReview(ID, '2027-09-30'))).toMatchObject({ ok: true });
+    expect(await kinds('owner')).toEqual([]);
+    expect(await kinds('writer')).toEqual([]);
   });
 
   it('nothing on a document the user may not read (D-13, D-14)', async () => {

@@ -1,5 +1,5 @@
 {
-  "id": "d7ccab22-a494-40d7-b1df-1ecf393808c4",
+  "id": "6c781657-034a-41b9-b50c-258ec412d332",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -399,6 +399,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "review_months": {
+          "name": "review_months",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "iso": {
           "name": "iso",
           "type": "text",
@@ -453,7 +459,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "doc_types_review_months": {
+          "name": "doc_types_review_months",
+          "value": "\"doc_types\".\"review_months\" is null or \"doc_types\".\"review_months\" between 1 and 240"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.document_readers": {

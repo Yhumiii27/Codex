@@ -723,7 +723,7 @@ par les décisions D-06 à D-21 et par le modèle v2.
 
 - **Constat sur la v1** : Recherche plein texte insensible aux accents, facettes affaire, type, entité, service et statut, recherches enregistrées, export CSV, champ global dans l'en-tête.
 - **Vérification** : « Couvert » ramené à « partiel ». Les facettes ignoraient presque toutes les métadonnées du deck ; les résultats et l'export n'étaient pas filtrés selon les droits ; les recherches enregistrées étaient figées ; le filtrage se faisait en mémoire et le contenu des fichiers n'était pas indexé.
-- **Aujourd'hui — partiel.** Facettes du modèle v2 : projet ou programme, famille, type, sous-type, origine, rattachement, département, site, propriétaire, auteur, statut, confidentialité, langue, mots-clés, organisme source, phase, lot, discipline et thème (`FACET_KEYS`, `src/lib/search.ts`, depuis le 11 octobre 2026), et une période sur la date de modification, d'émission, d'effet, de révision ou d'expiration. Plein texte sur le titre, l'ID et les anciens ID, les mots-clés, le type, le sous-type, l'organisme source, la référence externe, le propriétaire, l'auteur et l'ID d'étude, classé par pertinence ; tri au choix dans l'URL (pertinence, modification, émission, échéance, ID, titre). Résultats, comptes et export limités aux documents visibles. Les recherches enregistrées sont créables depuis le 11 octobre 2026 (personnelles, de département ou de groupe ; elles gardent les critères, la période et le tri, jamais de documents). Reste : pas de recherche dans le contenu des fichiers ; filtrage en mémoire sur tous les documents (`runSearch`).
+- **Aujourd'hui — partiel.** Facettes du modèle v2 : projet ou programme, famille, type, sous-type, origine, rattachement, département, site, propriétaire, auteur, statut, échéance dépassée (depuis le 12 octobre 2026), confidentialité, langue, mots-clés, organisme source, phase, lot, discipline et thème (`FACET_KEYS`, `src/lib/search.ts`, depuis le 11 octobre 2026), et une période sur la date de modification, d'émission, d'effet, de révision ou d'expiration. Plein texte sur le titre, l'ID et les anciens ID, les mots-clés, le type, le sous-type, l'organisme source, la référence externe, le propriétaire, l'auteur et l'ID d'étude, classé par pertinence ; tri au choix dans l'URL (pertinence, modification, émission, échéance, ID, titre). Résultats, comptes et export limités aux documents visibles. Les recherches enregistrées sont créables depuis le 11 octobre 2026 (personnelles, de département ou de groupe ; elles gardent les critères, la période et le tri, jamais de documents). Reste : pas de recherche dans le contenu des fichiers ; filtrage en mémoire sur tous les documents (`runSearch`).
 
 <a id="g16"></a>
 #### G16 — Liens pour ouvrir le document (vers la bibliothèque SharePoint)
@@ -912,7 +912,7 @@ par les décisions D-06 à D-21 et par le modèle v2.
 
 - **Constat sur la v1** : Aucune date de révision planifiée ; un circuit « Revue annuelle » se lançait à la main.
 - **Vérification** : « Absent », confirmé.
-- **Aujourd'hui — intégré.** `documents.review_due_at` saisie à la main ; échéance « Réviser » sur l'accueil et dans Archivage (`deadlines`, `src/lib/queries.ts`). Pas de périodicité par type ni de lancement de la revue depuis l'échéance.
+- **Aujourd'hui — intégré.** `documents.review_due_at` saisie à la main ; échéance « Réviser » sur l'accueil et dans Archivage (`deadlines`, `src/lib/queries.ts`). Depuis le 12 octobre 2026 : indicateur « Revue en retard » (fiche, explorateur, recherche, Archivage, « À traiter ») ; « Revue effectuée » (propriétaire, propriétaire de processus, gestionnaire documentaire) fixe la prochaine date sans créer de révision ; périodicité de revue par type (`doc_types.review_months`, vide par défaut en attendant ses valeurs), qui fixe la date d'un document entrant en vigueur sans date (`src/lib/review.ts`, point 13 de `docs/reste-a-faire.md`).
 
 <a id="g37"></a>
 #### G37 — Tronc commun : Date d'expiration (fin de validité)
@@ -921,7 +921,7 @@ par les décisions D-06 à D-21 et par le modèle v2.
 
 - **Constat sur la v1** : Une seule date, la fin de conservation, qui servait aussi de fin de validité.
 - **Vérification** : « En conflit », confirmé.
-- **Aujourd'hui — intégré.** `documents.expires_at` est distincte de la conservation ; échéance « Renouveler ». Les déclencheurs de conservation « fin de contrat » et « expiration » partent de cette date (`src/lib/retention.ts`).
+- **Aujourd'hui — intégré.** `documents.expires_at` est distincte de la conservation ; échéance « Renouveler ». Les déclencheurs de conservation « fin de contrat » et « expiration » partent de cette date (`src/lib/retention.ts`). Depuis le 12 octobre 2026, indicateur « Expiré » (fiche, explorateur, recherche, Archivage, « À traiter »), sans nouveau statut ni automatisme : la fiche propose les demandes de modification et de retrait à Vigie (D-17). L'effet de l'expiration reste ouvert (A17).
 
 <a id="g38"></a>
 #### G38 — Tronc commun : Langue (choix, facultatif)
@@ -1371,7 +1371,7 @@ tranché dans le modèle ou le code, ouvert, ou sans objet.
 
 - **Constat** : La 'Date d'émission' est décrite comme 'Première émission', donc figée à la première révision, ce qui laisse sans date la révision courante. Les dates d'effet, de révision et d'expiration sont facultatives et sans automatisme décrit. Pour les DE, la slide 18 ajoute une date de réception.
 - **Question** : Où se trouve la date d'approbation de la révision courante ? Pour un document externe, la date d'émission est-elle celle de l'émetteur, distincte de la date de réception ? La date de révision est-elle calculée selon une périodicité par type (par exemple procédures tous les trois ans) ? Que se passe-t-il automatiquement à la date d'effet (passage En vigueur ?) et à la date d'expiration (alerte, passage Obsolète, renouvellement) ?
-- **Suite** : **Répondu en partie**, dans le code : date d'émission = première mise en vigueur, date d'effet et date d'approbation portées par chaque révision. Proposé, non confirmé. Date d'émission d'un document externe, périodicité de revue et effet de la date d'expiration : ouverts.
+- **Suite** : **Répondu en partie**, dans le code : date d'émission = première mise en vigueur, date d'effet et date d'approbation portées par chaque révision. Proposé, non confirmé. Périodicité de revue : mécanisme en place depuis le 12 octobre 2026 (une périodicité par type, vide en attendant ses valeurs). Date d'émission d'un document externe et effet de la date d'expiration (seul un indicateur « Expiré » existe) : ouverts.
 
 #### A18 — Gestion multilingue (slides 13)
 

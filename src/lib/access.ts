@@ -223,13 +223,25 @@ export function mayRecall(ctx: Viewer, w: { requesterId: string; outcome: string
 
 /**
  * Is the user the one to act on a review or expiry date of the document (G19)? Its owner, who may update the record
- * (lib/actions.ts updateMeta) or ask for a change; its process owner, who may only ask for a change (requestChange: a
+ * (lib/actions.ts updateMeta), record its review (recordReview) or ask for a change; its process owner, who may record
+ * the review of a revision in force (mayRecordReview) and, for an expiry, only ask for a change (requestChange: a
  * revision in force, no request pending). Records managers follow every date in Archivage. The edit permission, the
  * lock and access to the document are checked apart.
  */
-export function deadlineActor(userId: string, d: { ownerId: string; processOwnerId: string | null; revInForce: string | null }, changePending: boolean): boolean {
+export function deadlineActor(userId: string, d: { ownerId: string; processOwnerId: string | null; revInForce: string | null }, kind: 'review' | 'expiry', changePending: boolean): boolean {
   if (d.ownerId === userId) return true;
-  return d.processOwnerId === userId && !!d.revInForce && !changePending;
+  if (d.processOwnerId !== userId || !d.revInForce) return false;
+  return kind === 'review' || !changePending;
+}
+
+/**
+ * May the user record the periodic review of a document (lib/actions.ts recordReview)? Its owner, its process owner and
+ * records managers, with the edit permission. Access to the document, its lock and its revision in force are checked
+ * apart.
+ */
+export function mayRecordReview(ctx: Viewer, d: { ownerId: string; processOwnerId: string | null }): boolean {
+  if (!ctx.can('edit')) return false;
+  return ctx.seesAll || d.ownerId === ctx.user.id || d.processOwnerId === ctx.user.id;
 }
 
 /**

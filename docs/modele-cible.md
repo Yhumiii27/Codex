@@ -7,7 +7,8 @@ Certaines règles ci-dessous sont des propositions de l'assistant, implémentée
 authentification Entra ID (§1), code département hors rattachement, largeur et portée du compteur, ID attribué au
 brouillon, alias et nom de fichier (§3), « Remplacé », mise en vigueur automatique, bandeau et nom de téléchargement
 d'un document obsolète ou archivé (§4), partage des recherches enregistrées et pages par département (§5), longueur du
-motif de rejet et droit de rappeler une demande de validation (§6), lecture stricte de la cohérence des dates (§7).
+motif de rejet et droit de rappeler une demande de validation (§6), lecture stricte de la cohérence des dates,
+indicateurs d'expiration et de revue, « Revue effectuée » et périodicité de revue par type (§7).
 Elles sont listées dans `docs/decisions.md` (« Choix de l'assistant non validés explicitement », question O-09), qui
 prévaut en cas de doute.
 
@@ -199,7 +200,33 @@ précède l'expiration ; sans date d'effet, celle d'un document déjà émis est
 validation et l'import refusent une date qui enfreint ces règles, en disant laquelle corriger (`src/lib/dates.ts`) ;
 les bornes qui dépendent du jour ne s'appliquent qu'à une date saisie ou modifiée. *Proposé, non confirmé* : le sens
 strict de « postérieure », la date d'émission prise comme borne de la réception, et ces bornes (`docs/decisions.md`).
-Ce qui se passe à l'expiration reste ouvert (audit, A17).
+
+**Expiration et revue périodique** (`src/lib/review.ts`). Ni l'une ni l'autre ne change le statut : le retrait d'un
+document reste une demande à Vigie (D-17), et rien ne part seul à l'échéance. Ce qui doit se passer à l'expiration
+(alerte, passage Obsolète, renouvellement) reste ouvert (audit, A17).
+- Indicateurs : un document actif dont la date d'expiration est passée est **Expiré** (le jour de l'expiration, il est
+  encore valide) ; un document actif dont la révision en vigueur a passé sa date de révision a sa **revue en retard**.
+  Ils portent sur des dates que tout lecteur de la fiche voit déjà, et ne s'affichent que sur les documents que
+  l'utilisateur peut lire (D-14) : fiche, explorateur (filtre « Échéance dépassée » sous le plan de classement :
+  « Expirés », « Revues en retard », combiné au statut), recherche (facette « Échéance dépassée »), Archivage et
+  « À traiter », qui les nomment de la même façon. Un document expiré y est dit « valable jusqu'au » sa date
+  d'expiration, jamais « expiré depuis » ce jour, où il était encore valide.
+- La fiche d'un document expiré propose, en raccourci, « Demander une modification » (renouvellement) et « Demander le
+  retrait » ; celle d'un document en retard de revue, « Revue effectuée ».
+- **Revue effectuée** : le propriétaire, le propriétaire de processus ou un gestionnaire documentaire (droit
+  « Modifier ») confirme que la révision en vigueur reste applicable, sans créer de révision, sur un document non
+  verrouillé ; commentaire facultatif. Elle fixe la prochaine date de revue : celle saisie, postérieure à aujourd'hui,
+  sinon la périodicité du type comptée depuis le jour de la revue. Elle est journalisée sur le document entier (ses
+  lecteurs la voient, valeurs comprises) et date la fiche.
+- **Périodicité de revue** : chaque type du registre peut en porter une, en mois (1 à 240) ; elle est vide par défaut,
+  en attendant les arbitrages du registre. Un document qui entre en vigueur sans date de révision la reçoit, comptée
+  depuis sa mise en vigueur (entrée de journal « Prochaine revue fixée ») ; une date déjà saisie, même passée, est
+  gardée. À la création, et dans les métadonnées d'un document sans révision en vigueur, le dialogue l'annonce sous la
+  date de révision. Modifier les métadonnées n'applique pas la périodicité : pour un document en vigueur, le dialogue
+  prévient qu'une date vidée ne laisse aucune revue planifiée avant la mise en vigueur d'une prochaine révision.
+
+*Proposé, non confirmé* : le jour où un document devient expiré, les personnes qui enregistrent une revue, l'unité et
+l'usage de la périodicité, dont l'absence de recalcul quand les métadonnées vident la date (`docs/decisions.md`).
 
 ## 8. Conservation
 

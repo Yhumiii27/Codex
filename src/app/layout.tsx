@@ -33,7 +33,7 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
       const v = typeView(ctx, x);
       return {
         code: v.code, label: v.label, family: v.family, familyLabel: v.familyLabel, origins: v.origins, attachments: v.attachments,
-        subtypes: v.subtypesL, confAllowed: v.confAllowed, confDefault: v.confDefault, circuitL: v.circuitL, active: v.active,
+        subtypes: v.subtypesL, confAllowed: v.confAllowed, confDefault: v.confDefault, circuitL: v.circuitL, active: v.active, reviewMonths: v.reviewMonths,
       };
     }),
     families: ctx.families.map((x) => ({ key: x.key, label: fr ? x.labelFr : x.labelEn })),

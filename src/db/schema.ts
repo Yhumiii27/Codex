@@ -81,12 +81,17 @@ export const docTypes = pgTable('doc_types', {
   retentionBasis: text('retention_basis').notNull().default(''),
   confAllowed: jsonb('conf_allowed').$type<Conf[]>().notNull(),
   confDefault: text('conf_default').$type<Conf>().notNull(),
+  /**
+   * Periodic review, in months (lib/review.ts): the next review date of a document of this type when it enters into
+   * force without one, or when its review is recorded without a date. Null: none (values await the register's review).
+   */
+  reviewMonths: integer('review_months'),
   iso: text('iso'),
   clientDeliverable: boolean('client_deliverable').notNull().default(false),
   source: text('source').notNull().default('deck'),
   active: boolean('active').notNull().default(true),
   sort: integer('sort').notNull().default(0),
-});
+}, (t) => [check('doc_types_review_months', sql`${t.reviewMonths} is null or ${t.reviewMonths} between 1 and 240`)]);
 
 /** Functions that approval circuits are made of (Responsable qualité, Chef de projet…). */
 export const functions = pgTable('functions', {

@@ -4,7 +4,7 @@ import { Forbidden } from '@/components/ui/Forbidden';
 import { Icon } from '@/components/ui/Icon';
 import { ClickRow } from '@/components/ui/client';
 import { getCtx } from '@/lib/context';
-import { departmentPage, type DeadlineView } from '@/lib/queries';
+import { departmentPage } from '@/lib/queries';
 import { FACET_LABEL } from '@/lib/search';
 import { DepartmentPicker } from '../DepartmentPicker';
 import styles from '../departments.module.css';
@@ -28,7 +28,6 @@ export default async function DepartmentPage({ params }: PageProps<'/departement
   const page = await departmentPage(ctx, code);
   if (!page) return <Forbidden text={t.dept_unknown} back={t.back_home} />;
   const docs = page.inForce.slice(0, DOCS_SHOWN);
-  const kindLabel = (d: DeadlineView) => (d.kind === 'retention' ? t.until : d.kind === 'expiry' ? t.dl_expiry : t.dl_review);
 
   return (
     <div className="screen" style={{ overflow: 'auto', padding: 'var(--space-8)' }} data-screen-label="Département">
@@ -131,7 +130,7 @@ export default async function DepartmentPage({ params }: PageProps<'/departement
                   <Link key={`${d.id}:${d.kind}`} href={d.href} className={`link-plain hairline ${styles.row}`}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div className="ellipsis">{d.title}</div>
-                      <div className="text-muted ellipsis sub">{d.typeLabel} · {kindLabel(d)} {d.endF}</div>
+                      <div className="text-muted ellipsis sub">{d.typeLabel} · {d.dueL} {d.endF}</div>
                     </div>
                     <span className="tag tag-outline" style={{ flex: 'none' }}>{d.actionLabel}</span>
                   </Link>

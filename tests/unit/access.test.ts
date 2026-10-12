@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canRead, changeAsSeen, deadlineActor, draftTodo, inDraftingCircle, isUsableTemplate, mayDeleteSearch, mayRecall, maySaveSearch, mayShareSearches, mayWorkOnDraft, openRevisionView, readerMaySeeChange, readerMaySeeEntry, readerMaySeeRevision, readerMaySeeVersion, readersApply, seesSavedSearch, type AccessIndex, type Viewer } from '@/lib/access';
+import { canRead, changeAsSeen, deadlineActor, draftTodo, inDraftingCircle, isUsableTemplate, mayDeleteSearch, mayRecall, mayRecordReview, maySaveSearch, mayShareSearches, mayWorkOnDraft, openRevisionView, readerMaySeeChange, readerMaySeeEntry, readerMaySeeRevision, readerMaySeeVersion, readersApply, seesSavedSearch, type AccessIndex, type Viewer } from '@/lib/access';
 import { CONF_LEVELS, PERMS, type Perm } from '@/lib/i18n';
 
 // Who sees what: confidentiality levels (D-13), drafting circle (D-14), docs/modele-cible.md §5.
@@ -429,20 +429,48 @@ describe('deadlineActor (G19, review and expiry dates)', () => {
   const d = { ownerId: 'owner', processOwnerId: 'process', revInForce: 'B' };
 
   it('the owner acts on the dates of the document, a change request pending or not', () => {
-    expect(deadlineActor('owner', d, false)).toBe(true);
-    expect(deadlineActor('owner', d, true)).toBe(true);
-    expect(deadlineActor('owner', { ...d, revInForce: null }, false)).toBe(true);
+    for (const kind of ['review', 'expiry'] as const) {
+      expect(deadlineActor('owner', d, kind, false), kind).toBe(true);
+      expect(deadlineActor('owner', d, kind, true), kind).toBe(true);
+      expect(deadlineActor('owner', { ...d, revInForce: null }, kind, false), kind).toBe(true);
+    }
   });
 
-  it('the process owner, who can only ask for a change: a revision in force and no request pending', () => {
-    expect(deadlineActor('process', d, false)).toBe(true);
-    expect(deadlineActor('process', d, true)).toBe(false);
-    expect(deadlineActor('process', { ...d, revInForce: null }, false)).toBe(false);
+  it('the process owner records the review of a revision in force, a change request pending or not (point 13)', () => {
+    expect(deadlineActor('process', d, 'review', false)).toBe(true);
+    expect(deadlineActor('process', d, 'review', true)).toBe(true);
+    expect(deadlineActor('process', { ...d, revInForce: null }, 'review', false)).toBe(false);
+  });
+
+  it('on an expiry, the process owner can only ask for a change: a revision in force and no request pending', () => {
+    expect(deadlineActor('process', d, 'expiry', false)).toBe(true);
+    expect(deadlineActor('process', d, 'expiry', true)).toBe(false);
+    expect(deadlineActor('process', { ...d, revInForce: null }, 'expiry', false)).toBe(false);
   });
 
   it('nobody else, records managers included (they follow every date in Archivage)', () => {
-    for (const who of ['manager', 'reader', 'stranger']) expect(deadlineActor(who, d, false), who).toBe(false);
-    expect(deadlineActor('process', { ...d, processOwnerId: null }, false)).toBe(false);
+    for (const kind of ['review', 'expiry'] as const) {
+      for (const who of ['manager', 'reader', 'stranger']) expect(deadlineActor(who, d, kind, false), `${who} ${kind}`).toBe(false);
+      expect(deadlineActor('process', { ...d, processOwnerId: null }, kind, false), kind).toBe(false);
+    }
+  });
+});
+
+describe('mayRecordReview (point 13, « Revue effectuée »)', () => {
+  const d = { ownerId: 'owner', processOwnerId: 'process' };
+  const editor = (id: string, seesAll = false) => viewer(id, { perms: ['read', 'edit'], seesAll });
+
+  it('the owner, the process owner and records managers, with the edit permission', () => {
+    expect(mayRecordReview(editor('owner'), d)).toBe(true);
+    expect(mayRecordReview(editor('process'), d)).toBe(true);
+    expect(mayRecordReview(editor('manager', true), d)).toBe(true);
+    for (const who of ['owner', 'process']) expect(mayRecordReview(viewer(who), d), who).toBe(false);
+    expect(mayRecordReview(viewer('manager', { seesAll: true }), d)).toBe(false);
+  });
+
+  it('nobody else: an approver, a reader, a stranger, nor a process owner the document does not name', () => {
+    for (const who of ['approver', 'reader', 'stranger']) expect(mayRecordReview(editor(who), d), who).toBe(false);
+    expect(mayRecordReview(editor('process'), { ...d, processOwnerId: null })).toBe(false);
   });
 });
 

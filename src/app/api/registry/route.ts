@@ -46,6 +46,8 @@ export async function GET(req: Request) {
         dispositionLabels: labels(`disp_${t.retentionDisposition}`),
         basis: t.retentionBasis,
       },
+      /** Periodic review in months, null without one: the next review date of a document entering into force without one. */
+      reviewMonths: t.reviewMonths,
       confAllowed: t.confAllowed,
       confDefault: t.confDefault,
       iso: t.iso,

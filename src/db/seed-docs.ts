@@ -60,7 +60,7 @@ export const DEMO_DOCS: DemoDoc[] = [
 
   // ── Documents of the departments ──
   { key: 'pro-doc', type: 'PRO', title: 'Procédure de maîtrise documentaire', dept: 'QUA', owner: 'gcomte', inForce: 'E', issued: '2022-02-03', modified: '2026-02-03', reviewDue: '2026-11-30', kw: ['GED', 'codification', 'révision'] },
-  { type: 'PRO', title: 'Traitement des non-conformités', dept: 'QUA', owner: 'gcomte', inForce: 'C', issued: '2023-03-11', modified: '2026-03-11', kw: ['NC', 'CAPA'] },
+  { type: 'PRO', title: 'Traitement des non-conformités', dept: 'QUA', owner: 'gcomte', inForce: 'C', issued: '2023-03-11', modified: '2026-03-11', reviewDue: '2026-09-30', kw: ['NC', 'CAPA'] },
   { type: 'PRO', title: 'Levage et manutention sur chantier', dept: 'HSE', owner: 'cbardet', inForce: 'B', issued: '2024-05-06', modified: '2026-10-01', working: { status: 'draft', n: 2 }, kw: ['levage', 'grue', 'élingage'] },
   { type: 'RSQ', title: 'Analyse de risques — atelier de Lyon', dept: 'HSE', owner: 'oblanc', site: 'lyon', modified: '2026-10-05', working: { status: 'in_review', n: 1, done: 1 }, kw: ['DUERP', 'atelier'] },
   { type: 'PRO', title: 'Procédure de stockage — magasin du Havre (ancienne)', dept: 'HSE', owner: 'cbardet', site: 'le_havre', inForce: 'C', issued: '2019-04-11', modified: '2026-03-01', state: 'obsolete', stateAt: '2026-03-01' },
@@ -76,6 +76,7 @@ export const DEMO_DOCS: DemoDoc[] = [
   { type: 'FIN', title: 'Procédure de validation des dépenses', dept: 'FIN', owner: 'tweil', inForce: 'B', issued: '2024-01-08', modified: '2025-12-04' },
   { type: 'SSI', title: 'Plan de reprise d’activité (PRA)', dept: 'DSI', owner: 'mdelorme', inForce: 'A', issued: '2025-11-20', modified: '2025-11-20', conf: 'confidentiel' },
   { type: 'MNT', title: 'Certificats d’étalonnage — clés dynamométriques', dept: 'CHA', owner: 'oblanc', origin: 'externe', source: 'Étalonnage Rhône', extRef: 'ER-2025-0912', received: '2025-11-14', inForce: 'A', issued: '2025-11-15', modified: '2025-11-15', expires: '2026-11-15' },
+  { type: 'MNT', title: 'Vérification générale périodique — pont roulant de l’atelier de Lyon', dept: 'CHA', owner: 'oblanc', site: 'lyon', origin: 'externe', source: 'Apave', extRef: 'APV-VGP-2025-3307', received: '2025-09-29', inForce: 'A', issued: '2025-09-30', modified: '2025-09-30', expires: '2026-09-30', kw: ['VGP', 'levage'] },
   { type: 'REG', title: 'Arrêté du 1er mars 2004 — vérification des appareils de levage', dept: 'HSE', owner: 'cbardet', origin: 'externe', source: 'Légifrance', extRef: 'NOR SOCT0410596A', received: '2024-02-01', inForce: 'A', issued: '2024-02-01', modified: '2024-02-01', conf: 'public' },
   { type: 'NRM', title: 'ISO 9001:2015 — Systèmes de management de la qualité', dept: 'QUA', owner: 'gcomte', origin: 'externe', source: 'AFNOR', extRef: 'NF EN ISO 9001:2015', received: '2015-10-01', inForce: 'A', issued: '2015-10-01', modified: '2015-10-01', conf: 'restreint' },
   { type: 'AUT', title: 'Autorisation d’exploitation — atelier de Lyon', dept: 'JUR', owner: 'irahmani', site: 'lyon', origin: 'externe', source: 'Préfecture du Rhône', extRef: 'AP-2021-0458', received: '2021-12-02', inForce: 'A', issued: '2021-12-02', modified: '2021-12-02', expires: '2026-12-01', conf: 'confidentiel' },

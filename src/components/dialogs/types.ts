@@ -11,6 +11,8 @@ export type DialogData = {
   types: {
     code: string; label: string; family: string; familyLabel: string; origins: Origin[]; attachments: Attachment[];
     subtypes: string[]; confAllowed: Conf[]; confDefault: Conf; circuitL: string; active: boolean;
+    /** Periodic review in months, null without one (lib/review.ts). */
+    reviewMonths: number | null;
   }[];
   families: Option[];
   departments: Option[];
@@ -39,6 +41,11 @@ export type MetaDoc = {
   researchTheme: string | null; studyId: string | null; ipStatus: string | null; processOwnerId: string | null;
   /** False once a revision has been approved: the ID no longer changes. */
   idMayChange: boolean;
+  /**
+   * A revision is in force: a review date emptied here is not recomputed (only an entry into force applies the type's
+   * periodicity, lib/lifecycle.ts putInForce), the dialog says so.
+   */
+  inForce: boolean;
   /** An approval workflow is running: type and context (which resolved its approvers) cannot change. */
   classificationLocked: boolean;
 };
@@ -89,8 +96,14 @@ export type DialogSpec =
    * someone else.
    */
   | { kind: 'graft'; requestId: string; ecoRef: string; docId: string; title: string; letter: string; reason: string; author: string; vigieModifier?: string }
-  /** Administration: circuit, confidentiality and retention of a type. */
-  | { kind: 'type'; type: { code: string; label: string; circuit: string[]; confAllowed: Conf[]; confDefault: Conf; retentionYears: number | null; retentionTrigger: string; retentionDisposition: string; retentionBasis: string; active: boolean } }
+  /**
+   * Record the periodic review of the revision in force (lib/actions.ts recordReview): `reviewDueAt`, the date it was
+   * due; `months`, the type's periodicity that sets the next date when none is entered; `minDate`, the earliest one
+   * (tomorrow, Paris time).
+   */
+  | { kind: 'review'; docId: string; title: string; letter: string; reviewDueAt: string | null; months: number | null; minDate: string }
+  /** Administration: circuit, confidentiality, retention and periodic review of a type. */
+  | { kind: 'type'; type: { code: string; label: string; circuit: string[]; confAllowed: Conf[]; confDefault: Conf; retentionYears: number | null; retentionTrigger: string; retentionDisposition: string; retentionBasis: string; reviewMonths: number | null; active: boolean } }
   | { kind: 'holder'; functionKey: string; functionLabel: string; scope: 'global' | 'department' | 'project' | 'research' }
   | { kind: 'org'; what: 'department' | 'site' }
   /**

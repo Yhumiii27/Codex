@@ -83,7 +83,7 @@ async function Registry({ ctx, family }: { ctx: Ctx; family: string }) {
       <thead>
         <tr>
           <th>{t.rule_id}</th><th>{t.type}</th><th>{t.family}</th><th>{t.origin}</th><th>{t.attachment}</th><th>{t.circuit}</th>
-          <th>{t.conf}</th><th>{t.retention}</th><th>ISO</th><th style={{ textAlign: 'right' }}>{t.count}</th><th />
+          <th>{t.conf}</th><th>{t.retention}</th><th title={t.review_months}>{t.review_short}</th><th>ISO</th><th style={{ textAlign: 'right' }}>{t.count}</th><th />
         </tr>
       </thead>
       <tbody>
@@ -101,6 +101,7 @@ async function Registry({ ctx, family }: { ctx: Ctx; family: string }) {
             <td className="text-muted" style={{ minWidth: 160 }}>{x.circuitL}</td>
             <td><div>{x.confDefaultL}</div><div className="text-muted" style={sub}>{x.confL}</div></td>
             <td className="text-muted" style={{ minWidth: 150 }} title={x.retentionBasis || undefined}>{x.retentionL}</td>
+            <td className="text-muted nowrap">{x.reviewL}</td>
             <td className="text-muted">{x.iso ?? '—'}</td>
             <td className="tabnum" style={{ textAlign: 'right' }}>{counts.get(x.code) ?? 0}</td>
             <td style={{ textAlign: 'right', width: 44 }}>

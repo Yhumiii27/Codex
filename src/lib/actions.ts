@@ -5,15 +5,16 @@ import { cookies } from 'next/headers';
 import { refresh } from 'next/cache';
 import { getDb, schema as s } from '@/db';
 import type { Attachment, AuditChange, AuditValue, Conf, Disposition, Origin, RetentionTrigger, SearchScope } from '@/db/schema';
-import { buildAccessIndex, canRead, getAccessIndex, inDraftingCircle, isUsableTemplate, mayDeleteSearch, mayRecall, maySaveSearch, mayWorkOnDraft, readerMaySeeRevision, readersApply, seesSavedSearch } from './access';
+import { buildAccessIndex, canRead, getAccessIndex, inDraftingCircle, isUsableTemplate, mayDeleteSearch, mayRecall, mayRecordReview, maySaveSearch, mayWorkOnDraft, readerMaySeeRevision, readersApply, seesSavedSearch } from './access';
 import { idMatches, nextDocId, nextWorkflowId } from './codification';
 import { COOKIE_LANG, COOKIE_ROLE, COOKIE_USER, getCtx, type Ctx } from './context';
-import { addDays, fmtSize, loc, nowStamp, parseIsoDay, todayIso } from './format';
+import { addDays, fmtDate, fmtSize, loc, nowStamp, parseIsoDay, todayIso } from './format';
 import { ATTACHMENTS, CONF_LEVELS, ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLES, ORIGINS, PERMS, SEARCH_SCOPES, SIM_ROLES, SIMULATED_MATRIX_ROLES, type Perm, type SimRole, type TKey } from './i18n';
 import { applyChangeDecision, applyPendingDecision, approveRevision, audit, catchUpEffectiveDates, lockOf, refreshHeadline, type ModifierSwap, type Tx } from './lifecycle';
 import { decisionWaitL } from './queries';
 import { dateIssues, dateIssueText, effectIssue, issueFrom, latestEffect, type DateIssue } from './dates';
 import { cleanFeatured } from './departments';
+import { nextReviewDate, parseReviewMonths } from './review';
 import { beyondBounds, cleanCriteria, hasCriteria, type SearchInput } from './search';
 import { discardFile, fileColumns, nameStoredFile, readStored, renameDocFiles, stageFile, stageUpload, type StagedFile } from './storage';
 import { submitChange, vigieSimulated } from './vigie';
@@ -404,6 +405,51 @@ export async function setReaders(docId: string, userIds: string[]): Promise<Acti
   });
   refresh();
   return { ok: true, message: ctx.t.saved_ok };
+}
+
+// ── Periodic review ──────────────────────────────────────────────────────
+
+/** Longest comment of a recorded review, kept in the journal. */
+const REVIEW_COMMENT_MAX = 2000;
+
+/**
+ * Records the periodic review of a document (G36, point 13 of docs/reste-a-faire.md): its revision in force stays
+ * applicable, and no revision is created. For its owner, its process owner and records managers, with the edit
+ * permission (access.ts, mayRecordReview), on a document they can read, not locked, with a revision in force. Sets the
+ * next review date: the day entered, after today, else the type's periodicity counted from today (lib/review.ts,
+ * nextReviewDate). Journaled on the document as a whole, with the optional comment and the review date before → after.
+ */
+export async function recordReview(docId: string, next: string | null, comment = ''): Promise<ActionResult> {
+  const ctx = await getCtx();
+  if (!ctx.can('edit')) return denied(ctx, 'edit');
+  const note = typeof comment === 'string' ? comment.trim() : '';
+  if (note.length > REVIEW_COMMENT_MAX) return { ok: false, error: ctx.t.review_comment_too_long, field: 'comment' };
+  const entered = typeof next === 'string' && next.trim() ? next.trim() : null;
+  const ix = await getAccessIndex();
+  const db = await getDb();
+  const res = await db.transaction(async (tx): Promise<{ err: TKey; field?: string } | { date: string }> => {
+    const [d] = await tx.select().from(s.documents).where(eq(s.documents.id, docId));
+    // Access first: a document the user cannot see gives nothing away, not even its lock.
+    if (!d || !canRead(ctx, d, ix)) return { err: 'not_found' };
+    if (!mayRecordReview(ctx, d)) return { err: 'review_reserved' };
+    const lock = lockOf(d);
+    if (lock) return { err: lock };
+    if (!d.revInForce) return { err: 'review_need_in_force' };
+    const today = todayIso();
+    const set = nextReviewDate(entered, today, ctx.typeByCode.get(d.typeCode)?.reviewMonths);
+    if ('err' in set) return { err: set.err, field: 'next' };
+    await tx.update(s.documents).set({ reviewDueAt: set.date, modifiedAt: today }).where(eq(s.documents.id, docId));
+    // About the document as a whole and its revision in force: its readers see it, values included (D-14).
+    const changed = changes([['reviewDueAt', d.reviewDueAt, set.date]]);
+    await audit(tx, ctx.user.id, 'reviewed', docId, note, null, changed.length ? { changes: changed, doc: { conf: d.conf, inForce: true } } : null);
+    return { date: set.date };
+  });
+  if ('err' in res) {
+    const error = res.err === 'date_malformed' ? `${ctx.t.review_next} : ${ctx.t.date_malformed}` : ctx.t[res.err];
+    return { ok: false, error, ...(res.field ? { field: res.field } : {}) };
+  }
+  refresh();
+  return { ok: true, message: `${ctx.t.review_recorded} ${fmtDate(res.date, ctx.lang)}` };
 }
 
 // ── Approval workflows ───────────────────────────────────────────────────
@@ -1048,7 +1094,7 @@ export async function removeFunctionHolder(id: number): Promise<ActionResult> {
   return { ok: true };
 }
 
-/** Circuit, confidentiality and retention of a type in the register. */
+/** Circuit, confidentiality, retention and periodic review of a type in the register. */
 export async function updateType(fd: FormData): Promise<ActionResult> {
   const ctx = await getCtx();
   const no = adminOnly(ctx);
@@ -1060,13 +1106,18 @@ export async function updateType(fd: FormData): Promise<ActionResult> {
   const confAllowed = CONF_LEVELS.filter((c) => fd.getAll('confAllowed').map(String).includes(c));
   const confDefault = str(fd, 'confDefault') as Conf;
   if (!confAllowed.length || !confAllowed.includes(confDefault)) return fail(ctx, 'conf_not_allowed');
+  // Empty: no periodicity. Otherwise a whole number of months, refused rather than corrected.
+  const reviewMonths = parseReviewMonths(str(fd, 'reviewMonths'));
+  if (reviewMonths === undefined) return { ok: false, error: ctx.t.review_months_invalid, field: 'reviewMonths' };
   const yearsRaw = str(fd, 'retentionYears');
   const years = yearsRaw === '' ? null : Math.max(0, Math.min(200, Number(yearsRaw) || 0));
   const triggers: RetentionTrigger[] = ['creation', 'in_force', 'superseded', 'project_end', 'contract_end', 'fiscal_year_end', 'expiry', 'asset_life', 'employee_departure', 'permanent'];
   const dispositions: Disposition[] = ['destroy', 'review', 'archive', 'permanent'];
   const trigger = triggers.find((x) => x === str(fd, 'retentionTrigger')) ?? type.retentionTrigger;
   const disposition = dispositions.find((x) => x === str(fd, 'retentionDisposition')) ?? type.retentionDisposition;
-  const next = { circuit, confAllowed, confDefault, retentionYears: years, retentionTrigger: trigger, retentionDisposition: disposition, active: fd.get('active') !== 'off' };
+  const next = { circuit, confAllowed, confDefault, retentionYears: years, retentionTrigger: trigger, retentionDisposition: disposition, reviewMonths, active: fd.get('active') !== 'off' };
+  // Months as the journal stores them: text (an AuditValue), rendered with their unit (lib/queries.ts).
+  const months = (n: number | null): AuditValue => (n == null ? null : String(n));
   const db = await getDb();
   await db.transaction(async (tx) => {
     const [cur] = await tx.select().from(s.docTypes).where(eq(s.docTypes.code, code));
@@ -1077,6 +1128,7 @@ export async function updateType(fd: FormData): Promise<ActionResult> {
       ['confAllowed', cur.confAllowed, next.confAllowed],
       ['confDefault', cur.confDefault, next.confDefault],
       ['retention', retentionValue(cur), retentionValue(next)],
+      ['reviewMonths', months(cur.reviewMonths), months(next.reviewMonths)],
       ['active', cur.active, next.active],
     ]);
     // Saving without a change leaves no entry.

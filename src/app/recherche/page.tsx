@@ -6,7 +6,7 @@ import { mayShareSearches } from '@/lib/access';
 import { getCtx } from '@/lib/context';
 import { fmtDate } from '@/lib/format';
 import { facetValueL, listSavedSearches, listSearchDocs, searchCriteriaL, sortL } from '@/lib/queries';
-import { DATE_FIELDS, DATE_LABEL, dueOf, FACET_KEYS, FACET_LABEL, hasCriteria, parseSearch, runSearch, searchHref, SORT_KEYS, sortOf, type FacetKey, type Facets } from '@/lib/search';
+import { DATE_FIELDS, DATE_LABEL, dueOf, FACET_KEYS, FACET_LABEL, hasCriteria, OVERDUE_KEYS, parseSearch, runSearch, searchHref, SORT_KEYS, sortOf, type FacetKey, type Facets } from '@/lib/search';
 import { ATTACHMENTS, CONF_LEVELS, ORIGINS, STATUS_KEYS } from '@/lib/i18n';
 import { FacetCheck, PeriodFilter, SearchField, SortSelect } from './SearchClient';
 import styles from './search.module.css';
@@ -48,6 +48,7 @@ export default async function SearchPage({ searchParams }: PageProps<'/recherche
     owner: found('owner'),
     author: found('author'),
     status: ref('status', STATUS_KEYS),
+    overdue: ref('overdue', OVERDUE_KEYS),
     conf: ref('conf', CONF_LEVELS),
     lang: found('lang'),
     keywords: found('keywords', true),
@@ -153,6 +154,8 @@ export default async function SearchPage({ searchParams }: PageProps<'/recherche
                       <span style={{ fontSize: 14 }}>{d.title}</span>
                       {code && <span className="tag tag-accent">{code}</span>}
                       <span className={d.tagClass}>{d.statusLabel}</span>
+                      {d.expired && <span className="tag tag-outline">{t.ind_expired}</span>}
+                      {d.reviewOverdue && <span className="tag tag-outline">{t.ind_review_late}</span>}
                     </div>
                     <div className="text-muted" style={{ fontSize: 12, marginTop: 2 }}>{d.id} · {d.typeLabel} · {t.rev_short} {d.rev} · {d.path}</div>
                   </div>

@@ -4,10 +4,11 @@ import type { DocView } from './queries';
 
 /**
  * Facets of /recherche, in the order of its filter column; each one is a URL parameter, repeated for each value chosen.
- * `owner` holds user IDs, `author` a user ID or the free-text author, `keywords` several values per document.
+ * `owner` holds user IDs, `author` a user ID or the free-text author, `keywords` several values per document,
+ * `overdue` the dates past due (OVERDUE_KEYS).
  */
 export const FACET_KEYS = [
-  'project', 'family', 'type', 'subtype', 'origin', 'attachment', 'department', 'site', 'owner', 'author', 'status', 'conf',
+  'project', 'family', 'type', 'subtype', 'origin', 'attachment', 'department', 'site', 'owner', 'author', 'status', 'overdue', 'conf',
   'lang', 'keywords', 'source', 'phase', 'lot', 'discipline', 'theme',
 ] as const;
 export type FacetKey = (typeof FACET_KEYS)[number];
@@ -18,12 +19,18 @@ export type Facets = Partial<Record<FacetKey, string[]>>;
  * separated by commas (`?type=PRO,NCR`, the form of the URLs before values were repeated). The values of the other
  * facets are free text, read whole.
  */
-const CODED: ReadonlySet<FacetKey> = new Set(['project', 'family', 'type', 'origin', 'attachment', 'department', 'site', 'owner', 'status', 'conf']);
+const CODED: ReadonlySet<FacetKey> = new Set(['project', 'family', 'type', 'origin', 'attachment', 'department', 'site', 'owner', 'status', 'overdue', 'conf']);
+
+/**
+ * Values of the `overdue` facet: the indicators of the record (lib/review.ts, docView), « Expiré » and « Revue en
+ * retard ». A document may have both, or neither.
+ */
+export const OVERDUE_KEYS = ['expired', 'review'] as const;
 
 /** Label of each facet (filter column, saved search criteria, journal of the exports). */
 export const FACET_LABEL: Record<FacetKey, TKey> = {
   project: 'project_program', family: 'family', type: 'doc_type', subtype: 'subtype', origin: 'origin', attachment: 'attachment',
-  department: 'department', site: 'site_label', owner: 'owner', author: 'author_label', status: 'status', conf: 'conf',
+  department: 'department', site: 'site_label', owner: 'owner', author: 'author_label', status: 'status', overdue: 'facet_overdue', conf: 'conf',
   lang: 'language', keywords: 'keywords', source: 'source_org', phase: 'project_phase', lot: 'work_package', discipline: 'discipline',
   theme: 'research_theme',
 };
@@ -190,6 +197,7 @@ export function facetValues(d: DocView, k: FacetKey): string[] {
     // As the record shows it: the free-text author, else the author user, else the owner.
     case 'author': return one(d.authorText || d.authorId || d.ownerId);
     case 'status': return [d.status];
+    case 'overdue': return [...(d.expired ? ['expired'] : []), ...(d.reviewOverdue ? ['review'] : [])];
     case 'conf': return [d.conf];
     case 'lang': return one(d.lang);
     case 'keywords': return [...new Set(d.keywords)];

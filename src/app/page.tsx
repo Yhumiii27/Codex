@@ -6,7 +6,7 @@ import { Icon } from '@/components/ui/Icon';
 import { ClickRow, DialogButton } from '@/components/ui/client';
 import { getCtx } from '@/lib/context';
 import { addDays, todayIso, todayLong } from '@/lib/format';
-import { deadlines, listAudit, listDocs, myTodo, type DeadlineView } from '@/lib/queries';
+import { deadlines, listAudit, listDocs, myTodo } from '@/lib/queries';
 import styles from './home.module.css';
 
 /** A KPI card: a link when the role may open its screen, otherwise a plain card (never a dead end). */
@@ -35,7 +35,6 @@ export default async function HomePage() {
   // Activity of the group, limited to documents the user may see, each under its current ID.
   const activity = audit.filter((a) => a.currentId && visible.has(a.currentId)).slice(0, 6);
   const noUpload = ctx.can('upload') ? undefined : `${t.not_allowed} : ${t.perm_upload}`;
-  const kindLabel = (d: DeadlineView) => (d.kind === 'retention' ? t.until : d.kind === 'expiry' ? t.dl_expiry : t.dl_review);
 
   return (
     <div className="screen" style={{ overflow: 'auto', padding: 'var(--space-8)' }} data-screen-label="Accueil">
@@ -112,7 +111,7 @@ export default async function HomePage() {
                   <Link key={`${d.id}:${d.kind}`} href={d.href} className={`link-plain hairline ${styles.expRow}`}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div className="ellipsis">{d.title}</div>
-                      <div className="text-muted ellipsis sub">{d.typeLabel} · {kindLabel(d)} {d.endF}</div>
+                      <div className="text-muted ellipsis sub">{d.typeLabel} · {d.dueL} {d.endF}</div>
                     </div>
                     <span className="tag tag-outline" style={{ flex: 'none' }}>{d.actionLabel}</span>
                   </Link>

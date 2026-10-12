@@ -6,12 +6,14 @@ import { Icon } from '@/components/ui/Icon';
 import { Seg } from '@/components/ui/Seg';
 import type { Attachment, Conf, Origin } from '@/db/schema';
 import {
-  addFunctionHolder, addOrgValue, addWorkingVersion, createDocument, decideStep, delegateStep, graftChange, recallValidation, requestChange,
-  requestValidation, saveSearch, setDepartmentFeatured, setReaders, simulateUser, simulateVigieDecision, updateMeta, updateType,
+  addFunctionHolder, addOrgValue, addWorkingVersion, createDocument, decideStep, delegateStep, graftChange, recallValidation, recordReview,
+  requestChange, requestValidation, saveSearch, setDepartmentFeatured, setReaders, simulateUser, simulateVigieDecision, updateMeta, updateType,
 } from '@/lib/actions';
 import { contextOf, idMatches, seqWidth } from '@/lib/codes';
 import { DEFAULT_FEATURED, FEATURABLE, MAX_FEATURED } from '@/lib/departments';
+import { fmtDate } from '@/lib/format';
 import { ATTACHMENTS, CONF_LEVELS, ORIGINS, PROJECT_PHASES, SEARCH_SCOPES, SIM_ROLES, type T, type TKey } from '@/lib/i18n';
+import { reviewDueHint } from '@/lib/review';
 import { FACET_LABEL, type FacetKey } from '@/lib/search';
 import { FilePicker, Modal, Select, useSubmit, type SelectOption } from './Modal';
 import type { DialogData, DialogSpec, MetaDoc, VersionLite } from './types';
@@ -31,6 +33,7 @@ export function Dialogs({ spec }: { spec: DialogSpec }) {
     case 'readers': return <Readers docId={spec.docId} readers={spec.readers} />;
     case 'vigie': return <VigieDecision requestId={spec.requestId} docTitle={spec.docTitle} change={spec.change} modifierId={spec.modifierId} drafters={spec.drafters} deferred={spec.deferred} />;
     case 'graft': return <Graft spec={spec} />;
+    case 'review': return <RecordReview spec={spec} />;
     case 'type': return <TypeEditor type={spec.type} />;
     case 'holder': return <AddHolder functionKey={spec.functionKey} functionLabel={spec.functionLabel} scope={spec.scope} />;
     case 'org': return <AddOrg what={spec.what} />;
@@ -177,6 +180,7 @@ function DocFields({ types, st, set, doc, preset, withOwner, locked, lockType, f
   const segOpt = { padding: '6px 12px', fontSize: 12.5 };
   const frozen = (label: string) => <div style={{ minHeight: 34, display: 'flex', alignItems: 'center' }}><span className="tag tag-neutral">{label}</span></div>;
   const errorOf = (name: string) => (fieldError?.field === name ? fieldError.error : null);
+  const reviewHint = reviewDueHint(type?.reviewMonths, !!doc?.inForce);
 
   return (
     <div className="form-grid">
@@ -241,7 +245,8 @@ function DocFields({ types, st, set, doc, preset, withOwner, locked, lockType, f
       <Field label={t.language}>
         {(id) => <Select id={id} name="lang" defaultValue={doc ? doc.lang ?? '' : lang} options={[{ key: 'fr', label: t.lang_fr }, { key: 'en', label: t.lang_en }]} empty="—" />}
       </Field>
-      <Field label={t.review_due_at} error={errorOf('reviewDueAt')}>
+      {/* Without a date, entry into force sets one from the type's periodicity (lib/lifecycle.ts putInForce, lib/review.ts reviewDueHint). */}
+      <Field label={t.review_due_at} error={errorOf('reviewDueAt')} hint={reviewHint ? t[reviewHint].replace('{n}', String(type?.reviewMonths)) : undefined}>
         {(id) => <DateInput id={id} name="reviewDueAt" value={doc?.reviewDueAt} error={errorOf('reviewDueAt')} />}
       </Field>
       <Field label={t.expires_at} error={errorOf('expiresAt')}>
@@ -705,6 +710,48 @@ function Graft({ spec }: { spec: Extract<DialogSpec, { kind: 'graft' }> }) {
   );
 }
 
+/**
+ * Records the periodic review of the revision in force (lib/actions.ts recordReview): no revision is created. The next
+ * review date is the one entered, else the type's periodicity counted from today.
+ */
+function RecordReview({ spec }: { spec: Extract<DialogSpec, { kind: 'review' }> }) {
+  const { t, lang, close } = useApp();
+  const { pending, error, field, run } = useSubmit();
+  const errorOf = (name: string) => (field === name ? error : null);
+  return (
+    <Modal title={t.review_title} actions={<Actions pending={pending} label={t.review_done} onCancel={close} form="review-form" />}>
+      <form
+        id="review-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const form = e.currentTarget;
+          const fd = new FormData(form);
+          run(() => recordReview(spec.docId, String(fd.get('next') ?? '') || null, String(fd.get('comment') ?? '')), { form });
+        }}
+        style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
+      >
+        <div>
+          <div style={{ fontSize: 13 }}>{spec.title}</div>
+          <div className="text-muted sub tabnum">{spec.docId} · {t.revision} {spec.letter}{spec.reviewDueAt ? ` · ${t.review_due_at} : ${fmtDate(spec.reviewDueAt, lang)}` : ''}</div>
+        </div>
+        <p className="text-muted" style={{ margin: 0, fontSize: 12.5 }}>{t.review_hint}</p>
+        <Field label={t.review_next} error={errorOf('next')} hint={spec.months ? t.review_next_periodic.replace('{n}', String(spec.months)) : t.review_next_manual}>
+          {(id) => (
+            <input
+              id={id} className="input" type="date" name="next" min={spec.minDate} required={!spec.months}
+              aria-invalid={errorOf('next') ? true : undefined} aria-describedby={errorOf('next') ? `${id}-error` : undefined}
+            />
+          )}
+        </Field>
+        <Field label={t.review_comment} error={errorOf('comment')}>
+          {(id) => <textarea id={id} className="input" name="comment" rows={3} maxLength={2000} aria-invalid={errorOf('comment') ? true : undefined} />}
+        </Field>
+        <ErrorLine error={field ? null : error} />
+      </form>
+    </Modal>
+  );
+}
+
 // ── Notes and session simulation ─────────────────────────────────────────
 
 const NOTES: Record<'fr' | 'en', [string, string][]> = {
@@ -788,7 +835,7 @@ type TypeSpec = Extract<DialogSpec, { kind: 'type' }>['type'];
 
 function TypeEditor({ type }: { type: TypeSpec }) {
   const { t, data, close } = useApp();
-  const { pending, error, run } = useSubmit();
+  const { pending, error, field, run } = useSubmit();
   const [circuit, setCircuit] = useState<string[]>(type.circuit);
   const [allowed, setAllowed] = useState<Conf[]>(type.confAllowed);
   const [confDefault, setConfDefault] = useState<Conf>(type.confDefault);
@@ -813,7 +860,7 @@ function TypeEditor({ type }: { type: TypeSpec }) {
 
   return (
     <Modal title={`${type.code} — ${type.label}`} width={620} actions={<Actions pending={pending} label={t.save} onCancel={close} form="type-form" disabled={!allowed.length} />}>
-      <form id="type-form" onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); run(() => updateType(fd)); }} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <form id="type-form" onSubmit={(e) => { e.preventDefault(); const form = e.currentTarget; const fd = new FormData(form); run(() => updateType(fd), { form }); }} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <input type="hidden" name="code" value={type.code} />
         {circuit.map((k) => <input key={k} type="hidden" name="circuit" value={k} />)}
         <input type="hidden" name="active" value={active ? 'on' : 'off'} />
@@ -880,11 +927,16 @@ function TypeEditor({ type }: { type: TypeSpec }) {
               <div className="text-muted" style={{ fontSize: 12 }}>{type.retentionBasis}</div>
             </Field>
           )}
+          {/* Periodic review: sets the review date of a document entering into force without one (lib/review.ts). */}
+          <GridSection>{t.review_months}</GridSection>
+          <Field label={t.duration} hint={t.review_months_hint} error={field === 'reviewMonths' ? error : null}>
+            {(id) => <input id={id} className="input" type="number" name="reviewMonths" min={1} max={240} step={1} defaultValue={type.reviewMonths ?? ''} aria-invalid={field === 'reviewMonths' ? true : undefined} />}
+          </Field>
         </div>
         <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12.5, cursor: 'pointer' }}>
           <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} style={{ margin: 0 }} />{t.type_active}
         </label>
-        <ErrorLine error={error} />
+        <ErrorLine error={field ? null : error} />
       </form>
     </Modal>
   );

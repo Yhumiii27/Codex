@@ -8,11 +8,11 @@ import { Seg } from '@/components/ui/Seg';
 import { VStepper } from '@/components/ui/Stepper';
 import { getDb } from '@/db';
 import { ActionButton, DialogButton, ShareButton } from '@/components/ui/client';
-import { canRead, mayWorkOnDraft, openRevisionView, readerMaySeeRevision, readerMaySeeVersion, readersApply } from '@/lib/access';
+import { canRead, mayRecordReview, mayWorkOnDraft, openRevisionView, readerMaySeeRevision, readerMaySeeVersion, readersApply } from '@/lib/access';
 import { releaseHold } from '@/lib/actions';
 import { isFinalStatus } from '@/lib/codes';
 import { getCtx } from '@/lib/context';
-import { fmtDate, todayIso } from '@/lib/format';
+import { addDays, fmtDate, todayIso } from '@/lib/format';
 import { ECR_TAGCLS } from '@/lib/i18n';
 import { getProject } from '@/lib/keystone';
 import { decisionWait, defaultModifier, draftersOf } from '@/lib/lifecycle';
@@ -28,7 +28,7 @@ type Tab = (typeof TABS)[number];
 /** Revision statuses of the revision being drafted, reviewed or waiting for its effective date. */
 const WORKING = new Set(['draft', 'in_review', 'approved']);
 /** Audit actions that change the document's content or record ("Modifié … par …"). */
-const MODIFYING = new Set(['upload', 'working', 'edit', 'reclass', 'restore']);
+const MODIFYING = new Set(['upload', 'working', 'edit', 'reviewed', 'reclass', 'restore']);
 
 type Version = RevisionView['versions'][number];
 const lite = (v: Version): VersionLite => ({ id: v.id, label: v.label, author: v.author, dateF: v.dateF, commentL: v.commentL, sizeF: v.sizeF, pages: v.pages, fileName: v.fileName });
@@ -164,12 +164,25 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
   const canChange = !!doc.revInForce;
   const canWithdraw = !!doc.revInForce && doc.state !== 'obsolete';
   // The drafting circle is told what an acceptance would do while a revision is open; others know of no such revision.
-  const changeBtn = (cls: string) => canChange && (
-    <DialogButton spec={{ kind: 'change', docId: doc.id, title: doc.title, change: 'modification', openRev: openRev ?? undefined }} className={cls} icon="pen" deniedTitle={changeLock ?? deny('edit')}>{t.request_change}</DialogButton>
+  const changeBtn = (cls: string, style?: CSSProperties) => canChange && (
+    <DialogButton spec={{ kind: 'change', docId: doc.id, title: doc.title, change: 'modification', openRev: openRev ?? undefined }} className={cls} style={style} icon="pen" deniedTitle={changeLock ?? deny('edit')}>{t.request_change}</DialogButton>
   );
-  const withdrawBtn = (cls: string) => canWithdraw && (
-    <DialogButton spec={{ kind: 'change', docId: doc.id, title: doc.title, change: 'obsolescence' }} className={cls} deniedTitle={changeLock ?? deny('edit')}>{t.request_obsolete}</DialogButton>
+  const withdrawBtn = (cls: string, style?: CSSProperties) => canWithdraw && (
+    <DialogButton spec={{ kind: 'change', docId: doc.id, title: doc.title, change: 'obsolescence' }} className={cls} style={style} deniedTitle={changeLock ?? deny('edit')}>{t.request_obsolete}</DialogButton>
   );
+  // Periodic review of the revision in force (lib/actions.ts recordReview): its owner, its process owner, records managers.
+  // An obsolete or archived document is no longer applied: nothing to review.
+  const reviewBtn = (cls: string, style?: CSSProperties) => doc.revInForce && doc.state === 'active' && (
+    <DialogButton
+      spec={{ kind: 'review', docId: doc.id, title: doc.title, letter: doc.revInForce, reviewDueAt: doc.reviewDueAt, months: type?.reviewMonths ?? null, minDate: addDays(todayIso(), 1) }}
+      className={cls} style={style} icon="check"
+      deniedTitle={lock ?? deny('edit') ?? (mayRecordReview(ctx, doc) ? undefined : t.review_reserved)}
+    >{t.review_done}</DialogButton>
+  );
+  // Expiry and review indicators (docView, lib/review.ts): no status changes, the record offers the requests to Vigie
+  // and the review as shortcuts, nothing happens on its own (D-17).
+  const expiredL = doc.expired ? `${t.notice_expired.replace('{date}', doc.expiresF)}${canChange || canWithdraw ? `${lang === 'fr' ? ' : ' : ': '}${t.notice_expired_act}` : ''}.` : null;
+  const smallBtn: CSSProperties = { fontSize: 12, padding: '5px 10px' };
 
   // A piece counts as filled only by a document of this project; a document the user cannot see shows no ID or status.
   const pieces = project ? project.expected.map((p) => {
@@ -209,6 +222,7 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
     projectPhase: doc.projectPhase, workPackage: doc.workPackage, discipline: doc.discipline,
     researchTheme: doc.researchTheme, studyId: doc.studyId, ipStatus: doc.ipStatus, processOwnerId: doc.processOwnerId,
     idMayChange: !revs.some((r) => r.approvedAt),
+    inForce: !!doc.revInForce,
     classificationLocked: circle && !!runningAny,
   };
   const readerIds = [...ix.readers(doc.id)];
@@ -247,6 +261,8 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
             {doc.attachment === 'project' && doc.projectCode && <span className="tag tag-accent">{doc.projectCode}</span>}
             {doc.attachment === 'research' && doc.programCode && <span className="tag tag-accent">{doc.programCode}</span>}
             <span className={doc.tagClass}>{doc.statusLabel}</span>
+            {doc.expired && <span className="tag tag-outline">{t.ind_expired}</span>}
+            {doc.reviewOverdue && <span className="tag tag-outline">{t.ind_review_late}</span>}
             <span className="tag tag-neutral">{doc.typeLabel}</span>
             {inForce && <span className="tag tag-neutral">{t.rev_short} {inForce.letter}</span>}
             {wip && <span className="tag tag-outline">{wip}</span>}
@@ -271,6 +287,20 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
         <div className={styles.stateNotice} data-state={notice.state} role="note">
           <Icon name={notice.state === 'archived' ? 'archive' : 'info'} size={16} style={{ flex: 'none' }} />
           <span>{notice.text}</span>
+        </div>
+      )}
+      {expiredL && (
+        <div className={styles.stateNotice} data-state="expired" role="note">
+          <Icon name="info" size={16} style={{ flex: 'none' }} />
+          <span style={{ flex: 1, minWidth: 0 }}>{expiredL}</span>
+          <span className={styles.noticeActions}>{changeBtn('btn btn-secondary', smallBtn)}{withdrawBtn('btn btn-secondary', smallBtn)}</span>
+        </div>
+      )}
+      {doc.reviewOverdue && (
+        <div className={styles.stateNotice} data-state="review" role="note">
+          <Icon name="info" size={16} style={{ flex: 'none' }} />
+          <span style={{ flex: 1, minWidth: 0 }}>{t.notice_review_late.replace('{date}', doc.reviewDueF)}</span>
+          <span className={styles.noticeActions}>{reviewBtn('btn btn-secondary', smallBtn)}</span>
         </div>
       )}
       {awaiting && waitL && (
@@ -435,6 +465,7 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
 
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 18 }}>
                   <DialogButton spec={{ kind: 'meta', doc: meta }} icon="pen" deniedTitle={lock ?? deny('edit') ?? (isOwner ? undefined : `${t.not_allowed} : ${t.owner}`)}>{t.edit_meta}</DialogButton>
+                  {reviewBtn('btn btn-secondary')}
                   {showReaders && isOwner && <DialogButton spec={{ kind: 'readers', docId: doc.id, readers: readerIds }} icon="lock" deniedTitle={lock ?? deny('edit')}>{t.readers}</DialogButton>}
                   {canRelease && <ActionButton action={releaseHold.bind(null, doc.id)} confirm={`${t.release_hold}${lang === 'fr' ? ' ' : ''}?`}><Icon name="lock" size={14} />{t.release_hold}</ActionButton>}
                 </div>

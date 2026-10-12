@@ -12,11 +12,17 @@ type Axis = (typeof AXES)[number];
 const DEFAULT_AXIS: Axis = 'family';
 const STATUSES = ['all', 'in_force', 'in_review', 'draft', 'obsolete', 'archived'] as const;
 type StatusF = (typeof STATUSES)[number];
+/**
+ * Dates past due, the record's indicators (lib/review.ts, docView): expired, review overdue. A filter of its own in the
+ * tree, combined with the status: it is no status (D-17), and the status bar keeps the design's width.
+ */
+const DUES = ['expired', 'review_late'] as const;
+type DueF = (typeof DUES)[number];
 /** Node of the project axis for documents attached to neither a project nor a research programme. */
 const NONE = 'none';
 const HOV = 'color-mix(in srgb,var(--color-accent) 10%,transparent)';
 
-type Params = { axis?: string; node?: string; sub?: string; status?: string; sel?: string };
+type Params = { axis?: string; node?: string; sub?: string; status?: string; due?: string; sel?: string };
 
 function href(p: Params) {
   const q = new URLSearchParams(Object.entries(p).filter(([, v]) => v) as [string, string][]);
@@ -38,6 +44,11 @@ function statusMatches(d: DocView, f: StatusF): boolean {
   if (f === 'all') return true;
   if (f === 'in_review') return d.status === 'in_review' || d.status === 'approved';
   return d.status === f;
+}
+
+/** The record's indicator the due filter asks for (docView), on the documents the user sees. */
+function dueMatches(d: DocView, f: DueF | undefined): boolean {
+  return !f || (f === 'expired' ? d.expired : d.reviewOverdue);
 }
 
 /** Node values of an axis in reference order (registry, organisation, projects then programmes), with their labels. */
@@ -62,8 +73,9 @@ export default async function ExplorerPage({ searchParams }: PageProps<'/explora
   const { t, lang } = ctx;
   const axis: Axis = (AXES as readonly string[]).includes(sp.axis ?? '') ? (sp.axis as Axis) : DEFAULT_AXIS;
   const status: StatusF = (STATUSES as readonly string[]).includes(sp.status ?? '') ? (sp.status as StatusF) : 'all';
+  const due: DueF | undefined = (DUES as readonly string[]).includes(sp.due ?? '') ? (sp.due as DueF) : undefined;
   const node = sp.node || undefined, sub = sp.sub || undefined, sel = sp.sel || undefined;
-  const base: Params = { axis: axis === DEFAULT_AXIS ? undefined : axis, status: status === 'all' ? undefined : status };
+  const base: Params = { axis: axis === DEFAULT_AXIS ? undefined : axis, status: status === 'all' ? undefined : status, due };
 
   // Only the documents the user may see (listDocs applies the visibility rules).
   const all = await listDocs(ctx);
@@ -87,7 +99,9 @@ export default async function ExplorerPage({ searchParams }: PageProps<'/explora
       return { ...n, count: counts.get(n.key)!, selected, children };
     });
 
-  const rows = all.filter((d) => (!node || axisKey(d, axis) === node) && (!sub || d.typeCode === sub) && statusMatches(d, status));
+  const rows = all.filter((d) => (!node || axisKey(d, axis) === node) && (!sub || d.typeCode === sub) && statusMatches(d, status) && dueMatches(d, due));
+  // Counted over every document the user sees, as « Tous les documents » is.
+  const dueCount: Record<DueF, number> = { expired: all.filter((d) => d.expired).length, review_late: all.filter((d) => d.reviewOverdue).length };
   const parts = [t.all_docs];
   if (node) parts.push(nodeLabel(node));
   if (sub) parts.push(ctx.label('type', sub));
@@ -120,7 +134,7 @@ export default async function ExplorerPage({ searchParams }: PageProps<'/explora
             options={AXES.map((k) => ({
               key: k,
               label: <span title={axisLabel[k].full}>{axisLabel[k].short}</span>,
-              href: href({ axis: k === DEFAULT_AXIS ? undefined : k, status: base.status }),
+              href: href({ axis: k === DEFAULT_AXIS ? undefined : k, status: base.status, due }),
             }))}
           />
         </div>
@@ -145,6 +159,19 @@ export default async function ExplorerPage({ searchParams }: PageProps<'/explora
               ))}
             </div>
           ))}
+        </div>
+        <div className={styles.due}>
+          <h6 className="sec-title" style={{ padding: '0 6px', marginBottom: 6 }}>{t.facet_overdue}</h6>
+          {DUES.map((k) => {
+            const on = due === k;
+            return (
+              <Link key={k} href={href({ ...here, sel, due: on ? undefined : k })} scroll={false} aria-current={on ? 'true' : undefined} className={styles.node} style={{ background: on ? HOV : 'transparent', color: on ? 'var(--color-accent)' : 'inherit', gap: 8, paddingLeft: 8 }}>
+                <Icon name="info" size={15} style={{ flex: 'none', opacity: on ? 1 : 0.7 }} />
+                <span className="ellipsis" style={{ flex: 1 }}>{t[`f_${k}`]}</span>
+                <span className="text-muted" style={{ fontSize: 11 }}>{dueCount[k]}</span>
+              </Link>
+            );
+          })}
         </div>
       </aside>
 
@@ -184,7 +211,13 @@ export default async function ExplorerPage({ searchParams }: PageProps<'/explora
                       <div>{d.rev}</div>
                       {d.revInForce && d.workingLabel && <div style={{ fontSize: 11 }}>{d.workingLabel} {t.in_progress}</div>}
                     </td>
-                    <td><span className={d.tagClass}>{d.statusLabel}</span></td>
+                    <td>
+                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                        <span className={d.tagClass}>{d.statusLabel}</span>
+                        {d.expired && <span className="tag tag-outline">{t.ind_expired}</span>}
+                        {d.reviewOverdue && <span className="tag tag-outline">{t.ind_review_late}</span>}
+                      </div>
+                    </td>
                     <td>{d.owner}</td>
                     <td className="text-muted nowrap">{d.modifiedF}</td>
                     <td className="text-muted nowrap" title={d.retentionL}>{d.untilF}</td>
@@ -208,6 +241,8 @@ export default async function ExplorerPage({ searchParams }: PageProps<'/explora
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {selDoc.attachedCode && <span className="tag tag-accent">{selDoc.attachedCode}</span>}
               <span className={selDoc.tagClass}>{selDoc.statusLabel}</span>
+              {selDoc.expired && <span className="tag tag-outline">{t.ind_expired}</span>}
+              {selDoc.reviewOverdue && <span className="tag tag-outline">{t.ind_review_late}</span>}
               <span className="tag tag-neutral">{t.rev_short} {selDoc.rev}</span>
               <span className="tag tag-neutral">{selDoc.confL}</span>
             </div>
@@ -229,6 +264,8 @@ export default async function ExplorerPage({ searchParams }: PageProps<'/explora
             <dt className="text-muted">{t.owner}</dt><dd>{selDoc.owner}</dd>
             <dt className="text-muted">{t.revision}</dt><dd>{[selDoc.revInForce, selDoc.workingLabel && `${selDoc.workingLabel} ${t.in_progress}`].filter(Boolean).join(' · ') || '—'}</dd>
             <dt className="text-muted">{t.modified}</dt><dd>{selDoc.modifiedF}</dd>
+            {selDoc.reviewDueAt && <><dt className="text-muted">{t.review_due_at}</dt><dd>{selDoc.reviewDueF}</dd></>}
+            {selDoc.expiresAt && <><dt className="text-muted">{t.expires_at}</dt><dd>{selDoc.expiresF}</dd></>}
             <dt className="text-muted">{t.retention_short}</dt><dd>{selDoc.retentionL} · {selDoc.untilF}</dd>
           </dl>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>

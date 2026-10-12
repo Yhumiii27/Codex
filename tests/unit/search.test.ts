@@ -7,7 +7,7 @@ import { beyondBounds, cleanCriteria, cleanPeriod, dueOf, facetValues, hasCriter
 type Searched = Pick<SearchDoc, 'id' | 'aliases' | 'title' | 'keywords' | 'typeLabel' | 'sourceOrg' | 'externalRef' | 'subtype'
   | 'projectCode' | 'programCode' | 'typeCode' | 'family' | 'origin' | 'attachment' | 'department' | 'status' | 'conf'
   | 'site' | 'ownerId' | 'owner' | 'authorId' | 'authorText' | 'author' | 'lang' | 'studyId' | 'projectPhase' | 'workPackage'
-  | 'discipline' | 'researchTheme' | 'modifiedAt' | 'issuedAt' | 'effectiveAt' | 'reviewDueAt' | 'expiresAt'>;
+  | 'discipline' | 'researchTheme' | 'modifiedAt' | 'issuedAt' | 'effectiveAt' | 'reviewDueAt' | 'expiresAt' | 'expired' | 'reviewOverdue'>;
 
 const view = (over: Partial<Searched> = {}): SearchDoc => {
   const d: Searched = {
@@ -17,6 +17,7 @@ const view = (over: Partial<Searched> = {}): SearchDoc => {
     site: null, ownerId: 'gcomte', owner: 'Gabriel Comte', authorId: 'gcomte', authorText: null, author: 'Gabriel Comte', lang: 'fr',
     studyId: null, projectPhase: null, workPackage: null, discipline: null, researchTheme: null,
     modifiedAt: '2026-09-01', issuedAt: '2026-01-15', effectiveAt: '2026-01-15', reviewDueAt: null, expiresAt: null,
+    expired: false, reviewOverdue: false,
     ...over,
   };
   return d as SearchDoc;
@@ -215,6 +216,23 @@ describe('facets', () => {
     expect(ids(results)).toEqual(['PID-HLT-026-001']);
     expect(Object.fromEntries(tally('owner'))).toEqual({ gcomte: 1, cbardet: 1 });
     expect(Object.fromEntries(tally('lang'))).toEqual({ fr: 1 });
+  });
+
+  it('reads the dates past due as the record’s indicators: expired, review overdue, both or neither (point 13)', () => {
+    const due = [
+      view({ id: 'A', expired: true }),
+      view({ id: 'B', reviewOverdue: true }),
+      view({ id: 'C', expired: true, reviewOverdue: true }),
+      view({ id: 'D' }),
+    ];
+    expect(due.map((d) => facetValues(d, 'overdue'))).toEqual([['expired'], ['review'], ['expired', 'review'], []]);
+    const { results, tally } = runSearch(due, { facets: { overdue: ['expired'] } });
+    expect(ids(results)).toEqual(['A', 'C']);
+    expect(Object.fromEntries(tally('overdue'))).toEqual({ expired: 2, review: 2 });
+    expect(ids(runSearch(due, { facets: { overdue: ['expired', 'review'] } }).results)).toEqual(['A', 'B', 'C']);
+    // A coded facet: one parameter may list its values, and a saved search keeps it.
+    expect(parseSearch({ overdue: 'expired,review' }).facets).toEqual({ overdue: ['expired', 'review'] });
+    expect(cleanCriteria({ facets: { overdue: ['review'] } }).facets).toEqual({ overdue: ['review'] });
   });
 
   it('applies the period to the results and to every count', () => {
