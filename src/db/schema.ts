@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { boolean, date, integer, jsonb, pgTable, primaryKey, serial, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { boolean, check, date, index, integer, jsonb, pgTable, primaryKey, serial, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 
 // Data model of the GED — see docs/modele-cible.md.
 
@@ -15,6 +15,12 @@ export type RevStatus = 'draft' | 'in_review' | 'approved' | 'in_force' | 'super
 export type DocState = 'active' | 'obsolete' | 'archived';
 export type RetentionTrigger = 'creation' | 'in_force' | 'superseded' | 'project_end' | 'contract_end' | 'fiscal_year_end' | 'expiry' | 'asset_life' | 'employee_departure' | 'permanent';
 export type Disposition = 'destroy' | 'review' | 'archive' | 'permanent';
+/** Who sees a saved search: its owner, the members of a department, or the whole group. */
+export type SearchScope = 'personal' | 'department' | 'group';
+/** Period of a search on one date of the documents (lib/search.ts Period), bounds included. */
+export type SearchPeriod = { field: 'modified' | 'issued' | 'effective' | 'review' | 'expiry'; from: string | null; to: string | null };
+/** Orders of the search results (lib/search.ts SORT_KEYS). */
+export type SearchOrder = 'relevance' | 'modified' | 'issued' | 'due' | 'id' | 'title';
 
 // ── Organisation (provisional until the org chart is provided) ─────────────
 
@@ -23,6 +29,11 @@ export const departments = pgTable('departments', {
   labelFr: text('label_fr').notNull(),
   labelEn: text('label_en').notNull(),
   sort: integer('sort').notNull().default(0),
+  /**
+   * Search facets the department's page puts forward (lib/departments.ts), in order; null for the default ones. Set in
+   * Administration › Organisation; the choice per department awaits the survey of each department's needs.
+   */
+  featured: jsonb('featured').$type<string[]>(),
 });
 
 export const sites = pgTable('sites', {
@@ -70,12 +81,17 @@ export const docTypes = pgTable('doc_types', {
   retentionBasis: text('retention_basis').notNull().default(''),
   confAllowed: jsonb('conf_allowed').$type<Conf[]>().notNull(),
   confDefault: text('conf_default').$type<Conf>().notNull(),
+  /**
+   * Periodic review, in months (lib/review.ts): the next review date of a document of this type when it enters into
+   * force without one, or when its review is recorded without a date. Null: none (values await the register's review).
+   */
+  reviewMonths: integer('review_months'),
   iso: text('iso'),
   clientDeliverable: boolean('client_deliverable').notNull().default(false),
   source: text('source').notNull().default('deck'),
   active: boolean('active').notNull().default(true),
   sort: integer('sort').notNull().default(0),
-});
+}, (t) => [check('doc_types_review_months', sql`${t.reviewMonths} is null or ${t.reviewMonths} between 1 and 240`)]);
 
 /** Functions that approval circuits are made of (Responsable qualité, Chef de projet…). */
 export const functions = pgTable('functions', {
@@ -122,6 +138,11 @@ export const documents = pgTable('documents', {
   id: text('id').primaryKey(),
   /** Earlier IDs (reclassification before first approval, migrated legacy references). */
   aliases: jsonb('aliases').$type<string[]>().notNull().default([]),
+  /**
+   * Reference in the legacy system the document was migrated from (/api/import), also kept in aliases; null for a
+   * document created in Codex. Aliases also hold former IDs: only this column says which reference was imported.
+   */
+  legacyRef: text('legacy_ref').unique(),
   title: text('title').notNull(),
   origin: text('origin').$type<Origin>().notNull(),
   attachment: text('attachment').$type<Attachment>().notNull(),
@@ -171,6 +192,12 @@ export const documents = pgTable('documents', {
   archivedAt: date('archived_at', { mode: 'string' }),
   createdAt: date('created_at', { mode: 'string' }).notNull(),
   modifiedAt: date('modified_at', { mode: 'string' }).notNull(),
+  /**
+   * Raised by the database at every change of the row, whatever writes it (trigger documents_version, src/db/index.ts),
+   * and by hand when the named readers change. The record's dialogs send it back: an edit from an outdated view is
+   * refused (lib/actions.ts updateMeta, setReaders; lib/concurrency.ts). Shown to the drafting circle only (docView).
+   */
+  version: integer('version').notNull().default(1),
 });
 
 const docRef = () => documents.id;
@@ -204,6 +231,59 @@ export const documentReaders = pgTable(
   (t) => [primaryKey({ columns: [t.docId, t.userId] })],
 );
 
+/** Group of score() a searched value of the record weighs in (lib/search.ts SCORE_WEIGHT). */
+export type TermField = 'id' | 'title' | 'keyword' | 'ref' | 'other';
+
+/**
+ * Values of the record /recherche searches, one row per value, folded as lib/search.ts fold folds them (accents and
+ * case ignored): ID and former IDs, title, keywords, external reference and study ID, subtype, source organisation and
+ * free-text author. Written by the database whenever a document is inserted or one of these columns changes (trigger
+ * documents_terms, src/db/index.ts), never by the application. Values from elsewhere (type label in the reader's
+ * language, names of the owner and of the author) are matched when the search runs (lib/queries.ts searchDocs).
+ */
+export const documentTerms = pgTable(
+  'document_terms',
+  {
+    docId: text('doc_id').notNull().references(docRef, { onUpdate: 'cascade', onDelete: 'cascade' }),
+    field: text('field').$type<TermField>().notNull(),
+    term: text('term').notNull(),
+  },
+  // Trigrams find the values holding a piece of text (LIKE '%…%') without reading them all.
+  (t) => [index('document_terms_doc').on(t.docId), index('document_terms_term').using('gin', t.term.op('gin_trgm_ops'))],
+);
+
+/** Nature of a link between two documents (lib/links.ts); « Remplacé par » is a `replaces` link read from its target. */
+export type LinkKind = 'replaces' | 'see_also';
+/** A link as one of its documents reads it: it replaces the other, is replaced by it, or refers to it. */
+export type LinkRel = 'replaces' | 'replaced_by' | 'see_also';
+/**
+ * Why the replacement proposed with a withdrawal was not linked when the withdrawal applied (lib/links.ts
+ * replacementOutcome): no longer active, a legal hold on either document, a « remplace » link the other way already.
+ */
+export type LinkSkip = 'inactive' | 'hold' | 'linked';
+
+/**
+ * Links between two distinct documents (point 16 of docs/reste-a-faire.md): `source` replaces `target`, or each refers
+ * to the other (`see_also`). One record per pair of documents, whatever its direction: no link to itself, no duplicate,
+ * never both « remplace » and « remplacé par ». Both ends follow a reclassification (cascade on documents.id).
+ */
+export const documentLinks = pgTable(
+  'document_links',
+  {
+    id: serial('id').primaryKey(),
+    sourceId: text('source_id').notNull().references(docRef, cascade),
+    targetId: text('target_id').notNull().references(docRef, cascade),
+    kind: text('kind').$type<LinkKind>().notNull(),
+    createdBy: text('created_by').notNull().references(() => users.id),
+    createdAt: date('created_at', { mode: 'string' }).notNull(),
+  },
+  (t) => [
+    check('document_links_kind', sql`${t.kind} in ('replaces', 'see_also')`),
+    check('document_links_distinct', sql`${t.sourceId} <> ${t.targetId}`),
+    uniqueIndex('document_links_pair').on(sql`least(${t.sourceId}, ${t.targetId})`, sql`greatest(${t.sourceId}, ${t.targetId})`),
+  ],
+);
+
 export const revisions = pgTable(
   'revisions',
   {
@@ -217,7 +297,7 @@ export const revisions = pgTable(
     supersededAt: date('superseded_at', { mode: 'string' }),
     /** Person designated by the ECO to write this revision. */
     modifierId: text('modifier_id').references(() => users.id),
-    /** Vigie change order that opened this revision. */
+    /** Vigie change order that opened this revision; those grafted onto it later point to it (change_requests.revision_id). */
     changeRef: text('change_ref'),
     createdAt: date('created_at', { mode: 'string' }).notNull(),
   },
@@ -257,8 +337,17 @@ export const workflows = pgTable(
     requesterId: text('requester_id').notNull().references(() => users.id),
     due: date('due', { mode: 'string' }).notNull(),
     step: integer('step').notNull(),
-    /** Set when the workflow ends: approved, or rejected (the revision goes back to draft; closed with a comment when the document is withdrawn). */
-    outcome: text('outcome').$type<'approved' | 'rejected'>(),
+    /**
+     * Set when the workflow ends: approved; rejected at a step (the revision goes back to draft; also a circuit closed
+     * by the withdrawal of its document); recalled by its requester or a records manager before the last approval (the
+     * revision goes back to draft).
+     */
+    outcome: text('outcome').$type<'approved' | 'rejected' | 'recalled'>(),
+    /** Who ended the workflow (last approver, rejecting approver, the one who recalled it, Vigie's withdrawal), and the day. */
+    closedBy: text('closed_by').references(() => users.id),
+    closedAt: date('closed_at', { mode: 'string' }),
+    /** Why it was rejected (required) or recalled (optional); also kept in its comments and in the journal. */
+    reason: text('reason'),
     createdAt: date('created_at', { mode: 'string' }).notNull(),
   },
   // A revision has one running workflow at most.
@@ -302,29 +391,128 @@ export const changeRequests = pgTable(
     requesterId: text('requester_id').notNull().references(() => users.id),
     reason: text('reason').notNull(),
     description: text('description').notNull().default(''),
-    /** submitted → accepted / rejected (Vigie decision) → implemented (Codex applied it). */
+    /**
+     * submitted → accepted / rejected (Vigie decision) → implemented (Codex applied it). An acceptance stays 'accepted'
+     * while the document is locked or, for a change, while a revision is already open (lib/lifecycle.ts).
+     */
     status: text('status').$type<ChangeStatus>().notNull(),
     ecoRef: text('eco_ref'),
     modifierId: text('modifier_id').references(() => users.id),
+    /**
+     * Revision an implemented change is carried by: the one it opened, or the one already open it was grafted onto
+     * (D-26), which may then carry several change orders. Null for a withdrawal and for a change not applied yet.
+     */
+    revisionId: integer('revision_id').references(() => revisions.id),
     decisionNote: text('decision_note'),
+    /**
+     * Withdrawal only: the document proposed to replace this one, readable by the requester when asked. Once the
+     * withdrawal applies, it becomes a « remplace » link (lib/lifecycle.ts implementChange). Follows a reclassification.
+     */
+    replacementId: text('replacement_id').references(docRef, cascade),
     source: text('source').notNull().default('codex'),
     createdAt: timestamp('created_at', { mode: 'string' }).notNull(),
     decidedAt: timestamp('decided_at', { mode: 'string' }),
   },
-  // One pending request per document.
-  (t) => [uniqueIndex('change_requests_pending').on(t.docId).where(sql`${t.status} in ('submitted', 'accepted')`)],
+  (t) => [
+    // One pending request per document.
+    uniqueIndex('change_requests_pending').on(t.docId).where(sql`${t.status} in ('submitted', 'accepted')`),
+    check('change_requests_replacement', sql`${t.replacementId} is null or (${t.kind} = 'obsolescence' and ${t.replacementId} <> ${t.docId})`),
+  ],
 );
+
+// ── Identifier counters ─────────────────────────────────────────────────
+
+/** Last number handed out per sequence (lib/codification.ts): document IDs per type and context, W-n circuits, ECR references per year. */
+export const idCounters = pgTable('id_counters', {
+  scope: text('scope').primaryKey(),
+  last: integer('last').notNull(),
+});
 
 // ── Audit, rights, saved searches ───────────────────────────────────────
 
-export const auditLog = pgTable('audit_log', {
-  id: serial('id').primaryKey(),
-  at: timestamp('at', { mode: 'string' }).notNull(),
-  userId: text('user_id').notNull().references(() => users.id),
-  action: text('action').notNull(),
-  docId: text('doc_id').notNull(),
-  detail: text('detail').notNull().default(''),
-});
+/** What an entry without document is about: a cell of the rights matrix, an organisation value, a function, a register type, a CSV export. */
+/** 'file': a file refused on its way in (target id: where it came from, lib/storage.ts UploadOrigin). */
+/** 'storage': a file store (target id: 'local' or 'sharepoint'), cleaned of its orphan files (lib/orphans.ts). */
+/** 'backup': an archive of the database and files (target id: its file name, lib/backup-core.mjs). */
+export type AuditTargetKind = 'permission' | 'department' | 'site' | 'function' | 'type' | 'export' | 'file' | 'storage' | 'backup';
+
+/** A value in a journal change, as stored: keys and codes, rendered in the reader's language (lib/queries.ts). */
+export type AuditValue = string | string[] | boolean | null | { years: number | null; trigger: string; disposition: string };
+
+/**
+ * One change, before → after. `field` names it (a metadata field, a register setting, `granted`, `holder`); `scope`
+ * is the scope of a function holder (null: the whole group). Without before and after, the values are withheld from
+ * the reader (lib/queries.ts, auditForReader).
+ */
+export type AuditChange = { field: string; before?: AuditValue; after?: AuditValue; scope?: string | null };
+
+/** Structured part of a journal entry, next to its free `detail`. */
+export type AuditData = {
+  changes?: AuditChange[];
+  /**
+   * CSV export: query, facets, period and chosen order of a search export (none for the full journal), rows written,
+   * download cut short.
+   */
+  export?: { q?: string; facets?: Partial<Record<string, string[]>>; period?: SearchPeriod; sort?: string; rows: number; interrupted?: boolean };
+  /** Metadata edit: the document's strictest level across the change, and whether a revision was in force. */
+  doc?: { conf: Conf; inForce: boolean };
+  /**
+   * Link added or removed (actions 'link', 'unlink'): this document replaces the other, is replaced by it, or refers to
+   * it; the other under its ID at the time. Shown only to who may read that other document (lib/queries.ts, auditForReader).
+   * `skipped` (action 'link_skipped'): the replacement proposed with a withdrawal was not linked when it applied, and why.
+   */
+  link?: { rel: LinkRel; other: string; skipped?: LinkSkip };
+  /**
+   * File refused by the virus scan (action 'file_rejected'), never stored: its name and size, what the scanner found, the
+   * document it was meant for (shown to records managers only, D-14) or the legacy reference of an import.
+   */
+  file?: { name: string; size: number; threat: string; doc?: string; ref?: string };
+  /**
+   * Orphan files removed from a store (action 'files_purged', lib/orphans.ts): each one's key, size and last change, the
+   * bytes freed, the files that could not be removed. The keys may carry IDs and versions of drafts: shown to records
+   * managers only (D-14).
+   */
+  purge?: { files: { key: string; size: number; touched: string }[]; bytes: number; failed?: number };
+  /**
+   * An archive written (action 'backup_created': Administration, or npm run backup) or restored ('backup_restored': npm
+   * run restore, journaled in the restored database), lib/backup-core.mjs: its name, size and SHA-256 (of the whole
+   * file when written), what it holds (documents, local files and their size, files the store lacked, files kept by
+   * SharePoint and not archived); for a restore, when the backup was made and whether a database was replaced. Counts
+   * only: no document is named; the counts and sizes are shown to records managers only (lib/queries.ts backupL, D-14).
+   */
+  backup?: {
+    archive: string; size: number; sha256?: string; documents: number; files: number; bytes: number; missing: number; sharepoint: number;
+    createdAt?: string; replaced?: boolean;
+  };
+};
+
+/** Append-only: the database refuses UPDATE, DELETE and TRUNCATE on it (src/db/index.ts). */
+export const auditLog = pgTable(
+  'audit_log',
+  {
+    id: serial('id').primaryKey(),
+    /** UTC instant, shown in Paris time (lib/format.ts, parisStamp). */
+    at: timestamp('at', { mode: 'string', withTimezone: true }).notNull(),
+    userId: text('user_id').notNull().references(() => users.id),
+    action: text('action').notNull(),
+    /** Document under its ID at the time: a later reclassification adds an alias and never rewrites the entry. */
+    docId: text('doc_id'),
+    /** Target of an entry without document (role:permission, department code, site key, function key, type code, export, file). */
+    targetKind: text('target_kind').$type<AuditTargetKind>(),
+    targetId: text('target_id'),
+    detail: text('detail').notNull().default(''),
+    /** Values before → after, export query and size: stored as keys, rendered in the reader's language. */
+    data: jsonb('data').$type<AuditData>(),
+    /** Revision the entry is about (working version, circuit, entry into force…); null for the document as a whole (lib/access.ts). */
+    revisionId: integer('revision_id'),
+  },
+  // Newest first (Journal tab, export, activity feeds), and per document (dates shown outside the drafting circle).
+  (t) => [
+    check('audit_log_subject', sql`${t.docId} is not null or (${t.targetKind} is not null and ${t.targetId} is not null)`),
+    index('audit_log_at').on(t.at, t.id),
+    index('audit_log_doc').on(t.docId),
+  ],
+);
 
 export const rolePermissions = pgTable(
   'role_permissions',
@@ -336,10 +524,32 @@ export const rolePermissions = pgTable(
   (t) => [primaryKey({ columns: [t.role, t.perm] })],
 );
 
-export const savedSearches = pgTable('saved_searches', {
-  id: serial('id').primaryKey(),
-  label: jsonb('label').$type<Localized>().notNull(),
-  q: text('q').notNull().default(''),
-  facets: jsonb('facets').$type<Record<string, string[]>>().notNull(),
-  sort: integer('sort').notNull().default(0),
-});
+/**
+ * Search criteria (query and facets) saved under a label: never documents, so a saved search shows each person only what
+ * they may read (lib/access.ts). Personal: seen by its owner only; department: by the members of `department`; group: by
+ * everyone. Only records managers and administrators share (lib/access.ts mayShareSearches). `sort`: display order.
+ */
+export const savedSearches = pgTable(
+  'saved_searches',
+  {
+    id: serial('id').primaryKey(),
+    label: jsonb('label').$type<Localized>().notNull(),
+    q: text('q').notNull().default(''),
+    facets: jsonb('facets').$type<Record<string, string[]>>().notNull(),
+    ownerId: text('owner_id').notNull().references(() => users.id),
+    scope: text('scope').$type<SearchScope>().notNull().default('personal'),
+    department: text('department').references(() => departments.code),
+    /** Period on a date of the documents, null without one. */
+    period: jsonb('period').$type<SearchPeriod>(),
+    /** Order of the results chosen with the search, null for the default one (lib/search.ts sortOf). */
+    orderBy: text('order_by').$type<SearchOrder>(),
+    /** Display order in the list of saved searches. */
+    sort: integer('sort').notNull().default(0),
+  },
+  (t) => [
+    check('saved_searches_scope', sql`${t.scope} in ('personal', 'department', 'group')`),
+    check('saved_searches_order_by', sql`${t.orderBy} in ('relevance', 'modified', 'issued', 'due', 'id', 'title')`),
+    // A department-wide search names its department; no other one does.
+    check('saved_searches_department', sql`(${t.scope} = 'department') = (${t.department} is not null)`),
+  ],
+);

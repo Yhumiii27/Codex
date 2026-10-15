@@ -63,6 +63,8 @@ select.input option { background: var(--color-surface); color: var(--color-text)
 .form-grid .span-2 { grid-column: span 2; }
 .form-error { color: var(--color-accent-300); font-size: 12px; margin: 0; }
 .field-hint { font-size: 11px; margin-top: 4px; }
+/* A field the server refused: the error ring of `.toast-error`, the message under the field. */
+.input[aria-invalid="true"] { border-color: var(--color-accent-400); }
 /* Label of a field whose content is a group (segments, radios, read-only value): same look as `.field > label`. */
 .field > .field-label { display: block; font-size: 12px; margin-bottom: 5px; color: color-mix(in srgb, var(--color-text) 70%, transparent); }
 .file-drop {

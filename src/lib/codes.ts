@@ -24,9 +24,14 @@ export function formatId(d: IdInput, seq: number): string {
   return `${d.typeCode}-${contextOf(d)}-${String(seq).padStart(seqWidth(d), '0')}`;
 }
 
-/** True when the ID was built for the document's current type and context. */
+/**
+ * True when the ID was built for the document's current type and context: TYPE-CONTEXTE- followed by the sequence
+ * number alone. Matching the prefix only would take a project ID (PRO-FIN-012-001, project FIN-012) for an ID of the
+ * FIN department. The width is not checked: formatId lets a number outgrow it.
+ */
 export function idMatches(id: string, d: IdInput): boolean {
-  return id.startsWith(`${d.typeCode}-${contextOf(d)}-`);
+  const prefix = `${d.typeCode}-${contextOf(d)}-`;
+  return id.startsWith(prefix) && /^[0-9]+$/.test(id.slice(prefix.length));
 }
 
 /** A, B … Z, AA, AB … */

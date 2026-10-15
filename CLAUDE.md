@@ -32,6 +32,7 @@ numéro, sans les trancher à la place de l'utilisateur.
 | `docs/sources/deck-ged-epc2i.md` | Texte intégral du deck. L'original est `docs/sources/creation-ged-epc2i.pptx`. |
 | `docs/historique.md` | Chronologie du travail : construction, audit, modèle v2, revues, app Mac, GitHub. |
 | `docs/avancement-v2.md` | État d'avancement et reste à faire. |
+| `docs/reste-a-faire.md` | Inventaire vérifié du 9 octobre 2026 : 129 points ouverts, classés selon ce qui les bloque (rien, décision, données, macOS). |
 | `docs/registre-points-ouverts.md` | Points à arbitrer sur le registre des types (69 types, 23 familles). |
 | `docs/api.md` | API d'intégration : registre, import de migration, webhook Vigie. |
 | `README.md` | Démarrage, écrans, ce qui est réel ou simulé, organisation du code. |
@@ -69,8 +70,12 @@ numéro, sans les trancher à la place de l'utilisateur.
 ```bash
 npm install
 npm run dev          # http://localhost:3100
+npm test             # Vitest : tests/unit et tests/integration (PGlite en mémoire), ~20 s, sans serveur ni .data/
 npm run typecheck && npm run lint && npm run build
 ```
+
+- **Intégration continue** : `.github/workflows/ci.yml` rejoue `npm ci`, typecheck, lint, tests et build à chaque push
+  et pull request.
 
 - **Base de démo.** Au premier lancement, elle est créée dans `.data/` (non versionné) puis remplie par
   `src/db/seed*.ts`. Pour repartir de zéro : arrêter le serveur, `npm run db:reset`, relancer.
@@ -80,10 +85,25 @@ npm run typecheck && npm run lint && npm run build
   cliquer sur le profil en bas de la barre latérale.
 - **Pas de secrets dans le dépôt.** Les variables sont décrites dans `.env.example`, et `.gitignore` exclut `.env*`,
   les clés et les dossiers de build.
+- **Tests.** Vitest (`vitest.config.ts`), fichiers `tests/**/*.test.ts` ; `tests/unit/` teste les règles pures de
+  `src/lib`. Un test encode `docs/decisions.md` et `docs/modele-cible.md`, pas le comportement du code : si le code
+  les contredit, on le signale au lieu d'adapter le test. `server-only` y est remplacé par un module vide. Vitest
+  demande Node 20.19+ ou 22.12+ (Vite 7).
+  - `tests/integration/` teste les règles métier sur une base PGlite en mémoire ouverte par `openDb()`
+    (`src/db/index.ts` : migrations de `drizzle/` et déclencheur du journal, sans données).
+  - `tests/support/db.ts` fournit `setupDb()` (une base par fichier, vidée et remplie des données minimales de
+    `fixtures.ts` avant chaque test), `currentDb()`, `fixClock()` et `setClock()`, et des aides (`addDoc`,
+    `addWorkflow`…).
+  - Un fichier qui appelle du code passant par `getDb()` doit simuler `@/db` pour lui rendre `currentDb()` ; sinon
+    `getDb()` ouvrirait `.data/pglite`. S'il appelle des Server Actions, il simule aussi `next/headers` et
+    `next/cache`, et choisit l'utilisateur avec `actAs()` (`tests/support/session.ts`). Les `vi.mock` à copier
+    sont en tête de `tests/integration/locks.test.ts`.
+  - PGlite sérialise les transactions : les tests « simultanés » ne prouvent pas l'atomicité entre connexions.
 
 ## Limites en session cloud (conteneur Linux)
 
-- Node ≥ 20.9 est requis (Next 16.4 ; la session locale utilise Node 26). La police Inter est chargée par
+- Node 20.19+ ou 22.12+ est requis (`engines` de package.json : Next 16.4 et Vite 7 pour Vitest ; la session locale
+  utilise Node 26). La police Inter est chargée par
   `next/font/google` : sans accès réseau à Google Fonts, `npm run build` peut échouer, `npm run dev` se rabat sur une
   police de secours.
 - Une branche cloud créée avant le 9 octobre au soir ne contient pas ces documents : `git fetch origin && git merge

@@ -1,5 +1,5 @@
 {
-  "id": "ec8aa783-a4a2-4063-a706-f6c12bf7f682",
+  "id": "97dcac22-76d5-4d58-a8d2-81641476fe00",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -16,7 +16,7 @@
         },
         "at": {
           "name": "at",
-          "type": "timestamp",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true
         },
@@ -36,7 +36,19 @@
           "name": "doc_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
+        },
+        "target_kind": {
+          "name": "target_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "target_id": {
+          "name": "target_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "detail": {
           "name": "detail",
@@ -44,9 +56,58 @@
           "primaryKey": false,
           "notNull": true,
           "default": "''"
+        },
+        "data": {
+          "name": "data",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revision_id": {
+          "name": "revision_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "audit_log_at": {
+          "name": "audit_log_at",
+          "columns": [
+            {
+              "expression": "at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "audit_log_doc": {
+          "name": "audit_log_doc",
+          "columns": [
+            {
+              "expression": "doc_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "audit_log_user_id_users_id_fk": {
           "name": "audit_log_user_id_users_id_fk",
@@ -65,7 +126,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "audit_log_subject": {
+          "name": "audit_log_subject",
+          "value": "\"audit_log\".\"doc_id\" is not null or (\"audit_log\".\"target_kind\" is not null and \"audit_log\".\"target_id\" is not null)"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.change_requests": {
@@ -127,8 +193,20 @@
           "primaryKey": false,
           "notNull": false
         },
+        "revision_id": {
+          "name": "revision_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "decision_note": {
           "name": "decision_note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "replacement_id": {
+          "name": "replacement_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -210,12 +288,43 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "change_requests_revision_id_revisions_id_fk": {
+          "name": "change_requests_revision_id_revisions_id_fk",
+          "tableFrom": "change_requests",
+          "tableTo": "revisions",
+          "columnsFrom": [
+            "revision_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "change_requests_replacement_id_documents_id_fk": {
+          "name": "change_requests_replacement_id_documents_id_fk",
+          "tableFrom": "change_requests",
+          "tableTo": "documents",
+          "columnsFrom": [
+            "replacement_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "cascade"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "change_requests_replacement": {
+          "name": "change_requests_replacement",
+          "value": "\"change_requests\".\"replacement_id\" is null or (\"change_requests\".\"kind\" = 'obsolescence' and \"change_requests\".\"replacement_id\" <> \"change_requests\".\"doc_id\")"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.departments": {
@@ -246,6 +355,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": 0
+        },
+        "featured": {
+          "name": "featured",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},
@@ -345,6 +460,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "review_months": {
+          "name": "review_months",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "iso": {
           "name": "iso",
           "type": "text",
@@ -399,7 +520,132 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "doc_types_review_months": {
+          "name": "doc_types_review_months",
+          "value": "\"doc_types\".\"review_months\" is null or \"doc_types\".\"review_months\" between 1 and 240"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.document_links": {
+      "name": "document_links",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "source_id": {
+          "name": "source_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_id": {
+          "name": "target_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "document_links_pair": {
+          "name": "document_links_pair",
+          "columns": [
+            {
+              "expression": "least(\"source_id\", \"target_id\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "greatest(\"source_id\", \"target_id\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "document_links_source_id_documents_id_fk": {
+          "name": "document_links_source_id_documents_id_fk",
+          "tableFrom": "document_links",
+          "tableTo": "documents",
+          "columnsFrom": [
+            "source_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "cascade"
+        },
+        "document_links_target_id_documents_id_fk": {
+          "name": "document_links_target_id_documents_id_fk",
+          "tableFrom": "document_links",
+          "tableTo": "documents",
+          "columnsFrom": [
+            "target_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "cascade"
+        },
+        "document_links_created_by_users_id_fk": {
+          "name": "document_links_created_by_users_id_fk",
+          "tableFrom": "document_links",
+          "tableTo": "users",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "document_links_kind": {
+          "name": "document_links_kind",
+          "value": "\"document_links\".\"kind\" in ('replaces', 'see_also')"
+        },
+        "document_links_distinct": {
+          "name": "document_links_distinct",
+          "value": "\"document_links\".\"source_id\" <> \"document_links\".\"target_id\""
+        }
+      },
       "isRLSEnabled": false
     },
     "public.document_readers": {
@@ -462,6 +708,83 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.document_terms": {
+      "name": "document_terms",
+      "schema": "",
+      "columns": {
+        "doc_id": {
+          "name": "doc_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "field": {
+          "name": "field",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "term": {
+          "name": "term",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "document_terms_doc": {
+          "name": "document_terms_doc",
+          "columns": [
+            {
+              "expression": "doc_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "document_terms_term": {
+          "name": "document_terms_term",
+          "columns": [
+            {
+              "expression": "term",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "gin_trgm_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "document_terms_doc_id_documents_id_fk": {
+          "name": "document_terms_doc_id_documents_id_fk",
+          "tableFrom": "document_terms",
+          "tableTo": "documents",
+          "columnsFrom": [
+            "doc_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.documents": {
       "name": "documents",
       "schema": "",
@@ -478,6 +801,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'[]'::jsonb"
+        },
+        "legacy_ref": {
+          "name": "legacy_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "title": {
           "name": "title",
@@ -732,6 +1061,13 @@
           "type": "date",
           "primaryKey": false,
           "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
         }
       },
       "indexes": {},
@@ -855,7 +1191,15 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "documents_legacy_ref_unique": {
+          "name": "documents_legacy_ref_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "legacy_ref"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -1002,6 +1346,31 @@
           "primaryKey": false,
           "notNull": true,
           "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.id_counters": {
+      "name": "id_counters",
+      "schema": "",
+      "columns": {
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "last": {
+          "name": "last",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
         }
       },
       "indexes": {},
@@ -1492,6 +1861,37 @@
           "primaryKey": false,
           "notNull": true
         },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'personal'"
+        },
+        "department": {
+          "name": "department",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "period": {
+          "name": "period",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "order_by": {
+          "name": "order_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "sort": {
           "name": "sort",
           "type": "integer",
@@ -1501,11 +1901,51 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {},
+      "foreignKeys": {
+        "saved_searches_owner_id_users_id_fk": {
+          "name": "saved_searches_owner_id_users_id_fk",
+          "tableFrom": "saved_searches",
+          "tableTo": "users",
+          "columnsFrom": [
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "saved_searches_department_departments_code_fk": {
+          "name": "saved_searches_department_departments_code_fk",
+          "tableFrom": "saved_searches",
+          "tableTo": "departments",
+          "columnsFrom": [
+            "department"
+          ],
+          "columnsTo": [
+            "code"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "saved_searches_scope": {
+          "name": "saved_searches_scope",
+          "value": "\"saved_searches\".\"scope\" in ('personal', 'department', 'group')"
+        },
+        "saved_searches_order_by": {
+          "name": "saved_searches_order_by",
+          "value": "\"saved_searches\".\"order_by\" in ('relevance', 'modified', 'issued', 'due', 'id', 'title')"
+        },
+        "saved_searches_department": {
+          "name": "saved_searches_department",
+          "value": "(\"saved_searches\".\"scope\" = 'department') = (\"saved_searches\".\"department\" is not null)"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.sites": {
@@ -1836,6 +2276,24 @@
           "primaryKey": false,
           "notNull": false
         },
+        "closed_by": {
+          "name": "closed_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "closed_at": {
+          "name": "closed_at",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "date",
@@ -1894,6 +2352,19 @@
           "tableTo": "users",
           "columnsFrom": [
             "requester_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "workflows_closed_by_users_id_fk": {
+          "name": "workflows_closed_by_users_id_fk",
+          "tableFrom": "workflows",
+          "tableTo": "users",
+          "columnsFrom": [
+            "closed_by"
           ],
           "columnsTo": [
             "id"

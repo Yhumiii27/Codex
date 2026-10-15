@@ -4,13 +4,17 @@ import { useId, useState, type ReactNode } from 'react';
 import { useApp } from '@/components/shell/AppProvider';
 import { Icon } from '@/components/ui/Icon';
 import { Seg } from '@/components/ui/Seg';
-import type { Attachment, Conf, Origin } from '@/db/schema';
+import type { Attachment, Conf, LinkRel, Origin } from '@/db/schema';
 import {
-  addFunctionHolder, addOrgValue, addWorkingVersion, createDocument, delegateStep, requestChange, requestValidation,
-  setReaders, simulateUser, simulateVigieDecision, updateMeta, updateType,
+  addDocLink, addFunctionHolder, addOrgValue, addWorkingVersion, createDocument, decideStep, delegateStep, graftChange, recallValidation, recordReview,
+  requestChange, requestValidation, saveSearch, setDepartmentFeatured, setReaders, simulateUser, simulateVigieDecision, updateMeta, updateType,
 } from '@/lib/actions';
 import { contextOf, idMatches, seqWidth } from '@/lib/codes';
-import { ATTACHMENTS, CONF_LEVELS, ORIGINS, PROJECT_PHASES, SIM_ROLES, type T, type TKey } from '@/lib/i18n';
+import { DEFAULT_FEATURED, FEATURABLE, MAX_FEATURED } from '@/lib/departments';
+import { fmtDate } from '@/lib/format';
+import { ATTACHMENTS, CONF_LEVELS, ORIGINS, PROJECT_PHASES, SEARCH_SCOPES, SIM_ROLES, type T, type TKey } from '@/lib/i18n';
+import { reviewDueHint } from '@/lib/review';
+import { FACET_LABEL, type FacetKey } from '@/lib/search';
 import { FilePicker, Modal, Select, useSubmit, type SelectOption } from './Modal';
 import type { DialogData, DialogSpec, MetaDoc, VersionLite } from './types';
 
@@ -19,17 +23,23 @@ export function Dialogs({ spec }: { spec: DialogSpec }) {
     case 'new': return <NewDocument preset={spec.preset} />;
     case 'notes': return <Notes />;
     case 'user': return <UserSwitcher />;
-    case 'working': return <WorkingVersion docId={spec.docId} nextLabel={spec.nextLabel} />;
+    case 'working': return <WorkingVersion docId={spec.docId} nextLabel={spec.nextLabel} base={spec.base} />;
     case 'meta': return <EditMeta doc={spec.doc} />;
-    case 'validate': return <RequestValidation docId={spec.docId} title={spec.title} revLabel={spec.revLabel} circuitL={spec.circuitL} minDate={spec.minDate} />;
-    case 'change': return <ChangeRequest docId={spec.docId} title={spec.title} change={spec.change} />;
+    case 'validate': return <RequestValidation docId={spec.docId} title={spec.title} revLabel={spec.revLabel} circuitL={spec.circuitL} minDate={spec.minDate} base={spec.base} />;
+    case 'change': return <ChangeRequest docId={spec.docId} title={spec.title} change={spec.change} openRev={spec.openRev} replacements={spec.replacements} />;
+    case 'link': return <LinkDocument spec={spec} />;
     case 'delegate': return <Delegate workflowId={spec.workflowId} stepName={spec.stepName} step={spec.step} excluded={spec.excluded} />;
+    case 'reject': case 'recall': return <CloseWorkflow spec={spec} />;
     case 'compare': return <Compare current={spec.current} other={spec.other} />;
-    case 'readers': return <Readers docId={spec.docId} readers={spec.readers} />;
-    case 'vigie': return <VigieDecision requestId={spec.requestId} docTitle={spec.docTitle} change={spec.change} modifierId={spec.modifierId} locked={spec.locked} />;
+    case 'readers': return <Readers docId={spec.docId} readers={spec.readers} version={spec.version} />;
+    case 'vigie': return <VigieDecision requestId={spec.requestId} docTitle={spec.docTitle} change={spec.change} modifierId={spec.modifierId} drafters={spec.drafters} deferred={spec.deferred} />;
+    case 'graft': return <Graft spec={spec} />;
+    case 'review': return <RecordReview spec={spec} />;
     case 'type': return <TypeEditor type={spec.type} />;
     case 'holder': return <AddHolder functionKey={spec.functionKey} functionLabel={spec.functionLabel} scope={spec.scope} />;
     case 'org': return <AddOrg what={spec.what} />;
+    case 'featured': return <FeaturedEditor spec={spec} />;
+    case 'saveSearch': return <SaveSearch spec={spec} />;
   }
 }
 
@@ -45,24 +55,40 @@ function Actions({ pending, label, onCancel, form, disabled }: { pending: boolea
   );
 }
 
-function ErrorLine({ error }: { error: string | null }) {
-  return error ? <p className="form-error" role="alert">{error}</p> : null;
+/** The server's refusal; for one from an outdated view (`onReload`, useSubmit), a button that reloads the record. */
+function ErrorLine({ error, onReload }: { error: string | null; onReload?: () => void }) {
+  const { t } = useApp();
+  if (!error) return null;
+  if (!onReload) return <p className="form-error" role="alert">{error}</p>;
+  return (
+    <p className="form-error" role="alert" style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+      <span>{error}</span>
+      <button type="button" className="btn btn-ghost btn-sm" onClick={onReload}>{t.reload_record}</button>
+    </p>
+  );
 }
 
 /**
  * A labelled field. Pass a function to receive the id of the control the label names (input, select, textarea); any
- * other content (segments, radios, check boxes, read-only text) becomes a group named by the label.
+ * other content (segments, radios, check boxes, read-only text) becomes a group named by the label. `error`: what the
+ * server refused in this field, shown under it (its id is `${id}-error`, for the control's aria-describedby).
  */
-function Field({ label, children, span, hint, radio }: { label: ReactNode; children: ReactNode | ((id: string) => ReactNode); span?: boolean; hint?: ReactNode; radio?: boolean }) {
+function Field({ label, children, span, hint, radio, error }: { label: ReactNode; children: ReactNode | ((id: string) => ReactNode); span?: boolean; hint?: ReactNode; radio?: boolean; error?: string | null }) {
   const id = useId();
   return (
     <div className={span ? 'field span-2' : 'field'}>
       {typeof children === 'function'
         ? <><label htmlFor={id}>{label}</label>{children(id)}</>
         : <><span id={id} className="field-label">{label}</span><div role={radio ? 'radiogroup' : 'group'} aria-labelledby={id}>{children}</div></>}
-      {hint && <div className="text-muted field-hint">{hint}</div>}
+      {hint && !error && <div className="text-muted field-hint">{hint}</div>}
+      {error && <p id={`${id}-error`} className="form-error field-hint" role="alert">{error}</p>}
     </div>
   );
+}
+
+/** Date input of a metadata field; marked invalid, and described by the error under it, when the server refused it. */
+function DateInput({ id, name, value, error }: { id: string; name: string; value: string | null | undefined; error?: string | null }) {
+  return <input id={id} className="input" type="date" name={name} defaultValue={value ?? ''} aria-invalid={error ? true : undefined} aria-describedby={error ? `${id}-error` : undefined} />;
 }
 
 /** Small overline that opens a group of fields inside a form grid. */
@@ -136,7 +162,7 @@ function IdPrefix({ prefix, width }: { prefix: string; width: number }) {
  * Every classification and metadata field of a document, laid out on the dialog grid.
  * Controlled where a field drives others (origin, attachment, type, confidentiality…); the rest are plain inputs.
  */
-function DocFields({ types, st, set, doc, preset, withOwner, locked }: {
+function DocFields({ types, st, set, doc, preset, withOwner, locked, lockType, fieldError }: {
   /** Types the document may take (active ones, plus its current type when editing). */
   types: TypeOpt[];
   st: Classif;
@@ -147,10 +173,14 @@ function DocFields({ types, st, set, doc, preset, withOwner, locked }: {
   withOwner?: boolean;
   /** Type and context are frozen (an approval workflow resolved its approvers from them); `locked` says why. */
   locked?: string;
+  /** A piece Keystone expects: its type is fixed, only the origins that type admits are offered. */
+  lockType?: boolean;
+  /** The field the server refused (a date out of format or out of order) and why. */
+  fieldError?: { field: string; error: string } | null;
 }) {
   const { t, lang, data } = useApp();
   const lockProject = !!preset?.projectCode;
-  const origins = ORIGINS.filter((o) => types.some((x) => x.origins.includes(o) && (!lockProject || x.attachments.includes('project'))));
+  const origins = ORIGINS.filter((o) => types.some((x) => x.origins.includes(o) && (!lockProject || x.attachments.includes('project')) && (!lockType || x.code === st.typeCode)));
   const atts = ATTACHMENTS.filter((a) => types.some((x) => x.origins.includes(st.origin) && x.attachments.includes(a)));
   const el = eligibleTypes(types, st.origin, st.attachment);
   const families = data.families.filter((f) => el.some((x) => x.family === f.key));
@@ -159,6 +189,8 @@ function DocFields({ types, st, set, doc, preset, withOwner, locked }: {
   const confHint = st.conf === 'restreint' ? t.conf_hint_restreint : st.conf === 'confidentiel' ? t.conf_hint_conf : st.conf === 'tres_confidentiel' ? t.conf_hint_tres : undefined;
   const segOpt = { padding: '6px 12px', fontSize: 12.5 };
   const frozen = (label: string) => <div style={{ minHeight: 34, display: 'flex', alignItems: 'center' }}><span className="tag tag-neutral">{label}</span></div>;
+  const errorOf = (name: string) => (fieldError?.field === name ? fieldError.error : null);
+  const reviewHint = reviewDueHint(type?.reviewMonths, !!doc?.inForce);
 
   return (
     <div className="form-grid">
@@ -197,10 +229,10 @@ function DocFields({ types, st, set, doc, preset, withOwner, locked }: {
       ) : (
         <>
           <Field label={t.family}>
-            {(id) => <Select id={id} value={st.family} onChange={(v) => set({ family: v, typeCode: '' })} options={families} disabled={!!locked} />}
+            {(id) => <Select id={id} value={st.family} onChange={(v) => set({ family: v, typeCode: '' })} options={families} disabled={!!locked || lockType} />}
           </Field>
           <Field label={t.type} hint={type ? `${t.circuit} : ${type.circuitL}` : undefined}>
-            {(id) => <><Select id={id} name={locked ? undefined : 'typeCode'} value={st.typeCode} onChange={(v) => set({ typeCode: v })} options={el.filter((x) => x.family === st.family).map((x) => ({ key: x.code, label: `${x.code} · ${x.label}` }))} required disabled={!!locked} />{locked && <input type="hidden" name="typeCode" value={st.typeCode} />}</>}
+            {(id) => <><Select id={id} name={locked || lockType ? undefined : 'typeCode'} value={st.typeCode} onChange={(v) => set({ typeCode: v })} options={el.filter((x) => x.family === st.family).map((x) => ({ key: x.code, label: `${x.code} · ${x.label}` }))} required disabled={!!locked || lockType} />{(locked || lockType) && <input type="hidden" name="typeCode" value={st.typeCode} />}</>}
           </Field>
         </>
       )}
@@ -223,11 +255,12 @@ function DocFields({ types, st, set, doc, preset, withOwner, locked }: {
       <Field label={t.language}>
         {(id) => <Select id={id} name="lang" defaultValue={doc ? doc.lang ?? '' : lang} options={[{ key: 'fr', label: t.lang_fr }, { key: 'en', label: t.lang_en }]} empty="—" />}
       </Field>
-      <Field label={t.review_due_at}>
-        {(id) => <input id={id} className="input" type="date" name="reviewDueAt" defaultValue={doc?.reviewDueAt ?? ''} />}
+      {/* Without a date, entry into force sets one from the type's periodicity (lib/lifecycle.ts putInForce, lib/review.ts reviewDueHint). */}
+      <Field label={t.review_due_at} error={errorOf('reviewDueAt')} hint={reviewHint ? t[reviewHint].replace('{n}', String(type?.reviewMonths)) : undefined}>
+        {(id) => <DateInput id={id} name="reviewDueAt" value={doc?.reviewDueAt} error={errorOf('reviewDueAt')} />}
       </Field>
-      <Field label={t.expires_at}>
-        {(id) => <input id={id} className="input" type="date" name="expiresAt" defaultValue={doc?.expiresAt ?? ''} />}
+      <Field label={t.expires_at} error={errorOf('expiresAt')}>
+        {(id) => <DateInput id={id} name="expiresAt" value={doc?.expiresAt} error={errorOf('expiresAt')} />}
       </Field>
 
       {withOwner && (
@@ -250,8 +283,8 @@ function DocFields({ types, st, set, doc, preset, withOwner, locked }: {
           <Field label={t.external_ref}>
             {(id) => <input id={id} className="input" name="externalRef" defaultValue={doc?.externalRef ?? ''} />}
           </Field>
-          <Field label={t.received_at}>
-            {(id) => <input id={id} className="input" type="date" name="receivedAt" defaultValue={doc?.receivedAt ?? ''} />}
+          <Field label={t.received_at} error={errorOf('receivedAt')}>
+            {(id) => <DateInput id={id} name="receivedAt" value={doc?.receivedAt} error={errorOf('receivedAt')} />}
           </Field>
           {!withOwner && (
             <Field label={t.author_text} hint={t.author_text_hint}>
@@ -308,7 +341,7 @@ type Mode = 'template' | 'file' | 'blank';
 
 function NewDocument({ preset }: { preset: NewPreset }) {
   const { t, data, close } = useApp();
-  const { pending, error, run } = useSubmit();
+  const { pending, error, field, run } = useSubmit();
   const lockProject = !!preset?.projectCode;
   const types = data.types.filter((x) => x.active);
   // Explicit mode first; otherwise a preset (piece expected by Keystone, new template…) usually comes with its own file.
@@ -329,12 +362,14 @@ function NewDocument({ preset }: { preset: NewPreset }) {
   });
   const set = (patch: Partial<Classif>) => setSt((prev) => applyPatch(types, prev, patch, lockProject));
   const { prefix, width } = idParts(st);
+  // A piece Keystone expects is filled by a document of its type only (createDocument refuses any other).
+  const lockType = preset?.expectedId != null && !!preset.typeCode && st.typeCode === preset.typeCode;
 
   return (
     <Modal title={t.new_doc} width={680} actions={<Actions pending={pending} label={t.create_doc} onCancel={close} form="new-form" disabled={!st.typeCode || (mode === 'template' && !tplId)} />}>
       <form
         id="new-form"
-        onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); run(() => createDocument(fd)); }}
+        onSubmit={(e) => { e.preventDefault(); const form = e.currentTarget; const fd = new FormData(form); run(() => createDocument(fd), { form }); }}
         style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
       >
         {lockProject && (
@@ -373,7 +408,7 @@ function NewDocument({ preset }: { preset: NewPreset }) {
         {mode === 'file' && <FilePicker label={t.choose_file} required />}
         {mode === 'blank' && <div className="text-muted" style={{ fontSize: 12.5 }}>{t.blank_hint}</div>}
 
-        <DocFields types={types} st={st} set={set} preset={preset} />
+        <DocFields types={types} st={st} set={set} preset={preset} lockType={lockType} fieldError={field && error ? { field, error } : null} />
 
         {st.typeCode && (
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', paddingTop: 10, borderTop: '1px solid var(--color-divider)' }}>
@@ -382,7 +417,7 @@ function NewDocument({ preset }: { preset: NewPreset }) {
             <span className="text-muted sub">{t.id_seq_hint}</span>
           </div>
         )}
-        <ErrorLine error={error} />
+        <ErrorLine error={field ? null : error} />
       </form>
     </Modal>
   );
@@ -392,7 +427,7 @@ function NewDocument({ preset }: { preset: NewPreset }) {
 
 function EditMeta({ doc }: { doc: MetaDoc }) {
   const { t, data, close } = useApp();
-  const { pending, error, run } = useSubmit();
+  const { pending, error, field, run, reload } = useSubmit();
   // A type withdrawn from the register stays available to the documents that already have it.
   const types = data.types.filter((x) => x.active || x.code === doc.typeCode);
   const [st, setSt] = useState<Classif>(() => normalize(types, {
@@ -408,10 +443,11 @@ function EditMeta({ doc }: { doc: MetaDoc }) {
     <Modal title={t.edit_meta} width={680} actions={<Actions pending={pending} label={t.save} onCancel={close} form="meta-form" disabled={!st.typeCode} />}>
       <form
         id="meta-form"
-        onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); run(() => updateMeta(fd)); }}
+        onSubmit={(e) => { e.preventDefault(); const form = e.currentTarget; const fd = new FormData(form); run(() => updateMeta(fd), { form }); }}
         style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
       >
         <input type="hidden" name="docId" value={doc.id} />
+        <input type="hidden" name="version" value={doc.version} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 12.5 }}>
           <span className="tag tag-neutral tabnum">{doc.id}</span>
           {moved && doc.idMayChange && (
@@ -421,8 +457,8 @@ function EditMeta({ doc }: { doc: MetaDoc }) {
           )}
           {moved && !doc.idMayChange && <span className="text-muted">{t.id_frozen}</span>}
         </div>
-        <DocFields types={types} st={st} set={set} doc={doc} withOwner locked={doc.classificationLocked ? t.circuit_running : undefined} />
-        <ErrorLine error={error} />
+        <DocFields types={types} st={st} set={set} doc={doc} withOwner locked={doc.classificationLocked ? t.circuit_running : undefined} fieldError={field && error ? { field, error } : null} />
+        <ErrorLine error={field ? null : error} onReload={reload} />
       </form>
     </Modal>
   );
@@ -430,35 +466,37 @@ function EditMeta({ doc }: { doc: MetaDoc }) {
 
 // ── Working version, approval, change requests ───────────────────────────
 
-function WorkingVersion({ docId, nextLabel }: { docId: string; nextLabel: string }) {
+function WorkingVersion({ docId, nextLabel, base }: { docId: string; nextLabel: string; base: { revisionId: number; n: number } }) {
   const { t, close } = useApp();
-  const { pending, error, run } = useSubmit();
+  const { pending, error, run, reload } = useSubmit();
   return (
     <Modal title={t.new_working_version} actions={<Actions pending={pending} label={t.upload} onCancel={close} form="working-form" />}>
       <form id="working-form" onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); run(() => addWorkingVersion(fd)); }} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <input type="hidden" name="docId" value={docId} />
+        <input type="hidden" name="baseRevision" value={base.revisionId} />
+        <input type="hidden" name="baseVersion" value={base.n} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5 }}>
           <span className="tag tag-neutral tabnum">{docId}</span>
           <span className="text-muted" style={{ marginLeft: 'auto' }}>{t.working_version} → <span style={{ color: 'var(--color-accent-300)' }}>{nextLabel}</span></span>
         </div>
         <FilePicker label={t.choose_file} required />
         <Field label={t.version_comment}>{(id) => <textarea id={id} className="input" name="comment" rows={3} />}</Field>
-        <ErrorLine error={error} />
+        <ErrorLine error={error} onReload={reload} />
       </form>
     </Modal>
   );
 }
 
-function RequestValidation({ docId, title, revLabel, circuitL, minDate }: { docId: string; title: string; revLabel: string; circuitL: string; minDate: string }) {
+function RequestValidation({ docId, title, revLabel, circuitL, minDate, base }: { docId: string; title: string; revLabel: string; circuitL: string; minDate: string; base: { revisionId: number; n: number } }) {
   const { t, close } = useApp();
-  const { pending, error, run } = useSubmit();
+  const { pending, error, run, reload } = useSubmit();
   const [effective, setEffective] = useState('');
   return (
     <Modal
       title={t.request_title}
       actions={<>
         <button type="button" className="btn btn-secondary" onClick={close}>{t.cancel}</button>
-        <button type="button" className="btn btn-primary" disabled={pending} onClick={() => run(() => requestValidation(docId, effective || null))}>{t.request_validation}</button>
+        <button type="button" className="btn btn-primary" disabled={pending} onClick={() => run(() => requestValidation(docId, effective || null, base))}>{t.request_validation}</button>
       </>}
     >
       <div>
@@ -471,22 +509,24 @@ function RequestValidation({ docId, title, revLabel, circuitL, minDate }: { docI
       <Field label={t.effective_at} hint={t.effective_hint}>
         {(id) => <input id={id} className="input" type="date" min={minDate} value={effective} onChange={(e) => setEffective(e.target.value)} />}
       </Field>
-      <ErrorLine error={error} />
+      <ErrorLine error={error} onReload={reload} />
     </Modal>
   );
 }
 
-function ChangeRequest({ docId, title, change }: { docId: string; title: string; change: 'modification' | 'obsolescence' }) {
-  const { t, close } = useApp();
-  const { pending, error, run } = useSubmit();
+function ChangeRequest({ docId, title, change, openRev, replacements }: { docId: string; title: string; change: 'modification' | 'obsolescence'; openRev?: { letter: string; status: 'draft' | 'in_review' | 'approved' }; replacements?: { key: string; label: string }[] }) {
+  const { t, lang, close } = useApp();
+  const { pending, error, field, run } = useSubmit();
   return (
     <Modal title={change === 'modification' ? t.request_change : t.request_obsolete} actions={<Actions pending={pending} label={t.send} onCancel={close} form="change-form" />}>
       <form
         id="change-form"
         onSubmit={(e) => {
           e.preventDefault();
-          const fd = new FormData(e.currentTarget);
-          run(() => requestChange(docId, change, String(fd.get('reason') ?? ''), String(fd.get('description') ?? '')));
+          const form = e.currentTarget;
+          const fd = new FormData(form);
+          const replacement = change === 'obsolescence' ? String(fd.get('replacement') ?? '') || null : null;
+          run(() => requestChange(docId, change, String(fd.get('reason') ?? ''), String(fd.get('description') ?? ''), replacement), { form });
         }}
         style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
       >
@@ -494,10 +534,75 @@ function ChangeRequest({ docId, title, change }: { docId: string; title: string;
           <div style={{ fontSize: 13 }}>{title}</div>
           <div className="text-muted sub tabnum">{docId}</div>
         </div>
-        <p className="text-muted" style={{ margin: 0, fontSize: 12.5 }}>{change === 'modification' ? t.change_hint_modification : t.change_hint_obsolescence}</p>
+        {/* A change asked while a revision is open waits for its entry into force, or is grafted onto it while it is drafted (D-26). */}
+        {change === 'modification' && openRev ? (
+          <p className="text-muted" style={{ margin: 0, fontSize: 12.5 }}>
+            {t.change_hint_sent} {t.change_hint_open} ({t.rev_short} {openRev.letter}, {t[`open_rev_${openRev.status}`]}). {t.change_hint_open_wait} {openRev.letter}
+            {openRev.status === 'draft' ? `${lang === 'fr' ? ' ;' : ';'} ${t.change_hint_open_graft}` : ''}.
+          </p>
+        ) : (
+          <p className="text-muted" style={{ margin: 0, fontSize: 12.5 }}>{change === 'modification' ? t.change_hint_modification : t.change_hint_obsolescence}</p>
+        )}
         <Field label={t.ecr_reason}>{(id) => <input id={id} className="input" name="reason" maxLength={300} required />}</Field>
         <Field label={t.ecr_description}>{(id) => <textarea id={id} className="input" name="description" rows={4} maxLength={4000} />}</Field>
-        <ErrorLine error={error} />
+        {/* Withdrawal: the document that replaces this one, linked « remplacé par » once Vigie accepts (lib/lifecycle.ts). */}
+        {change === 'obsolescence' && replacements && (
+          <Field label={t.replacement_optional} hint={t.replacement_hint} error={field === 'replacement' ? error : null}>
+            {(id) => <Select id={id} name="replacement" options={replacements} empty={t.replacement_none} defaultValue="" />}
+          </Field>
+        )}
+        <ErrorLine error={field ? null : error} />
+      </form>
+    </Modal>
+  );
+}
+
+/** Kinds offered by the link dialog, the plainest first. */
+const LINK_ORDER: readonly LinkRel[] = ['see_also', 'replaces', 'replaced_by'];
+
+/**
+ * Links the document to another one from its record (lib/actions.ts addDocLink). « Remplacé par » is offered only for a
+ * document Vigie withdrew, towards an active one; « Remplace » only for an active document, towards a withdrawn one
+ * (lib/links.ts linkIssue). The server checks it all again.
+ */
+function LinkDocument({ spec }: { spec: Extract<DialogSpec, { kind: 'link' }> }) {
+  const { t, close } = useApp();
+  const { pending, error, field, run } = useSubmit();
+  const [rel, setRel] = useState<LinkRel>('see_also');
+  const options = spec.candidates.filter((c) => (rel === 'replaces' ? c.withdrawn : rel === 'replaced_by' ? c.active : true));
+  const off = (k: LinkRel) => (k === 'replaced_by' && !spec.withdrawn) || (k === 'replaces' && !spec.active);
+  const relHint = [!spec.withdrawn && t.link_hint_withdrawn, !spec.active && t.link_hint_inactive].filter(Boolean).join(' ') || undefined;
+  const [other, setOther] = useState('');
+  const chosen = options.some((o) => o.key === other) ? other : '';
+  return (
+    <Modal title={t.link_title} width={560} actions={<Actions pending={pending} label={t.link_add} onCancel={close} form="link-form" disabled={!chosen} />}>
+      <form
+        id="link-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const form = e.currentTarget;
+          run(() => addDocLink(spec.docId, rel, chosen), { form });
+        }}
+        style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
+      >
+        <div>
+          <div style={{ fontSize: 13 }}>{spec.title}</div>
+          <div className="text-muted sub tabnum">{spec.docId}</div>
+        </div>
+        <p className="text-muted" style={{ margin: 0, fontSize: 12.5 }}>{t.link_hint}</p>
+        <Field label={t.link_rel} radio hint={relHint} error={field === 'rel' ? error : null}>
+          <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+            {LINK_ORDER.map((k) => (
+              <label key={k} className="radio" style={{ fontSize: 13, opacity: off(k) ? 0.5 : 1 }}>
+                <input type="radio" name="rel" checked={rel === k} disabled={off(k)} onChange={() => setRel(k)} /><span className="dot" />{t[`link_${k}`]}
+              </label>
+            ))}
+          </div>
+        </Field>
+        <Field label={t.link_other} error={field === 'other' ? error : null} hint={options.length ? undefined : t.link_no_candidate}>
+          {(id) => <Select id={id} name="other" value={chosen} onChange={setOther} options={options} empty={t.link_choose} disabled={!options.length} />}
+        </Field>
+        <ErrorLine error={field ? null : error} />
       </form>
     </Modal>
   );
@@ -524,6 +629,39 @@ function Delegate({ workflowId, stepName, step, excluded }: { workflowId: string
   );
 }
 
+/**
+ * Rejects the current step, with its reason, or recalls the request, with an optional one (lib/actions.ts decideStep,
+ * recallValidation). A circuit that moved on in the meantime closes the dialog and refreshes the page.
+ */
+function CloseWorkflow({ spec }: { spec: Extract<DialogSpec, { kind: 'reject' | 'recall' }> }) {
+  const { t, close } = useApp();
+  const { pending, error, run } = useSubmit();
+  const reject = spec.kind === 'reject';
+  return (
+    <Modal title={reject ? t.reject_title : t.recall_title} actions={<Actions pending={pending} label={reject ? t.reject : t.recall} onCancel={close} form="close-workflow-form" />}>
+      <form
+        id="close-workflow-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const why = String(new FormData(e.currentTarget).get('reason') ?? '');
+          run(() => (reject ? decideStep(spec.workflowId, false, spec.step, why) : recallValidation(spec.workflowId, spec.step, why)), { staleError: t.wrong_step });
+        }}
+        style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
+      >
+        <div>
+          <div style={{ fontSize: 13 }}>{spec.title}</div>
+          <div className="text-muted sub tabnum">{spec.docId} · {t.revision} {spec.letter} · {t.step} : {spec.stepName}</div>
+        </div>
+        <p className="text-muted" style={{ margin: 0, fontSize: 12.5 }}>{reject ? t.reject_hint : t.recall_hint}</p>
+        <Field label={reject ? t.ecr_reason : t.reason_optional}>
+          {(id) => <textarea id={id} className="input" name="reason" rows={4} maxLength={2000} required={reject} />}
+        </Field>
+        <ErrorLine error={error} />
+      </form>
+    </Modal>
+  );
+}
+
 function Compare({ current, other }: { current: VersionLite; other: VersionLite }) {
   const { t, close } = useApp();
   const rows: [string, (v: VersionLite) => string][] = [
@@ -545,9 +683,9 @@ function Compare({ current, other }: { current: VersionLite; other: VersionLite 
   );
 }
 
-function Readers({ docId, readers }: { docId: string; readers: string[] }) {
+function Readers({ docId, readers, version }: { docId: string; readers: string[]; version: number }) {
   const { t, data, close } = useApp();
-  const { pending, error, run } = useSubmit();
+  const { pending, error, run, reload } = useSubmit();
   const [sel, setSel] = useState(() => new Set(readers));
   const toggle = (id: string) => setSel((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   return (
@@ -557,7 +695,7 @@ function Readers({ docId, readers }: { docId: string; readers: string[] }) {
       actions={<>
         <span className="text-muted" style={{ fontSize: 12, marginRight: 'auto', alignSelf: 'center' }}>{sel.size} {t.selected}</span>
         <button type="button" className="btn btn-secondary" onClick={close}>{t.cancel}</button>
-        <button type="button" className="btn btn-primary" disabled={pending} onClick={() => run(() => setReaders(docId, [...sel]))}>{t.save}</button>
+        <button type="button" className="btn btn-primary" disabled={pending} onClick={() => run(() => setReaders(docId, [...sel], version))}>{t.save}</button>
       </>}
     >
       <p className="text-muted" style={{ margin: 0, fontSize: 12.5 }}>{t.readers_hint}</p>
@@ -570,18 +708,20 @@ function Readers({ docId, readers }: { docId: string; readers: string[] }) {
           </label>
         ))}
       </div>
-      <ErrorLine error={error} />
+      <ErrorLine error={error} onReload={reload} />
     </Modal>
   );
 }
 
-function VigieDecision({ requestId, docTitle, change, modifierId, locked }: { requestId: string; docTitle: string; change: 'modification' | 'obsolescence'; modifierId: string; locked?: string }) {
+function VigieDecision({ requestId, docTitle, change, modifierId, drafters, deferred }: { requestId: string; docTitle: string; change: 'modification' | 'obsolescence'; modifierId: string; drafters: string[]; deferred?: string }) {
   const { t, data, close } = useApp();
   const { pending, error, run } = useSubmit();
-  // A locked document (archived, obsolete, frozen, revision already open) can only see the request refused, as with Vigie.
-  const [accept, setAccept] = useState(!locked);
-  const users = userOptions(data);
-  const [modifier, setModifier] = useState(data.users.some((u) => u.id === modifierId) ? modifierId : users[0]?.key ?? '');
+  // On an archived, obsolete or frozen document, or for a change while a revision is open, an acceptance is recorded
+  // and applies later (`deferred` says when).
+  const [accept, setAccept] = useState(true);
+  // Only the people who may draft the document, as the server checks (lib/lifecycle.ts, mayDraft).
+  const users = userOptions(data).filter((o) => drafters.includes(o.key));
+  const [modifier, setModifier] = useState(users.some((o) => o.key === modifierId) ? modifierId : users[0]?.key ?? '');
   const designate = accept && change === 'modification';
   return (
     <Modal
@@ -598,19 +738,88 @@ function VigieDecision({ requestId, docTitle, change, modifierId, locked }: { re
         <div className="text-muted sub tabnum">{requestId} · {t[`kind_${change}`]}</div>
       </div>
       <p className="text-muted" style={{ margin: 0, fontSize: 12.5 }}>{t.vigie_hint}</p>
-      <Field label={t.vigie_decision} radio hint={locked}>
+      <Field label={t.vigie_decision} radio hint={accept ? deferred : undefined}>
         <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
           {([true, false] as const).map((v) => (
-            <label key={String(v)} className="radio" style={{ fontSize: 13, opacity: v && locked ? 0.45 : undefined }}>
-              <input type="radio" name="decision" checked={accept === v} disabled={v && !!locked} onChange={() => setAccept(v)} /><span className="dot" />{v ? t.ecr_accepted : t.ecr_rejected}
+            <label key={String(v)} className="radio" style={{ fontSize: 13 }}>
+              <input type="radio" name="decision" checked={accept === v} onChange={() => setAccept(v)} /><span className="dot" />{v ? t.ecr_accepted : t.ecr_rejected}
             </label>
           ))}
         </div>
       </Field>
       {designate && (
-        <Field label={t.modifier}>{(id) => <Select id={id} name="modifier" value={modifier} onChange={setModifier} options={users} />}</Field>
+        <Field label={t.modifier} hint={t.vigie_modifier_hint}>{(id) => <Select id={id} name="modifier" value={modifier} onChange={setModifier} options={users} />}</Field>
       )}
       <ErrorLine error={error} />
+    </Modal>
+  );
+}
+
+/** Confirms the graft of an accepted change onto the revision being drafted (lib/actions.ts graftChange, D-26). */
+function Graft({ spec }: { spec: Extract<DialogSpec, { kind: 'graft' }> }) {
+  const { t, close } = useApp();
+  const { pending, error, run } = useSubmit();
+  return (
+    <Modal
+      title={`${t.graft_on} ${spec.letter}`}
+      actions={<>
+        <button type="button" className="btn btn-secondary" onClick={close}>{t.cancel}</button>
+        <button type="button" className="btn btn-primary" disabled={pending} onClick={() => run(() => graftChange(spec.requestId))}>{t.graft_confirm}</button>
+      </>}
+    >
+      <div>
+        <div style={{ fontSize: 13 }}>{spec.title}</div>
+        <div className="text-muted sub tabnum">{spec.docId} · {t.revision} {spec.letter} · {spec.ecoRef}</div>
+      </div>
+      <p className="text-muted" style={{ margin: 0, fontSize: 12.5 }}>{t.graft_hint}</p>
+      <Field label={t.ecr_reason}><div style={{ fontSize: 13 }}>{spec.reason}</div></Field>
+      <Field label={`${t.graft_author} ${spec.letter}`}><div style={{ fontSize: 13 }}>{spec.author}</div></Field>
+      {spec.vigieModifier && (
+        <Field label={t.graft_vigie_modifier} hint={t.graft_vigie_modifier_hint}><div style={{ fontSize: 13 }}>{spec.vigieModifier}</div></Field>
+      )}
+      <ErrorLine error={error} />
+    </Modal>
+  );
+}
+
+/**
+ * Records the periodic review of the revision in force (lib/actions.ts recordReview): no revision is created. The next
+ * review date is the one entered, else the type's periodicity counted from today.
+ */
+function RecordReview({ spec }: { spec: Extract<DialogSpec, { kind: 'review' }> }) {
+  const { t, lang, close } = useApp();
+  const { pending, error, field, run } = useSubmit();
+  const errorOf = (name: string) => (field === name ? error : null);
+  return (
+    <Modal title={t.review_title} actions={<Actions pending={pending} label={t.review_done} onCancel={close} form="review-form" />}>
+      <form
+        id="review-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const form = e.currentTarget;
+          const fd = new FormData(form);
+          run(() => recordReview(spec.docId, String(fd.get('next') ?? '') || null, String(fd.get('comment') ?? '')), { form });
+        }}
+        style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
+      >
+        <div>
+          <div style={{ fontSize: 13 }}>{spec.title}</div>
+          <div className="text-muted sub tabnum">{spec.docId} · {t.revision} {spec.letter}{spec.reviewDueAt ? ` · ${t.review_due_at} : ${fmtDate(spec.reviewDueAt, lang)}` : ''}</div>
+        </div>
+        <p className="text-muted" style={{ margin: 0, fontSize: 12.5 }}>{t.review_hint}</p>
+        <Field label={t.review_next} error={errorOf('next')} hint={spec.months ? t.review_next_periodic.replace('{n}', String(spec.months)) : t.review_next_manual}>
+          {(id) => (
+            <input
+              id={id} className="input" type="date" name="next" min={spec.minDate} required={!spec.months}
+              aria-invalid={errorOf('next') ? true : undefined} aria-describedby={errorOf('next') ? `${id}-error` : undefined}
+            />
+          )}
+        </Field>
+        <Field label={t.review_comment} error={errorOf('comment')}>
+          {(id) => <textarea id={id} className="input" name="comment" rows={3} maxLength={2000} aria-invalid={errorOf('comment') ? true : undefined} />}
+        </Field>
+        <ErrorLine error={field ? null : error} />
+      </form>
     </Modal>
   );
 }
@@ -698,7 +907,7 @@ type TypeSpec = Extract<DialogSpec, { kind: 'type' }>['type'];
 
 function TypeEditor({ type }: { type: TypeSpec }) {
   const { t, data, close } = useApp();
-  const { pending, error, run } = useSubmit();
+  const { pending, error, field, run } = useSubmit();
   const [circuit, setCircuit] = useState<string[]>(type.circuit);
   const [allowed, setAllowed] = useState<Conf[]>(type.confAllowed);
   const [confDefault, setConfDefault] = useState<Conf>(type.confDefault);
@@ -723,7 +932,7 @@ function TypeEditor({ type }: { type: TypeSpec }) {
 
   return (
     <Modal title={`${type.code} — ${type.label}`} width={620} actions={<Actions pending={pending} label={t.save} onCancel={close} form="type-form" disabled={!allowed.length} />}>
-      <form id="type-form" onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); run(() => updateType(fd)); }} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <form id="type-form" onSubmit={(e) => { e.preventDefault(); const form = e.currentTarget; const fd = new FormData(form); run(() => updateType(fd), { form }); }} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <input type="hidden" name="code" value={type.code} />
         {circuit.map((k) => <input key={k} type="hidden" name="circuit" value={k} />)}
         <input type="hidden" name="active" value={active ? 'on' : 'off'} />
@@ -790,11 +999,16 @@ function TypeEditor({ type }: { type: TypeSpec }) {
               <div className="text-muted" style={{ fontSize: 12 }}>{type.retentionBasis}</div>
             </Field>
           )}
+          {/* Periodic review: sets the review date of a document entering into force without one (lib/review.ts). */}
+          <GridSection>{t.review_months}</GridSection>
+          <Field label={t.duration} hint={t.review_months_hint} error={field === 'reviewMonths' ? error : null}>
+            {(id) => <input id={id} className="input" type="number" name="reviewMonths" min={1} max={240} step={1} defaultValue={type.reviewMonths ?? ''} aria-invalid={field === 'reviewMonths' ? true : undefined} />}
+          </Field>
         </div>
         <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12.5, cursor: 'pointer' }}>
           <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} style={{ margin: 0 }} />{t.type_active}
         </label>
-        <ErrorLine error={error} />
+        <ErrorLine error={field ? null : error} />
       </form>
     </Modal>
   );
@@ -854,6 +1068,128 @@ function AddOrg({ what }: { what: 'department' | 'site' }) {
         ) : (
           <Field label={t.site_label}>{(id) => <input id={id} className="input" name="labelFr" required />}</Field>
         )}
+        <ErrorLine error={error} />
+      </form>
+    </Modal>
+  );
+}
+
+/**
+ * Facets the page of a department puts forward, in order (Administration › Organisation): the default ones, or a list
+ * of its own, edited like the steps of a circuit (TypeEditor).
+ */
+function FeaturedEditor({ spec }: { spec: Extract<DialogSpec, { kind: 'featured' }> }) {
+  const { t, close } = useApp();
+  const { pending, error, run } = useSubmit();
+  const [useDefault, setUseDefault] = useState(spec.isDefault);
+  const [keys, setKeys] = useState<string[]>(spec.featured);
+  const label = (k: string) => t[FACET_LABEL[k as FacetKey]] ?? k;
+  const free = FEATURABLE.filter((k) => !keys.includes(k));
+  const [addKey, setAddKey] = useState<string>(free[0] ?? '');
+  const full = keys.length >= MAX_FEATURED;
+  const move = (i: number, d: -1 | 1) => setKeys((xs) => { const ys = [...xs]; [ys[i], ys[i + d]] = [ys[i + d], ys[i]]; return ys; });
+  const remove = (i: number) => setKeys((xs) => xs.filter((_, j) => j !== i));
+  const add = () => {
+    if (!addKey || keys.includes(addKey) || full) return;
+    const next = [...keys, addKey];
+    setKeys(next);
+    setAddKey(FEATURABLE.find((k) => !next.includes(k)) ?? '');
+  };
+  const iconBtn = { width: 26, height: 26 };
+  const shown = useDefault ? [...DEFAULT_FEATURED] : keys;
+  return (
+    <Modal
+      title={`${t.featured_filters} — ${spec.department.code} · ${spec.department.label}`}
+      width={560}
+      actions={<>
+        <button type="button" className="btn btn-secondary" onClick={close}>{t.cancel}</button>
+        <button type="button" className="btn btn-primary" disabled={pending} onClick={() => run(() => setDepartmentFeatured(spec.department.code, useDefault ? null : keys))}>{t.save}</button>
+      </>}
+    >
+      <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12.5, cursor: 'pointer' }}>
+        <input type="checkbox" checked={useDefault} onChange={(e) => setUseDefault(e.target.checked)} style={{ margin: 0 }} />{t.featured_follow_default}
+      </label>
+      <Field label={t.featured_filters}>
+        <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {shown.map((k, i) => (
+            <li key={k} className={useDefault ? 'text-muted' : 'hover-tint'} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '2px 4px 2px 8px', borderRadius: 'var(--radius-md)', fontSize: 13, minHeight: 30 }}>
+              <span className="text-muted tabnum" style={{ width: 14 }}>{i + 1}</span>
+              <span className="ellipsis" style={{ flex: 1 }}>{label(k)}</span>
+              {!useDefault && (
+                <>
+                  <button type="button" className="btn btn-ghost btn-icon" style={iconBtn} disabled={i === 0} onClick={() => move(i, -1)} aria-label={`${t.move_up} · ${label(k)}`} title={t.move_up}>
+                    <Icon name="chevronDown" size={14} style={{ transform: 'rotate(180deg)' }} />
+                  </button>
+                  <button type="button" className="btn btn-ghost btn-icon" style={iconBtn} disabled={i === keys.length - 1} onClick={() => move(i, 1)} aria-label={`${t.move_down} · ${label(k)}`} title={t.move_down}>
+                    <Icon name="chevronDown" size={14} />
+                  </button>
+                  <button type="button" className="btn btn-ghost btn-icon" style={iconBtn} onClick={() => remove(i)} aria-label={`${t.remove} · ${label(k)}`} title={t.remove}>
+                    <Icon name="close" size={14} />
+                  </button>
+                </>
+              )}
+            </li>
+          ))}
+        </ol>
+        {shown.length === 0 && <div className="text-muted field-hint" style={{ paddingLeft: 8 }}>{t.featured_none}</div>}
+        {!useDefault && free.length > 0 && (
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <Select value={addKey} onChange={setAddKey} options={free.map((k) => ({ key: k, label: label(k) }))} ariaLabel={t.featured_add} />
+            <button type="button" className="btn btn-secondary nowrap" onClick={add} disabled={!addKey || full} title={full ? t.featured_invalid : undefined}><Icon name="plus" size={14} />{t.featured_add}</button>
+          </div>
+        )}
+      </Field>
+      <p className="text-muted" style={{ margin: 0, fontSize: 12.5 }}>{t.featured_hint}</p>
+      <ErrorLine error={error} />
+    </Modal>
+  );
+}
+
+/**
+ * Saves the criteria of /recherche under a label (lib/actions.ts saveSearch): personal, or, for those who may share,
+ * with a department (the user's own by default) or the whole group.
+ */
+function SaveSearch({ spec }: { spec: Extract<DialogSpec, { kind: 'saveSearch' }> }) {
+  const { t, data, close } = useApp();
+  const { pending, error, run } = useSubmit();
+  const [scope, setScope] = useState<(typeof SEARCH_SCOPES)[number]>('personal');
+  const [department, setDepartment] = useState(data.currentDepartment ?? data.departments[0]?.key ?? '');
+  return (
+    <Modal title={t.search_save} actions={<Actions pending={pending} label={t.save} onCancel={close} form="save-search-form" disabled={scope === 'department' && !department} />}>
+      <form
+        id="save-search-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const label = String(new FormData(e.currentTarget).get('label') ?? '');
+          run(() => saveSearch(label, spec.search, scope, scope === 'department' ? department : null));
+        }}
+        style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
+      >
+        <Field label={t.search_label}>{(id) => <input id={id} className="input" name="label" required maxLength={80} autoComplete="off" />}</Field>
+        <Field label={t.search_criteria}>
+          <ul className="text-muted" style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {spec.criteria.map((c) => <li key={c}>{c}</li>)}
+          </ul>
+        </Field>
+        {spec.mayShare ? (
+          <>
+            <Field label={t.search_scope} radio>
+              <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+                {SEARCH_SCOPES.map((k) => (
+                  <label key={k} className="radio" style={{ fontSize: 13 }}>
+                    <input type="radio" name="scope" checked={scope === k} onChange={() => setScope(k)} /><span className="dot" />{t[`search_scope_${k}`]}
+                  </label>
+                ))}
+              </div>
+            </Field>
+            {scope === 'department' && (
+              <Field label={t.department}>{(id) => <Select id={id} name="department" value={department} onChange={setDepartment} options={data.departments.map(codeLabel)} />}</Field>
+            )}
+          </>
+        ) : (
+          <p className="text-muted" style={{ margin: 0, fontSize: 12.5 }}>{t.search_personal_only}</p>
+        )}
+        <p className="text-muted" style={{ margin: 0, fontSize: 12.5 }}>{t.search_save_hint}</p>
         <ErrorLine error={error} />
       </form>
     </Modal>

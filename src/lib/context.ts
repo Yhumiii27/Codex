@@ -13,7 +13,7 @@ export const DEFAULT_USER = 'cbardet'; // reference user of the design: Claire B
 
 export type User = typeof s.users.$inferSelect;
 export type DocType = typeof s.docTypes.$inferSelect;
-export type Screen = 'home' | 'explorer' | 'search' | 'workflow' | 'retention' | 'admin';
+export type Screen = 'home' | 'explorer' | 'search' | 'departments' | 'workflow' | 'retention' | 'admin';
 export type LabelAxis = 'department' | 'site' | 'family' | 'type' | 'function' | 'project' | 'program';
 
 export type Ctx = {
@@ -82,7 +82,7 @@ export const getCtx = cache(async (): Promise<Ctx> => {
     label: (axis, key) => (key ? labels.get(`${axis}:${key}`) ?? key : '—'),
     can: (p) => perms.has(p),
     seesAll: role === 'gestionnaire',
-    screens: { home: true, explorer: true, search: true, workflow: role !== 'auditeur', retention: role !== 'collaborateur', admin: perms.has('admin') },
+    screens: { home: true, explorer: true, search: true, departments: true, workflow: role !== 'auditeur', retention: role !== 'collaborateur', admin: perms.has('admin') },
     userName: (id) => (id ? byId.get(id)?.name ?? id : '—'),
   };
 });

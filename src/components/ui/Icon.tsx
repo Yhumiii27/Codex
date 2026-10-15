@@ -27,6 +27,8 @@ export const ICON_PATHS = {
   pen: 'M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z',
   bookmark: 'M6 3h12v18l-6-4-6 4z',
   lock: 'M7 11V8a5 5 0 0 1 10 0v3M5 11h14v10H5z',
+  // Added (not in the design), same grid and stroke: department pages in the sidebar.
+  building: 'M4 21V4a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v17M15 9h4a1 1 0 0 1 1 1v11M3 21h18M8 7h3M8 11h3M8 15h3M18 13h.01M18 17h.01',
 } as const;
 
 export type IconName = keyof typeof ICON_PATHS;

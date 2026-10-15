@@ -1,12 +1,21 @@
+import Form from 'next/form';
 import Link from 'next/link';
 import { Forbidden } from '@/components/ui/Forbidden';
 import { Icon } from '@/components/ui/Icon';
 import { Seg } from '@/components/ui/Seg';
 import { ActionButton, DialogButton } from '@/components/ui/client';
-import { removeFunctionHolder, togglePermission } from '@/lib/actions';
+import { mayBackUp, mayCleanStorage } from '@/lib/access';
+import { backUpData, purgeOrphanFiles, removeFunctionHolder, togglePermission } from '@/lib/actions';
+import { antivirusStatus } from '@/lib/antivirus';
+import { backupList, backupSettings } from '@/lib/backup';
 import { getCtx, type Ctx } from '@/lib/context';
+import { featuredOf } from '@/lib/departments';
+import { fileRules, fmtMax } from '@/lib/filetypes';
 import { ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLE_LABEL, MATRIX_ROLES, PERMS, SIMULATED_MATRIX_ROLES, type TKey } from '@/lib/i18n';
-import { getMatrix, listAudit, listDocs, listFunctionHolders, listTemplates, typeView } from '@/lib/queries';
+import { AUDIT_ID_MAX, auditPage, getMatrix, listDocs, listFunctionHolders, listTemplates, typeView, type AuditFilter } from '@/lib/queries';
+import { fmtDateTime, fmtSize, parisStamp, parseIsoDay } from '@/lib/format';
+import { MAX_PER_RUN, orphanReport, type OrphanScan } from '@/lib/orphans';
+import { FACET_LABEL, oneEach } from '@/lib/search';
 import { AddValue } from './AddValue';
 import { FamilyFilter } from './FamilyFilter';
 import { countBy, typeSpec } from './shared';
@@ -19,7 +28,8 @@ const TAB_LABEL: Record<Tab, TKey> = { registry: 'registry', functions: 'functio
 const sub = { fontSize: 11 } as const;
 
 export default async function AdminPage({ searchParams }: PageProps<'/administration'>) {
-  const sp = (await searchParams) as Record<string, string | undefined>;
+  // One value per parameter: a repeated one (?doc=a&doc=b) keeps its first.
+  const sp = oneEach(await searchParams);
   const ctx = await getCtx();
   const { t, lang } = ctx;
   if (!ctx.screens.admin) return <Forbidden text={t.forbidden} back={t.back_home} />;
@@ -64,7 +74,7 @@ export default async function AdminPage({ searchParams }: PageProps<'/administra
         {tab === 'roles' && <Roles ctx={ctx} />}
         {tab === 'org' && <Organisation ctx={ctx} />}
         {tab === 'templates' && <Templates ctx={ctx} />}
-        {tab === 'audit' && <Audit ctx={ctx} />}
+        {tab === 'audit' && <Audit ctx={ctx} sp={sp} />}
       </div>
     </div>
   );
@@ -81,7 +91,7 @@ async function Registry({ ctx, family }: { ctx: Ctx; family: string }) {
       <thead>
         <tr>
           <th>{t.rule_id}</th><th>{t.type}</th><th>{t.family}</th><th>{t.origin}</th><th>{t.attachment}</th><th>{t.circuit}</th>
-          <th>{t.conf}</th><th>{t.retention}</th><th>ISO</th><th style={{ textAlign: 'right' }}>{t.count}</th><th />
+          <th>{t.conf}</th><th>{t.retention}</th><th title={t.review_months}>{t.review_short}</th><th>ISO</th><th style={{ textAlign: 'right' }}>{t.count}</th><th />
         </tr>
       </thead>
       <tbody>
@@ -99,6 +109,7 @@ async function Registry({ ctx, family }: { ctx: Ctx; family: string }) {
             <td className="text-muted" style={{ minWidth: 160 }}>{x.circuitL}</td>
             <td><div>{x.confDefaultL}</div><div className="text-muted" style={sub}>{x.confL}</div></td>
             <td className="text-muted" style={{ minWidth: 150 }} title={x.retentionBasis || undefined}>{x.retentionL}</td>
+            <td className="text-muted nowrap">{x.reviewL}</td>
             <td className="text-muted">{x.iso ?? '—'}</td>
             <td className="tabnum" style={{ textAlign: 'right' }}>{counts.get(x.code) ?? 0}</td>
             <td style={{ textAlign: 'right', width: 44 }}>
@@ -214,7 +225,10 @@ async function Roles({ ctx }: { ctx: Ctx }) {
   );
 }
 
-/** Departments (3-letter code used in document IDs) and sites — provisional until the organisation chart. */
+/**
+ * Departments (3-letter code used in document IDs) and sites — provisional until the organisation chart. Each department
+ * has the facets its page puts forward (/departements/[code]): the default ones until it has its own.
+ */
 async function Organisation({ ctx }: { ctx: Ctx }) {
   const { t } = ctx;
   const [docs, fns] = await Promise.all([listDocs(ctx, { includeHidden: true }), listFunctionHolders(ctx)]);
@@ -232,21 +246,40 @@ async function Organisation({ ctx }: { ctx: Ctx }) {
       <div className={styles.split}>
         <section>
           <h6 className="sec-title" style={{ marginBottom: 10 }}>{t.department}</h6>
-          <table className="table" style={{ fontSize: 13 }}>
-            <thead><tr><th>{t.rule_id}</th><th>{t.label_fr}</th><th>{t.label_en}</th><th>{t.manager}</th><th style={{ textAlign: 'right' }}>{t.people}</th><th style={{ textAlign: 'right' }}>{t.count}</th></tr></thead>
-            <tbody>
-              {ctx.departments.map((d) => (
-                <tr key={d.code}>
-                  <td className="nowrap tabnum">{d.code}</td>
-                  <td>{d.labelFr}</td>
-                  <td className="text-muted">{d.labelEn}</td>
-                  <td className="text-muted">{heads.filter((h) => h.scopeValue === d.code).map((h) => h.user).join(', ') || '—'}</td>
-                  <td className="tabnum" style={{ textAlign: 'right' }}>{peopleByDept.get(d.code) ?? 0}</td>
-                  <td className="tabnum" style={{ textAlign: 'right' }}>{byDept.get(d.code) ?? 0}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {/* The table scrolls within its column rather than spilling over the sites beside it. */}
+          <div className={styles.tableScroll}>
+            <table className="table" style={{ fontSize: 13 }}>
+              <thead><tr><th>{t.rule_id}</th><th>{t.label_fr}</th><th>{t.label_en}</th><th>{t.manager}</th><th style={{ textAlign: 'right' }}>{t.people}</th><th style={{ textAlign: 'right' }}>{t.count}</th><th>{t.featured_filters}</th></tr></thead>
+              <tbody>
+                {ctx.departments.map((d) => {
+                  const featured = featuredOf(d);
+                  const label = ctx.label('department', d.code);
+                  return (
+                    <tr key={d.code}>
+                      <td className="nowrap tabnum"><Link href={`/departements/${encodeURIComponent(d.code)}`} className="link-plain">{d.code}</Link></td>
+                      <td>{d.labelFr}</td>
+                      <td className="text-muted">{d.labelEn}</td>
+                      <td className="text-muted">{heads.filter((h) => h.scopeValue === d.code).map((h) => h.user).join(', ') || '—'}</td>
+                      <td className="tabnum" style={{ textAlign: 'right' }}>{peopleByDept.get(d.code) ?? 0}</td>
+                      <td className="tabnum" style={{ textAlign: 'right' }}>{byDept.get(d.code) ?? 0}</td>
+                      {/* The default facets are named on hover only: every department follows them until it has its own. */}
+                      <td style={{ paddingTop: 0, paddingBottom: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                          <span className={`ellipsis${d.featured == null ? ' text-muted' : ''}`} style={{ maxWidth: 180 }} title={featured.map((k) => t[FACET_LABEL[k]]).join(', ') || t.featured_none}>
+                            {d.featured == null ? t.featured_default : featured.map((k) => t[FACET_LABEL[k]]).join(', ') || t.featured_none}
+                          </span>
+                          <DialogButton
+                            spec={{ kind: 'featured', department: { code: d.code, label }, featured, isDefault: d.featured == null }}
+                            className="btn btn-ghost btn-icon" icon="pen" ariaLabel={`${t.featured_filters} · ${d.code}`} style={{ width: 28, height: 28, flex: 'none' }}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </section>
         <section>
           <h6 className="sec-title" style={{ marginBottom: 10 }}>{t.site_label}</h6>
@@ -295,23 +328,228 @@ async function Templates({ ctx }: { ctx: Ctx }) {
   );
 }
 
-async function Audit({ ctx }: { ctx: Ctx }) {
-  const { t } = ctx;
-  const rows = await listAudit(ctx, { limit: 500 });
+/**
+ * What Codex checks on every file it receives (lib/filetypes.ts, lib/antivirus.ts), above the journal where the files
+ * the scan refuses are recorded: a scan left off by the configuration is said here, not only in the server log.
+ */
+function FilesPolicy({ ctx }: { ctx: Ctx }) {
+  const { t, lang } = ctx;
+  const rules = fileRules(process.env);
+  const av = antivirusStatus();
   return (
-    <table className="table" style={{ fontSize: 13 }}>
-      <thead><tr><th>{t.when}</th><th>{t.user}</th><th>{t.action}</th><th>{t.document}</th><th>{t.detail}</th></tr></thead>
+    <p className={`${styles.filesPolicy} text-muted`}>
+      <strong>{t.files_policy}</strong>
+      <span>{t.file_max_hint.replace('{max}', fmtMax(rules.maxBytes, lang))}</span>
+      <span title={rules.extensions.join(' ')}>{t.files_formats.replace('{n}', String(rules.extensions.length))}</span>
+      {av
+        ? <span>{t.av_on.replace('{address}', av.address)} · {av.onError === 'accept' ? t.av_on_error_accept : t.av_on_error_refuse}</span>
+        : <span className={styles.filesOff}>{t.av_off}</span>}
+    </p>
+  );
+}
+
+/**
+ * Orphan files of the store (lib/orphans.ts), for a records manager: a link that runs the dry run (?orphans=1, nothing
+ * removed), then the list and the button that removes those of the local store. SharePoint's are listed only (O-01).
+ */
+async function Orphans({ ctx, open }: { ctx: Ctx; open: boolean }) {
+  const { t, lang } = ctx;
+  if (!open) {
+    return (
+      <p className={`${styles.filesPolicy} text-muted`}>
+        <strong>{t.orphans_title}</strong>
+        <Link href="/administration?tab=audit&orphans=1" className="link-plain" scroll={false}>{t.orphans_find}</Link>
+      </p>
+    );
+  }
+  const report = await orphanReport();
+  const h = String(report.graceHours);
+  const counts = (x: OrphanScan) => [
+    t.orphans_found.replace('{h}', h).replace('{n}', String(x.orphans.length)).replace('{size}', fmtSize(x.bytes, lang)),
+    ...(x.recent ? [t.orphans_recent.replace('{n}', String(x.recent))] : []),
+    ...(x.foreign ? [t.orphans_foreign.replace('{n}', String(x.foreign))] : []),
+  ].join(' · ');
+  const list = (x: OrphanScan) => x.orphans.length > 0 && (
+    <table className={`table ${styles.orphanTable}`}>
+      <thead><tr><th>{t.file}</th><th>{t.size}</th><th>{t.orphans_touched}</th></tr></thead>
       <tbody>
-        {rows.map((a) => (
-          <tr key={a.id}>
-            <td className="text-muted nowrap tabnum">{a.when}</td>
-            <td>{a.user}</td>
-            <td>{a.actionLabel}</td>
-            <td className="nowrap"><Link href={a.href} className="link-plain">{a.ref}</Link></td>
-            <td className="text-muted">{a.detail}</td>
+        {x.orphans.slice(0, MAX_PER_RUN).map((f) => (
+          <tr key={f.key}>
+            <td className={styles.orphanKey}>{f.key}</td>
+            <td className="nowrap tabnum">{fmtSize(f.size, lang)}</td>
+            <td className="nowrap tabnum text-muted">{fmtDateTime(parisStamp(new Date(f.touched).toISOString()), lang)}</td>
           </tr>
         ))}
+        {x.orphans.length > MAX_PER_RUN && <tr><td colSpan={3} className="text-muted">{t.orphans_more.replace('{n}', String(x.orphans.length - MAX_PER_RUN))}</td></tr>}
       </tbody>
     </table>
+  );
+  // The removal is given the keys shown here: an orphan that turns up while the page is open is not removed with them.
+  const shown = report.local.orphans.slice(0, MAX_PER_RUN).map((f) => f.key);
+  const n = shown.length;
+  return (
+    <section className={styles.orphans} aria-label={t.orphans_title}>
+      <div className={styles.orphansHead}>
+        <strong>{t.orphans_title}</strong>
+        <span style={{ flex: 1 }} />
+        {n > 0 && (
+          <ActionButton action={purgeOrphanFiles.bind(null, shown)} className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} confirm={t.orphans_confirm.replace('{n}', String(n))} after="/administration?tab=audit&orphans=1">
+            {t.orphans_delete.replace('{n}', String(n))}
+          </ActionButton>
+        )}
+        <Link href="/administration?tab=audit" className="btn btn-ghost" style={{ fontSize: 12 }} scroll={false}>{t.close}</Link>
+      </div>
+      <p className="text-muted">{t.orphans_hint.replace('{h}', h)}</p>
+      <p><span className={styles.orphanStore}>{t.orphans_store_local}</span>{report.local.orphans.length || report.local.recent || report.local.foreign ? counts(report.local) : t.orphans_none}</p>
+      {list(report.local)}
+      {report.sharepoint && (
+        'error' in report.sharepoint
+          ? <p><span className={styles.orphanStore}>{t.orphans_store_sharepoint}</span><span className={styles.filesOff}>{t.orphans_sp_error}</span></p>
+          : (
+            <>
+              <p><span className={styles.orphanStore}>{t.orphans_store_sharepoint}</span>{counts(report.sharepoint)} · <span className="text-muted">{t.orphans_sp_list_only}</span></p>
+              {list(report.sharepoint)}
+            </>
+          )
+      )}
+    </section>
+  );
+}
+
+/**
+ * Backups (lib/backup.ts), for a records manager: the date of the latest archive and a link that lists them
+ * (?backups=1), with what each holds and the button that backs up now. Restoring is a command (npm run restore).
+ */
+async function Backups({ ctx, open }: { ctx: Ctx; open: boolean }) {
+  const { t, lang } = ctx;
+  const when = (iso: string | null) => (iso ? fmtDateTime(parisStamp(iso), lang) : '—');
+  if (!open) {
+    const all = await backupList(false);
+    const latest = all?.[0];
+    return (
+      <p className={`${styles.filesPolicy} text-muted`}>
+        <strong>{t.backup_title}</strong>
+        {all ? <span>{latest ? t.backup_last.replace('{date}', when(latest.createdAt)) : t.backup_none}</span> : <span className={styles.filesOff}>{t.backup_list_error}</span>}
+        <Link href="/administration?tab=audit&backups=1" className="link-plain" scroll={false}>{t.backup_show}</Link>
+      </p>
+    );
+  }
+  const { dir, keep } = backupSettings();
+  const list = await backupList();
+  return (
+    <section className={styles.orphans} aria-label={t.backup_title}>
+      <div className={styles.orphansHead}>
+        <strong>{t.backup_title}</strong>
+        <span style={{ flex: 1 }} />
+        <ActionButton action={backUpData} className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} confirm={t.backup_confirm.replace('{dir}', dir).replaceAll('{n}', String(keep))} after="/administration?tab=audit&backups=1">
+          {t.backup_create}
+        </ActionButton>
+        <Link href="/administration?tab=audit" className="btn btn-ghost" style={{ fontSize: 12 }} scroll={false}>{t.close}</Link>
+      </div>
+      <p className="text-muted">{t.backup_hint.replace('{dir}', dir).replaceAll('{n}', String(keep))}</p>
+      {!list
+        ? <p className={styles.filesOff}>{t.backup_list_error}</p>
+        : list.length === 0
+        ? <p>{t.backup_none}</p>
+        : (
+          <table className={`table ${styles.orphanTable}`}>
+            <thead><tr><th>{t.when}</th><th>{t.backup_col_by}</th><th style={{ textAlign: 'right' }}>{t.count}</th><th>{t.backup_col_files}</th><th>{t.backup_archive_size}</th></tr></thead>
+            <tbody>
+              {list.map((b) => {
+                const m = b.manifest;
+                return (
+                  <tr key={b.name}>
+                    <td className="nowrap tabnum" title={b.name}>{when(b.createdAt)}</td>
+                    <td>{m ? (m.mode === 'online' ? ctx.userName(m.by) : t.backup_by_cli) : <span className={styles.filesOff}>{t.backup_unreadable}</span>}</td>
+                    <td className="tabnum" style={{ textAlign: 'right' }}>{m ? m.counts.documents : '—'}</td>
+                    <td className="tabnum">
+                      {m ? `${m.files.count} (${fmtSize(m.files.bytes, lang)})` : '—'}
+                      {m && m.files.missing.length > 0 && <span className={styles.filesOff}> · {t.backup_missing_n.replace('{n}', String(m.files.missing.length))}</span>}
+                      {m && m.files.sharepoint > 0 && <span className="text-muted"> · {t.backup_sharepoint_n.replace('{n}', String(m.files.sharepoint))}</span>}
+                    </td>
+                    <td className="nowrap tabnum text-muted">{fmtSize(b.size, lang)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+    </section>
+  );
+}
+
+/**
+ * Journal tab: the entries the user may read, newest first, filtered and paged by the database (lib/queries.ts
+ * auditPage), the filters and the page in the URL; the CSV export above it gives the whole journal.
+ */
+async function Audit({ ctx, sp }: { ctx: Ctx; sp: Record<string, string | undefined> }) {
+  const { t, lang } = ctx;
+  const day = (v?: string) => (v && parseIsoDay(v) === v ? v : undefined);
+  // An entry of the journal: its ID, a serial of the database (int4).
+  const entry = (v?: string) => (v && /^\d{1,10}$/.test(v) && Number(v) <= AUDIT_ID_MAX ? Number(v) : undefined);
+  const f: AuditFilter = { who: sp.who || undefined, action: sp.act || undefined, doc: sp.doc?.trim() || undefined, from: day(sp.from), to: day(sp.to) };
+  const at = { before: entry(sp.before), after: entry(sp.after) };
+  const { rows, older, newer } = await auditPage(ctx, f, at);
+  const filtered = Object.values(f).some(Boolean);
+  const href = (cursor: Record<string, string>) => {
+    const p = new URLSearchParams(Object.entries({ tab: 'audit', who: f.who, act: f.action, doc: f.doc, from: f.from, to: f.to, ...cursor }).filter((e): e is [string, string] => !!e[1]));
+    return `/administration?${p}`;
+  };
+  const people = [...ctx.users.values()].sort((a, b) => a.name.localeCompare(b.name, lang));
+  const actions = (Object.keys(t) as string[]).filter((k) => k.startsWith('act_')).map((k) => ({ key: k.slice(4), label: t[k as TKey] })).sort((a, b) => a.label.localeCompare(b.label, lang));
+  const step = { fontSize: 12, padding: '4px 10px' };
+  return (
+    <>
+      <FilesPolicy ctx={ctx} />
+      {mayCleanStorage(ctx) && <Orphans ctx={ctx} open={sp.orphans === '1'} />}
+      {mayBackUp(ctx) && <Backups ctx={ctx} open={sp.backups === '1'} />}
+      {/* Mounted again when the URL changes its filters (Effacer, a link), so that the fields show them. */}
+      <div key={JSON.stringify(f)}>
+        <Form action="/administration" scroll={false} className={styles.auditFilters}>
+          <input type="hidden" name="tab" value="audit" />
+          <input className="input" name="doc" defaultValue={f.doc ?? ''} placeholder={t.audit_filter_doc} aria-label={t.audit_filter_doc} style={{ width: 200 }} />
+          <select className="input" name="who" defaultValue={f.who ?? ''} aria-label={t.user} style={{ width: 'auto' }}>
+            <option value="">{t.audit_all_users}</option>
+            {people.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+          </select>
+          <select className="input" name="act" defaultValue={f.action ?? ''} aria-label={t.action} style={{ width: 'auto' }}>
+            <option value="">{t.audit_all_actions}</option>
+            {actions.map((a) => <option key={a.key} value={a.key}>{a.label}</option>)}
+          </select>
+          <label className={styles.auditDay}><span className="text-muted">{t.audit_from}</span><input className="input" type="date" name="from" defaultValue={f.from ?? ''} max={f.to} /></label>
+          <label className={styles.auditDay}><span className="text-muted">{t.audit_to}</span><input className="input" type="date" name="to" defaultValue={f.to ?? ''} min={f.from} /></label>
+          <button type="submit" className="btn btn-secondary" style={step}>{t.apply}</button>
+          {filtered && <Link href="/administration?tab=audit" className="btn btn-ghost" style={{ fontSize: 12 }}>{t.clear}</Link>}
+        </Form>
+      </div>
+      <table className="table" style={{ fontSize: 13 }}>
+        <thead><tr><th>{t.when}</th><th>{t.user}</th><th>{t.action}</th><th>{t.target}</th><th>{t.detail}</th></tr></thead>
+        <tbody>
+          {rows.map((a) => (
+            <tr key={a.id}>
+              <td className="text-muted nowrap tabnum">{a.when}</td>
+              <td>{a.user}</td>
+              <td>{a.actionLabel}</td>
+              {/* The ID the entry was written under; the link opens the document under its current one. */}
+              <td className={a.docId ? 'nowrap' : undefined}><Link href={a.href} className="link-plain" title={a.currentId !== a.docId ? a.currentId ?? undefined : undefined}>{a.ref}</Link></td>
+              <td className="text-muted">{a.detail}</td>
+            </tr>
+          ))}
+          {rows.length === 0 && <tr><td colSpan={5} className="text-muted" style={{ padding: '16px 8px' }}>{t.audit_none}</td></tr>}
+        </tbody>
+      </table>
+      {(newer != null || older != null || at.before != null || at.after != null) && (
+        <nav aria-label={t.pages_nav} className={styles.auditPager}>
+          {(at.before != null || at.after != null) && <Link href={href({})} className="btn btn-ghost" style={{ fontSize: 12 }}>{t.audit_latest}</Link>}
+          <span style={{ flex: 1 }} />
+          {newer != null
+            ? <Link href={href({ after: String(newer) })} rel="prev" className="btn btn-secondary" style={step}><Icon name="chevronLeft" size={14} />{t.audit_newer}</Link>
+            : <span className="btn btn-secondary" style={{ ...step, opacity: 0.45, cursor: 'default' }} aria-disabled="true"><Icon name="chevronLeft" size={14} />{t.audit_newer}</span>}
+          {older != null
+            ? <Link href={href({ before: String(older) })} rel="next" className="btn btn-secondary" style={step}>{t.audit_older}<Icon name="chevronRight" size={14} /></Link>
+            : <span className="btn btn-secondary" style={{ ...step, opacity: 0.45, cursor: 'default' }} aria-disabled="true">{t.audit_older}<Icon name="chevronRight" size={14} /></span>}
+        </nav>
+      )}
+    </>
   );
 }

@@ -2,7 +2,7 @@
 // seed with the TYPE-CONTEXTE-SEQ rule in this order. Letters: `inForce` is the revision in force (earlier letters
 // are superseded); `working` is the revision being drafted or reviewed.
 
-import type { Conf } from './schema';
+import type { Conf, LinkKind } from './schema';
 
 export type DemoDoc = {
   key?: string;
@@ -39,7 +39,7 @@ export const DEMO_DOCS: DemoDoc[] = [
   { type: 'NCR', title: 'Implantation des tiges d’ancrage — poteau 7', dept: 'QUA', owner: 'gcomte', project: HLT, inForce: 'A', issued: '2026-09-18', modified: '2026-09-18', phase: 'Chantier' },
   { type: 'NCR', title: 'Épaisseur de peinture insuffisante — poutre G3', dept: 'QUA', owner: 'hsauvage', project: HLT, inForce: 'A', issued: '2026-09-24', modified: '2026-09-24', phase: 'Chantier' },
   { type: 'REC', title: 'Contrôle des soudures — poutres G1 à G4', dept: 'QUA', owner: 'hsauvage', project: HLT, inForce: 'A', issued: '2026-09-09', modified: '2026-09-09' },
-  { type: 'RFQ', title: 'Devis Nordvolt — variateurs 200 kW', dept: 'ACH', owner: 'fbertrand', project: HLT, origin: 'externe', source: 'Nordvolt', extRef: 'NV-Q-2026-118', received: '2026-06-28', inForce: 'B', issued: '2026-06-12', modified: '2026-06-30', conf: 'restreint' },
+  { type: 'RFQ', title: 'Devis Nordvolt — variateurs 200 kW', dept: 'ACH', owner: 'fbertrand', project: HLT, origin: 'externe', source: 'Nordvolt', extRef: 'NV-Q-2026-118', received: '2026-06-10', inForce: 'B', issued: '2026-06-12', modified: '2026-06-30', conf: 'restreint' },
   { type: 'PO', title: 'Commande Nordvolt — variateurs lot 2', dept: 'ACH', owner: 'fbertrand', project: HLT, inForce: 'A', issued: '2026-07-07', modified: '2026-07-07', conf: 'restreint' },
   { type: 'CER', title: 'Certificat matière 3.1 — poutres S355', dept: 'ACH', owner: 'fbertrand', project: HLT, origin: 'externe', source: 'Aciéries du Nord', extRef: 'AN-31-77412', received: '2026-08-21', inForce: 'A', issued: '2026-08-22', modified: '2026-08-22' },
   { type: 'COC', title: 'Certificat de conformité — cellules 11 kV', dept: 'ACH', owner: 'fbertrand', project: HLT, origin: 'externe', source: 'Nordvolt', extRef: 'NV-COC-5521', received: '2026-09-18', inForce: 'A', issued: '2026-09-19', modified: '2026-09-19', conf: 'restreint' },
@@ -60,8 +60,8 @@ export const DEMO_DOCS: DemoDoc[] = [
 
   // ── Documents of the departments ──
   { key: 'pro-doc', type: 'PRO', title: 'Procédure de maîtrise documentaire', dept: 'QUA', owner: 'gcomte', inForce: 'E', issued: '2022-02-03', modified: '2026-02-03', reviewDue: '2026-11-30', kw: ['GED', 'codification', 'révision'] },
-  { type: 'PRO', title: 'Traitement des non-conformités', dept: 'QUA', owner: 'gcomte', inForce: 'C', issued: '2023-03-11', modified: '2026-03-11', kw: ['NC', 'CAPA'] },
-  { type: 'PRO', title: 'Levage et manutention sur chantier', dept: 'HSE', owner: 'cbardet', inForce: 'B', issued: '2024-05-06', modified: '2026-10-01', working: { status: 'draft', n: 2 }, kw: ['levage', 'grue', 'élingage'] },
+  { type: 'PRO', title: 'Traitement des non-conformités', dept: 'QUA', owner: 'gcomte', inForce: 'C', issued: '2023-03-11', modified: '2026-03-11', reviewDue: '2026-09-30', kw: ['NC', 'CAPA'] },
+  { key: 'pro-levage', type: 'PRO', title: 'Levage et manutention sur chantier', dept: 'HSE', owner: 'cbardet', inForce: 'B', issued: '2024-05-06', modified: '2026-10-01', working: { status: 'draft', n: 2 }, kw: ['levage', 'grue', 'élingage'] },
   { type: 'RSQ', title: 'Analyse de risques — atelier de Lyon', dept: 'HSE', owner: 'oblanc', site: 'lyon', modified: '2026-10-05', working: { status: 'in_review', n: 1, done: 1 }, kw: ['DUERP', 'atelier'] },
   { type: 'PRO', title: 'Procédure de stockage — magasin du Havre (ancienne)', dept: 'HSE', owner: 'cbardet', site: 'le_havre', inForce: 'C', issued: '2019-04-11', modified: '2026-03-01', state: 'obsolete', stateAt: '2026-03-01' },
   { key: 'frm-pv', type: 'FRM', title: 'Modèle — procès-verbal de réception de site', dept: 'QUA', owner: 'gcomte', inForce: 'B', issued: '2025-06-02', modified: '2026-06-02' },
@@ -76,7 +76,8 @@ export const DEMO_DOCS: DemoDoc[] = [
   { type: 'FIN', title: 'Procédure de validation des dépenses', dept: 'FIN', owner: 'tweil', inForce: 'B', issued: '2024-01-08', modified: '2025-12-04' },
   { type: 'SSI', title: 'Plan de reprise d’activité (PRA)', dept: 'DSI', owner: 'mdelorme', inForce: 'A', issued: '2025-11-20', modified: '2025-11-20', conf: 'confidentiel' },
   { type: 'MNT', title: 'Certificats d’étalonnage — clés dynamométriques', dept: 'CHA', owner: 'oblanc', origin: 'externe', source: 'Étalonnage Rhône', extRef: 'ER-2025-0912', received: '2025-11-14', inForce: 'A', issued: '2025-11-15', modified: '2025-11-15', expires: '2026-11-15' },
-  { type: 'REG', title: 'Arrêté du 1er mars 2004 — vérification des appareils de levage', dept: 'HSE', owner: 'cbardet', origin: 'externe', source: 'Légifrance', extRef: 'NOR SOCT0410596A', received: '2024-02-01', inForce: 'A', issued: '2024-02-01', modified: '2024-02-01', conf: 'public' },
+  { type: 'MNT', title: 'Vérification générale périodique — pont roulant de l’atelier de Lyon', dept: 'CHA', owner: 'oblanc', site: 'lyon', origin: 'externe', source: 'Apave', extRef: 'APV-VGP-2025-3307', received: '2025-09-29', inForce: 'A', issued: '2025-09-30', modified: '2025-09-30', expires: '2026-09-30', kw: ['VGP', 'levage'] },
+  { key: 'reg-levage', type: 'REG', title: 'Arrêté du 1er mars 2004 — vérification des appareils de levage', dept: 'HSE', owner: 'cbardet', origin: 'externe', source: 'Légifrance', extRef: 'NOR SOCT0410596A', received: '2024-02-01', inForce: 'A', issued: '2024-02-01', modified: '2024-02-01', conf: 'public' },
   { type: 'NRM', title: 'ISO 9001:2015 — Systèmes de management de la qualité', dept: 'QUA', owner: 'gcomte', origin: 'externe', source: 'AFNOR', extRef: 'NF EN ISO 9001:2015', received: '2015-10-01', inForce: 'A', issued: '2015-10-01', modified: '2015-10-01', conf: 'restreint' },
   { type: 'AUT', title: 'Autorisation d’exploitation — atelier de Lyon', dept: 'JUR', owner: 'irahmani', site: 'lyon', origin: 'externe', source: 'Préfecture du Rhône', extRef: 'AP-2021-0458', received: '2021-12-02', inForce: 'A', issued: '2021-12-02', modified: '2021-12-02', expires: '2026-12-01', conf: 'confidentiel' },
   { type: 'CTR', title: 'Contrat cadre transport 2026-2028', dept: 'JUR', owner: 'irahmani', modified: '2026-10-05', working: { status: 'draft', n: 3 }, conf: 'confidentiel', expires: '2028-12-31' },
@@ -108,7 +109,7 @@ export const EXPECTED: { project: string; label: [string, string]; type: string;
 
 export const EVENTS: { project: string; at: string; text: [string, string] }[] = [
   { project: HLT, at: '2026-10-07 08:40', text: ['Étape « Chantier » confirmée par Romain Aubert', 'Stage “Site” confirmed by Romain Aubert'] },
-  { project: HLT, at: '2026-10-02 10:15', text: ['ECO-2026-002 accepté : révision C du plan de prévention ouverte', 'ECO-2026-002 accepted: revision C of the prevention plan opened'] },
+  { project: HLT, at: '2026-10-02 10:15', text: ['Lot « Levage » attribué à Levage Ouest', 'Lifting work package awarded to Levage Ouest'] },
   { project: HLT, at: '2026-09-26 16:05', text: ['Relance Keystone : attestation d’assurance chantier attendue', 'Keystone reminder: worksite insurance certificate expected'] },
   { project: HLT, at: '2026-09-12 11:30', text: ['Pièce « PV de réception des fondations » déposée', '“Foundations acceptance minutes” filed'] },
   { project: 'NDC-031', at: '2026-09-04 09:00', text: ['P&ID de la boucle de refroidissement en vigueur (rév. B)', 'Cooling loop P&ID in force (rev. B)'] },
@@ -119,6 +120,11 @@ export const CHANGES: { id: string; doc: string; kind: 'modification' | 'obsoles
   { id: 'ECR-2026-001', doc: 'pro-doc', kind: 'modification', requester: 'jwagner', status: 'submitted', reason: 'Intégrer la codification TYPE-CONTEXTE-SEQ et les versions de travail', description: 'La procédure décrit encore les références D-#### et les indices x.y.', created: '2026-10-06 14:20:00' },
   { id: 'ECR-2026-002', doc: 'hse-hlt', kind: 'modification', requester: 'raubert', status: 'implemented', reason: 'Coactivité avec le grutier Levage Ouest à partir du 15 octobre', modifier: 'lfabre', eco: 'ECO-2026-002', created: '2026-09-29 09:10:00', decided: '2026-10-02 10:15:00' },
   { id: 'ECR-2026-003', doc: 'frm-min', kind: 'obsolescence', requester: 'gcomte', status: 'submitted', reason: 'Remplacé par le compte rendu généré dans Keystone', created: '2026-10-07 11:45:00' },
+];
+
+/** Links between demo documents (document_links): [source key, target key, kind, created by, day]. */
+export const LINKS: [string, string, LinkKind, string, string][] = [
+  ['pro-levage', 'reg-levage', 'see_also', 'cbardet', '2026-06-04'],
 ];
 
 export const VCOMMENTS: [string, string][] = [

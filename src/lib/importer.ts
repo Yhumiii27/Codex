@@ -4,11 +4,14 @@ import { eq, or, sql } from 'drizzle-orm';
 import { getDb, schema as s, type Db } from '@/db';
 import type { Attachment, Conf, Origin, RevStatus } from '@/db/schema';
 import { readersApply } from './access';
-import { contextOf, nextDocId, seqWidth } from './codification';
+import { contextOf, nextDocId, reserveDocId, seqWidth } from './codification';
+import { dateIssues, dateIssueText } from './dates';
 import { fmtSize, parseIsoDay, todayIso } from './format';
 import { ATTACHMENTS, CONF_LEVELS, DICT, ORIGINS } from './i18n';
 import { audit, refreshHeadline, type Tx } from './lifecycle';
-import { discardFile, fileColumns, nameStoredFile, stageFile, type StagedFile } from './storage';
+import { currentRequest, expectedAnswer, logger } from './log';
+import { clientAddress, countTokenFailure, tokenFailuresExceeded, trustProxy } from './ratelimit';
+import { discardFile, FileRejectedError, fileColumns, nameStoredFile, stageFile, type FileRejection, type StagedFile } from './storage';
 
 // Integration endpoints (docs/api.md): bearer-token check shared by /api/import and /api/integrations/vigie, and the
 // import of one legacy document for the migration tool. The business rules repeat those of actions.validateFields,
@@ -25,17 +28,42 @@ export function json(body: unknown, status = 200, headers: Record<string, string
 
 const digest = (v: string) => createHash('sha256').update(v).digest();
 
+const log = logger('auth');
+
+/**
+ * A refused token, in the technical log: the route, the client's address and why, never the token sent. The address is
+ * `client` behind a trusted proxy only (CODEX_TRUST_PROXY, lib/ratelimit.ts); otherwise the client may have written
+ * X-Forwarded-For itself, and its last entry is logged as `forwardedFor`, with `clientTrusted: false`. A call to an
+ * endpoint left disabled (no variable, the default) is information, not a token being guessed.
+ */
+function refusedToken(req: Request, envVar: string, reason: 'disabled' | 'blocked' | 'missing' | 'invalid', res: Response): Response {
+  const address = clientAddress(req.headers);
+  log[reason === 'disabled' ? 'info' : 'warn']('integration token refused', {
+    route: currentRequest()?.route ?? new URL(req.url).pathname,
+    ...(trustProxy() ? { client: address } : { forwardedFor: address, clientTrusted: false }),
+    reason, variable: envVar, status: res.status,
+  });
+  return res;
+}
+
 /**
  * Null when the request carries `Authorization: Bearer <token>` matching the environment variable `envVar`.
- * Otherwise the response to send: 503 while the variable is unset (endpoint disabled), 401 for a missing or wrong token.
+ * Otherwise the response to send: 503 while the variable is unset (endpoint disabled), 401 for a missing or wrong token,
+ * 429 once the client's address has had too many tokens refused (CODEX_RATE_TOKEN_FAILURES, lib/ratelimit.ts).
+ * Behind a trusted proxy (CODEX_TRUST_PROXY), that address then gets 429 without its token being compared, so that
+ * guessing it gets no faster than the limit; without one, the address may be forged, so only wrong tokens get 429 and
+ * the right one always goes through (a token of 32 random bytes is out of reach of guessing anyway).
  */
 export function checkBearer(req: Request, envVar: 'CODEX_IMPORT_TOKEN' | 'VIGIE_WEBHOOK_TOKEN'): Response | null {
   const expected = process.env[envVar]?.trim();
-  if (!expected) return json({ error: 'disabled' }, 503);
+  if (!expected) return refusedToken(req, envVar, 'disabled', expectedAnswer(json({ error: 'disabled' }, 503)));
+  const blocked = tokenFailuresExceeded(req);
+  if (blocked) return refusedToken(req, envVar, 'blocked', blocked);
   const m = /^Bearer[ \t]+(\S+)[ \t]*$/i.exec(req.headers.get('authorization') ?? '');
   // Comparing fixed-length digests keeps the check constant-time whatever the length of the token sent.
   if (!m || !timingSafeEqual(digest(m[1]), digest(expected))) {
-    return json({ error: 'unauthorized' }, 401, { 'WWW-Authenticate': 'Bearer realm="codex"' });
+    const res = countTokenFailure(req) ?? json({ error: 'unauthorized' }, 401, { 'WWW-Authenticate': 'Bearer realm="codex"' });
+    return refusedToken(req, envVar, m ? 'invalid' : 'missing', res);
   }
   return null;
 }
@@ -110,6 +138,17 @@ export type ImportInput = {
 };
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+
+/**
+ * Dates of the imported revision as they are recorded: in force on `inForceAt` (by default the issue date, then the
+ * day of the import), approved until that date when it is still to come; the issue date defaults to that entry into
+ * force, once it has happened.
+ */
+function recordedDates(v: Pick<ImportInput, 'status' | 'inForceAt' | 'issuedAt'>, today: string) {
+  const inForceAt = v.status === 'in_force' ? v.inForceAt ?? v.issuedAt ?? today : null;
+  const revStatus: RevStatus = v.status === 'draft' ? 'draft' : inForceAt! > today ? 'approved' : 'in_force';
+  return { inForceAt, revStatus, issuedAt: v.issuedAt ?? (revStatus === 'in_force' ? inForceAt : null) };
+}
 
 /** Validates the `meta` part: shape, then the rules of the register (type admits origin, attachment, confidentiality…). */
 function parseImportMeta(raw: unknown, refs: Refs): { value: ImportInput | null; issues: Issue[]; warnings: Issue[] } {
@@ -249,6 +288,18 @@ function parseImportMeta(raw: unknown, refs: Refs): { value: ImportInput | null;
     inForceAt: drop('inForceAt', f.inForceAt, status !== 'draft'),
   };
 
+  // Coherence of the dates as they will be recorded, defaults included (lib/dates.ts: issue ≤ effect ≤ expiry…). A
+  // document not issued yet will be on its entry into force still to come, or, for a draft, today at the earliest.
+  if (status) {
+    const today = todayIso();
+    const rec = recordedDates({ status, inForceAt: value.inForceAt, issuedAt: f.issuedAt }, today);
+    const effective = rec.inForceAt ? { letter, at: rec.inForceAt } : null;
+    const from = rec.issuedAt ? null : rec.inForceAt ?? today;
+    for (const i of dateIssues({ issuedAt: rec.issuedAt, issueFrom: from, effective, reviewDueAt: f.reviewDueAt, expiresAt: f.expiresAt, receivedAt: value.receivedAt }, today)) {
+      issues.push({ field: i.field === 'effective' ? 'inForceAt' : i.field, code: i.rule, message: dateIssueText(DICT.fr, 'fr', i) });
+    }
+  }
+
   if (issues.length || !legacyRef || !title || !typeCode || !origin || !attachment || !department || !ownerId || !conf || !status) {
     return { value: null, issues, warnings };
   }
@@ -264,8 +315,13 @@ export type ImportResult =
   | { kind: 'invalid'; issues: Issue[]; warnings: Issue[] }
   /** The legacy reference was already imported: the document it became. */
   | { kind: 'duplicate'; id: string }
-  /** The legacy reference is the current ID of another document, which was not imported from it. */
-  | { kind: 'conflict'; id: string };
+  /**
+   * The legacy reference is a Codex ID, current or former (an alias left by a reclassification), of another document,
+   * which was not imported from it: id is that document's current ID.
+   */
+  | { kind: 'conflict'; id: string }
+  /** The file was refused (format, size, virus scan: lib/storage.ts stageFile); nothing was imported. */
+  | { kind: 'file_rejected'; rejection: FileRejection };
 
 /** `legacyRef` as parseImportMeta reads it, or null when it is missing or invalid. */
 function legacyRefOf(raw: unknown): string | null {
@@ -276,13 +332,16 @@ function legacyRefOf(raw: unknown): string | null {
 }
 
 /**
- * Who already answers to this legacy reference: a document imported from it (one of its aliases) is a replay; a document
- * whose current ID merely equals it is a conflict, never to be recorded as the migrated document.
+ * Who already answers to this legacy reference: the document imported from it (documents.legacy_ref) is a replay; a
+ * document whose ID, current or former (an alias left by a reclassification), merely equals it is a conflict, never to
+ * be recorded as the migrated document. Aliases alone cannot tell the two apart: they hold both kinds of reference.
  */
 async function findByRef(tx: Tx, ref: string): Promise<Extract<ImportResult, { kind: 'duplicate' | 'conflict' }> | null> {
-  const [alias] = await tx.select({ id: s.documents.id }).from(s.documents).where(sql`${s.documents.aliases} @> ${JSON.stringify([ref])}::jsonb`).limit(1);
-  if (alias) return { kind: 'duplicate', id: alias.id };
-  const [same] = await tx.select({ id: s.documents.id }).from(s.documents).where(eq(s.documents.id, ref)).limit(1);
+  const [imported] = await tx.select({ id: s.documents.id }).from(s.documents).where(eq(s.documents.legacyRef, ref)).limit(1);
+  if (imported) return { kind: 'duplicate', id: imported.id };
+  const [same] = await tx.select({ id: s.documents.id }).from(s.documents)
+    .where(or(eq(s.documents.id, ref), sql`${s.documents.aliases} @> ${JSON.stringify([ref])}::jsonb`))
+    .orderBy(sql`${s.documents.id} = ${ref} desc`).limit(1);
   return same ? { kind: 'conflict', id: same.id } : null;
 }
 
@@ -302,9 +361,9 @@ async function importId(tx: Tx, v: ImportInput): Promise<string> {
 }
 
 /**
- * Creates one migrated document: ID TYPE-CONTEXTE-SEQ, the legacy reference kept as an alias, its revision (in force,
- * approved with a future effective date, or in draft) and working version n°1 carrying the file, stored as
- * {ID}_{letter}.{ext} ({ID}_{letter}.1.{ext} for a draft).
+ * Creates one migrated document: ID TYPE-CONTEXTE-SEQ, the legacy reference recorded (legacy_ref) and kept as an alias,
+ * its revision (in force, approved with a future effective date, or in draft) and working version n°1 carrying the
+ * file, stored as {ID}_{letter}.{ext} ({ID}_{letter}.1.{ext} for a draft).
  */
 export async function importDocument(raw: unknown, file: ImportFile | null): Promise<ImportResult> {
   const db = await getDb();
@@ -319,27 +378,41 @@ export async function importDocument(raw: unknown, file: ImportFile | null): Pro
   const today = todayIso();
 
   // In force on its date; a date still to come leaves the revision approved until lifecycle.promoteDue puts it in force.
-  const inForceAt = v.status === 'in_force' ? v.inForceAt ?? v.issuedAt ?? today : null;
-  const revStatus: RevStatus = v.status === 'draft' ? 'draft' : inForceAt! > today ? 'approved' : 'in_force';
+  const { inForceAt, revStatus, issuedAt } = recordedDates(v, today);
   const createdAt = v.createdAt ?? v.issuedAt ?? (revStatus === 'in_force' ? inForceAt! : today);
   const modifiedAt = [v.modifiedAt ?? (revStatus === 'in_force' ? inForceAt! : today), createdAt].sort().at(-1)!;
   const label = revStatus === 'draft' ? `${v.letter}.1` : v.letter;
 
   // The file goes to the store before the transaction (an upload never holds the database), then gets its name.
-  const staged: StagedFile | null = file ? await stageFile(file.buf, file.name, file.mime) : null;
+  let staged: StagedFile | null = null;
+  if (file) {
+    try {
+      staged = await stageFile(file.buf, file.name, file.mime, { userId: IMPORT_ACTOR, entry: 'import', ref: v.legacyRef });
+    } catch (err) {
+      if (err instanceof FileRejectedError) return { kind: 'file_rejected', rejection: err.rejection };
+      throw err;
+    }
+  }
   let res: ImportResult;
   try {
     res = await db.transaction(async (tx): Promise<ImportResult> => {
-      // Checked again inside the transaction: two imports of the same reference may run at once.
+      // Imports run one at a time (a no-op on PGlite's single connection): two imports of the same reference cannot both
+      // find it free, and the two counter rows an import may lock (its legacy reference's scope, its own) are never
+      // taken in crossed order by another import.
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext('codex:import'))`);
+      // The legacy reference stays as an alias, and may become the ID: its number is reserved before the checks below,
+      // which then see any document that drew it from the counter, and no counter hands it out again.
+      await reserveDocId(tx, v.legacyRef);
+      // Checked again inside the transaction: a concurrent import of the same reference has committed by now.
       const existing = await findByRef(tx, v.legacyRef);
       if (existing) return existing;
       const id = await importId(tx, v);
       await tx.insert(s.documents).values({
-        id, aliases: [v.legacyRef], title: v.title, origin: v.origin, attachment: v.attachment,
+        id, aliases: [v.legacyRef], legacyRef: v.legacyRef, title: v.title, origin: v.origin, attachment: v.attachment,
         projectCode: v.projectCode, programCode: v.programCode, family: type.family, typeCode: type.code, subtype: v.subtype,
         department: v.department, site: v.site, ownerId: v.ownerId, authorId: v.authorId, authorText: v.authorText,
         conf: v.conf, keywords: v.keywords, lang: v.lang, status: revStatus,
-        issuedAt: v.issuedAt ?? (revStatus === 'in_force' ? inForceAt : null), reviewDueAt: v.reviewDueAt, expiresAt: v.expiresAt,
+        issuedAt, reviewDueAt: v.reviewDueAt, expiresAt: v.expiresAt,
         retentionYears: type.retentionYears, retentionTrigger: type.retentionTrigger, retentionDisposition: type.retentionDisposition,
         sourceOrg: v.sourceOrg, externalRef: v.externalRef, receivedAt: v.receivedAt,
         projectPhase: v.projectPhase, workPackage: v.workPackage, discipline: v.discipline,
@@ -365,7 +438,7 @@ export async function importDocument(raw: unknown, file: ImportFile | null): Pro
     }
     if (v.readers.length) await tx.insert(s.documentReaders).values(v.readers.map((userId) => ({ docId: id, userId })));
     await refreshHeadline(tx, id);
-    await audit(tx, IMPORT_ACTOR, 'import', id, `${v.legacyRef} → ${withVersion ? label : v.letter}${stored ? ` · ${fmtSize(stored.size, 'fr')}` : ''}`);
+    await audit(tx, IMPORT_ACTOR, 'import', id, `${v.legacyRef} → ${withVersion ? label : v.letter}${stored ? ` · ${fmtSize(stored.size, 'fr')}` : ''}`, rev.id);
     return { kind: 'created', id, revision: v.letter, version: withVersion ? `${v.letter}.1` : null, revStatus, file: !!stored, warnings };
     });
   } catch (err) {

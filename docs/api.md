@@ -7,22 +7,30 @@ Points d'entrée prévus par `docs/modele-cible.md` §1 pour les applications vo
 | `/api/registry` | `GET` | Keystone | aucune (lecture seule, réseau du groupe) |
 | `/api/import` | `POST` | outil de migration | jeton `CODEX_IMPORT_TOKEN` |
 | `/api/integrations/vigie` | `POST` | Vigie (webhook) | jeton `VIGIE_WEBHOOK_TOKEN` |
+| `/api/health` | `GET`, `HEAD` | supervision | aucune (200 ou 503, sans détail : `docs/exploitation.md`) |
 
 Code : `src/app/api/registry/route.ts`, `src/app/api/import/route.ts`, `src/app/api/integrations/vigie/route.ts`,
-logique partagée dans `src/lib/importer.ts`.
+`src/app/api/health/route.ts`, logique partagée dans `src/lib/importer.ts`.
 
 ## Variables d'environnement
 
 | Variable | Rôle |
 |---|---|
 | `CODEX_IMPORT_TOKEN` | Jeton attendu par `/api/import`. Absente ou vide : l'import est **désactivé** (503). |
-| `CODEX_IMPORT_MAX_MB` | Taille maximale d'un fichier importé, en Mo (100 par défaut ; 250 au plus avec `CODEX_STORAGE=sharepoint`). |
+| `CODEX_MAX_FILE_MB` | Taille maximale d'un fichier, en Mo, la même pour l'import et pour les dépôts à l'écran (50 par défaut ; 250 au plus avec `CODEX_STORAGE=sharepoint`). Remplace `CODEX_IMPORT_MAX_MB`, qui n'est plus lue. |
+| `CODEX_FILE_EXTENSIONS` | Extensions admises (liste complète) ; par défaut, voir le README, « Fichiers déposés ». |
+| `CODEX_CLAMD`, `CODEX_CLAMD_TIMEOUT_MS`, `CODEX_CLAMD_ON_ERROR` | Analyse antivirus par clamd avant stockage ; absente : pas d'analyse. Voir le README, « Fichiers déposés ». |
 | `VIGIE_WEBHOOK_TOKEN` | Jeton attendu par `/api/integrations/vigie`. Absente ou vide : le webhook est **désactivé** (503). |
+| `CODEX_RATE_IMPORT`, `CODEX_RATE_VIGIE`, `CODEX_RATE_REGISTRY` | Requêtes admises par adresse de client (600, 600 et 300 par minute par défaut ; voir « Limites de débit »). |
+| `CODEX_RATE_TOKEN_FAILURES` | Jetons refusés admis par adresse de client sur `/api/import` et `/api/integrations/vigie` (20 par 15 minutes par défaut). |
+| `CODEX_TRUST_PROXY` | `1` quand un proxy inverse placé devant Codex écrit `X-Forwarded-For` ; coupé par défaut (voir « Limites de débit »). |
 
 Les fichiers importés vont dans le stockage actif (`CODEX_STORAGE`, voir `src/lib/storage.ts`) : disque local par défaut,
 bibliothèque SharePoint en option.
 
 Générer un jeton : `openssl rand -base64 32`. Les mêmes valeurs sont déclarées (en commentaire) dans `.env.example`.
+Un jeton de moins de 32 caractères, ou de moins de 10 caractères différents, est refusé au démarrage : le serveur ne
+démarre pas en production (`token_weak`, `docs/exploitation.md` §3).
 
 ## Conventions
 
@@ -32,6 +40,54 @@ Générer un jeton : `openssl rand -base64 32`. Les mêmes valeurs sont déclar�
   - variable d'environnement non définie → **503** `{"error":"disabled"}` (le point d'entrée est fermé) ;
   - en-tête absent ou jeton faux → **401** `{"error":"unauthorized"}` avec `WWW-Authenticate: Bearer realm="codex"`.
 - Les réponses des points d'entrée protégés portent `Cache-Control: no-store`.
+- Chaque réponse porte l'en-tête `X-Request-Id` : celui de la requête quand il est un simple jeton (lettres, chiffres,
+  `. _ : -`, 128 caractères au plus), sinon un identifiant tiré par Codex. Le journal technique de Codex le porte sur
+  chaque entrée écrite pendant la requête : le donner suffit pour retrouver ce qui s'est passé. Une erreur interne
+  répond **500** `{"error":"internal","requestId":"…"}`, sans autre détail.
+- Un jeton refusé (401, 429) est écrit au journal technique avec la route, l'adresse du client et la raison, jamais le
+  jeton envoyé. L'adresse n'est donnée pour sûre (`client`) que derrière un proxy de confiance (`CODEX_TRUST_PROXY=1`) ;
+  sinon le client a pu écrire lui-même `X-Forwarded-For`, et sa valeur est notée à part (`forwardedFor`). Un appel à
+  un point d'entrée désactivé (503) est noté comme une simple information.
+- Trop de requêtes → **429** `{"error":"rate_limited","retryAfter":<secondes>}` avec l'en-tête `Retry-After` (mêmes
+  secondes). La requête n'a rien fait : la renvoyer après ce délai. Voir « Limites de débit ».
+
+## Limites de débit
+
+Chaque point d'entrée compte les requêtes de chaque client dans un seau à jetons (`src/lib/ratelimit.ts`) : il en admet
+d'un coup autant que sa limite, puis en regagne une à intervalle régulier (une toutes les 0,1 s pour 600 par minute).
+
+| Point d'entrée | Variable | Par défaut | Compté par |
+|---|---|---|---|
+| `POST /api/import` | `CODEX_RATE_IMPORT` | 600 par minute | adresse du client, une fois le jeton vérifié |
+| `POST /api/integrations/vigie` | `CODEX_RATE_VIGIE` | 600 par minute | adresse du client, une fois le jeton vérifié |
+| jetons refusés (401) sur `/api/import` et `/api/integrations/vigie` | `CODEX_RATE_TOKEN_FAILURES` | 20 par 15 minutes, communs aux deux | adresse du client |
+| `GET /api/registry` | `CODEX_RATE_REGISTRY` | 300 par minute (les réponses 304 comptent) | adresse du client, avec `CODEX_TRUST_PROXY=1` seulement |
+
+- Valeur `N` (par minute) ou `N/<durée>` (`30s`, `1m`, `15m`, `1h`) ; `0` ou `off` lève la limite,
+  `CODEX_RATE_LIMIT=off` les lève toutes.
+- **Adresse du client** : la dernière valeur de `X-Forwarded-For`. Sans proxy, Next.js la pose d'après la connexion,
+  sauf si le client l'envoie lui-même : il peut alors prendre l'adresse d'un autre. `CODEX_TRUST_PROXY=1` déclare un
+  proxy inverse qui écrit cet en-tête (le remplace, ou y ajoute l'adresse qu'il voit) et sans lequel Codex n'est pas
+  joignable ; l'adresse n'est tenue pour fiable qu'à cette condition. Par défaut, une adresse, même forgée, ne peut
+  bloquer personne d'autre :
+  - les budgets d'import et de Vigie ne sont comptés qu'une fois le jeton vérifié : seul le porteur du jeton les dépense ;
+  - le registre, sans jeton, n'est pas limité.
+- **Jetons refusés** : au-delà du quota d'une adresse, les jetons faux reçoivent **429** au lieu de 401, jusqu'à ce
+  qu'un essai soit regagné (un toutes les 45 s par défaut).
+  - Sans `CODEX_TRUST_PROXY`, le bon jeton passe toujours : un tiers qui enverrait des jetons faux sous l'adresse de
+    Vigie ou de l'outil de migration ne les bloque pas. Contre la devinette, c'est la longueur du jeton qui protège :
+    32 octets aléatoires (`openssl rand -base64 32`) restent hors de portée.
+  - Avec `CODEX_TRUST_PROXY=1`, l'adresse qui a épuisé son quota reçoit 429 **même avec le bon jeton**, qui n'est plus
+    comparé : le deviner ne va pas plus vite que la limite. Un outil mal configuré qui s'obstine reste donc bloqué un
+    moment après la correction de son jeton.
+- **Une seule instance** : les compteurs sont en mémoire et repartent de zéro au redémarrage. Avec plusieurs instances,
+  il faudrait un magasin partagé ou une limite posée au proxy (README, « Sécurité HTTP et limites de débit »).
+- Pour l'outil de migration : envoyer les documents à la suite plutôt qu'en rafale, attendre `Retry-After` sur un 429
+  puis renvoyer le même document (le 409 `duplicate` rend le renvoi sûr), ou relever `CODEX_RATE_IMPORT` le temps de la
+  reprise.
+
+Les routes du navigateur ont aussi leurs limites (fichiers et fiches de visa, exports CSV, actions qui écrivent ; voir
+le README) ; elles répondent 429 avec `Retry-After` et une phrase en texte dans la langue du lecteur.
 
 ---
 
@@ -43,6 +99,10 @@ Keystone l'appelle de serveur à serveur (pas d'en-têtes CORS).
 
 **Cache** : `Cache-Control: public, max-age=60, must-revalidate` et un `ETag` calculé sur le contenu du registre ;
 une requête avec `If-None-Match` reçoit **304** tant que le registre n'a pas changé.
+
+**Débit** : avec `CODEX_TRUST_PROXY=1`, au-delà de `CODEX_RATE_REGISTRY` requêtes par adresse, **429**
+`{"error":"rate_limited","retryAfter"}` avec `Retry-After` ; sans proxy de confiance, pas de limite (voir « Limites de
+débit »).
 
 ```bash
 curl -s http://localhost:3100/api/registry | jq '.types[] | {code, family, active}'
@@ -81,6 +141,7 @@ Réponse **200** (extrait) :
         "disposition": "review", "dispositionLabels": { "fr": "Revue", "en": "Review" },
         "basis": "…"
       },
+      "reviewMonths": null,
       "confAllowed": ["restreint", "interne", "confidentiel"],
       "confDefault": "restreint",
       "iso": "8.3 Conception et développement",
@@ -103,6 +164,7 @@ Réponse **200** (extrait) :
 | `subtypes` | Sous-types proposés (`{fr, en}`), saisie libre possible. |
 | `circuit` | Étapes d'approbation après l'auteur, dans l'ordre, par fonction (`scope` : `global`, `department`, `project`, `research`). Liste vide : approbation immédiate. |
 | `retention` | Règle de conservation : durée en années (`null` : sans durée fixe), événement déclencheur, sort final, fondement. |
+| `reviewMonths` | Périodicité de revue en mois (1 à 240), `null` sans périodicité (valeur par défaut de tous les types, en attendant les arbitrages du registre). Un document qui entre en vigueur sans date de révision la reçoit, comptée depuis sa mise en vigueur ; « Revue effectuée » sans date saisie la compte depuis le jour de la revue. |
 | `confAllowed` / `confDefault` | Niveaux de confidentialité admis et niveau proposé par défaut. |
 | `iso` | Clause ISO 9001 (ou `null`). |
 | `clientDeliverable` | Livrable client. |
@@ -115,7 +177,9 @@ Réponse **200** (extrait) :
 
 Crée **un** document par appel à partir d'un document de l'ancien système. Codex attribue l'identifiant
 `TYPE-CONTEXTE-SEQ` ; la référence d'origine (`legacyRef`) est conservée comme ancienne référence du document
-(`documents.aliases`) : elle reste résolue par la fiche document (`/documents/<legacyRef>`).
+(`documents.aliases`) : elle reste résolue par la fiche document (`/documents/<legacyRef>`). Elle est aussi mémorisée à
+part (`documents.legacy_ref`, unique) : les anciennes références contiennent également les anciens ID Codex laissés par
+un reclassement, et seule cette colonne dit depuis quelle référence un document a été importé.
 
 ### Format de la requête
 
@@ -123,10 +187,37 @@ Crée **un** document par appel à partir d'un document de l'ancien système. Co
   - partie `meta` (obligatoire) : les métadonnées en JSON, en champ texte ou en fichier `.json` ;
   - partie `file` (facultative) : le fichier de la révision, avec son `Content-Type` (en Python :
     `files={'file': (nom, fh, 'application/pdf')}`). Sans type, ou avec un type générique (`application/octet-stream`,
-    `text/plain` pour un fichier qui n'est pas du texte), Codex le déduit de l'extension et de la signature `%PDF-`.
+    `text/plain` pour un fichier dont l'extension n'est pas `.txt`, `.csv` ou `.log`, ou qui n'en a pas), Codex le
+    déduit de l'extension, comme le navigateur pour un fichier déposé à l'écran, sinon de la signature `%PDF-` ; à
+    défaut, le fichier est enregistré en `application/octet-stream` et ne se télécharge que comme pièce jointe, sans
+    aperçu.
 - ou `application/json` : les métadonnées seules, sans fichier.
 
-Taille maximale du fichier : `CODEX_IMPORT_MAX_MB` (100 Mo par défaut, 250 Mo au plus avec SharePoint), au-delà **413**.
+Taille maximale du fichier : `CODEX_MAX_FILE_MB` (50 Mo par défaut, 250 Mo au plus avec SharePoint), la même qu'à
+l'écran, au-delà **413**. Le corps entier est lui aussi borné à cette taille plus 1 Mo (métadonnées et découpage
+multipart) : refusé d'emblée si `Content-Length` la dépasse, et coupé en cours de lecture, avec 413, s'il est envoyé par
+morceaux sans `Content-Length`. Pour reprendre de plus gros fichiers, relever `CODEX_MAX_FILE_MB` le temps de la
+migration (redémarrage du serveur).
+
+Le fichier passe les mêmes contrôles qu'un dépôt à l'écran (`stageFile`, `src/lib/storage.ts`), après la validation des
+métadonnées et avant tout enregistrement :
+- **nom** : seul compte le dernier segment du `filename` de la partie, sans caractères de contrôle ni séparateurs,
+  points ou espaces finaux : `GED1/2019/proc.pdf` est enregistré `proc.pdf`, `note.hta/` est lu `note.hta` et refusé.
+  C'est sous ce nom, et donc sous cette extension, que le fichier est stocké et servi ;
+- **format** : son extension doit être admise (`CODEX_FILE_EXTENSIONS`, `src/lib/filetypes.ts`), et le contenu d'un
+  format courant (PDF, images, Office, OpenDocument, DWG…) doit être celui qu'elle annonce : un `.docx` est un ZIP qui
+  contient `[Content_Types].xml`, ou un fichier composé chiffré (flux `EncryptedPackage`) ; un `.doc` un fichier
+  composé lisible ou du RTF ; un programme est refusé quel que soit son nom, des macros VBA quelle que soit
+  l'extension ; un fichier sans extension n'est admis que si son contenu désigne un format admis (PDF, image, DWG).
+  Refus : **415** `file_format`, avec la raison et la liste des extensions admises ;
+- **antivirus** : avec `CODEX_CLAMD`, le fichier est analysé par clamd. Infecté : **422** `file_infected`, et une entrée
+  « Fichier refusé (antivirus) » au journal, sous l'acteur `codex` avec la `legacyRef`. Au-delà des limites de clamd
+  (`StreamMaxLength`, et avec `AlertExceedsMax` : `MaxFileSize`, `MaxScanSize`…) : **413** `scan_too_large`, sans
+  `Retry-After` : renvoyer le même fichier n'y changera rien tant que ces limites ne sont pas relevées. Analyse
+  impossible (clamd injoignable, délai dépassé, erreur) : **503** `scan_unavailable` avec `Retry-After: 60` (à renvoyer
+  plus tard). `CODEX_CLAMD_ON_ERROR=accept` accepte ces deux derniers cas sans analyse.
+
+Dans tous ces cas, rien n'est importé et la `legacyRef` reste libre : l'outil peut renvoyer le document corrigé.
 
 ### Métadonnées (`meta`)
 
@@ -172,11 +263,28 @@ actif, il admet l'origine, le rattachement et le niveau de confidentialité ; le
 document externe a un organisme source ; département, site, propriétaire et lecteurs existent. Toutes les erreurs sont
 renvoyées ensemble.
 
+Les dates sont des jours `AAAA-MM-JJ` (un horodatage ISO garde son jour ; l'année 0000 est refusée) et doivent se
+suivre (`src/lib/dates.ts`), contrôlées telles qu'elles seront enregistrées, valeurs par défaut comprises (`issuedAt`
+vaut `inForceAt` pour une révision déjà en vigueur) :
+- `inForceAt` n'est pas antérieure à `issuedAt` (`effective_before_issued`, sur `inForceAt`) ;
+- `expiresAt` est postérieure à `issuedAt` (`expires_before_issued`) et à `inForceAt` (`expires_before_effective`) ;
+- `reviewDueAt` est postérieure à `issuedAt` (`review_before_issued`) ;
+- `receivedAt` n'est ni future (`received_in_future`) ni postérieure à `issuedAt` (`received_after_issued`) ;
+- sans `issuedAt`, un document pas encore émis le sera au plus tôt à `inForceAt` à venir ou, pour un brouillon, le
+  jour de l'import : `reviewDueAt` est postérieure à ce jour (`review_before_first_issue`), comme `expiresAt` pour un
+  brouillon (`expires_before_first_issue`).
+
+« Postérieure » s'entend au sens strict : une expiration ou une révision le jour de l'émission est refusée ; une
+réception ou une mise en vigueur le jour de l'émission est admise. Le message de chaque problème donne la date à
+respecter.
+
 ### Ce que crée l'import
 
 - le document, avec l'identifiant suivant libre pour le couple (type, contexte), la classe de conservation du type et
-  `legacyRef` en ancienne référence. Une `legacyRef` déjà au format `TYPE-CONTEXTE-SEQ` du document (même type, même
-  contexte, même largeur de numéro) et libre devient son identifiant ;
+  `legacyRef` en ancienne référence et en référence d'origine (`legacy_ref`). Une `legacyRef` déjà au format
+  `TYPE-CONTEXTE-SEQ` du document (même type, même contexte, même largeur de numéro) et libre devient son identifiant.
+  Le numéro d'une `legacyRef` de la forme `TYPE-CONTEXTE-SEQ`, quel que soit le type, n'est ensuite jamais attribué à
+  un autre document ;
 - **une** révision avec la lettre demandée (les révisions antérieures restent dans l'ancien système ; la prochaine
   révision ouverte dans Codex prendra la lettre suivante) :
   - `status: in_force` → révision **En vigueur** à `inForceAt` ; si cette date est future, la révision est **Approuvée**
@@ -189,6 +297,10 @@ renvoyées ensemble.
 - le statut affiché du document (via `refreshHeadline`) et une entrée **Import** au journal d'audit, au nom de
   l'utilisateur système `codex`.
 
+L'import ne crée pas de liens entre documents (« remplace », « voir aussi ») : le corps n'a pas de champ pour eux, et
+en ajouter un serait un contrat à définir avec l'outil de migration (O-11). Les liens entre documents repris
+s'ajoutent depuis leurs fiches (section « Documents liés »).
+
 ### Réponses
 
 | Code | Corps |
@@ -196,17 +308,27 @@ renvoyées ensemble.
 | **201** | `{"id","revision","version","status","file","href","warnings"}` + en-tête `Location: /documents/<id>` |
 | **400** | `{"error":"validation","issues":[{field,code,message}],"warnings":[…]}` ; ou `invalid_json`, `meta_required`, `invalid_body`, `file_not_a_file` |
 | **401** / **503** | jeton absent ou faux / import désactivé |
-| **409** | `{"error":"duplicate","id":"<ID existant>"}` : `legacyRef` déjà importée. Vérifié avant la validation : un document déjà repris répond 409 même si le registre a changé depuis (type désactivé…). |
-| **409** | `{"error":"ref_is_codex_id","id":"<ID>"}` : `legacyRef` est l'identifiant Codex d'**un autre** document, qui n'a pas été importé depuis elle. Ce n'est pas un rejeu : l'outil ne doit pas enregistrer cette correspondance. |
-| **413** | fichier trop volumineux |
-| **415** | type de contenu autre que `multipart/form-data` ou `application/json` |
+| **409** | `{"error":"duplicate","id":"<ID existant>"}` : `legacyRef` déjà importée ; `id` est l'identifiant actuel du document repris, même s'il a été reclassé depuis. Vérifié avant la validation : un document déjà repris répond 409 même si le registre a changé depuis (type désactivé…). |
+| **409** | `{"error":"ref_is_codex_id","id":"<ID>"}` : `legacyRef` est l'identifiant Codex, actuel ou ancien (gardé en alias après un reclassement), d'**un autre** document, qui n'a pas été importé depuis elle ; `id` est l'identifiant actuel de ce document. Ce n'est pas un rejeu : l'outil ne doit pas enregistrer cette correspondance. |
+| **413** | `{"error":"too_large","maxBytes"}` : fichier ou corps trop volumineux |
+| **413** | `{"error":"scan_too_large"}` : fichier au-delà des limites de l'analyse antivirus (taille ou contenu imbriqué) ; rien n'est importé, et le renvoyer ne changera rien avant que les limites de clamd soient relevées |
+| **415** | `{"error":"unsupported_media_type"}` : type de contenu autre que `multipart/form-data` ou `application/json` |
+| **415** | `{"error":"file_format","reason","ext","allowed":[…]}` : fichier refusé ; `reason` vaut `format` (extension non admise), `signature` (contenu qui n'est pas celui de l'extension `ext`), `executable` (programme), `macros` (macros VBA) ou `no_extension` (sans extension, contenu non reconnu) ; `allowed` liste les extensions admises |
+| **422** | `{"error":"file_infected","threat"}` : l'analyse antivirus a détecté `threat` ; le fichier n'est pas stocké, le refus est journalisé |
+| **503** | `{"error":"scan_unavailable"}` + `Retry-After: 60` : l'analyse antivirus n'a pas pu être faite (clamd injoignable, délai dépassé, erreur) ; rien n'est importé |
+| **429** | `{"error":"rate_limited","retryAfter"}` : trop d'imports depuis cette adresse, ou trop de jetons refusés (jeton faux au-delà du quota ; bon jeton aussi avec `CODEX_TRUST_PROXY=1`, voir « Limites de débit ») ; rien n'est importé |
+| **500** | `{"error":"internal","requestId":"…"}` : erreur interne ; rien n'est importé. `requestId` est l'identifiant de la requête (le même que l'en-tête `X-Request-Id`), qui retrouve la cause dans le journal technique de Codex |
 
 Codes de `issues[].code` : `required`, `invalid_type`, `too_long`, `invalid_date`, `invalid_value`, `invalid_letter`,
 `unknown_type`, `unknown_department`, `unknown_site`, `unknown_user`, `type_mismatch`, `conf_not_allowed`,
-`project_required`, `program_required`, `source_required`, `readers_conf`. Avertissement (`warnings[].code`) : `ignored`.
+`project_required`, `program_required`, `source_required`, `readers_conf`, `effective_before_issued`,
+`expires_before_issued`, `expires_before_effective`, `expires_before_first_issue`, `review_before_issued`,
+`review_before_first_issue`, `received_in_future`, `received_after_issued`. Avertissement (`warnings[].code`) :
+`ignored`.
 
 Le 409 `duplicate` rend l'outil de migration rejouable : un document déjà repris renvoie son identifiant Codex sans être
-recréé. Seul ce code vaut « déjà migré ».
+recréé. Seul ce code vaut « déjà migré ». Les imports s'enregistrent un par un, même envoyés en parallèle : deux envois
+simultanés de la même `legacyRef` créent un seul document, l'autre reçoit ce 409.
 
 ### Exemples
 
@@ -260,17 +382,104 @@ gestionnaire documentaire peut aussi simuler la décision depuis la fiche docume
 | `requestId` | oui | Référence de la demande dans Vigie (`ECR-…`), telle que Codex l'a transmise. |
 | `accepted` | oui | `true` : acceptée ; `false` : refusée. |
 | `ecoRef` | non | Référence de l'ordre de modification (ECO) ; à défaut, la référence de la demande sert de référence de changement. |
-| `modifierId` | non | Utilisateur désigné pour rédiger la révision (modification acceptée). Défaut : le demandeur, s'il peut déposer et voit encore le document ; sinon le propriétaire. |
+| `modifierId` | non | Utilisateur désigné pour rédiger la révision (modification acceptée). Pour un refus ou un retrait, il est sans effet, mais s'il est fourni il doit désigner un utilisateur existant et non système (sinon 400 `unknown_user`, comme pour une acceptation). Pour une modification acceptée, il doit en outre pouvoir rédiger le document : droit **Déposer** (`upload`) de son rôle par défaut dans la matrice des droits (Administration › Rôles), et accès en lecture au document (confidentialité, lecteurs désignés). Sinon : 400 `modifier_not_allowed`, rien n'est enregistré, et Codex ne lui substitue pas le modificateur par défaut. Défaut : le demandeur, s'il peut rédiger le document (même contrôle) ; sinon le propriétaire. Ce défaut est déterminé quand la révision s'ouvre : pour une acceptation mise en attente (document verrouillé, révision déjà ouverte), au moment où elle s'applique. |
 | `note` | non | Commentaire de décision (≤ 2000 caractères). |
 
 ### Effet
 
 | Demande | Acceptée | Refusée |
 |---|---|---|
-| Modification | Codex ouvre la révision suivante en **Brouillon**, attribuée au modificateur, avec la référence ECO ; la demande passe **Appliquée**. | La demande passe **Refusée**. |
-| Retrait | Le document passe **Obsolète** ; un circuit en cours est clos (commentaire « document retiré ») et les révisions ouvertes passent **Annulées** ; la demande passe **Appliquée**. | La demande passe **Refusée**. |
+| Modification | Codex ouvre la révision suivante en **Brouillon**, attribuée au modificateur, avec la référence ECO ; la demande passe **Appliquée**, rattachée à cette révision. Si une révision est déjà ouverte, voir « Révision déjà ouverte » ci-dessous. | La demande passe **Refusée**. |
+| Retrait | Le document passe **Obsolète** ; un circuit en cours est clos (commentaire « document retiré ») et les révisions ouvertes passent **Annulées** ; la demande passe **Appliquée**. Si la demande proposait un document de remplacement, le document retiré devient « remplacé par » lui (voir ci-dessous). | La demande passe **Refusée** ; aucun lien n'est créé. |
 
-Les mêmes règles s'appliquent à la décision simulée depuis la fiche document (`applyChangeDecision`).
+**Remplacement proposé.** Une demande de retrait faite depuis la fiche peut proposer le document qui remplace celui-ci
+(facultatif : un document actif que le demandeur peut lire). Codex le garde sur sa copie de la demande
+(`change_requests.replacement_id`) ; le webhook ne le transmet pas et ne peut pas le modifier. Quand l'acceptation
+s'applique (aussitôt, ou à la levée d'un verrou), Codex crée le lien « remplace » du remplaçant vers le document retiré,
+au nom de `vigie`, avec la référence ECO (à défaut celle de la demande), et l'inscrit au journal des deux documents
+(« Lien ajouté »). Le remplaçant est revérifié à ce moment : s'il n'est plus actif (obsolète, archivé), si l'un des
+deux documents est sous gel juridique, ou si un lien « remplace » existe déjà en sens inverse, Codex ne crée ni ne
+modifie aucun lien et l'écrit au journal du document retiré (« Remplacement non appliqué », avec la raison). Les
+réponses du webhook n'en disent rien. Ce que Vigie devrait recevoir ou décider de ce remplacement
+n'est pas défini : le contrat de Vigie reste ouvert (O-10), et rien n'est ajouté au corps décrit ci-dessus.
+
+**Document verrouillé.** Si le document est archivé, obsolète ou sous gel juridique quand l'acceptation arrive, elle ne
+peut pas s'appliquer tout de suite. Codex l'enregistre quand même : la demande passe **Acceptée**, avec la référence
+ECO, le modificateur désigné et la note, et le webhook répond **202**. La décision s'applique d'elle-même, avec les
+effets du tableau ci-dessus, dès que le verrou se lève : levée du gel juridique (`releaseHold`) ou restauration de
+l'archive (`restoreArchived`), via `applyPendingDecision` (`src/lib/lifecycle.ts`). Un document archivé et sous gel
+juridique ne peut être restauré qu'une fois le gel levé : la décision attend les deux. Sans `modifierId`, le modificateur
+par défaut (voir le tableau des champs) est déterminé au moment où la décision s'applique, à la levée du gel ou à la
+restauration, et non à sa réception. Le journal garde les deux temps :
+« ECR-… · ✓ » à la réception, puis l'ouverture de la révision ou le retrait à l'application. La fiche document signale
+la décision en attente (bandeau et onglet Demandes). Un refus, lui, s'applique toujours aussitôt. Un document obsolète
+ne redevient jamais actif : une acceptation reçue pour un tel document resterait en attente.
+
+**Révision déjà ouverte (D-26).** Une modification acceptée alors qu'une révision du document est déjà ouverte (en
+brouillon, en validation, ou approuvée en attente de sa date d'effet) n'en ouvre jamais une seconde. Codex l'enregistre :
+la demande passe **Acceptée**, avec la référence ECO, le modificateur désigné et la note, et le webhook répond **202**
+avec `"reason":"revision_open"` et l'indice de la révision ouverte (`revision`). Personne n'a de choix à faire : par
+défaut, la modification **attend**. Elle ouvre la révision suivante, avec les effets du tableau ci-dessus, dès que la
+révision ouverte entre en vigueur (dernière approbation de son circuit, approbation immédiate d'un type sans circuit, ou
+date d'effet atteinte) ou est annulée (`putInForce` et `cancelOpenRevisions`, `src/lib/lifecycle.ts`). Tant que la
+révision ouverte est en brouillon et que le document n'est pas verrouillé, un gestionnaire documentaire ou l'auteur de
+cette révision (son modificateur désigné, à défaut le propriétaire), avec le droit **Modifier**, peut à la place la
+**greffer** sur cette révision (Server Action `graftChange`, `src/lib/actions.ts`) : la révision garde son modificateur
+et porte aussi la référence ECO ; la demande passe **Appliquée**, rattachée à cette révision, avec pour modificateur
+celui de la révision ; le journal inscrit « Greffe d'une modification » (« ECO-… → B », suivi du modificateur désigné
+par Vigie écarté s'il y en avait un autre). En validation ou approuvée, la révision ne reçoit plus de greffe : la
+modification attend. Une révision peut ainsi porter plusieurs ECO (`change_requests.revision_id`). Une demande de
+modification peut d'ailleurs être faite depuis Codex pendant qu'une révision est ouverte ; les autres refus restent
+(document non en vigueur, verrouillé, demande déjà en cours). Le verrou et la révision ouverte se cumulent : sur un
+document verrouillé, rien ne s'applique ni ne se greffe avant la levée du verrou, puis la modification attend encore la
+révision ouverte. Aujourd'hui, seul un retrait accepté annule une révision ouverte, et il rend le document obsolète : une
+modification n'y attend jamais (une seule demande en cours par document), et un document obsolète ne change plus.
+Hors du cercle de rédaction, ni la référence ECO, ni le modificateur, ni la révision d'une modification en attente,
+greffée ou appliquée à une révision qui n'est pas encore en vigueur ne sont montrés (D-14), et une modification greffée
+y reste affichée **Acceptée** tant que la révision qui la porte est ouverte : rien ne trahit la greffe. Si cette
+révision est annulée (retrait accepté), la modification y est affichée **Appliquée**, comme celle qui avait ouvert la
+révision. Le modificateur désigné par Vigie pour une modification en attente entre dans le cercle de rédaction (D-14 :
+« qui modifiera un document via une ECO ») : il voit la révision ouverte, mais n'y dépose pas et ne la soumet pas, et
+cette désignation ne compte pas dans le contrôle de son droit de rédiger. Vigie n'est prévenu ni de la greffe ni de
+l'application différée (O-10).
+
+**Modificateur désigné qui perd le droit de rédiger.** Avec `modifierId`, le droit de rédiger est contrôlé à la
+réception de la décision (400 `modifier_not_allowed` sinon), puis de nouveau quand une acceptation mise en attente
+s'applique, car les droits ont pu changer entre-temps (matrice des droits, confidentialité, lecteurs désignés). Si le
+modificateur désigné ne peut plus rédiger le document à ce moment-là, la décision s'applique quand même, pour le
+modificateur par défaut (voir le tableau des champs) : la levée du gel ou la restauration n'est pas bloquée et la
+décision ne reste pas en attente sans issue. Le modificateur par défaut est contrôlé à son tour. S'il ne peut pas
+rédiger non plus (le propriétaire, à défaut du demandeur, sans droit de dépôt), la révision s'ouvre quand même pour lui,
+comme pour toute acceptation sans `modifierId` ; c'est aussi le cas quand le propriétaire est la personne écartée. Un
+gestionnaire documentaire peut encore y déposer des versions de travail, si son rôle a le droit Déposer. Ce
+remplacement n'est jamais silencieux, y compris dans ces deux cas :
+- le journal du document l'inscrit, au nom de `codex` : « ECO-… · modificateur écarté → modificateur effectif », suivi
+  de « (Droit requis : Déposer) » si le modificateur effectif ne peut pas rédiger le document non plus. La ligne est
+  rattachée à la révision ouverte et suit sa visibilité, comme l'ouverture de la révision (`readerMaySeeEntry`,
+  `src/lib/access.ts`) : réservée au cercle de rédaction tant que la révision n'est pas en vigueur, elle est ensuite
+  visible de tous les lecteurs du document, avec le nom de la personne écartée ;
+- la demande indique le modificateur effectif ;
+- la personne qui lève le gel ou restaure l'archive en est avertie par un message, si elle fait partie du cercle de
+  rédaction (c'est le cas d'un gestionnaire documentaire). Le message est différent quand le modificateur effectif ne
+  peut pas rédiger le document : il dit que ni le modificateur désigné ni le modificateur par défaut ne le peuvent.
+
+Une acceptation qui attendait une révision ouverte suit la même règle quand elle s'applique à la mise en vigueur ou à
+l'annulation de cette révision : elle est alors appliquée au nom de `vigie`, sans personne à avertir par message ; le
+journal en garde trace. Vigie n'en est pas prévenu (O-10). Appliquer la décision plutôt que la laisser en attente est un
+choix proposé, non confirmé (`docs/decisions.md`).
+
+Les mêmes règles s'appliquent à la décision simulée depuis la fiche document (`applyChangeDecision`). Le contrôle du
+modificateur est le même pour les deux (`mayDraft`, `src/lib/lifecycle.ts`) ; le dialogue de simulation ne propose que
+les personnes qui peuvent rédiger le document, et un refus y est affiché comme erreur, sans repli sur le défaut.
+
+### Statuts d'une demande
+
+| Statut (`change_requests.status`) | Libellé | Sens |
+|---|---|---|
+| `submitted` | Transmise à Vigie | En attente de la décision de Vigie. Une seule demande `submitted` ou `accepted` par document. |
+| `rejected` | Refusée | Vigie a refusé ; rien n'a changé. |
+| `accepted` | Acceptée | Vigie a accepté, mais la décision ne peut pas encore s'appliquer : document verrouillé, ou, pour une modification, révision déjà ouverte (D-26). Elle s'applique d'elle-même dès que plus rien ne la retient, ou se greffe sur la révision ouverte. |
+| `implemented` | Appliquée | Codex a appliqué la décision : révision ouverte (ou révision déjà ouverte sur laquelle la modification a été greffée), rattachée par `revision_id` ; ou document passé obsolète (retrait). |
 
 ### Réponses
 
@@ -278,10 +487,13 @@ Les mêmes règles s'appliquent à la décision simulée depuis la fiche documen
 |---|---|
 | **200** | `{"ok":true,"requestId","kind","docId","status":"implemented"\|"rejected","docStatus","revision"}` (`revision` : lettre ouverte par une modification acceptée) |
 | **200** | `{"ok":true,"alreadyApplied":true,…}` : la même décision a déjà été appliquée (renvoi du webhook sans effet) |
-| **400** | `invalid_json`, `{"error":"invalid","field":"…"}`, `{"error":"unknown_user","field":"modifierId"}` |
+| **202** | `{"ok":true,"pending":true,"reason","requestId","kind","docId","status":"accepted","state","legalHold","revision"}` : acceptation enregistrée, qui ne peut pas encore s'appliquer. `reason` dit ce qui la retient d'abord : `locked`, le document est verrouillé (`state` et `legalHold` disent comment ; elle s'applique à la levée du verrou), ou `revision_open`, une révision est déjà ouverte (D-26). `revision` donne l'indice de la révision ouverte que la modification attend aussi (`null` pour un retrait, ou sans révision ouverte) : avec `reason` `locked`, elle attendra encore cette révision après la levée du verrou. Un renvoi de la même acceptation reçoit la même réponse, établie sur l'état du moment, avec `"alreadyRecorded":true`, sans effet. Une fois la décision appliquée ou greffée, le renvoi reçoit 200 `alreadyApplied`. |
+| **400** | `invalid_json`, `{"error":"invalid","field":"…"}`, `{"error":"unknown_user","field":"modifierId"}` (utilisateur inconnu ou compte système, quelle que soit la décision), `{"error":"modifier_not_allowed","field":"modifierId","docId"}` (le modificateur désigné ne peut pas rédiger le document : pas de droit Déposer avec son rôle, ou pas d'accès au document ; rien n'est enregistré) |
 | **401** / **503** | jeton absent ou faux / webhook désactivé |
 | **404** | `{"error":"not_found"}` : demande inconnue de Codex |
-| **409** | `already_decided` (décision contraire déjà appliquée), `document_locked` (document archivé, obsolète ou sous gel juridique : une acceptation ne peut plus s'appliquer), `revision_in_progress` (une révision est déjà en cours sur le document) |
+| **409** | `already_decided` (décision contraire déjà appliquée ou enregistrée ; `status` donne l'état de la demande). Une révision déjà ouverte ne donne plus de 409 (`revision_in_progress` a disparu) : 202 `revision_open`. |
+| **429** | `{"error":"rate_limited","retryAfter"}` : trop de requêtes depuis cette adresse, ou trop de jetons refusés (même règle que l'import) ; la décision n'est pas lue, Vigie la renvoie après `Retry-After` |
+| **500** | `{"error":"internal","requestId":"…"}` : erreur interne ; rien n'est enregistré, Vigie renvoie la décision plus tard. Ici `requestId` n'est pas la référence de la demande : c'est l'identifiant de la requête HTTP (le même que l'en-tête `X-Request-Id`), qui retrouve la cause dans le journal technique de Codex |
 
 ### Exemples
 
@@ -294,8 +506,22 @@ curl -s -X POST http://localhost:3100/api/integrations/vigie \
   -d '{"requestId":"ECR-2026-001","accepted":true,"ecoRef":"ECO-2026-010","modifierId":"jwagner"}'
 # → 200 {"ok":true,"requestId":"ECR-2026-001","kind":"modification","docId":"PRO-QUA-0001","status":"implemented","docStatus":"in_force","revision":"F"}
 
+# Sur une base neuve : modificateur sans droit de dépôt (jholt, auditeur) → refus, la demande reste « Transmise à Vigie »
+curl -s -X POST http://localhost:3100/api/integrations/vigie \
+  -H "Authorization: Bearer $VIGIE_WEBHOOK_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"requestId":"ECR-2026-001","accepted":true,"ecoRef":"ECO-2026-010","modifierId":"jholt"}'
+# → 400 {"error":"modifier_not_allowed","field":"modifierId","docId":"PRO-QUA-0001"}
+
 # Demande de retrait refusée
 curl -s -X POST http://localhost:3100/api/integrations/vigie \
   -H "Authorization: Bearer $VIGIE_WEBHOOK_TOKEN" -H 'Content-Type: application/json' \
   -d '{"requestId":"ECR-2026-003","accepted":false,"note":"Le modèle reste utilisé hors Keystone"}'
+
+# Variante sur une base neuve : PRO-QUA-0001 mis sous gel juridique (écran Archivage) avant l'acceptation d'ECR-2026-001.
+# La décision est enregistrée ; la révision F s'ouvre pour jwagner à la levée du gel.
+curl -s -X POST http://localhost:3100/api/integrations/vigie \
+  -H "Authorization: Bearer $VIGIE_WEBHOOK_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"requestId":"ECR-2026-001","accepted":true,"ecoRef":"ECO-2026-010","modifierId":"jwagner"}'
+# → 202 {"ok":true,"pending":true,"reason":"locked","requestId":"ECR-2026-001","kind":"modification","docId":"PRO-QUA-0001","status":"accepted","state":"active","legalHold":true,"revision":null}
+# Le même envoi, rejoué avant la levée du gel : même réponse, avec "alreadyRecorded":true, sans effet.
 ```

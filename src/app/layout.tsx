@@ -7,9 +7,10 @@ import { Header } from '@/components/shell/Header';
 import { Sidebar } from '@/components/shell/Sidebar';
 import type { DialogData } from '@/components/dialogs/types';
 import { getCtx } from '@/lib/context';
+import { fileRules } from '@/lib/filetypes';
 import { CONF_LEVELS, MATRIX_ROLE, type SimRole, type TKey } from '@/lib/i18n';
 import { keystoneUrl } from '@/lib/keystone';
-import { getMatrix, listAudit, listDocs, listTemplates, listWorkflows, typeView } from '@/lib/queries';
+import { getMatrix, listAudit, listDocs, listTemplates, myTodo, typeView } from '@/lib/queries';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' });
 
@@ -21,20 +22,19 @@ export const metadata: Metadata = {
 export default async function RootLayout({ children }: LayoutProps<'/'>) {
   const ctx = await getCtx();
   const fr = ctx.lang === 'fr';
-  const [workflows, templates, visible, audit, matrix] = await Promise.all([listWorkflows(ctx), listTemplates(ctx), listDocs(ctx), listAudit(ctx, { limit: 60 }), getMatrix()]);
-  // Approvals waiting for me: running workflows whose current step is mine, on a document not locked, for a role that
-  // reaches the Validations screen (the bell never points to a screen the role cannot open).
-  const mine = ctx.screens.workflow ? workflows.filter((w) => w.mine && !w.locked) : [];
-  // Recent activity only on documents the simulated user may see.
+  // What waits for me (approval steps, revisions to draft, grafts, review and expiry dates): the badge and the bell list
+  // the same items as the home's « À traiter », each linking to where to act (myTodo, AppProvider).
+  const [todo, templates, visible, audit, matrix] = await Promise.all([myTodo(ctx), listTemplates(ctx), listDocs(ctx), listAudit(ctx, { limit: 60, docsOnly: true }), getMatrix()]);
+  // Recent activity only on documents the simulated user may see, each under its current ID.
   const seen = new Set(visible.map((d) => d.id));
-  const recent = audit.filter((a) => seen.has(a.docId)).slice(0, 5);
+  const recent = audit.filter((a) => a.currentId && seen.has(a.currentId)).slice(0, 5);
   const data: DialogData = {
     templates: templates.map((x) => ({ id: x.id, label: x.label, rev: x.rev, owner: x.owner })),
     types: ctx.types.map((x) => {
       const v = typeView(ctx, x);
       return {
         code: v.code, label: v.label, family: v.family, familyLabel: v.familyLabel, origins: v.origins, attachments: v.attachments,
-        subtypes: v.subtypesL, confAllowed: v.confAllowed, confDefault: v.confDefault, circuitL: v.circuitL, active: v.active,
+        subtypes: v.subtypesL, confAllowed: v.confAllowed, confDefault: v.confDefault, circuitL: v.circuitL, active: v.active, reviewMonths: v.reviewMonths,
       };
     }),
     families: ctx.families.map((x) => ({ key: x.key, label: fr ? x.labelFr : x.labelEn })),
@@ -51,23 +51,22 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
     currentDepartment: ctx.user.department,
     perms: [...ctx.perms],
     seesAll: ctx.seesAll,
+    files: fileRules(process.env),
   };
   return (
     <html lang={ctx.lang} className={inter.variable}>
       <body>
-        <AppProvider t={ctx.t} lang={ctx.lang} data={data}>
+        <AppProvider t={ctx.t} lang={ctx.lang} data={data} todo={todo}>
           <div className="app">
             <Sidebar
               screens={ctx.screens}
-              badge={mine.length}
               user={{ name: ctx.user.name, initials: ctx.user.initials }}
               roleTitle={ctx.t[`role_${ctx.role}`]}
               keystoneUrl={keystoneUrl()}
             />
             <div className="app-col">
               <Header notif={{
-                pending: mine.map((w) => ({ id: w.id, docId: w.docId, docTitle: w.docTitle, letter: w.letter, stepName: w.stepName, dueF: w.dueF, href: w.href })),
-                recent: recent.map((a) => ({ id: a.id, when: a.when, user: a.user, actionLabel: a.actionLabel, ref: a.ref, href: a.href })),
+                recent: recent.map((a) => ({ id: a.id, when: a.when, user: a.user, actionLabel: a.actionLabel, ref: a.currentId ?? a.ref, href: a.href })),
               }} />
               <main className="app-main">{children}</main>
             </div>

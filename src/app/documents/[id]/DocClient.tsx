@@ -4,22 +4,25 @@ import { useState } from 'react';
 import { useApp } from '@/components/shell/AppProvider';
 import { Icon } from '@/components/ui/Icon';
 import type { VersionLite } from '@/components/dialogs/types';
+import { previewKind } from '@/lib/filetypes';
 import styles from './document.module.css';
 
 type PreviewDoc = { id: string; title: string; revLabel: string; departmentL: string; owner: string; dateF: string };
 type PreviewFile = { url: string; mime: string; name: string; sizeF: string };
 
 /**
- * Centre pane: the stored file when the browser can show it (PDF, image, plain text); a download panel for any other
- * stored file (no conversion exists); the design's paper mock-up only for a version without a file. `pages` is null
- * when the PDF's page count is unknown: the browser's own viewer then pages through it.
+ * Centre pane: the stored file when the file route serves it inline (PDF, PNG/JPEG/GIF/WebP image, plain text); a
+ * download panel for any other stored file (no conversion exists); the design's paper mock-up only for a version without
+ * a file. `pages` is null when the PDF's page count is unknown: the browser's own viewer then pages through it.
  */
 export function Preview({ doc, file, pages, hasVersion }: { doc: PreviewDoc; file: PreviewFile | null; pages: number | null; hasVersion: boolean }) {
   const { t } = useApp();
   const [page, setPage] = useState(1);
-  const isPdf = file?.mime === 'application/pdf';
-  const isImage = !!file && file.mime.startsWith('image/') && file.mime !== 'image/svg+xml';
-  const isText = file?.mime === 'text/plain';
+  // Only what the file route serves inline: any other image (image/vnd.dwg, image/tiff…) would show as a broken one.
+  const kind = previewKind(file?.mime);
+  const isPdf = kind === 'pdf';
+  const isImage = kind === 'image';
+  const isText = kind === 'text';
   const shown = isPdf || isImage || isText;
   const paged = isPdf && pages != null;
   const rev = doc.revLabel ? `${t.rev_short} ${doc.revLabel}` : '';
@@ -75,6 +78,8 @@ export type RevItem = {
   lines: string[];
   /** Working versions newest first (drafting circle); outside it, only the final file of the revision in force; null otherwise. */
   versions: RevVersion[] | null;
+  /** Address of its approval record (PDF), once approved; null otherwise. */
+  visa: string | null;
 };
 
 /**
@@ -94,6 +99,11 @@ export function RevisionsTab({ docId, revisions, current }: { docId: string; rev
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <span style={{ fontSize: 13, fontWeight: 500 }}>{t.rev_short} {r.letter}</span>
               <span className={r.tagClass} style={{ fontSize: 10.5, padding: '2px 8px' }}>{r.statusLabel}</span>
+              {r.visa && (
+                <a href={r.visa} className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 8px', marginLeft: 'auto' }} title={t.visa_hint} aria-label={`${t.visa} ${r.letter}`}>
+                  <Icon name="download" size={12} />{t.visa}
+                </a>
+              )}
             </div>
             {r.lines.map((l) => <div key={l} className="text-muted" style={{ fontSize: 11, marginTop: 3 }}>{l}</div>)}
             {r.versions && r.versions.length > 0 && (

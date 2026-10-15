@@ -11,6 +11,7 @@ const ITEMS: { key: Screen; href: string; icon: IconName }[] = [
   { key: 'home', href: '/', icon: 'home' },
   { key: 'explorer', href: '/explorateur', icon: 'folder' },
   { key: 'search', href: '/recherche', icon: 'search' },
+  { key: 'departments', href: '/departements', icon: 'building' },
   { key: 'workflow', href: '/validations', icon: 'check' },
   { key: 'retention', href: '/archivage', icon: 'archive' },
   { key: 'admin', href: '/administration', icon: 'shield' },
@@ -21,14 +22,16 @@ export function activeScreen(pathname: string): Screen | 'document' {
   return ITEMS.find((i) => i.href !== '/' && pathname.startsWith(i.href))?.key ?? 'home';
 }
 
-export function Sidebar({ screens, badge, user, roleTitle, keystoneUrl }: {
+export function Sidebar({ screens, user, roleTitle, keystoneUrl }: {
   screens: Record<Screen, boolean>;
-  badge: number;
   user: { name: string; initials: string };
   roleTitle: string;
   keystoneUrl: string;
 }) {
-  const { t, open } = useApp();
+  const { t, open, todo } = useApp();
+  // Items of « À traiter » (AppProvider), shown on Accueil, whose list holds them all: the design puts the badge on
+  // Validations, when the list only held approval steps.
+  const badge = todo.length;
   const pathname = usePathname();
   const sc = activeScreen(pathname);
   return (
@@ -47,7 +50,7 @@ export function Sidebar({ screens, badge, user, roleTitle, keystoneUrl }: {
             <Link key={it.key} href={it.href} aria-current={current ? 'page' : undefined} className={styles.item} style={{ borderLeftColor: current ? 'var(--color-accent)' : 'transparent' }}>
               <Icon name={it.icon} />
               <span style={{ flex: 1 }}>{t[`nav_${it.key}`]}</span>
-              {it.key === 'workflow' && badge > 0 && <span className="tag tag-accent" style={{ padding: '1px 7px', fontSize: 10 }}>{badge}</span>}
+              {it.key === 'home' && badge > 0 && <span className="tag tag-accent" style={{ padding: '1px 7px', fontSize: 10 }} title={t.todo}>{badge}</span>}
             </Link>
           );
         })}

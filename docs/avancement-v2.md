@@ -38,11 +38,12 @@ recevoir.
   (rejeu, conflit d'identifiant, type MIME), stockage hors transaction, accessibilité des dialogues et des listes.
 
 ## Reste à faire
+L'inventaire détaillé et vérifié (129 points, dont 69 développables sans décision) est dans `docs/reste-a-faire.md`.
 - Dépôt de fichiers réels : vérifié dans le navigateur (création depuis un fichier et version de travail, `PRO-HSE-0003`
   le 7 octobre, `PRO-QUA-0003` le 8) ; reste à tester dans la fenêtre de l'app Mac (dépôt et téléchargement).
-- Corrections restées partielles après la revue du 8 octobre (détail : `docs/decisions.md`, T-03) : renommage des
-  fichiers stockés après reclassement, conservation comptée par révision remplacée, type verrouillé au dépôt d'une pièce
-  attendue par Keystone, liste des demandes de modification filtrée selon la visibilité.
+- Corrections restées partielles après la revue du 8 octobre (détail : `docs/decisions.md`, T-03) : faites le
+  9 octobre (renommage des fichiers après reclassement, type verrouillé au dépôt d'une pièce attendue, demandes filtrées
+  selon la visibilité), sauf la conservation par révision remplacée, qui attend une décision (O-09).
 - Stockage SharePoint : à tester contre un vrai tenant.
 - Intégrations réelles Keystone (API projets ou base partagée : à décider, O-03) et Vigie (`VIGIE_API_URL`),
   authentification réelle (fournisseur à choisir, O-02).

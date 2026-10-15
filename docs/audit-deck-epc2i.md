@@ -696,7 +696,7 @@ par les décisions D-06 à D-21 et par le modèle v2.
 
 - **Constat sur la v1** : Aucune page par département. Briques : l'axe Service de l'explorateur, trois recherches enregistrées du jeu de démonstration ; la table `users` n'avait pas de département.
 - **Vérification** : « Partiel », confirmé. Tout l'état d'écran est dans l'URL, donc partageable.
-- **Aujourd'hui — partiel.** Toujours pas de page par département. Briques : axe Département de l'explorateur (`src/app/explorateur/page.tsx`), facettes de la recherche dans l'URL, département de chaque utilisateur (`users.department`). Les recherches enregistrées sont celles du jeu de démonstration (`SAVED`, `src/db/seed-org.ts`) ; aucune action ne permet d'en créer (`listSavedSearches`, `src/lib/queries.ts`, en lecture seule). Le recueil des besoins par département (slide 9) n'est pas fait.
+- **Aujourd'hui — partiel.** Depuis le 11 octobre 2026, chaque département a sa page (`/departements/[code]`, entrée « Départements » de la barre latérale, ouverte sur le département de l'utilisateur) : documents en vigueur, échéances, circuits en cours, recherches partagées avec le département et le groupe, et filtres mis en avant, chacun avec ses valeurs les plus fréquentes et un lien vers la recherche filtrée (`departmentPage`, `src/lib/queries.ts` ; point 11 de `docs/reste-a-faire.md`). Tout y suit les règles de lecture des autres écrans (D-14). Les filtres mis en avant se règlent par département dans Administration › Organisation ; par défaut, type de document, statut, projet ou programme. Les recherches enregistrées sont créables depuis la même date : personnelles pour chacun, partagées avec un département ou le groupe par les gestionnaires documentaires et les administrateurs (`saveSearch`, `src/lib/actions.ts` ; point 2). Reste : le recueil des besoins par département (slide 9) n'est pas fait, donc ni le choix des filtres et indicateurs de chaque métier, ni la liste des pages au-delà des départements provisoires (O-04, A19).
 
 <a id="g13"></a>
 #### G13 — Restriction des accès (classe de confidentialité, statut brouillon…)
@@ -723,7 +723,7 @@ par les décisions D-06 à D-21 et par le modèle v2.
 
 - **Constat sur la v1** : Recherche plein texte insensible aux accents, facettes affaire, type, entité, service et statut, recherches enregistrées, export CSV, champ global dans l'en-tête.
 - **Vérification** : « Couvert » ramené à « partiel ». Les facettes ignoraient presque toutes les métadonnées du deck ; les résultats et l'export n'étaient pas filtrés selon les droits ; les recherches enregistrées étaient figées ; le filtrage se faisait en mémoire et le contenu des fichiers n'était pas indexé.
-- **Aujourd'hui — partiel.** Facettes du modèle v2 : projet ou programme, famille, type, origine, rattachement, département, statut, confidentialité (`FACET_KEYS`, `src/lib/search.ts`). Plein texte sur le titre, l'ID et les anciens ID, les mots-clés, le type, le sous-type, l'organisme source et la référence externe. Résultats et export limités aux documents visibles. Reste : pas de recherche dans le contenu des fichiers ; filtrage en mémoire sur tous les documents (`runSearch`) ; pas de facette site, auteur, date, langue ou mot-clé ; recherches enregistrées non créables par l'utilisateur.
+- **Aujourd'hui — partiel.** Facettes du modèle v2 : projet ou programme, famille, type, sous-type, origine, rattachement, département, site, propriétaire, auteur, statut, échéance dépassée (depuis le 12 octobre 2026), confidentialité, langue, mots-clés, organisme source, phase, lot, discipline et thème (`FACET_KEYS`, `src/lib/search.ts`, depuis le 11 octobre 2026), et une période sur la date de modification, d'émission, d'effet, de révision ou d'expiration. Plein texte sur le titre, l'ID et les anciens ID, les mots-clés, le type, le sous-type, l'organisme source, la référence externe, le propriétaire, l'auteur et l'ID d'étude, classé par pertinence ; tri au choix dans l'URL (pertinence, modification, émission, échéance, ID, titre). Résultats, comptes et export limités aux documents visibles. Les recherches enregistrées sont créables depuis le 11 octobre 2026 (personnelles, de département ou de groupe ; elles gardent les critères, la période et le tri, jamais de documents). Depuis le 12 octobre 2026, la base filtre, compte, trie et pagine la recherche, son export et l'explorateur (`searchDocs`, `explorerDocs`, `src/lib/queries.ts`) : visibilité traduite en SQL (`readableSql`, `src/lib/access.ts`), texte sans accents ni casse indexé par trigrammes (table `document_terms`), 50 résultats par page ; `runSearch` ne sert plus que de référence aux tests. Reste : pas de recherche dans le contenu des fichiers ; l'en-tête commun, l'Accueil, Archivage et les pages de département lisent encore tous les documents visibles (`listDocs`, point 50 de `docs/reste-a-faire.md`).
 
 <a id="g16"></a>
 #### G16 — Liens pour ouvrir le document (vers la bibliothèque SharePoint)
@@ -741,7 +741,7 @@ par les décisions D-06 à D-21 et par le modèle v2.
 
 - **Constat sur la v1** : Écran Validations avec approuver, rejeter, déléguer, commentaires et mention de signature électronique.
 - **Vérification** : « Couvert » ramené à « partiel ». Le circuit était choisi à la main, la validation pouvait être contournée (publication au dépôt, nouvelle version d'un document publié), et la « signature eIDAS » n'était qu'un libellé.
-- **Aujourd'hui — intégré.** Écran Validations : approuver, rejeter, déléguer, commenter. Le circuit vient du type, et les contournements ont disparu : pas de publication au dépôt, pas de version de travail hors brouillon (`addWorkingVersion`), dernière approbation soumise au droit Publier (`decideStep`, `src/lib/actions.ts`). Toujours aucune signature électronique : le champ `sign` des étapes n'est jamais activé (`requestValidation`) ; voir M04.
+- **Aujourd'hui — intégré.** Écran Validations : approuver, rejeter, déléguer, commenter. Le circuit vient du type, et les contournements ont disparu : pas de publication au dépôt, pas de version de travail hors brouillon (`addWorkingVersion`), dernière approbation soumise au droit Publier (`decideStep`, `src/lib/actions.ts`). Depuis le 11 octobre 2026, un rejet exige un motif, que l'auteur et le propriétaire retrouvent sur la fiche et dans « À traiter », et le demandeur (ou un gestionnaire documentaire) peut rappeler sa demande avant la dernière approbation (`recallValidation`) ; points 5 et 9 de `docs/reste-a-faire.md`. Toujours aucune signature électronique : le champ `sign` des étapes n'est jamais activé (`requestValidation`) ; voir M04.
 
 <a id="g18"></a>
 #### G18 — Fonction : suivi des workflows en cours lancés par l'utilisateur
@@ -750,7 +750,7 @@ par les décisions D-06 à D-21 et par le modèle v2.
 
 - **Constat sur la v1** : Filtres « À valider », « En cours » (tous les circuits de tous les utilisateurs) et « Terminées » ; pas de filtre « mes demandes ».
 - **Vérification** : « Partiel », confirmé.
-- **Aujourd'hui — partiel.** Le filtre « Mes demandes » de l'écran Validations montre les circuits lancés par l'utilisateur (`FILTERS`, `src/app/validations/page.tsx`). Reste : ses demandes de modification et de retrait (Vigie) ne se voient que document par document, dans l'onglet Demandes de la fiche (`listChangeRequests`, `src/lib/queries.ts`) ; il n'existe pas de liste « mes demandes Vigie ».
+- **Aujourd'hui — partiel.** Le filtre « Mes demandes » de l'écran Validations montre les circuits lancés par l'utilisateur (`FILTERS`, `src/app/validations/page.tsx`). Le 9 octobre, ses demandes de modification et de retrait (Vigie) ne se voyaient que document par document, dans l'onglet Demandes de la fiche. Depuis le 11 octobre 2026, la vue « Mes demandes Vigie » de l'écran Validations les liste toutes avec leur statut, leur ECO et leur modificateur désigné, selon les règles de lecture de la fiche (`listChangeRequests(ctx, { mine: true })`, `src/lib/queries.ts`) : il ne manque plus rien à G18 côté Codex, le statut ci-dessus reste celui du 9 octobre (§5.1).
 
 <a id="g19"></a>
 #### G19 — Fonction : suivi des actions en attente de l'utilisateur
@@ -759,7 +759,7 @@ par les décisions D-06 à D-21 et par le modèle v2.
 
 - **Constat sur la v1** : Indicateur « À valider » et liste « À traiter » sur l'accueil, pastille et notifications dans l'application.
 - **Vérification** : « Couvert », confirmé, avec réserves : notifications seulement dans l'application ; pas de révisions planifiées.
-- **Aujourd'hui — partiel.** « À traiter » sur l'accueil et le filtre « À valider » montrent les étapes de circuit assignées à l'utilisateur (`src/app/page.tsx`, `src/app/validations/page.tsx`). Le modèle v2 a créé de nouvelles actions qui n'y apparaissent pas : une révision ouverte à son nom par un ECO accepté n'est listée nulle part ; les échéances de revue et d'expiration s'affichent pour tous les documents visibles, pas comme des tâches du propriétaire (`deadlines`, `src/lib/queries.ts`). Aucune notification par e-mail ou Teams. D'où « partiel » aujourd'hui.
+- **Aujourd'hui — partiel.** Le 9 octobre, « À traiter » sur l'accueil et le filtre « À valider » ne montraient que les étapes de circuit assignées à l'utilisateur ; une révision ouverte à son nom par un ECO accepté n'était listée nulle part, et les échéances de revue et d'expiration s'affichaient pour tous les documents visibles, pas comme des tâches du propriétaire. Depuis le 11 octobre 2026, une seule liste (`myActions`, `src/lib/queries.ts`) alimente « À traiter », la pastille d'Accueil et la cloche : étapes à décider, révisions confiées par un ECO, renvoyées en rédaction ou jamais soumises, modifications acceptées à greffer (D-26), revues et expirations des documents dont l'utilisateur est propriétaire ou propriétaire de processus, chacune avec un lien vers l'endroit où agir, seulement s'il voit le document (D-14) et peut agir. Reste l'absence de notification hors de l'application (e-mail, Teams), de relance et d'escalade (point 104 de `docs/reste-a-faire.md`) : d'où « partiel », statut du 9 octobre maintenu (§5.1).
 
 <a id="g20"></a>
 #### G20 — Niveau 1 – Hiérarchie des types de contenu (GED Document parent + 4 types)
@@ -777,7 +777,7 @@ par les décisions D-06 à D-21 et par le modèle v2.
 
 - **Constat sur la v1** : ID clé primaire, généré automatiquement, jamais modifié.
 - **Vérification** : « Couvert », confirmé. Format incohérent quand le rattachement à une affaire venait après coup ; compteur max+1 sans séquence.
-- **Aujourd'hui — intégré.** `TYPE-CONTEXTE-SEQ`, figé dès la première approbation : `updateMeta` ne change l'ID que si aucune révision n'a encore été approuvée. Les anciens ID sont gardés en alias (`documents.aliases`) et restent résolus (`getDoc`, `src/lib/queries.ts`). Réserve technique : le compteur reste un max+1 (`nextDocId`), suffisant avec PGlite dans un seul processus.
+- **Aujourd'hui — intégré.** `TYPE-CONTEXTE-SEQ`, figé dès la première approbation : `updateMeta` ne change l'ID que si aucune révision n'a encore été approuvée. Les anciens ID sont gardés en alias (`documents.aliases`) et restent résolus (`getDoc`, `src/lib/queries.ts`). Depuis le 10 octobre 2026, le numéro vient d'un compteur par couple (type, contexte), incrémenté atomiquement (`id_counters`, `nextDocId`), et les imports passent un par un (verrou consultatif) : l'attribution est sûre aussi avec un Postgres serveur en READ COMMITTED, imports compris.
 
 <a id="g22"></a>
 #### G22 — Tronc commun : Titre
@@ -876,7 +876,7 @@ par les décisions D-06 à D-21 et par le modèle v2.
 
 - **Constat sur la v1** : `keywords` facultatif, saisi en texte libre séparé par des virgules, cherché en plein texte.
 - **Vérification** : « Partiel », confirmé ; pas de facette mot-clé.
-- **Aujourd'hui — partiel.** Inchangé : texte libre séparé par des virgules (`readFields`, `src/lib/actions.ts`), cherché en plein texte. Ni vocabulaire géré ni facette.
+- **Aujourd'hui — partiel.** Texte libre séparé par des virgules (`readFields`, `src/lib/actions.ts`), cherché en plein texte ; facette « Mots-clés » de la recherche depuis le 11 octobre 2026 (plusieurs valeurs par document). Pas de vocabulaire géré.
 
 <a id="g33"></a>
 #### G33 — Tronc commun : Version / Révision
@@ -912,7 +912,7 @@ par les décisions D-06 à D-21 et par le modèle v2.
 
 - **Constat sur la v1** : Aucune date de révision planifiée ; un circuit « Revue annuelle » se lançait à la main.
 - **Vérification** : « Absent », confirmé.
-- **Aujourd'hui — intégré.** `documents.review_due_at` saisie à la main ; échéance « Réviser » sur l'accueil et dans Archivage (`deadlines`, `src/lib/queries.ts`). Pas de périodicité par type ni de lancement de la revue depuis l'échéance.
+- **Aujourd'hui — intégré.** `documents.review_due_at` saisie à la main ; échéance « Réviser » sur l'accueil et dans Archivage (`deadlines`, `src/lib/queries.ts`). Depuis le 12 octobre 2026 : indicateur « Revue en retard » (fiche, explorateur, recherche, Archivage, « À traiter ») ; « Revue effectuée » (propriétaire, propriétaire de processus, gestionnaire documentaire) fixe la prochaine date sans créer de révision ; périodicité de revue par type (`doc_types.review_months`, vide par défaut en attendant ses valeurs), qui fixe la date d'un document entrant en vigueur sans date (`src/lib/review.ts`, point 13 de `docs/reste-a-faire.md`).
 
 <a id="g37"></a>
 #### G37 — Tronc commun : Date d'expiration (fin de validité)
@@ -921,7 +921,7 @@ par les décisions D-06 à D-21 et par le modèle v2.
 
 - **Constat sur la v1** : Une seule date, la fin de conservation, qui servait aussi de fin de validité.
 - **Vérification** : « En conflit », confirmé.
-- **Aujourd'hui — intégré.** `documents.expires_at` est distincte de la conservation ; échéance « Renouveler ». Les déclencheurs de conservation « fin de contrat » et « expiration » partent de cette date (`src/lib/retention.ts`).
+- **Aujourd'hui — intégré.** `documents.expires_at` est distincte de la conservation ; échéance « Renouveler ». Les déclencheurs de conservation « fin de contrat » et « expiration » partent de cette date (`src/lib/retention.ts`). Depuis le 12 octobre 2026, indicateur « Expiré » (fiche, explorateur, recherche, Archivage, « À traiter »), sans nouveau statut ni automatisme : la fiche propose les demandes de modification et de retrait à Vigie (D-17). L'effet de l'expiration reste ouvert (A17).
 
 <a id="g38"></a>
 #### G38 — Tronc commun : Langue (choix, facultatif)
@@ -1020,7 +1020,7 @@ par les décisions D-06 à D-21 et par le modèle v2.
 
 - **Constat sur la v1** : Table `audit_log`, téléchargements journalisés, consultation et export CSV, onglet Historique, gel juridique et rétention.
 - **Vérification** : « Couvert » ramené à « partiel ». Plusieurs actions n'étaient pas journalisées ; identité choisie par cookie ; consultations non journalisées ; conservation incomplète ; gel juridique impossible à lever.
-- **Aujourd'hui — partiel.** Journal des actions sur les documents et des téléchargements (`audit`, `src/lib/lifecycle.ts` ; route fichier), export CSV réservé à l'administration (`src/app/api/export/audit/route.ts`), onglet Historique de la fiche ; le gel juridique se lève et c'est journalisé (`releaseHold`). Reste : ne sont pas journalisés les changements de droits (`togglePermission`), d'organisation (`addOrgValue`), de titulaires de fonction (`addFunctionHolder`, `removeFunctionHolder`), du registre (`updateType`), ni les commentaires (`addComment`) ; comme `audit_log.doc_id` est obligatoire, le journal ne peut pas recevoir d'événement d'administration ; les consultations ne sont pas journalisées ; l'identité est simulée, le journal n'a donc pas de valeur probante ; un reclassement réécrit `audit_log.doc_id` (`updateMeta`), le journal n'est donc pas en ajout seul.
+- **Aujourd'hui — partiel.** Journal des actions sur les documents et des téléchargements (`audit`, `src/lib/lifecycle.ts` ; route fichier), export CSV réservé à l'administration (`src/app/api/export/audit/route.ts`), onglet Historique de la fiche ; le gel juridique se lève et c'est journalisé (`releaseHold`). Depuis le 10 octobre 2026, le journal est en ajout seul (la base refuse UPDATE, DELETE et TRUNCATE, déclencheurs posés au démarrage par `src/db/index.ts` ; un reclassement ne réécrit plus `audit_log.doc_id`), il reçoit les événements sans document (`target_kind`, `target_id`) : droits, organisation, titulaires de fonction, registre des types avec l'avant et l'après, ainsi que les commentaires de circuit, les exports CSV et les champs modifiés par `updateMeta` ; l'horodatage est en `timestamptz` (UTC, affiché à l'heure de Paris). Reste : les consultations ne sont pas journalisées ; l'identité est simulée, le journal n'a donc pas de valeur probante.
 
 ## 6. Architecture
 
@@ -1069,7 +1069,7 @@ Enfin, la spec Keystone (Keystone/docs/spec/00-overview.md) attend déjà que Co
 | Slide 6 · 3 / Slide 7 · 1 – Création de la bibliothèque unique | Une bibliothèque portant le type de contenu parent « GED Document » et ses 4 types enfants DI, DE, DP et DR. Chacun a le tronc commun et ses champs de niveau 4. | Une seule table documents, mais sans notion de domaine ni de type de contenu : les mêmes colonnes pour tous, aucun champ propre à un domaine. Seul affaireCode existe ; il manque phase, lot, discipline, organisme source, sens entrant/sortant, programme de recherche, etc. | Pas de types de contenu : deux axes origine et rattachement, et des champs de contexte (D-08). Voir G20. |
 | Slide 6 · 4 / Slide 7 · 5 – Migration des documents par vagues | Déplacer les documents existants par lots en renseignant leurs métadonnées. | Pas d'import en masse, seulement le dépôt fichier par fichier. Si SharePoint reste le coffre, la migration se fait avec les outils Microsoft (Migration Manager, PnP), qui gardent l'historique des versions. Vers un Codex autonome, il faudrait écrire un import. | Outil séparé qui appelle `POST /api/import` (D-21). Voir G46. |
 | Slide 6 · 5 – Suppression ou archivage des anciennes arborescences | Fermer les anciens emplacements pour éviter les doublons. | Hors du périmètre de l'application. L'« archivage » de Codex concerne la rétention d'un document, pas des dossiers. | Hors de Codex (D-21). |
-| Slide 7 · 2 – Paramétrage : données de filtrage | Colonnes indexées, navigation par métadonnées, filtres clés et vues de la bibliothèque. | Les facettes de /recherche (affaire, type, entité, service, statut), les filtres de l'explorateur, les recherches enregistrées et l'export CSV. Le calcul se fait en mémoire sur tous les documents (src/lib/search.ts). Il faudra un index, ou Microsoft Search si SharePoint est la source. | Facettes v2, filtrage selon les droits ; toujours en mémoire, sans le contenu des fichiers. Voir G15. |
+| Slide 7 · 2 – Paramétrage : données de filtrage | Colonnes indexées, navigation par métadonnées, filtres clés et vues de la bibliothèque. | Les facettes de /recherche (affaire, type, entité, service, statut), les filtres de l'explorateur, les recherches enregistrées et l'export CSV. Le calcul se fait en mémoire sur tous les documents (src/lib/search.ts). Il faudra un index, ou Microsoft Search si SharePoint est la source. | Facettes v2, filtrage selon les droits ; filtrage, comptes et pages calculés en base depuis le 12 octobre 2026, sans le contenu des fichiers. Voir G15. |
 | Slide 7 · 2 – Codification automatique du nom selon le type | Un ID unique et immuable, construit à partir du type de document. | nextDocId (actions.ts l.61-70) produit D-#### pour le groupe et &lt;affaire>-DOC-### pour les affaires (compteur max+1 dans une transaction). Ce n'est pas dérivé du type. De son côté, Keystone attend TYPE-PROJ-SEQ (par exemple PID-HLT-026). | `TYPE-CONTEXTE-SEQ` attribué par Codex (D-09, D-10). Voir G04. |
 | Slide 7 · 3 – Gestion du versioning | Le versioning natif SharePoint : versions mineures pour les brouillons, majeures pour les publications, avec historique et restauration. | document_versions avec un fichier par version, passage mineure/majeure, restauration et comparaison. La logique est équivalente au versioning SharePoint, mais réécrite. | Révisions en lettres et versions de travail (D-11, D-12). Voir G05. |
 | Slide 7 · 4 – Premiers documents types (modèles) | Des modèles Word ou Excel rattachés aux types de contenu. | La table templates et le bouton « Nouveau depuis un modèle ». Mais le document créé n'a aucun fichier : createFromTemplate n'enregistre pas de contenu. | Modèles = documents FRM au contexte QMS, fichier copié à la création (D-10). Voir G06. |
@@ -1077,9 +1077,9 @@ Enfin, la spec Keystone (Keystone/docs/spec/00-overview.md) attend déjà que Co
 | Slide 8 · Flux de validation (circuit prédéfini selon le type) | Chaque type de document a son circuit d'approbation. | requestApproval et decideStep gèrent les étapes, la délégation, les commentaires, une signature simulée et la publication automatique, et empêchent de valider son propre document. Mais l'utilisateur choisit le circuit parmi 3, et les valideurs sont des identifiants codés en dur (circuitSteps, l.299-309). Il n'y a pas de table de circuits par type. | Circuit par type, étapes par fonction (D-15). Voir G08. |
 | Slide 8 · Modification d'un document validé (ECR/ECO) | Une demande de modification justifiée et approuvée (ECR) avant d'autoriser la nouvelle révision (ECO). | Il n'y a pas d'objet « demande de modification » : on dépose directement une nouvelle version (elle repasse en brouillon si l'auteur n'a pas le droit Publier), puis on lance un circuit. Keystone a son propre module ECO pour les pièces : la frontière entre les deux reste à définir. | ECR/ECO dans Vigie, appliqués par Codex (D-16). Voir G09. |
 | Slide 8 · Passage à l'état obsolète | Une demande, puis une validation, pour retirer un document de la circulation (statuts Remplacé ou Obsolète). | Ni statut Obsolète ou Remplacé, ni demande associée. L'archivage (écran Archivage, droit Archiver) est ce qui s'en rapproche le plus. Codex a 4 statuts, le deck en a 7. | Retrait décidé dans Vigie, état Obsolète dans Codex (D-17). Voir G10. |
-| Slide 9 · 1 – Besoins utilisateurs par département (et pages métier, slide 10) | Recueillir les besoins par département et proposer des pages dédiées avec les filtres principaux. | La maquette est pensée autour d'une seule utilisatrice de référence (HSE). Pas de pages par métier : seulement des recherches enregistrées et les axes de l'explorateur. | Pas de pages métiers ; recueil des besoins non fait. Voir G12. |
+| Slide 9 · 1 – Besoins utilisateurs par département (et pages métier, slide 10) | Recueillir les besoins par département et proposer des pages dédiées avec les filtres principaux. | La maquette est pensée autour d'une seule utilisatrice de référence (HSE). Pas de pages par métier : seulement des recherches enregistrées et les axes de l'explorateur. | Une page par département depuis le 11 octobre 2026 (`/departements/[code]`), avec des filtres mis en avant par défaut, réglables dans Administration ; recueil des besoins non fait, donc pas de choix par métier. Voir G12. |
 | Slide 9 · 2 – App de base : création, recherche, liens d'ouverture vers SharePoint | L'app crée et retrouve les documents, et l'ouverture renvoie au fichier dans la bibliothèque SharePoint (donc édition Office). | Création et recherche sont présentes. L'ouverture passe par /api/documents/[id]/file : aperçu PDF ou image et téléchargement enregistré dans l'audit, sans lien SharePoint ni édition Office. | Ouverture dans Codex, sans lien SharePoint (D-06). Voir G16. |
-| Slide 9 · 3 / Slide 11 – Workflows progressifs, suivi de mes workflows et de mes actions | L'app suit les workflows lancés par l'utilisateur et les actions qui l'attendent. | L'écran /validations (à valider, en cours, terminées) et l'indicateur « À valider » de l'accueil. L'ID est bien fourni à la création. Les demandes de passage en obsolète et de modification manquent. | « Mes demandes » et « À valider » ; demandes Vigie seulement par document. Voir G18, G19. |
+| Slide 9 · 3 / Slide 11 – Workflows progressifs, suivi de mes workflows et de mes actions | L'app suit les workflows lancés par l'utilisateur et les actions qui l'attendent. | L'écran /validations (à valider, en cours, terminées) et l'indicateur « À valider » de l'accueil. L'ID est bien fourni à la création. Les demandes de passage en obsolète et de modification manquent. | « Mes demandes », « À valider » et « Mes demandes Vigie » ; « À traiter » regroupe toutes les actions qui attendent l'utilisateur (depuis le 11 octobre). Voir G18, G19. |
 | Slide 10 · Accès restreints (confidentialité, brouillon) | Masquer certains documents selon leur classe de confidentialité ou leur statut brouillon. | Les droits sont une matrice rôle × permission globale. La confidentialité n'est qu'une étiquette, et les brouillons sont visibles de tous. | `canRead` : brouillons réservés au cercle de rédaction, confidentialité appliquée ; identité simulée. Voir G13. |
 
 ### 6.4 Les cinq options étudiées
@@ -1371,7 +1371,7 @@ tranché dans le modèle ou le code, ouvert, ou sans objet.
 
 - **Constat** : La 'Date d'émission' est décrite comme 'Première émission', donc figée à la première révision, ce qui laisse sans date la révision courante. Les dates d'effet, de révision et d'expiration sont facultatives et sans automatisme décrit. Pour les DE, la slide 18 ajoute une date de réception.
 - **Question** : Où se trouve la date d'approbation de la révision courante ? Pour un document externe, la date d'émission est-elle celle de l'émetteur, distincte de la date de réception ? La date de révision est-elle calculée selon une périodicité par type (par exemple procédures tous les trois ans) ? Que se passe-t-il automatiquement à la date d'effet (passage En vigueur ?) et à la date d'expiration (alerte, passage Obsolète, renouvellement) ?
-- **Suite** : **Répondu en partie**, dans le code : date d'émission = première mise en vigueur, date d'effet et date d'approbation portées par chaque révision. Proposé, non confirmé. Date d'émission d'un document externe, périodicité de revue et effet de la date d'expiration : ouverts.
+- **Suite** : **Répondu en partie**, dans le code : date d'émission = première mise en vigueur, date d'effet et date d'approbation portées par chaque révision. Proposé, non confirmé. Périodicité de revue : mécanisme en place depuis le 12 octobre 2026 (une périodicité par type, vide en attendant ses valeurs). Date d'émission d'un document externe et effet de la date d'expiration (seul un indicateur « Expiré » existe) : ouverts.
 
 #### A18 — Gestion multilingue (slides 13)
 
@@ -1383,7 +1383,7 @@ tranché dans le modèle ou le code, ouvert, ou sans objet.
 
 - **Constat** : La slide 10 annonce des 'pages dédiées métiers' qui 'mettent en avant les filtres principaux', sans liste des métiers ni des filtres.
 - **Question** : Quelles pages métiers faut-il au lancement ? Pour chacune, quels filtres par défaut, quels indicateurs et quels raccourcis de création ? Qui les définit et les maintient ? L'utilisateur arrive-t-il automatiquement sur sa page selon son département ou choisit-il ? Ces pages sont-elles de simples recherches enregistrées, comme dans Codex, ou des tableaux de bord distincts ?
-- **Suite** : **Ouvert.**
+- **Suite** : **Ouvert.** Un squelette existe depuis le 11 octobre 2026 (point 11 de `docs/reste-a-faire.md`, *proposé, non confirmé*) : une page par département provisoire, ouverte sur celui de l'utilisateur, qui peut en choisir un autre ; tableau de bord distinct des recherches enregistrées, qu'il reprend ; filtres mis en avant par défaut (type, statut, projet ou programme), réglables par département dans Administration par qui a le droit Administrer. Les pages, filtres, indicateurs et raccourcis de chaque métier attendent le recueil des besoins (slide 9) et l'organigramme (O-04).
 
 #### A20 — Demande de passage à Obsolète (slides 8, 9, 11)
 
@@ -1527,7 +1527,7 @@ tranché dans le modèle ou le code, ouvert, ou sans objet.
 
 - **Pourquoi** : La traçabilité est un objectif (slide 3) mais n'est pas spécifiée. Les audits ISO et les inspections ICPE ou pyrotechniques demandent de prouver qui a consulté, modifié ou approuvé quoi.
 - **Question** : Quels événements faut-il tracer (consultation, téléchargement, modification de métadonnées, décisions, changement de droits) ? Combien de temps garde-t-on ce journal ? Qui peut le consulter ? Faut-il un export pour les auditeurs ?
-- **Suite** : **Ouvert** : journal partiel, voir G48. L'export du journal est réservé à l'administration.
+- **Suite** : **Ouvert** : journal partiel, voir G48. L'export du journal est réservé à l'administration. Depuis le 12 octobre 2026, la fiche de visa d'une révision approuvée dit qui l'a approuvée et quand, délégations comprises, à tout lecteur de la révision (point 21 de `docs/reste-a-faire.md`).
 
 #### M06 — Diffusion et prise de connaissance
 
@@ -1563,13 +1563,13 @@ tranché dans le modèle ou le code, ouvert, ou sans objet.
 
 - **Pourquoi** : Les statuts 'Remplacé' et l'ECR/ECO supposent des relations : remplacé par, référence, formulaire lié à une procédure, documents impactés. Le modèle de métadonnées n'en prévoit aucune.
 - **Question** : Quelles relations faut-il gérer : remplace / remplacé par, référence, annexe, enregistrement issu d'une procédure, document impacté par une ECR ? Doivent-elles être obligatoires pour certains statuts ?
-- **Suite** : **Ouvert.** Le lien « remplacé par » proposé par l'assistant le 7 octobre à 17:33 n'est pas implémenté.
+- **Suite** : **Ouvert en partie.** Depuis le 12 octobre 2026, liens « remplace » / « remplacé par » et « voir aussi » entre documents (`document_links`, point 16 de `docs/reste-a-faire.md`) : remplacement proposé à la demande de retrait et lié quand le retrait accepté par Vigie s'applique, ajout et retrait depuis la fiche. Facultatifs, sans caractère obligatoire. Les autres relations (référence, annexe, enregistrement issu d'une procédure, document impacté par une ECR) et l'obligation pour certains statuts restent à décider.
 
 #### M12 — Formats et rendus
 
 - **Pourquoi** : Rien ne dit s'il faut publier en PDF/A, conserver le fichier natif, ajouter un filigrane 'Brouillon', ni quels formats sont admis (plans CAO, jeux de données volumineux en DR, vidéos).
 - **Question** : Une version approuvée est-elle publiée en PDF/A, à côté du fichier natif ? Quels formats sont acceptés ou refusés, et avec quelle taille maximale ? Les en-têtes et pieds de page (ID, révision, statut) sont-ils générés automatiquement ?
-- **Suite** : **Ouvert.**
+- **Suite** : **Ouvert.** Depuis le 15 octobre 2026, une liste blanche d'extensions et une taille maximale (50 Mo) provisoires, communes à tous les types et réglables (`CODEX_FILE_EXTENSIONS`, `CODEX_MAX_FILE_MB`), sont appliquées à tout fichier entrant (point 32 de `docs/reste-a-faire.md`, choix signalés dans `docs/decisions.md`). La liste par type, le PDF/A, le filigrane et les en-têtes générés restent à décider.
 
 #### M13 — Indicateurs et pilotage
 
@@ -1629,7 +1629,7 @@ tranché dans le modèle ou le code, ouvert, ou sans objet.
 
 - **Pourquoi** : Une GED devient un actif critique, mais l'hébergement, les sauvegardes, le plan de reprise et la possibilité d'exporter toutes les données ne sont pas abordés.
 - **Question** : Quelles exigences fixez-vous en délai de reprise et en perte de données tolérée ? Où les données doivent-elles être hébergées ? Faut-il pouvoir exporter l'ensemble des documents avec leurs métadonnées et leur historique, en cas de changement d'outil ou de contrôle ?
-- **Suite** : **Ouvert.**
+- **Suite** : **Ouvert.** Depuis le 15 octobre 2026, la base et les fichiers se sauvegardent et se restaurent (archive avec manifeste et empreintes, rotation, restauration contrôlée, procédure `docs/sauvegarde.md` ; point 48 de `docs/reste-a-faire.md`, choix signalés dans `docs/decisions.md`). Les exigences de reprise, la fréquence, le lieu de conservation et le chiffrement des sauvegardes restent à fixer, comme l'export complet (point 17).
 
 #### M23 — Accès terrain et mobile
 
@@ -1671,7 +1671,7 @@ Relevés par le critique de complétude.
 
 **P08.** Diffusion, accusé de réception et partage client : la spec Keystone attend déjà de Codex une liste de diffusion, une preuve d'approbation, un journal de téléchargements et un accusé de réception client via le portail client Keystone (M14). La critique propose Power Pages pour le partage externe sans citer ce portail, et l'analyse d'écart ne traite pas du tout la diffusion.
 
-- **Suite** : **Ouvert.**
+- **Suite** : **Ouvert en partie.** Depuis le 12 octobre 2026, la preuve d'approbation existe : fiche de visa PDF d'une révision approuvée, tirée du journal, sans signature électronique (M04) (point 21 de `docs/reste-a-faire.md`). Les téléchargements de fichiers étaient déjà journalisés. Restent la liste de diffusion, l'accusé de réception client et le portail client Keystone (M14).
 
 **P09.** Lecture des slides 6 à 9 : chaque slide porte le logo d'un outil (6 SharePoint, 7 bibliothèque, 8 Power Automate, 9 à 11 Power Apps), ce qui suggère quatre chantiers découpés par outil plutôt qu'un plan unique. La critique y voit une contradiction d'ordre ; les exigences (MIG-08) fusionnent les étapes en une seule séquence. Aucune analyse ne relève non plus le « … » de la slide 7, qui laisse la liste des réglages de la bibliothèque ouverte.
 
