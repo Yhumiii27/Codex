@@ -13,6 +13,7 @@ import { addDays, fmtDate, fmtSize, loc, nowStamp, parseIsoDay, todayIso } from 
 import { ATTACHMENTS, CONF_LEVELS, ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLES, ORIGINS, PERMS, SEARCH_SCOPES, SIM_ROLES, SIMULATED_MATRIX_ROLES, type Perm, type SimRole, type TKey } from './i18n';
 import { addLink, applyChangeDecision, applyPendingDecision, approveRevision, audit, catchUpEffectiveDates, journalLink, linkBetween, lockOf, refreshHeadline, type ModifierSwap, type Tx } from './lifecycle';
 import { isLinkRel, linkIssue, otherEnd, replacementIssue, storedLink } from './links';
+import { limitWrite } from './ratelimit';
 import { decisionWaitL } from './queries';
 import { dateIssues, dateIssueText, effectIssue, issueFrom, latestEffect, type DateIssue } from './dates';
 import { cleanFeatured } from './departments';
@@ -46,6 +47,15 @@ function dateFail(ctx: Ctx, issue: DateIssue): ActionResult {
 
 function denied(ctx: Ctx, perm: Perm): ActionResult {
   return { ok: false, error: `${ctx.t.not_allowed} : ${ctx.t[`perm_${perm}` as TKey]}` };
+}
+
+/**
+ * Every action that writes counts against its user's budget (CODEX_RATE_WRITES, lib/ratelimit.ts) before its own
+ * checks: beyond it, the refusal to show, and the action does nothing.
+ */
+function throttled(ctx: Ctx): ActionResult | null {
+  const wait = limitWrite(ctx.user.id);
+  return wait ? { ok: false, error: ctx.t.rate_limited.replace('{n}', String(wait)) } : null;
 }
 
 /** A journal value with nothing in it (null, empty text or list) stored as null, so that "" and null are no change. */
@@ -224,6 +234,8 @@ async function withStaged<T>(staged: StagedFile | null, fn: () => Promise<T>): P
  */
 export async function createDocument(fd: FormData): Promise<ActionResult> {
   const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
   if (!ctx.can('upload')) return denied(ctx, 'upload');
   const f = readFields(ctx, fd);
   const invalid = validateFields(ctx, f);
@@ -312,6 +324,8 @@ async function uploadBehind(tx: Tx, ctx: Ctx, docId: string, rev: { id: number; 
  */
 export async function addWorkingVersion(fd: FormData): Promise<ActionResult> {
   const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
   if (!ctx.can('upload')) return denied(ctx, 'upload');
   const docId = str(fd, 'docId');
   const file = uploadedFile(fd);
@@ -382,6 +396,8 @@ async function releasePieces(tx: Tx, docId: string, f: Fields) {
  */
 export async function updateMeta(fd: FormData): Promise<ActionResult> {
   const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
   if (!ctx.can('edit')) return denied(ctx, 'edit');
   const docId = str(fd, 'docId');
   const seen = seenVersion(fd.get('version'));
@@ -460,6 +476,8 @@ export async function updateMeta(fd: FormData): Promise<ActionResult> {
  */
 export async function setReaders(docId: string, userIds: string[], version: number): Promise<ActionResult> {
   const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
   if (!ctx.can('edit')) return denied(ctx, 'edit');
   const seen = seenVersion(version);
   const db = await getDb();
@@ -504,6 +522,8 @@ const REVIEW_COMMENT_MAX = 2000;
  */
 export async function recordReview(docId: string, next: string | null, comment = ''): Promise<ActionResult> {
   const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
   if (!ctx.can('edit')) return denied(ctx, 'edit');
   const note = typeof comment === 'string' ? comment.trim() : '';
   if (note.length > REVIEW_COMMENT_MAX) return { ok: false, error: ctx.t.review_comment_too_long, field: 'comment' };
@@ -584,6 +604,8 @@ async function resolveFunction(tx: Tx, ctx: Ctx, key: string, d: DocRow, exclude
  */
 export async function requestValidation(docId: string, effectiveAt: string | null, base: WorkingBase | null): Promise<ActionResult> {
   const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
   if (!ctx.can('edit')) return denied(ctx, 'edit');
   const seen = seenWorkingBase(base?.revisionId, base?.n);
   // Effective date: a real day, today or later (approveRevision moves it to the approval day if the circuit outlasts it).
@@ -679,6 +701,8 @@ function closingReason(raw: string, required: boolean): { why: string } | { err:
  */
 export async function decideStep(workflowId: string, approve: boolean, expectedStep: number, reason = ''): Promise<ActionResult> {
   const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
   if (!ctx.screens.workflow) return fail(ctx, 'forbidden');
   const motive = closingReason(reason, !approve);
   if ('err' in motive) return fail(ctx, motive.err);
@@ -737,6 +761,8 @@ export async function decideStep(workflowId: string, approve: boolean, expectedS
  */
 export async function recallValidation(workflowId: string, expectedStep: number, reason = ''): Promise<ActionResult> {
   const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
   const motive = closingReason(reason, false);
   if ('err' in motive) return fail(ctx, motive.err);
   const { why } = motive;
@@ -776,6 +802,8 @@ export async function recallValidation(workflowId: string, expectedStep: number,
 /** Hands the current step to someone else. `expectedStep` is the step the user saw, as for decideStep. */
 export async function delegateStep(workflowId: string, toUserId: string, expectedStep: number): Promise<ActionResult> {
   const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
   if (!ctx.screens.workflow) return fail(ctx, 'forbidden');
   const db = await getDb();
   const err = await db.transaction(async (tx): Promise<TKey | null> => {
@@ -805,6 +833,8 @@ export async function delegateStep(workflowId: string, toUserId: string, expecte
 
 export async function addComment(workflowId: string, text: string): Promise<ActionResult> {
   const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
   const body = text.trim();
   if (!body) return fail(ctx);
   if (!ctx.screens.workflow) return fail(ctx, 'forbidden');
@@ -841,6 +871,8 @@ export async function addComment(workflowId: string, text: string): Promise<Acti
  */
 export async function requestChange(docId: string, kind: 'modification' | 'obsolescence', reason: string, description: string, replacementId: string | null = null): Promise<ActionResult> {
   const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
   const why = reason.trim();
   const replacement = typeof replacementId === 'string' && replacementId.trim() ? replacementId.trim() : null;
   if (!why || (kind !== 'modification' && kind !== 'obsolescence') || (replacement && kind !== 'obsolescence')) return fail(ctx);
@@ -876,6 +908,8 @@ export async function requestChange(docId: string, kind: 'modification' | 'obsol
  */
 export async function simulateVigieDecision(id: string, accepted: boolean, modifierId: string | null): Promise<ActionResult> {
   const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
   if (!vigieSimulated() || !ctx.seesAll) return fail(ctx, 'vigie_only');
   const modifier = modifierId ? ctx.users.get(modifierId) : null;
   if (modifierId && (!modifier || modifier.isSystem)) return fail(ctx);
@@ -896,6 +930,8 @@ export async function simulateVigieDecision(id: string, accepted: boolean, modif
  */
 export async function graftChange(requestId: string): Promise<ActionResult> {
   const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
   if (!ctx.can('edit')) return denied(ctx, 'edit');
   const ix = await getAccessIndex();
   const db = await getDb();
@@ -939,6 +975,8 @@ export async function graftChange(requestId: string): Promise<ActionResult> {
  */
 export async function addDocLink(docId: string, rel: string, otherId: string): Promise<ActionResult> {
   const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
   if (!isLinkRel(rel)) return fail(ctx);
   if (!ctx.can('edit')) return denied(ctx, 'edit');
   const other = typeof otherId === 'string' ? otherId.trim() : '';
@@ -972,6 +1010,8 @@ export async function addDocLink(docId: string, rel: string, otherId: string): P
  */
 export async function removeDocLink(docId: string, linkId: number): Promise<ActionResult> {
   const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
   if (!ctx.can('edit')) return denied(ctx, 'edit');
   const ix = await getAccessIndex();
   const db = await getDb();
@@ -1004,6 +1044,8 @@ async function visibleDocs(tx: Tx, ctx: Ctx, ids: string[]) {
 
 export async function archiveDocuments(ids: string[]): Promise<ActionResult> {
   const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
   if (!ctx.can('archive') || !ctx.screens.retention) return denied(ctx, 'archive');
   const db = await getDb();
   const docs = await visibleDocs(db, ctx, ids);
@@ -1026,6 +1068,8 @@ export async function archiveDocuments(ids: string[]): Promise<ActionResult> {
 
 export async function holdDocuments(ids: string[]): Promise<ActionResult> {
   const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
   if (!ctx.can('archive') || !ctx.screens.retention) return denied(ctx, 'archive');
   const db = await getDb();
   const docs = await visibleDocs(db, ctx, ids);
@@ -1057,6 +1101,8 @@ async function pendingApplied(ctx: Ctx, d: DocRow, swap: ModifierSwap | null): P
  */
 export async function releaseHold(docId: string): Promise<ActionResult> {
   const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
   if (!ctx.can('archive') || !ctx.screens.retention) return denied(ctx, 'archive');
   const db = await getDb();
   const [d] = await visibleDocs(db, ctx, [docId]);
@@ -1080,6 +1126,8 @@ export async function releaseHold(docId: string): Promise<ActionResult> {
  */
 export async function restoreArchived(docId: string): Promise<ActionResult> {
   const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
   if (!ctx.can('archive') || !ctx.screens.retention) return denied(ctx, 'archive');
   const db = await getDb();
   const [d] = await visibleDocs(db, ctx, [docId]);
@@ -1111,6 +1159,8 @@ const LABEL_MAX = 80;
  */
 export async function saveSearch(label: string, search: SearchInput, scope: string, department: string | null): Promise<ActionResult> {
   const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
   if (!(SEARCH_SCOPES as readonly string[]).includes(scope)) return fail(ctx);
   if (!maySaveSearch(ctx, scope)) return ctx.can('read') ? fail(ctx, 'not_allowed') : denied(ctx, 'read');
   const name = typeof label === 'string' ? label.trim() : '';
@@ -1134,6 +1184,8 @@ export async function saveSearch(label: string, search: SearchInput, scope: stri
 /** Deletes a saved search: its owner for a personal one, records managers and administrators for a shared one. */
 export async function deleteSavedSearch(id: number): Promise<ActionResult> {
   const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
   if (!Number.isInteger(id)) return fail(ctx, 'search_not_found');
   const db = await getDb();
   const [row] = await db.select().from(s.savedSearches).where(eq(s.savedSearches.id, id));
@@ -1153,6 +1205,8 @@ function adminOnly(ctx: Ctx): ActionResult | null {
 
 export async function togglePermission(role: string, perm: string): Promise<ActionResult> {
   const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
   const no = adminOnly(ctx);
   if (no) return no;
   if (!(MATRIX_ROLES as readonly string[]).includes(role) || !(PERMS as readonly string[]).includes(perm)) return fail(ctx);
@@ -1175,6 +1229,8 @@ export async function togglePermission(role: string, perm: string): Promise<Acti
 /** Department (3-letter code used in IDs) or site. Provisional values until the org chart is provided. */
 export async function addOrgValue(kind: 'department' | 'site', code: string, labelFr: string, labelEn: string): Promise<ActionResult> {
   const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
   const no = adminOnly(ctx);
   if (no) return no;
   const fr = labelFr.trim();
@@ -1207,6 +1263,8 @@ export async function addOrgValue(kind: 'department' | 'site', code: string, lab
  */
 export async function setDepartmentFeatured(code: string, featured: string[] | null): Promise<ActionResult> {
   const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
   const no = adminOnly(ctx);
   if (no) return no;
   if (!ctx.departments.some((d) => d.code === code)) return fail(ctx);
@@ -1229,6 +1287,8 @@ export async function setDepartmentFeatured(code: string, featured: string[] | n
 
 export async function addFunctionHolder(functionKey: string, scopeValue: string | null, userId: string): Promise<ActionResult> {
   const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
   const no = adminOnly(ctx);
   if (no) return no;
   const fn = ctx.functions.find((f) => f.key === functionKey);
@@ -1248,6 +1308,8 @@ export async function addFunctionHolder(functionKey: string, scopeValue: string 
 
 export async function removeFunctionHolder(id: number): Promise<ActionResult> {
   const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
   const no = adminOnly(ctx);
   if (no) return no;
   const db = await getDb();
@@ -1262,6 +1324,8 @@ export async function removeFunctionHolder(id: number): Promise<ActionResult> {
 /** Circuit, confidentiality, retention and periodic review of a type in the register. */
 export async function updateType(fd: FormData): Promise<ActionResult> {
   const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
   const no = adminOnly(ctx);
   if (no) return no;
   const code = str(fd, 'code');

@@ -2,6 +2,7 @@ import { and, eq } from 'drizzle-orm';
 import { getDb, schema as s } from '@/db';
 import { checkBearer, json } from '@/lib/importer';
 import { applyChangeDecision, decisionWait, lockOf } from '@/lib/lifecycle';
+import { limitRequest } from '@/lib/ratelimit';
 
 // Webhook through which Vigie sends its decision on a change (ECR) or withdrawal request (docs/api.md).
 // Bearer token VIGIE_WEBHOOK_TOKEN. Body: { requestId, accepted, ecoRef?, modifierId?, note? }.
@@ -29,6 +30,9 @@ function parse(body: unknown): Decision | { field: string } {
 export async function POST(req: Request) {
   const denied = checkBearer(req, 'VIGIE_WEBHOOK_TOKEN');
   if (denied) return denied;
+  // Counted once the token is checked: a client without it cannot spend the budget of the one holding it.
+  const limited = limitRequest(req, 'vigie');
+  if (limited) return limited;
   let body: unknown;
   try {
     body = await req.json();

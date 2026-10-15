@@ -9,6 +9,7 @@ import { fmtDate } from '@/lib/format';
 import { audit } from '@/lib/lifecycle';
 import { simplePdf } from '@/lib/pdf';
 import { getDoc, type DocView } from '@/lib/queries';
+import { limitReader } from '@/lib/ratelimit';
 import { EXT_BY_MIME, FileNotFoundError, normalizeMime, readStored } from '@/lib/storage';
 
 const WORKING = new Set(['draft', 'in_review', 'approved']);
@@ -34,13 +35,16 @@ type Target = { ctx: Ctx; doc: DocView; version: Version; label: string; mime: s
  * drafting circle, only the final file of the revision in force (docs/modele-cible.md §5).
  */
 async function resolve(req: Request, id: string): Promise<Target | Response> {
+  const ctx = await getCtx();
+  // Counted per user as resolved from the session, never per raw cookie (lib/ratelimit.ts).
+  const limited = limitReader(req, 'files', ctx.user.id, ctx.t);
+  if (limited) return limited;
   const url = new URL(req.url);
   const download = url.searchParams.get('download') === '1';
   const rawV = url.searchParams.get('v');
   const vid = rawV === null ? null : Number(rawV);
   if (vid !== null && !(Number.isInteger(vid) && vid > 0 && vid <= 2 ** 31 - 1)) return notFound();
 
-  const ctx = await getCtx();
   const res = await getDoc(ctx, safeDecode(id));
   if (!res || res === 'hidden') return notFound();
   const { doc, circle } = res;
@@ -120,6 +124,6 @@ export async function GET(req: Request, { params }: RouteContext<'/api/documents
 /** Same checks and headers as GET, without reading the file nor logging a download (link checkers, download managers). */
 export async function HEAD(req: Request, { params }: RouteContext<'/api/documents/[id]/file'>) {
   const x = await resolve(req, (await params).id);
-  if (x instanceof Response) return new Response(null, { status: x.status });
+  if (x instanceof Response) return new Response(null, { status: x.status, headers: x.headers });
   return new Response(null, { headers: headers(x, x.version.fileKey ? x.version.size : null) });
 }

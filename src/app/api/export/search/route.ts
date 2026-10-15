@@ -4,6 +4,7 @@ import { csv, csvHeaders, csvResponse } from '@/lib/csv';
 import { todayIso } from '@/lib/format';
 import { audit } from '@/lib/lifecycle';
 import { searchDocs } from '@/lib/queries';
+import { limitReader } from '@/lib/ratelimit';
 import { parseSearch } from '@/lib/search';
 
 const filename = () => `codex-recherche-${todayIso()}.csv`;
@@ -14,6 +15,9 @@ const filename = () => `codex-recherche-${todayIso()}.csv`;
  */
 export async function GET(req: Request) {
   const ctx = await getCtx();
+  // Counted per user as resolved from the session, never per raw cookie (lib/ratelimit.ts).
+  const limited = limitReader(req, 'exports', ctx.user.id, ctx.t);
+  if (limited) return limited;
   const { t } = ctx;
   const search = parseSearch(new URL(req.url).searchParams);
   const { results } = await searchDocs(ctx, search, { all: true });
@@ -36,6 +40,9 @@ export async function GET(req: Request) {
 }
 
 /** Headers only, without running the search nor journaling an export (link checkers, download managers). */
-export async function HEAD() {
+export async function HEAD(req: Request) {
+  const ctx = await getCtx();
+  const limited = limitReader(req, 'exports', ctx.user.id, ctx.t);
+  if (limited) return new Response(null, { status: limited.status, headers: limited.headers });
   return new Response(null, { headers: csvHeaders(filename()) });
 }

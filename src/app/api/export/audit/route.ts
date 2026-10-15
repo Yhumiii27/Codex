@@ -6,6 +6,7 @@ import { parisStamp, todayIso } from '@/lib/format';
 import type { TKey } from '@/lib/i18n';
 import { audit } from '@/lib/lifecycle';
 import { auditDetailL, auditForReader, auditTargetL } from '@/lib/queries';
+import { limitReader } from '@/lib/ratelimit';
 
 const BATCH = 5000;
 
@@ -19,8 +20,11 @@ const filename = () => `codex-journal-audit-${todayIso()}.csv`;
  * The export is itself journaled once it ends, with the number of rows (or where it stopped when the download is
  * interrupted); a server stopped mid-download leaves no entry.
  */
-export async function GET() {
+export async function GET(req: Request) {
   const ctx = await getCtx();
+  // Counted per user as resolved from the session, never per raw cookie (lib/ratelimit.ts).
+  const limited = limitReader(req, 'exports', ctx.user.id, ctx.t);
+  if (limited) return limited;
   if (!ctx.screens.admin) return new Response('Forbidden', { status: 403 });
   const { t } = ctx;
   const db = await getDb();
@@ -69,8 +73,10 @@ export async function GET() {
 }
 
 /** Same check and headers as GET, without reading the journal nor journaling an export (link checkers, download managers). */
-export async function HEAD() {
+export async function HEAD(req: Request) {
   const ctx = await getCtx();
+  const limited = limitReader(req, 'exports', ctx.user.id, ctx.t);
+  if (limited) return new Response(null, { status: limited.status, headers: limited.headers });
   if (!ctx.screens.admin) return new Response(null, { status: 403 });
   return new Response(null, { headers: csvHeaders(filename()) });
 }

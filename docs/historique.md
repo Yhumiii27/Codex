@@ -35,6 +35,7 @@ Conventions :
 | 11 oct. | Décision D-26 : greffe ou attente d'une modification acceptée pendant une révision ouverte. Étape 1 : couche métier. Étape 2 : fiche document | 13 |
 | 11 oct. | Fonctions du deck (lot 5), une étape par fonction : « Mes demandes Vigie », « À traiter » complet, rejet motivé et rappel, recherches enregistrées partagées, facettes et tri de la recherche, pages par département | 14 |
 | 12 oct. | Lot 6 : points développables de reste-a-faire.md, une étape par point. Étape 1 : dates, format contrôlé et cohérence émission ≤ effet ≤ expiration. Étape 2 : expiration et revue périodique. Étape 3 : lien « remplacé par ». Étape 4 : fiche de visa. Étape 5 : modifications simultanées détectées. Étape 6 : recherche, explorateur et journal filtrés et paginés en base | 15 |
+| 15 oct. | Lot 7 : suite des points développables de reste-a-faire.md. Étape 1 : en-têtes de sécurité HTTP et limitation de débit des API | 16 |
 
 La session a été coupée plusieurs fois par une limite d'usage ou de dépense :
 - le 7 octobre à 13:38, reprise à 17:31 sur « Try again » ;
@@ -1445,3 +1446,79 @@ table, et le stash supprimé.
   l'en-tête, ou Entrée, ramène à la page 1 ; l'explorateur avec `node` ou `sel` répétés, et le journal avec les
   jours 0001-01-01 et 9999-12-31, un curseur 9999999999 ou `doc` répété répondent 200. Le motif de recherche que la
   base replie reste servi par l'index trigrammes, et les temps à 3 000 documents ne changent pas.
+
+## 16. Lot 7 (15 oct.)
+
+Suite des points « développables maintenant » de [reste-a-faire.md](reste-a-faire.md), une étape par point ou groupe de
+points, chacune relue avant son commit. Mêmes règles que le lot 6 : aucune question ouverte n'est tranchée, un choix qui
+en dépend prend l'option la plus prudente et est consigné dans [decisions.md](decisions.md).
+
+| Étape | Commit | Points | Ce qui change | Choix prudents |
+|---|---|---|---|---|
+| 1. En-têtes et débit (§16.1) | commit « Lot 7, étape 1 », qui suit `c7e7ce1` | 24, 25 | En-têtes de sécurité sur toutes les réponses, politique de sécurité du contenu des pages avec nonce, limites de débit des routes sensibles et des actions qui écrivent (429 avec `Retry-After`) | HSTS coupé sauf `CODEX_HTTPS=1` ; `X-Forwarded-For` tenu pour fiable seulement avec `CODEX_TRUST_PROXY=1` ; seuils généreux ; compteurs en mémoire pour une seule instance |
+
+### 16.1 En-têtes de sécurité HTTP et limitation de débit
+
+Points 25 et 24 de [reste-a-faire.md](reste-a-faire.md), vérifiés au commit `c7e7ce1` : `next.config.ts` ne posait aucun
+en-tête de sécurité (seule la route fichier posait `nosniff`), il n'y avait ni `src/proxy.ts` ni limite de débit, et
+`checkBearer` ne freinait pas les essais de jetons.
+
+- **En-têtes** (`src/lib/security-headers.ts`) : `next.config.ts` pose sur toutes les réponses `nosniff`,
+  `Referrer-Policy: strict-origin-when-cross-origin`, `X-Frame-Options: SAMEORIGIN` et une `Permissions-Policy`
+  restrictive, et retire `X-Powered-By`. `src/proxy.ts` (convention de Next 16, qui remplace `middleware.ts`) pose sur
+  les pages la politique de sécurité du contenu, avec un nonce tiré à chaque requête et recopié dans la requête : Next.js
+  l'y lit et l'ajoute à ses scripts. Seuls ces scripts et ce qu'ils chargent s'exécutent (`'strict-dynamic'`, aucun
+  script en ligne admis) ; styles en ligne admis (le code et React en posent) ; police Inter auto-hébergée ; images
+  `data:` et `blob:` ; aperçu en cadre de même origine ; `frame-ancestors 'self'`. Toutes les routes sont rendues à la
+  demande (la build les marque toutes ƒ), donc chaque page reçoit son nonce. L'API n'a pas de politique (rien n'y
+  s'exécute ; une politique sur un PDF peut bloquer la visionneuse du navigateur). HSTS et `upgrade-insecure-requests`
+  seulement avec `CODEX_HTTPS=1`. L'app Mac charge Codex en page principale de sa vue web : aucune règle de cadre ne la
+  concerne, et ses pages d'attente (`loadHTMLString`) ne passent pas par le serveur.
+- **Limites de débit** (`src/lib/ratelimit.ts`) : seau à jetons par famille et par clé, gardé sur `globalThis` (routes,
+  actions et rechargements à chaud partagent les compteurs), une table par famille d'au plus 10 000 clés. Par adresse :
+  import et webhook Vigie (comptés une fois le jeton vérifié), jetons refusés (`checkBearer`), registre (derrière un
+  proxy de confiance seulement). Par utilisateur résolu (`getCtx`), et par adresse derrière un proxy de confiance :
+  fichiers, fiches de visa, exports CSV (GET et HEAD). Par utilisateur résolu : les 27 Server Actions qui écrivent
+  (`throttled`, src/lib/actions.ts ; pas le changement de langue ni d'utilisateur simulé). Réponse 429 avec
+  `Retry-After` : JSON pour l'API d'intégration, phrase dans la langue du lecteur pour les routes du navigateur, toast
+  d'erreur pour une action. Seuils par `CODEX_RATE_*`, tout levé par `CODEX_RATE_LIMIT=off`.
+- **Au passage** (même fiche) : le corps de `POST /api/import` est coupé en cours de lecture au-delà de la taille
+  admise plus 1 Mo, avec 413, y compris sans `Content-Length` (envoi par morceaux), en JSON comme en multipart.
+- **Relecture** (sept constats, tous retenus) :
+  - `src/proxy.ts` voyait aussi les appels de Server Actions. Or Next.js recopie en mémoire le corps de chaque requête
+    que voit un proxy, et le coupe sans erreur à 10 Mo (`experimental.proxyClientMaxBodySize`) : un dépôt de 15 Mo
+    échouait (« Unexpected end of form », POST 500). Le proxy ignore désormais les requêtes qui portent `Next-Action`,
+    et `next.config.ts` règle la copie sur la limite des Server Actions (50 Mo, une constante) pour un formulaire envoyé
+    avant l'hydratation ;
+  - un tiers sans jeton pouvait bloquer Vigie ou l'outil de migration en envoyant des jetons faux, ou en épuisant leur
+    budget, sous leur adresse forgée dans `X-Forwarded-For`. Nouvelle variable `CODEX_TRUST_PROXY`, coupée par défaut :
+    sans elle, le bon jeton passe toujours (seuls les jetons faux reçoivent 429), et les budgets d'import et de Vigie
+    ne sont comptés qu'après le jeton ; avec elle, le blocage d'une adresse avant comparaison du jeton reste en place ;
+  - toutes les familles partageaient une table de 10 000 clés vidée par ancienneté, et les clés des fichiers et exports
+    contenaient la valeur brute du cookie : en inventant des cookies, un client faisait oublier ses jetons refusés et
+    ouvrait un budget neuf à chaque valeur. Désormais une table par famille ; seul un seau redevenu plein est oublié,
+    et tant qu'aucun ne l'est une clé nouvelle attend ; fichiers et exports comptent par utilisateur résolu (un cookie
+    inconnu est l'utilisateur par défaut), plus un seau par adresse derrière un proxy de confiance ;
+  - le registre, sans jeton, n'est plus limité qu'avec `CODEX_TRUST_PROXY=1`, pour la même raison ;
+  - tests ajoutés : les 27 actions refusent au-delà du budget, et la liste échoue si une action exportée y manque ;
+    corps multipart envoyé par morceaux (413, lecture arrêtée tôt, rien d'importé) ; `HEAD /api/export/search` ;
+    adresse forgée qui ne bloque pas le bon jeton ; cookies inventés qui partagent un budget ; proxy et Server Actions ;
+    tables par famille et oubli des seaux pleins seulement. Retirer `throttled` d'une action, remettre
+    `req.formData()`, retirer la limite de `HEAD /api/export/search` ou l'exclusion de `Next-Action`, ou compter avant
+    le jeton font échouer au moins un test.
+- **Vérifié** : `npm test` (44 fichiers, 763 tests), `npm run typecheck`, `npm run lint`, `npm run build`. Dans
+  Chromium, sur le serveur de développement puis sur la build de production (`next start`) :
+  - 193 pages, onglets et dialogues pour Claire Bardet, Gabriel Comte, Julien Wagner et James Holt, navigation par la
+    barre latérale, dépôts de versions de travail, aperçu d'un PDF, d'une image et d'un texte importés : aucune
+    violation de la politique ni erreur de console (hors `favicon.ico`, absent avant) ;
+  - dépôts de 15 et 45 Mo par « Nouvelle version de travail » sur CTR-JUR-0001 et d'un document de 45 Mo par « Déposer
+    un fichier » : acceptés, sans politique sur la réponse des Server Actions ; un formulaire de 15 Mo posté sans
+    `Next-Action` n'est plus tronqué par le proxy ;
+  - 25 jetons faux sous `X-Forwarded-For: 127.0.0.1` (20 × 401 puis 429), puis le bon jeton depuis la même machine :
+    décision lue (404 `not_found` pour une demande inconnue) ;
+  - 40 exports avec des cookies `z0` à `z39` depuis une même adresse : 30 servis, puis 429 ; 2 000 `HEAD` d'export avec
+    des cookies tournants ne font pas oublier les jetons refusés ;
+  - avec `CODEX_TRUST_PROXY=1` : 20 jetons faux puis 429 même avec le bon jeton depuis cette adresse (`Retry-After: 45`),
+    une autre adresse servie ; registre limité par adresse.
+- **Reste** : vérifier l'app Mac (WebKit) en session macOS ; journalisation des refus (point 23) ; plusieurs instances
+  demanderaient un magasin partagé ou une limite au proxy.

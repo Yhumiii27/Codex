@@ -9,6 +9,7 @@ import { dateIssues, dateIssueText } from './dates';
 import { fmtSize, parseIsoDay, todayIso } from './format';
 import { ATTACHMENTS, CONF_LEVELS, DICT, ORIGINS } from './i18n';
 import { audit, refreshHeadline, type Tx } from './lifecycle';
+import { countTokenFailure, tokenFailuresExceeded } from './ratelimit';
 import { discardFile, fileColumns, nameStoredFile, stageFile, type StagedFile } from './storage';
 
 // Integration endpoints (docs/api.md): bearer-token check shared by /api/import and /api/integrations/vigie, and the
@@ -28,15 +29,21 @@ const digest = (v: string) => createHash('sha256').update(v).digest();
 
 /**
  * Null when the request carries `Authorization: Bearer <token>` matching the environment variable `envVar`.
- * Otherwise the response to send: 503 while the variable is unset (endpoint disabled), 401 for a missing or wrong token.
+ * Otherwise the response to send: 503 while the variable is unset (endpoint disabled), 401 for a missing or wrong token,
+ * 429 once the client's address has had too many tokens refused (CODEX_RATE_TOKEN_FAILURES, lib/ratelimit.ts).
+ * Behind a trusted proxy (CODEX_TRUST_PROXY), that address then gets 429 without its token being compared, so that
+ * guessing it gets no faster than the limit; without one, the address may be forged, so only wrong tokens get 429 and
+ * the right one always goes through (a token of 32 random bytes is out of reach of guessing anyway).
  */
 export function checkBearer(req: Request, envVar: 'CODEX_IMPORT_TOKEN' | 'VIGIE_WEBHOOK_TOKEN'): Response | null {
   const expected = process.env[envVar]?.trim();
   if (!expected) return json({ error: 'disabled' }, 503);
+  const blocked = tokenFailuresExceeded(req);
+  if (blocked) return blocked;
   const m = /^Bearer[ \t]+(\S+)[ \t]*$/i.exec(req.headers.get('authorization') ?? '');
   // Comparing fixed-length digests keeps the check constant-time whatever the length of the token sent.
   if (!m || !timingSafeEqual(digest(m[1]), digest(expected))) {
-    return json({ error: 'unauthorized' }, 401, { 'WWW-Authenticate': 'Bearer realm="codex"' });
+    return countTokenFailure(req) ?? json({ error: 'unauthorized' }, 401, { 'WWW-Authenticate': 'Bearer realm="codex"' });
   }
   return null;
 }

@@ -1,4 +1,5 @@
 import { checkBearer, importDocument, json, type ImportFile } from '@/lib/importer';
+import { limitRequest } from '@/lib/ratelimit';
 import { storageIsSharepoint } from '@/lib/storage';
 
 // Import API for the migration tool (docs/api.md): one legacy document per call, bearer token CODEX_IMPORT_TOKEN.
@@ -14,10 +15,35 @@ function maxBytes(): number {
 
 const tooLarge = () => json({ error: 'too_large', maxBytes: maxBytes() }, 413);
 
+/**
+ * The request's body, cut off once it passes `cap` bytes: a body sent in chunks has no Content-Length to check
+ * beforehand, and would otherwise be read whole into memory before the size of its file could be checked.
+ */
+function capped(req: Request, cap: number): { body: Response; over: () => boolean } {
+  let size = 0;
+  let over = false;
+  const stream = req.body?.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, c) {
+      size += chunk.byteLength;
+      if (size > cap) {
+        over = true;
+        c.error(new Error('too_large'));
+      } else c.enqueue(chunk);
+    },
+  }));
+  return { body: new Response(stream ?? null, { headers: { 'Content-Type': req.headers.get('content-type') ?? '' } }), over: () => over };
+}
+
 export async function POST(req: Request) {
   const denied = checkBearer(req, 'CODEX_IMPORT_TOKEN');
   if (denied) return denied;
-  if (Number(req.headers.get('content-length') ?? 0) > maxBytes() + 1024 * 1024) return tooLarge();
+  // Counted once the token is checked: a client without it cannot spend the budget of the one holding it.
+  const limited = limitRequest(req, 'import');
+  if (limited) return limited;
+  // The file plus room for the metadata and the multipart framing.
+  const cap = maxBytes() + 1024 * 1024;
+  if (Number(req.headers.get('content-length') ?? 0) > cap) return tooLarge();
+  const { body, over } = capped(req, cap);
 
   const ctype = (req.headers.get('content-type') ?? '').toLowerCase();
   let meta: unknown;
@@ -25,9 +51,9 @@ export async function POST(req: Request) {
   if (ctype.startsWith('multipart/form-data')) {
     let fd: FormData;
     try {
-      fd = await req.formData();
+      fd = await body.formData();
     } catch {
-      return json({ error: 'invalid_body' }, 400);
+      return over() ? tooLarge() : json({ error: 'invalid_body' }, 400);
     }
     const m = fd.get('meta');
     const text = typeof m === 'string' ? m : m instanceof Blob ? await m.text() : null;
@@ -45,9 +71,9 @@ export async function POST(req: Request) {
     }
   } else if (ctype.startsWith('application/json')) {
     try {
-      meta = await req.json();
+      meta = await body.json();
     } catch {
-      return json({ error: 'invalid_json' }, 400);
+      return over() ? tooLarge() : json({ error: 'invalid_json' }, 400);
     }
   } else {
     return json({ error: 'unsupported_media_type' }, 415);

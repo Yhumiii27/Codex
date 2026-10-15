@@ -25,18 +25,20 @@ déposés sont stockés dans `.data/files/` (ou dans SharePoint, voir `src/lib/s
 - Tests : `npm test` lance Vitest une fois (`npm run test:watch` en continu), en une à deux minutes selon la machine,
   sans serveur ni réseau et sans toucher à `.data/`.
   - `tests/unit/` : règles pures (identifiants, révisions, visibilité, conservation, recherche, filtres mis en avant
-    des départements, dates, expiration et revue périodique, modifications simultanées, types de fichiers).
+    des départements, dates, expiration et revue périodique, modifications simultanées, types de fichiers, limites de
+    débit, en-têtes de sécurité et `src/proxy.ts`).
   - `tests/integration/` : règles métier sur une base PGlite en mémoire, migrée depuis `drizzle/` avec les
     déclencheurs du journal, de la version et des termes de recherche des documents (`openDb` dans `src/db/index.ts`)
     et remplie de données minimales (`tests/support/fixtures.ts`), pas de la base de démo. Identifiants et compteurs,
     révisions et dates d'effet, cohérence des dates, expiration et revue périodique, circuits, décisions Vigie et
     webhook, journal en ajout seul et ses pages, cercle de rédaction, import, recherche, recherches enregistrées, pages
-    par département et modifications simultanées. La visibilité en SQL, la recherche et l'explorateur lus par la base
+    par département, modifications simultanées et limites de débit des routes et des actions (429). La visibilité en SQL, la recherche et l'explorateur lus par la base
     sont comparés à leur version en mémoire, qui reste la référence (`access-sql`, `search-sql`, `tests/support/`).
     `tests/integration/dates.test.ts` et `seed-sql.test.ts` chargent aussi les données de démo (`src/db/seed.ts`), en
     mémoire, pour en vérifier toutes les dates et y refaire ces comparaisons.
     Les Server Actions y tournent avec `next/headers` et `next/cache` simulés (`tests/support/session.ts`) ;
-    l'horloge est figée au 10 octobre 2026.
+    l'horloge est figée au 10 octobre 2026. Les compteurs de débit sont vidés avant chaque test
+    (`tests/support/setup.ts`).
   - Limite : PGlite n'a qu'une connexion et exécute les transactions l'une après l'autre. Les tests d'attributions
     « simultanées » (`Promise.all`) vérifient l'absence de doublon sous cet entrelacement, pas l'atomicité des
     compteurs entre connexions d'un vrai serveur Postgres (étape 5, O-03) : il faudra un Postgres serveur pour la
@@ -49,7 +51,9 @@ déposés sont stockés dans `.data/files/` (ou dans SharePoint, voir `src/lib/s
     passe sous Node 22 et sous Node 26 (vérifié avec Node 26.11.1). Un caractère ajouté par Unicode 17.0 peut être
     replié autrement par la référence en mémoire que par la base.
 
-Variables : voir `.env.example` (Keystone, Vigie, dossier de données, jetons de l'API d'intégration).
+Variables : voir `.env.example` (Keystone, Vigie, dossier de données, jetons de l'API d'intégration, HTTPS, proxy de
+confiance, limites de débit). Aucune n'est nécessaire en local : sans elles, les limites de débit gardent des valeurs
+généreuses, HSTS reste coupé et `X-Forwarded-For` n'est pas tenu pour fiable.
 
 Le modèle fonctionnel fait foi dans `docs/modele-cible.md` ; l'API d'intégration est décrite dans `docs/api.md`.
 
@@ -121,10 +125,79 @@ Tout l'état d'écran est dans l'URL (onglets, filtres, sélection) : les liens 
   autres formats se téléchargent. Les documents de démonstration (sans fichier) gardent la page maquette et se
   téléchargent sous forme d'un PDF généré.
 
+## Sécurité HTTP et limites de débit
+
+**En-têtes** (points 25 et 24 de `docs/reste-a-faire.md`) :
+- Sur toutes les réponses (`next.config.ts`, valeurs dans `src/lib/security-headers.ts`) : `X-Content-Type-Options:
+  nosniff`, `Referrer-Policy: strict-origin-when-cross-origin` (les autres origines ne reçoivent jamais le chemin, qui
+  nomme les documents), `X-Frame-Options: SAMEORIGIN`, `Permissions-Policy` (caméra, micro, géolocalisation, paiement,
+  USB, Topics coupés). Plus d'en-tête `X-Powered-By`.
+- Sur les pages, `Content-Security-Policy` posée par `src/proxy.ts`, avec un nonce tiré à chaque requête : Next.js le
+  lit dans la politique et l'ajoute à ses propres scripts, qui sont les seuls admis (`'strict-dynamic'`, sans
+  `'unsafe-inline'` pour les scripts). Styles du code et de React admis en ligne, police Inter auto-hébergée par
+  `next/font`, images `data:` et `blob:`, cadre de même origine pour l'aperçu des fichiers, `frame-ancestors 'self'`
+  (l'app Mac affiche Codex en page principale de sa vue web : aucune règle de cadre ne la concerne), `eval` admis en
+  développement seulement (React). Les réponses de l'API (JSON, fichiers stockés) n'ont pas de politique : rien n'y
+  s'exécute, et une politique sur un PDF peut empêcher la visionneuse du navigateur de l'afficher dans l'aperçu. La
+  route fichier garde ses propres en-têtes (`Content-Disposition`, `nosniff`).
+- `src/proxy.ts` ne voit pas non plus les appels de Server Actions (en-tête `Next-Action`) : leur réponse est un flux
+  React, pas une page, et Next.js recopie en mémoire le corps de chaque requête que voit un proxy, coupé sans erreur
+  au-delà de `experimental.proxyClientMaxBodySize` (10 Mo par défaut). Les dépôts de fichiers de 10 à 50 Mo échouaient
+  sinon. Un formulaire envoyé avant l'hydratation de la page passe, lui, par le proxy : `next.config.ts` règle cette
+  copie sur la limite des Server Actions (50 Mo, une seule constante).
+- `Strict-Transport-Security` (un an, cet hôte seulement) et `upgrade-insecure-requests` seulement avec
+  `CODEX_HTTPS=1`, à poser quand Codex est servi en HTTPS derrière un proxy TLS. Coupés par défaut : en local et dans
+  l'app Mac, Codex est en HTTP, et HSTS sur `localhost` imposerait HTTPS à toutes les applications locales (Keystone,
+  Vigie).
+
+**Limites de débit** (`src/lib/ratelimit.ts`) : un seau à jetons par famille et par clé. Une clé peut envoyer d'un coup
+le nombre de requêtes de sa limite, puis en regagne une à intervalle régulier ; au-delà, **429** avec `Retry-After` (en
+secondes), sans rien exécuter (ni import, ni lecture de fichier, ni export journalisé, ni écriture).
+
+| Famille | Variable | Par défaut | Clé |
+|---|---|---|---|
+| `POST /api/import` (jeton vérifié) | `CODEX_RATE_IMPORT` | 600 par minute | adresse du client |
+| `POST /api/integrations/vigie` (jeton vérifié) | `CODEX_RATE_VIGIE` | 600 par minute | adresse du client |
+| Jetons refusés sur ces deux routes | `CODEX_RATE_TOKEN_FAILURES` | 20 par 15 minutes | adresse du client |
+| `GET /api/registry` | `CODEX_RATE_REGISTRY` | 300 par minute | adresse du client, derrière un proxy de confiance seulement |
+| Fichiers et fiches de visa (`/api/documents/[id]/file`, `/approval`) | `CODEX_RATE_FILES` | 600 par minute | utilisateur résolu ; et adresse derrière un proxy de confiance |
+| Exports CSV (`/api/export/*`, GET et HEAD) | `CODEX_RATE_EXPORTS` | 30 par minute | utilisateur résolu ; et adresse derrière un proxy de confiance |
+| Server Actions qui écrivent (`src/lib/actions.ts`) | `CODEX_RATE_WRITES` | 120 par minute | utilisateur résolu |
+
+- Valeur `N` (par minute) ou `N/<durée>` (`30s`, `1m`, `15m`, `1h`) ; `0` ou `off` lève une limite,
+  `CODEX_RATE_LIMIT=off` les lève toutes. Une valeur illisible garde la valeur par défaut, avec un avertissement.
+- Une action refusée affiche « Trop de demandes en peu de temps : réessayez dans N s. » ; les routes du navigateur
+  répondent la même phrase en texte, les routes d'intégration en JSON (`docs/api.md`).
+- **Une clé choisie par le client ne bloque jamais un tiers.** L'adresse du client est la dernière valeur de
+  `X-Forwarded-For`. Sans proxy devant Codex, Next.js la pose d'après la connexion, sauf si le client l'envoie
+  lui-même : il la choisit alors, y compris l'adresse d'un autre. Elle n'est donc tenue pour fiable qu'avec
+  `CODEX_TRUST_PROXY=1`, à poser seulement si un proxy inverse écrit cet en-tête (le remplace, ou y ajoute l'adresse
+  qu'il voit) et si Codex n'est joignable que par lui (`next start -H 127.0.0.1`, par exemple). Coupé par défaut :
+  - les budgets d'import et de Vigie ne sont comptés qu'une fois le jeton vérifié : un tiers sans jeton ne peut pas
+    épuiser celui de l'outil de migration ou de Vigie en se faisant passer pour leur adresse ;
+  - les jetons refusés sont comptés par adresse, et au-delà du quota les jetons faux reçoivent 429 au lieu de 401 ; le
+    bon jeton passe toujours. Un jeton de 32 octets aléatoires (`openssl rand -base64 32`) reste hors de portée. Avec
+    `CODEX_TRUST_PROXY=1`, une adresse qui a épuisé son quota attend même avec le bon jeton, qui n'est plus comparé :
+    le deviner ne va pas plus vite que la limite ;
+  - le registre, sans jeton, n'est limité que derrière un proxy de confiance : ailleurs, n'importe qui pourrait
+    épuiser le budget de Keystone ;
+  - fichiers, fiches de visa et exports comptent par utilisateur **résolu** (`src/lib/context.ts`), jamais par la
+    valeur brute du cookie : un cookie inconnu est l'utilisateur par défaut, et des cookies inventés partagent son
+    budget. Derrière un proxy de confiance, un second seau par adresse plafonne aussi un client qui alternerait entre
+    plusieurs comptes. Tant qu'il n'y a pas d'authentification (O-02), un client peut toujours se faire passer pour un
+    autre utilisateur, et donc dépenser son budget.
+- **Une seule instance** : les compteurs sont en mémoire, dans le processus du serveur ; PGlite impose déjà un seul
+  processus. Un redémarrage les remet à zéro. Avec plusieurs instances, chacune compterait de son côté (jusqu'à n fois
+  la limite) : il faudrait alors un magasin partagé (Redis, ou une table de la base Postgres serveur, point 51) ou
+  limiter au proxy inverse (`limit_req` de nginx, par exemple). Chaque famille garde au plus 10 000 clés, dans sa propre
+  table : seuls les seaux redevenus pleins sont oubliés, et tant qu'aucun ne l'est, une clé nouvelle attend (429) plutôt
+  qu'un seau entamé ne soit effacé.
+
 ## Organisation du code
 
 ```
 src/
+  proxy.ts             politique de sécurité du contenu des pages (nonce par requête), HSTS si CODEX_HTTPS
   app/                 routes (pages serveur) + styles par écran (*.module.css)
     nocturne.css       design system Nocturne (copie de design/_ds/…/styles.css)
     globals.css        règles d'application communes
@@ -153,6 +226,8 @@ src/
     filetypes.ts       types de fichier servis en ligne et affichés en aperçu
     keystone.ts, vigie.ts  frontières d'intégration
     importer.ts        API d'import (outil de migration)
+    ratelimit.ts       limites de débit des routes sensibles et des Server Actions (en mémoire)
+    security-headers.ts  en-têtes de sécurité HTTP et politique de sécurité du contenu
     i18n.ts            textes FR / EN
 tests/
   unit/                tests unitaires des règles pures de src/lib (Vitest, vitest.config.ts)

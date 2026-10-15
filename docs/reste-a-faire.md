@@ -435,6 +435,7 @@ Constaté : src/app/api/registry/route.ts:6-7 (commentaire « open within the gr
 </details>
 
 #### 24. Limitation de débit des API
+- **Fait le 15 octobre 2026** : `src/lib/ratelimit.ts` limite en mémoire (un seul processus) l'import, le webhook Vigie, les jetons refusés, les fichiers et fiches de visa, les exports CSV et les 27 Server Actions qui écrivent, avec 429 et `Retry-After`, des seuils `CODEX_RATE_*` généreux par défaut et des clés qu'un client ne peut pas retourner contre un autre (budgets d'import et de Vigie comptés après le jeton, bon jeton jamais bloqué sans proxy déclaré par `CODEX_TRUST_PROXY`, utilisateur résolu plutôt que cookie brut, adresse et registre seulement derrière ce proxy), et coupe le corps de l'import au-delà de la taille admise (détail : README, `docs/api.md`, `docs/historique.md` §16.1).
 
 - **Effort** : faible
 
@@ -450,6 +451,7 @@ Constaté : aucun src/proxy.ts, src/middleware.ts, proxy.ts ni middleware.ts (ls
 </details>
 
 #### 25. En-têtes de sécurité HTTP absents
+- **Fait le 15 octobre 2026** : `next.config.ts` pose `nosniff`, `Referrer-Policy`, `X-Frame-Options` et `Permissions-Policy` sur toutes les réponses et `src/proxy.ts` une politique de sécurité du contenu à nonce sur les pages (ni l'API ni les appels de Server Actions, dont il ne recopie donc plus les dépôts de fichiers), HSTS seulement avec `CODEX_HTTPS=1`, sans aucune violation dans Chromium en développement comme en production ; reste à le revoir dans la fenêtre WebKit de l'app Mac, en session macOS.
 
 - **Effort** : faible
 

@@ -763,6 +763,31 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
   - depuis le 11 octobre, la pastille est sur Accueil, qui porte toute la liste « À traiter », et non plus sur
     Validations, qui ne montre que les circuits ; l'encart « À traiter » n'a plus de lien « Tout voir » ;
     l'indicateur « À valider » compte toujours les seules étapes à décider.
+- **En-têtes de sécurité et limites de débit** (points 24 et 25 de `docs/reste-a-faire.md`, 15 octobre ; hébergement
+  et authentification non décidés, O-02) :
+  - HSTS et `upgrade-insecure-requests` ne sont envoyés qu'avec `CODEX_HTTPS=1`, coupés par défaut : on ne sait pas
+    encore où ni derrière quel proxy TLS Codex sera servi, et en local comme dans l'app Mac il est en HTTP. Durée d'un
+    an, sans `includeSubDomains` ni `preload` (d'autres applications du groupe peuvent vivre sur des sous-domaines) ;
+  - politique de sécurité du contenu des pages avec un nonce par requête ; styles en ligne admis (le code et React en
+    posent) ; pas de politique sur les réponses de l'API (JSON, fichiers) ni sur les appels de Server Actions, que
+    `src/proxy.ts` ne voit pas (sinon Next.js recopie leur corps et coupe les dépôts au-delà de 10 Mo) ;
+    `frame-ancestors 'self'` et `X-Frame-Options: SAMEORIGIN` ; `Referrer-Policy: strict-origin-when-cross-origin` ;
+  - seuils par défaut (600 imports ou décisions Vigie, 300 lectures du registre, 600 fichiers, 30 exports et 120
+    écritures par minute ; 20 jetons refusés par 15 minutes) choisis généreux pour l'usage local, sans mesure d'un
+    usage réel ; réglables par `CODEX_RATE_*` ;
+  - `X-Forwarded-For` n'est tenu pour fiable qu'avec `CODEX_TRUST_PROXY=1`, coupé par défaut : on ne sait pas encore
+    s'il y aura un proxy inverse devant Codex, et sans lui le client écrit cet en-tête lui-même. Règle retenue : une clé
+    que le client choisit ne bloque jamais un tiers. Par défaut, les budgets d'import et de Vigie ne sont comptés
+    qu'une fois le jeton vérifié, le bon jeton passe toujours (seuls les jetons faux reçoivent 429 au-delà du quota),
+    le registre n'est pas limité, et fichiers, fiches de visa et exports comptent par utilisateur résolu, jamais par la
+    valeur brute du cookie. Avec `CODEX_TRUST_PROXY=1` s'ajoutent le registre par adresse, un plafond par adresse pour
+    fichiers et exports, et le blocage d'une adresse qui a épuisé ses essais de jeton, même avec le bon (le jeton
+    n'est plus comparé) ;
+  - tant qu'il n'y a pas d'authentification (O-02), un client peut se faire passer pour un autre utilisateur et
+    dépenser son budget de fichiers, d'exports ou d'écritures ;
+  - compteurs en mémoire, pour une seule instance (PGlite l'impose déjà), une table par famille, au plus 10 000 clés
+    chacune ; seul un seau redevenu plein est oublié. Plusieurs instances demanderaient un magasin partagé ou une limite
+    au proxy.
 - **Git** (D-23) : premier commit sur une branche `codex-ged-v2` plutôt que sur `main`.
 
 ## Ce qui est explicitement hors périmètre

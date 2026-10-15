@@ -18,6 +18,9 @@ logique partagée dans `src/lib/importer.ts`.
 | `CODEX_IMPORT_TOKEN` | Jeton attendu par `/api/import`. Absente ou vide : l'import est **désactivé** (503). |
 | `CODEX_IMPORT_MAX_MB` | Taille maximale d'un fichier importé, en Mo (100 par défaut ; 250 au plus avec `CODEX_STORAGE=sharepoint`). |
 | `VIGIE_WEBHOOK_TOKEN` | Jeton attendu par `/api/integrations/vigie`. Absente ou vide : le webhook est **désactivé** (503). |
+| `CODEX_RATE_IMPORT`, `CODEX_RATE_VIGIE`, `CODEX_RATE_REGISTRY` | Requêtes admises par adresse de client (600, 600 et 300 par minute par défaut ; voir « Limites de débit »). |
+| `CODEX_RATE_TOKEN_FAILURES` | Jetons refusés admis par adresse de client sur `/api/import` et `/api/integrations/vigie` (20 par 15 minutes par défaut). |
+| `CODEX_TRUST_PROXY` | `1` quand un proxy inverse placé devant Codex écrit `X-Forwarded-For` ; coupé par défaut (voir « Limites de débit »). |
 
 Les fichiers importés vont dans le stockage actif (`CODEX_STORAGE`, voir `src/lib/storage.ts`) : disque local par défaut,
 bibliothèque SharePoint en option.
@@ -32,6 +35,46 @@ Générer un jeton : `openssl rand -base64 32`. Les mêmes valeurs sont déclar�
   - variable d'environnement non définie → **503** `{"error":"disabled"}` (le point d'entrée est fermé) ;
   - en-tête absent ou jeton faux → **401** `{"error":"unauthorized"}` avec `WWW-Authenticate: Bearer realm="codex"`.
 - Les réponses des points d'entrée protégés portent `Cache-Control: no-store`.
+- Trop de requêtes → **429** `{"error":"rate_limited","retryAfter":<secondes>}` avec l'en-tête `Retry-After` (mêmes
+  secondes). La requête n'a rien fait : la renvoyer après ce délai. Voir « Limites de débit ».
+
+## Limites de débit
+
+Chaque point d'entrée compte les requêtes de chaque client dans un seau à jetons (`src/lib/ratelimit.ts`) : il en admet
+d'un coup autant que sa limite, puis en regagne une à intervalle régulier (une toutes les 0,1 s pour 600 par minute).
+
+| Point d'entrée | Variable | Par défaut | Compté par |
+|---|---|---|---|
+| `POST /api/import` | `CODEX_RATE_IMPORT` | 600 par minute | adresse du client, une fois le jeton vérifié |
+| `POST /api/integrations/vigie` | `CODEX_RATE_VIGIE` | 600 par minute | adresse du client, une fois le jeton vérifié |
+| jetons refusés (401) sur `/api/import` et `/api/integrations/vigie` | `CODEX_RATE_TOKEN_FAILURES` | 20 par 15 minutes, communs aux deux | adresse du client |
+| `GET /api/registry` | `CODEX_RATE_REGISTRY` | 300 par minute (les réponses 304 comptent) | adresse du client, avec `CODEX_TRUST_PROXY=1` seulement |
+
+- Valeur `N` (par minute) ou `N/<durée>` (`30s`, `1m`, `15m`, `1h`) ; `0` ou `off` lève la limite,
+  `CODEX_RATE_LIMIT=off` les lève toutes.
+- **Adresse du client** : la dernière valeur de `X-Forwarded-For`. Sans proxy, Next.js la pose d'après la connexion,
+  sauf si le client l'envoie lui-même : il peut alors prendre l'adresse d'un autre. `CODEX_TRUST_PROXY=1` déclare un
+  proxy inverse qui écrit cet en-tête (le remplace, ou y ajoute l'adresse qu'il voit) et sans lequel Codex n'est pas
+  joignable ; l'adresse n'est tenue pour fiable qu'à cette condition. Par défaut, une adresse, même forgée, ne peut
+  bloquer personne d'autre :
+  - les budgets d'import et de Vigie ne sont comptés qu'une fois le jeton vérifié : seul le porteur du jeton les dépense ;
+  - le registre, sans jeton, n'est pas limité.
+- **Jetons refusés** : au-delà du quota d'une adresse, les jetons faux reçoivent **429** au lieu de 401, jusqu'à ce
+  qu'un essai soit regagné (un toutes les 45 s par défaut).
+  - Sans `CODEX_TRUST_PROXY`, le bon jeton passe toujours : un tiers qui enverrait des jetons faux sous l'adresse de
+    Vigie ou de l'outil de migration ne les bloque pas. Contre la devinette, c'est la longueur du jeton qui protège :
+    32 octets aléatoires (`openssl rand -base64 32`) restent hors de portée.
+  - Avec `CODEX_TRUST_PROXY=1`, l'adresse qui a épuisé son quota reçoit 429 **même avec le bon jeton**, qui n'est plus
+    comparé : le deviner ne va pas plus vite que la limite. Un outil mal configuré qui s'obstine reste donc bloqué un
+    moment après la correction de son jeton.
+- **Une seule instance** : les compteurs sont en mémoire et repartent de zéro au redémarrage. Avec plusieurs instances,
+  il faudrait un magasin partagé ou une limite posée au proxy (README, « Sécurité HTTP et limites de débit »).
+- Pour l'outil de migration : envoyer les documents à la suite plutôt qu'en rafale, attendre `Retry-After` sur un 429
+  puis renvoyer le même document (le 409 `duplicate` rend le renvoi sûr), ou relever `CODEX_RATE_IMPORT` le temps de la
+  reprise.
+
+Les routes du navigateur ont aussi leurs limites (fichiers et fiches de visa, exports CSV, actions qui écrivent ; voir
+le README) ; elles répondent 429 avec `Retry-After` et une phrase en texte dans la langue du lecteur.
 
 ---
 
@@ -43,6 +86,10 @@ Keystone l'appelle de serveur à serveur (pas d'en-têtes CORS).
 
 **Cache** : `Cache-Control: public, max-age=60, must-revalidate` et un `ETag` calculé sur le contenu du registre ;
 une requête avec `If-None-Match` reçoit **304** tant que le registre n'a pas changé.
+
+**Débit** : avec `CODEX_TRUST_PROXY=1`, au-delà de `CODEX_RATE_REGISTRY` requêtes par adresse, **429**
+`{"error":"rate_limited","retryAfter"}` avec `Retry-After` ; sans proxy de confiance, pas de limite (voir « Limites de
+débit »).
 
 ```bash
 curl -s http://localhost:3100/api/registry | jq '.types[] | {code, family, active}'
@@ -134,6 +181,8 @@ un reclassement, et seule cette colonne dit depuis quelle référence un documen
 - ou `application/json` : les métadonnées seules, sans fichier.
 
 Taille maximale du fichier : `CODEX_IMPORT_MAX_MB` (100 Mo par défaut, 250 Mo au plus avec SharePoint), au-delà **413**.
+Le corps entier est lui aussi borné à cette taille plus 1 Mo (métadonnées et découpage multipart) : refusé d'emblée si
+`Content-Length` la dépasse, et coupé en cours de lecture, avec 413, s'il est envoyé par morceaux sans `Content-Length`.
 
 ### Métadonnées (`meta`)
 
@@ -226,8 +275,9 @@ s'ajoutent depuis leurs fiches (section « Documents liés »).
 | **401** / **503** | jeton absent ou faux / import désactivé |
 | **409** | `{"error":"duplicate","id":"<ID existant>"}` : `legacyRef` déjà importée ; `id` est l'identifiant actuel du document repris, même s'il a été reclassé depuis. Vérifié avant la validation : un document déjà repris répond 409 même si le registre a changé depuis (type désactivé…). |
 | **409** | `{"error":"ref_is_codex_id","id":"<ID>"}` : `legacyRef` est l'identifiant Codex, actuel ou ancien (gardé en alias après un reclassement), d'**un autre** document, qui n'a pas été importé depuis elle ; `id` est l'identifiant actuel de ce document. Ce n'est pas un rejeu : l'outil ne doit pas enregistrer cette correspondance. |
-| **413** | fichier trop volumineux |
+| **413** | fichier ou corps trop volumineux |
 | **415** | type de contenu autre que `multipart/form-data` ou `application/json` |
+| **429** | `{"error":"rate_limited","retryAfter"}` : trop d'imports depuis cette adresse, ou trop de jetons refusés (jeton faux au-delà du quota ; bon jeton aussi avec `CODEX_TRUST_PROXY=1`, voir « Limites de débit ») ; rien n'est importé |
 
 Codes de `issues[].code` : `required`, `invalid_type`, `too_long`, `invalid_date`, `invalid_value`, `invalid_letter`,
 `unknown_type`, `unknown_department`, `unknown_site`, `unknown_user`, `type_mismatch`, `conf_not_allowed`,
@@ -402,6 +452,7 @@ les personnes qui peuvent rédiger le document, et un refus y est affiché comme
 | **401** / **503** | jeton absent ou faux / webhook désactivé |
 | **404** | `{"error":"not_found"}` : demande inconnue de Codex |
 | **409** | `already_decided` (décision contraire déjà appliquée ou enregistrée ; `status` donne l'état de la demande). Une révision déjà ouverte ne donne plus de 409 (`revision_in_progress` a disparu) : 202 `revision_open`. |
+| **429** | `{"error":"rate_limited","retryAfter"}` : trop de requêtes depuis cette adresse, ou trop de jetons refusés (même règle que l'import) ; la décision n'est pas lue, Vigie la renvoie après `Retry-After` |
 
 ### Exemples
 

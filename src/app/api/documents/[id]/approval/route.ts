@@ -4,6 +4,7 @@ import { getCtx, type Ctx } from '@/lib/context';
 import { audit } from '@/lib/lifecycle';
 import { simplePdf } from '@/lib/pdf';
 import { approvalRecord } from '@/lib/queries';
+import { limitReader } from '@/lib/ratelimit';
 
 // Approval record of a revision (« fiche de visa », point 21 of docs/reste-a-faire.md): GET ?rev=B hands out a PDF,
 // {ID}_{letter}_VISA.pdf, extracted from the journal, and journals it. Same answer as the file route for what the user
@@ -25,9 +26,12 @@ function safeDecode(x: string): string {
 type Found = { ctx: Ctx; docId: string; letter: string; revisionId: number; record: VisaRecord };
 
 async function resolve(req: Request, id: string): Promise<Found | Response> {
+  const ctx = await getCtx();
+  // Same budget as the file route, per user as resolved from the session (lib/ratelimit.ts).
+  const limited = limitReader(req, 'files', ctx.user.id, ctx.t);
+  if (limited) return limited;
   const letter = (new URL(req.url).searchParams.get('rev') ?? '').trim().toUpperCase();
   if (!LETTER.test(letter)) return notFound();
-  const ctx = await getCtx();
   const found = await approvalRecord(ctx, safeDecode(id), letter);
   return found ? { ctx, ...found } : notFound();
 }
@@ -58,6 +62,6 @@ export async function GET(req: Request, { params }: RouteContext<'/api/documents
 /** Same checks and headers as GET, without building nor journaling the record (link checkers, download managers). */
 export async function HEAD(req: Request, { params }: RouteContext<'/api/documents/[id]/approval'>) {
   const x = await resolve(req, (await params).id);
-  if (x instanceof Response) return new Response(null, { status: x.status });
+  if (x instanceof Response) return new Response(null, { status: x.status, headers: x.headers });
   return new Response(null, { headers: headers(x, null) });
 }

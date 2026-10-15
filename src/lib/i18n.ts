@@ -232,6 +232,8 @@ const fr = {
   pages_nav:'Pages', page_prev:'Page précédente', page_next:'Page suivante', page_of:'Page {n} sur {m}',
   audit_filter_doc:'Document ou cible', audit_all_users:'Toutes les personnes', audit_all_actions:'Toutes les actions', audit_from:'Du', audit_to:'Au',
   audit_newer:'Plus récentes', audit_older:'Plus anciennes', audit_latest:'Les plus récentes', audit_none:'Aucune entrée ne correspond à ces critères.',
+  // Rate limiting (lib/ratelimit.ts)
+  rate_limited:'Trop de demandes en peu de temps : réessayez dans {n}\u00a0s.',
 };
 
 type Dict = Record<keyof typeof fr, string>;
@@ -465,6 +467,8 @@ const en: Dict = {
   pages_nav:'Pages', page_prev:'Previous page', page_next:'Next page', page_of:'Page {n} of {m}',
   audit_filter_doc:'Document or target', audit_all_users:'Everyone', audit_all_actions:'All actions', audit_from:'From', audit_to:'To',
   audit_newer:'Newer', audit_older:'Older', audit_latest:'Most recent', audit_none:'No entry matches these criteria.',
+  // Rate limiting (lib/ratelimit.ts)
+  rate_limited:'Too many requests in a short time: try again in {n}\u00a0s.',
 };
 
 export const DICT: Record<Lang, Dict> = { fr, en };

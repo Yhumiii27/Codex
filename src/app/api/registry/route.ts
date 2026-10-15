@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { asc } from 'drizzle-orm';
 import { getDb, schema as s } from '@/db';
 import { CONF_LEVELS, DICT, type TKey } from '@/lib/i18n';
+import { limitRequest } from '@/lib/ratelimit';
 
 // Register of document types, read by Keystone (docs/api.md). Read-only and open within the group network until
 // real authentication is plugged in; nothing user-specific, so no session is read.
@@ -9,6 +10,8 @@ import { CONF_LEVELS, DICT, type TKey } from '@/lib/i18n';
 const labels = (key: string) => ({ fr: DICT.fr[key as TKey] ?? key, en: DICT.en[key as TKey] ?? key });
 
 export async function GET(req: Request) {
+  const limited = limitRequest(req, 'registry');
+  if (limited) return limited;
   const db = await getDb();
   const [families, types, functions] = await Promise.all([
     db.select().from(s.families).orderBy(asc(s.families.sort)),
