@@ -88,6 +88,7 @@ export const docTypes = pgTable('doc_types', {
   reviewMonths: integer('review_months'),
   iso: text('iso'),
   clientDeliverable: boolean('client_deliverable').notNull().default(false),
+  /** Where the entry comes from: the deck, the Keystone register, both (seed), or Administration (`codex`). */
   source: text('source').notNull().default('deck'),
   active: boolean('active').notNull().default(true),
   sort: integer('sort').notNull().default(0),
@@ -125,10 +126,17 @@ export const projects = pgTable('projects', {
   syncedAt: timestamp('synced_at', { mode: 'string' }).notNull(),
 });
 
+/**
+ * Research programmes, the context of a research document's ID (PRT-R2601-004). Managed in Administration › Fonctions &
+ * circuits; a closed programme is made inactive rather than removed once used: it is no longer offered to a new
+ * document, and the documents that have it keep it.
+ */
 export const researchPrograms = pgTable('research_programs', {
   code: text('code').primaryKey(),
   name: text('name').notNull(),
+  /** Answers for the programme's research-scoped steps when no holder is named for it (lib/actions.ts resolveFunction). */
   managerId: text('manager_id').notNull().references(() => users.id),
+  active: boolean('active').notNull().default(true),
 });
 
 // ── Documents ───────────────────────────────────────────────────────────
@@ -430,11 +438,14 @@ export const idCounters = pgTable('id_counters', {
 
 // ── Audit, rights, saved searches ───────────────────────────────────────
 
-/** What an entry without document is about: a cell of the rights matrix, an organisation value, a function, a register type, a CSV export. */
+/**
+ * What an entry without document is about: a cell of the rights matrix, an organisation value, a function, a family or
+ * a type of the register, a research programme, a CSV export.
+ */
 /** 'file': a file refused on its way in (target id: where it came from, lib/storage.ts UploadOrigin). */
 /** 'storage': a file store (target id: 'local' or 'sharepoint'), cleaned of its orphan files (lib/orphans.ts). */
 /** 'backup': an archive of the database and files (target id: its file name, lib/backup-core.mjs). */
-export type AuditTargetKind = 'permission' | 'department' | 'site' | 'function' | 'type' | 'export' | 'file' | 'storage' | 'backup';
+export type AuditTargetKind = 'permission' | 'department' | 'site' | 'function' | 'family' | 'type' | 'program' | 'export' | 'file' | 'storage' | 'backup';
 
 /** A value in a journal change, as stored: keys and codes, rendered in the reader's language (lib/queries.ts). */
 export type AuditValue = string | string[] | boolean | null | { years: number | null; trigger: string; disposition: string };

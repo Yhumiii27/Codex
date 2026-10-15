@@ -615,7 +615,7 @@ par les décisions D-06 à D-21 et par le modèle v2.
 
 - **Constat sur la v1** : Table `taxonomy` plate (axes entité, service, processus, type, confidentialité). On ne pouvait ajouter des valeurs que sur 4 axes, sans hiérarchie, renommage ni désactivation.
 - **Vérification** : « Partiel », confirmé. Mots-clés en texte libre ; les 22 types de la maquette (activité explosifs) n'avaient aucun rapport avec la taxonomie du deck : tout le référentiel était à reprendre.
-- **Aujourd'hui — partiel.** Par décision, le référentiel est le registre des types de Codex et non la banque de termes SharePoint (D-06, D-07) : 23 familles et 69 types avec leurs sous-types (`src/db/registry.ts`), départements et sites (`src/db/seed-org.ts`), fonctions. Administration › Registre des types modifie le circuit, la confidentialité, la conservation et l'activation d'un type (`updateType`, `src/lib/actions.ts`) ; Administration › Organisation ajoute des départements et des sites (`addOrgValue`). Reste : on ne peut ni créer un type ou une famille, ni modifier libellés et sous-types depuis l'écran, ni renommer ou retirer un département ; mots-clés et organisme source sont du texte libre.
+- **Aujourd'hui — partiel.** Par décision, le référentiel est le registre des types de Codex et non la banque de termes SharePoint (D-06, D-07) : 23 familles et 69 types avec leurs sous-types (`src/db/registry.ts`), départements et sites (`src/db/seed-org.ts`), fonctions. Depuis le 15 octobre, Administration crée, modifie et supprime types (tous leurs réglages, libellés et sous-types compris), familles, fonctions et programmes de recherche (`createType`, `updateType`… dans `src/lib/actions.ts`), journalisés ; une entrée utilisée garde son code et se désactive plutôt que d'être supprimée. Administration › Organisation ajoute des départements et des sites (`addOrgValue`). Reste : renommer ou retirer un département ; mots-clés et organisme source sont du texte libre ; qui gouverne les termes (A05) n'est pas décidé.
 
 <a id="g04"></a>
 #### G04 — Codification automatique du nom / de l'ID du document selon son type
@@ -1299,7 +1299,7 @@ tranché dans le modèle ou le code, ouvert, ou sans objet.
 
 - **Constat** : Les colonnes s'intitulent 'Exemples de sous-types'. On ne sait pas si la liste est fermée ou ouverte, ni qui la fait évoluer. Elle contient aussi des synonymes, comme 'Procédure standard' et 'SOP'.
 - **Question** : Les sous-types forment-ils une liste fermée et validée, ou chacun peut-il en ajouter ? Qui peut créer, renommer, fusionner ou retirer une catégorie, un type ou un sous-type, et avec quelle validation ? Que deviennent les documents classés sous un terme retiré ?
-- **Suite** : **Ouvert.** Les sous-types restent une liste ouverte ; personne n'a décidé qui crée, renomme ou retire des termes. L'écran ne permet pas de modifier libellés et sous-types (G03).
+- **Suite** : **Ouvert.** Les sous-types restent une liste ouverte ; personne n'a décidé qui crée, renomme ou retire des termes. Depuis le 15 octobre, l'administration modifie libellés et sous-types (droit « Administrer » en attendant, G03) ; un terme utilisé n'est pas supprimé mais désactivé, et ses documents le gardent (`docs/decisions.md`).
 
 #### A06 — Deux axes mélangés dans la taxonomie DI (slides 13, 14)
 

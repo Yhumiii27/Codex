@@ -195,7 +195,8 @@ CREATE TABLE "projects" (
 CREATE TABLE "research_programs" (
 	"code" text PRIMARY KEY NOT NULL,
 	"name" text NOT NULL,
-	"manager_id" text NOT NULL
+	"manager_id" text NOT NULL,
+	"active" boolean DEFAULT true NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "revisions" (

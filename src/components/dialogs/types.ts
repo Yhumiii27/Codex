@@ -4,6 +4,13 @@ import type { Search } from '@/lib/search';
 
 export type Option = { key: string; label: string };
 
+/** Every setting of a register type, as the type dialog edits it; `used`: see DialogSpec 'type'. */
+export type TypeSettings = {
+  code: string; labelFr: string; labelEn: string; family: string; origins: Origin[]; attachments: Attachment[]; subtypes: { fr: string; en: string }[];
+  circuit: string[]; confAllowed: Conf[]; confDefault: Conf; retentionYears: number | null; retentionTrigger: string; retentionDisposition: string;
+  retentionBasis: string; reviewMonths: number | null; iso: string | null; clientDeliverable: boolean; active: boolean; used: boolean;
+};
+
 /** Reference data the dialogs need, loaded once by the root layout (src/app/layout.tsx). */
 export type DialogData = {
   /** Template documents in force (type FRM, context QMS). */
@@ -19,7 +26,8 @@ export type DialogData = {
   departments: Option[];
   sites: Option[];
   projects: Option[];
-  programs: Option[];
+  /** Research programmes; an inactive (closed) one is only offered to a document that already has it. */
+  programs: (Option & { active: boolean })[];
   confs: Option[];
   /** People of the group; `approver`: their default role may approve (function holders, delegation targets). */
   users: { id: string; name: string; initials: string; role: string; department: string | null; approver: boolean }[];
@@ -124,8 +132,21 @@ export type DialogSpec =
    * (tomorrow, Paris time).
    */
   | { kind: 'review'; docId: string; title: string; letter: string; reviewDueAt: string | null; months: number | null; minDate: string }
-  /** Administration: circuit, confidentiality, retention and periodic review of a type. */
-  | { kind: 'type'; type: { code: string; label: string; circuit: string[]; confAllowed: Conf[]; confDefault: Conf; retentionYears: number | null; retentionTrigger: string; retentionDisposition: string; retentionBasis: string; reviewMonths: number | null; active: boolean } }
+  /**
+   * Administration › Registre des types: a new type (`family`: the family the register is filtered on, preset), or every
+   * setting of one (lib/actions.ts createType, updateType). `used`: documents or projects refer to it, so its code no
+   * longer changes and it cannot be deleted, only made inactive.
+   */
+  | { kind: 'type'; type?: TypeSettings; family?: string }
+  /** A family of types (lib/actions.ts createFamily, updateFamily); `used`: types or documents have it. */
+  | { kind: 'family'; family?: { key: string; labelFr: string; labelEn: string; grp: string; used: boolean } }
+  /**
+   * A function circuits are made of (lib/actions.ts createFunction, updateFunction); `used`: a circuit, a holder or a
+   * started circuit refers to it; `held`: it has holders, so its scope does not change.
+   */
+  | { kind: 'function'; fn?: { key: string; labelFr: string; labelEn: string; scope: 'global' | 'department' | 'project' | 'research'; used: boolean; held: boolean } }
+  /** A research programme (lib/actions.ts createProgram, updateProgram); `used`: documents or holders have it. */
+  | { kind: 'program'; program?: { code: string; name: string; managerId: string; active: boolean; used: boolean } }
   | { kind: 'holder'; functionKey: string; functionLabel: string; scope: 'global' | 'department' | 'project' | 'research' }
   | { kind: 'org'; what: 'department' | 'site' }
   /**

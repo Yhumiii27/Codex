@@ -1460,6 +1460,7 @@ en dépend prend l'option la plus prudente et est consigné dans [decisions.md](
 | 3. Fichiers en flux et orphelins (§16.3) | commit « Lot 7, étape 3 », qui suit `ab6711e` | 46, 36 | Route fichier en flux, plages d'octets (206, 416), ETag, Last-Modified et 304, HEAD cohérent ; simulation puis suppression journalisée des seuls fichiers orphelins listés, stockage local | Copie gardée par le navigateur seulement pour le fichier en vigueur sous Confidentiel, revalidée à chaque usage ; téléchargement journalisé à partir du premier octet ; nettoyage réservé aux gestionnaires, délai de grâce de 24 h, SharePoint listé sans suppression (O-01) ; aperçu paginé des brouillons et confidentiels encore retéléchargé à chaque page |
 | 4. Sauvegarde et restauration (§16.4) | commit « Lot 7, étape 4 », qui suit `42e2d34` | 48 | Archive de la base et des fichiers référencés avec manifeste et empreintes, commandes `npm run backup`, `backup:list`, `backup:check`, `restore`, rotation, verrou du dossier de données, sauvegarde journalisée depuis Administration, procédure `docs/sauvegarde.md` | Rien de programmé ; archives à côté du dossier de données, non chiffrées, 7 plus récentes et une par jour sur 7 jours gardées ; une sauvegarde par quart d'heure au plus depuis l'application ; restauration en ligne de commande seulement, serveur arrêté, l'existant mis de côté et non supprimé ; action et nombres du journal réservés aux gestionnaires (D-14) ; fichiers SharePoint non copiés (O-01) |
 | 5. Journal technique, santé, configuration (§16.5) | commit « Lot 7, étape 5 », qui suit `55c0df4` | 49, 37 | Journal technique structuré (JSON en production) avec identifiant de requête, une ligne par requête d'API et par action d'écriture, jetons refusés et erreurs serveur journalisés sans secret ; `GET`/`HEAD /api/health` ; contrôle de la configuration au démarrage (`src/instrumentation.ts`), procédure `docs/exploitation.md` | Refus de démarrer en production pour une configuration dangereuse seulement (défaut sans erreur, `CODEX_CONFIG_CHECK=warn` pour passer outre) ; jeton de 32 caractères au moins ; santé sans authentification, sans raison d'échec ; aucune métrique ni rotation (hébergement non décidé) ; authentification simulée rappelée en production (O-02) |
+| 6. Administration du registre et des programmes (§16.6) | commit « Lot 7, étape 6 », qui suit `6823294` | 61, 58 | Création, modification et suppression des types (tous leurs réglages), familles, fonctions et programmes de recherche dans Administration, journalisées avant → après ; codes contrôlés ; `GET /api/registry` suit | Droit « Administrer » (A05 non tranché) ; aucun nouveau code ne reprend celui d'un autre segment d'identifiant ni `QMS` (point 1 du registre, FIN/HSE/COM gardés) ; entrée utilisée : code figé, pas de suppression, désactivation ; restriction des admissions d'un type confirmée, identifiants des documents aux seuls gestionnaires (D-14) ; contenu du registre inchangé (O-05) ; programme sans date de fin (point 3 du registre) |
 
 ### 16.1 En-têtes de sécurité HTTP et limitation de débit
 
@@ -1936,3 +1937,76 @@ qu'au premier appel à Graph.
 - **Reste**, selon l'hébergement (question 3 de l'audit) : métriques et alertes, conservation, rotation et
   centralisation du journal ; joignabilité de clamd non sondée (premier dépôt) ; sonde SharePoint non essayée sur un
   vrai tenant (O-01) ; lignes « ⨯ » de Next.js pour une erreur de requête pendant le rendu d'une page.
+
+### 16.6 Administration du registre et des programmes de recherche
+
+Points 61 et 58 de [reste-a-faire.md](reste-a-faire.md), vérifiés au commit `6823294` : `updateType` ne modifiait que
+le circuit, la confidentialité, la conservation (sans son fondement), la périodicité de revue et l'état actif ; aucune
+action ne créait de type, de famille, de fonction ni de programme (insertions dans `src/db/seed.ts` seulement) ;
+l'onglet Registre n'avait pas de bouton « Nouveau type », et `TypeEditor` n'exposait ni les libellés, ni la famille,
+ni les origines et rattachements, ni les sous-types, ni la clause ISO, ni le livrable client ; `research_programs`
+n'était rempli que par le seed, sans état ni écran. Le constat sur le journal ne tenait plus : `audit_log.doc_id` est
+facultatif depuis l'étape 6 du lot 2 (cibles sans document).
+
+- **Règles** (`src/lib/registry-rules.ts`, sans dépendance au serveur, testées seules) : formats des codes (type de 2
+  ou 3 lettres, programme d'une lettre puis 2 à 9 lettres ou chiffres, clés en minuscules et `_`) ; un code ne
+  désigne qu'une chose dans `TYPE-CONTEXTE-SEQ` : type, département, projet, programme et `QMS` ne se reprennent pas
+  (point 1 de `docs/registre-points-ouverts.md` : FIN, HSE et COM gardés, aucun nouveau cas ; l'ajout d'un département
+  le vérifie aussi) ; lecture des formulaires de type (sous-types FR/EN appariés, 40 au plus), famille, fonction et
+  programme ; documents qu'un réglage de type n'admettrait plus.
+- **Usage** (`registryUsage`, `src/lib/queries.ts`) : ce qui fait référence à chaque entrée, tous documents
+  confondus ; s'y ajoutent les entrées que les règles de Codex nomment (type FRM des modèles, fonctions chef de projet,
+  validation client et responsable du département), qui gardent leur code même inutilisées.
+- **Actions** (`src/lib/actions.ts`, droit « Administrer », limite d'écriture, `traceAction`) : `createType`,
+  `updateType`, `deleteType`, et de même pour les familles, les fonctions et les programmes. Une entrée utilisée garde
+  son code et ne se supprime pas ; la famille d'un type entraîne celle de ses documents ; restreindre les admissions
+  d'un type demande une confirmation avec le nombre de documents concernés (leurs identifiants aux gestionnaires) ; la
+  portée d'une fonction qui a des titulaires ne change pas ; un programme désactivé n'est plus proposé à un nouveau
+  document (ni à un nouveau titulaire), ceux qui l'ont le gardent. Chaque écriture est journalisée comme entrée sans
+  document (cibles `type`, `family`, `function`, `program`), champ par champ, affichée dans la langue du lecteur.
+- **Écrans** : Registre des types (« Nouvelle famille », « Nouveau type » préréglé sur la famille filtrée, section
+  « Familles »), Fonctions & circuits (« Nouvelle fonction », crayon par fonction, section « Programmes de
+  recherche ») ; dialogue de type complet, aussi ouvert depuis Archivage › Règles ; code en lecture seule et
+  « Supprimer » désactivé (avec la raison) pour une entrée utilisée. Colonne `research_programs.active`, migration
+  unique régénérée.
+- **Keystone** : `GET /api/registry` suit chaque changement (nouvel `ETag`), `source: codex` pour un type créé dans
+  Codex ; règles de stabilité dans `docs/api.md`.
+- *Vérifié* : `npm test` (60 fichiers, 999 tests dont un sauté), `npm run typecheck`, `npm run lint`. Retirer les
+  entrées nommées par Codex de `registryUsage` fait échouer deux tests. `npm run dev` sur une base neuve, dans
+  Chromium (cbardet) : type refusé pour un code de département puis créé (NTC, sous-type FR/EN, étape « Responsable de
+  chantier », clause ISO), renommé NTD tant qu'inutilisé ; PRO (utilisé) en lecture seule, « Supprimer » désactivé ;
+  « Interne » retiré de ses niveaux → 4 documents nommés et enregistrement bloqué jusqu'à la confirmation ;
+  rattachement « Projet » retiré de MIN → `MIN-HLT-026-001` nommé, confirmé, enregistré ; famille créée puis supprimée
+  (confirmation) ; fonction créée, portée de « Responsable qualité » verrouillée ; programme refusé pour le code QUA,
+  R2603 créé, R2602 désactivé et absent du dialogue de création d'un document de recherche ; journal lisible ;
+  `/api/registry` donne NTD (`source: codex`), plus NTC, et MIN avec `["none"]` ; dialogue « New type » en anglais ;
+  aucune erreur de page ni de serveur. `npm run build` puis `next start` sur un autre port : Registre, Fonctions &
+  circuits et Archivage › Règles en 200, avec leurs boutons et la section des programmes.
+- **Relecture** (six constats, dont deux en double, tous retenus) :
+  - la confirmation d'une restriction de type ne valait pas pour ce qu'elle annonçait : le dialogue gardait l'ancien
+    avertissement après un nouveau changement d'admission, et le serveur acceptait `confirmOut=1` quel que soit le
+    réglage. Le refus porte désormais un jeton (HMAC du type, du réglage et des identifiants exclus, clé tirée au
+    démarrage, qui ne révèle aucun brouillon) que la confirmation doit renvoyer ; le serveur recalcule et redemande si
+    le réglage ou les documents diffèrent. Le dialogue efface le refus à chaque changement d'admission (`clear` de
+    `useSubmit`) ;
+  - les entrées nommées par Codex gardaient leur code mais pas les réglages dont le code dépend : FRM admet désormais
+    seulement « sans rattachement » (sinon un modèle rattaché à un projet recevait l'ID `FRM-HLT-026-001`), chef de
+    projet et validation client restent « par projet », responsable du département « par département »
+    (`builtInTypeIssue`, `builtInScopeIssue`), cases et liste grisées dans les dialogues ;
+  - `addFunctionHolder` acceptait un programme désactivé ou inconnu : la valeur de portée est vérifiée dans la
+    transaction (département ou projet existant, programme existant et actif) ;
+  - `parseSubtypes` lisait toutes les lignes reçues et dédoublonnait en temps quadratique : au-delà de 80 lignes, refus
+    sans lecture, dédoublonnage par ensemble ;
+  - le droit « Administrer » des douze actions du registre et des programmes est testé une à une (collaborateur,
+    validateur, auditeur), sans changement ni journal, puis l'appel passe en gestionnaire ; retirer le contrôle des
+    douze fait échouer les douze cas.
+  *Vérifié* : `npm test` (60 fichiers, 1 019 tests dont un sauté), `npm run typecheck`, `npm run lint`, `npm run
+  build`. Dans Chromium sur une base neuve (cbardet) : CTR sans « Projet » nomme CTR-HLT-026-001 et CTR-HLT-026-002 ;
+  décocher ensuite « Confidentiel » efface l'avertissement, et « Enregistrer » redemande avec trois documents, dont
+  CTR-JUR-0001 ; annuler les deux retraits enregistre sans question ; CTR sans « Aucun » nomme CTR-JUR-0001, confirmé
+  puis enregistré, `/api/registry` donne `["project"]`. Rattachements de FRM et portée de « Chef de projet » grisés,
+  avec leur raison. Dialogue « Ajouter un titulaire » ouvert sur R2602 pendant qu'un autre onglet désactive R2602 :
+  l'ajout est refusé. `next start` sur un autre port : Administration (registre, fonctions) en 200.
+- **Reste** : la date de fin des programmes (déclencheur de conservation « fin de programme », point 3 du registre,
+  O-05) ; la gouvernance des termes (A05) ; l'application des évolutions du registre à une base existante par script
+  (point 60) ; les vocabulaires contrôlés des sous-types (point 59).

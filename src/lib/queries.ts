@@ -10,8 +10,9 @@ import type { Ctx } from './context';
 import { extensionOf } from './filetypes';
 import { addDays, clip, daysBetween, fmtDate, fmtDateTime, fmtSize, fmtWhen, loc, nowStamp, parisStamp, parseIsoDay, TIME_ZONE, todayIso } from './format';
 import { CONF_LEVELS, MATRIX_ROLE_LABEL, TAGCLS, type T, type TKey } from './i18n';
-import { decisionWait, lockOf, type DecisionWait } from './lifecycle';
+import { decisionWait, lockOf, type DecisionWait, type Tx } from './lifecycle';
 import { LINK_RELS, otherEnd, relOf } from './links';
+import { BUILT_IN_FUNCTIONS, BUILT_IN_TYPES } from './registry-rules';
 import { retainUntil } from './retention';
 import { isExpired, isReviewOverdue } from './review';
 import { featuredFilters, featuredOf } from './departments';
@@ -985,7 +986,7 @@ export async function auditForReader(ctx: Ctx, all: AuditRow[]): Promise<AuditEn
   });
 }
 
-const TARGET_LABEL: Record<AuditTargetKind, TKey> = { permission: 'target_permission', department: 'department', site: 'site', function: 'function_label', type: 'type', export: 'target_export', file: 'target_file', storage: 'target_storage', backup: 'target_backup' };
+const TARGET_LABEL: Record<AuditTargetKind, TKey> = { permission: 'target_permission', department: 'department', site: 'site', function: 'function_label', family: 'family', type: 'type', program: 'program', export: 'target_export', file: 'target_file', storage: 'target_storage', backup: 'target_backup' };
 
 /** What an entry without document is about, as the Journal tab and its export name it: "Fonction · Responsable qualité". */
 export function auditTargetL(ctx: Ctx, kind: AuditTargetKind | null, id: string | null): string {
@@ -997,7 +998,9 @@ export function auditTargetL(ctx: Ctx, kind: AuditTargetKind | null, id: string 
     : kind === 'department' ? `${id} · ${ctx.label('department', id)}`
     : kind === 'site' ? ctx.label('site', id)
     : kind === 'function' ? ctx.label('function', id)
+    : kind === 'family' ? ctx.label('family', id)
     : kind === 'type' ? `${id} · ${ctx.label('type', id)}`
+    : kind === 'program' ? `${id} · ${ctx.label('program', id)}`
     : kind === 'file' ? t[`file_entry_${id}` as TKey] ?? id
     : kind === 'storage' ? t[`store_${id}` as TKey] ?? id
     : kind === 'backup' ? id
@@ -1013,13 +1016,17 @@ const CHANGE_LABEL: Record<string, TKey> = {
   projectPhase: 'project_phase', workPackage: 'work_package', discipline: 'discipline', researchTheme: 'research_theme', studyId: 'study_id',
   ipStatus: 'ip_status', processOwnerId: 'process_owner', retention: 'retention', circuit: 'circuit', confAllowed: 'conf_allowed', confDefault: 'conf_default',
   featured: 'featured_filters', reviewMonths: 'review_months',
+  // Register and research programmes (Administration).
+  code: 'rule_id', key: 'key_label', labelFr: 'label_fr', labelEn: 'label_en', family: 'family', origins: 'origin', attachments: 'attachment',
+  subtypes: 'subtypes_label', retentionBasis: 'retention_basis', iso: 'iso_clause', clientDeliverable: 'client_deliverable', grp: 'family_group',
+  scope: 'scope', name: 'program_name', managerId: 'manager',
 };
 
 /** One stored value of a change, in the reader's language. */
 function changeValueL(ctx: Ctx, field: string, v: AuditValue | undefined): string {
   const { t } = ctx;
   if (v == null || (Array.isArray(v) && !v.length)) return field === 'circuit' ? t.no_approval : field === 'featured' ? t.featured_none : field === 'reviewMonths' ? t.review_months_none : '—';
-  if (typeof v === 'boolean') return field === 'granted' ? (v ? '✓' : '✕') : v ? t.active_label : t.inactive;
+  if (typeof v === 'boolean') return field === 'granted' ? (v ? '✓' : '✕') : field === 'clientDeliverable' ? (v ? t.yes : t.no) : v ? t.active_label : t.inactive;
   if (Array.isArray(v)) return v.map((x) => changeValueL(ctx, field, x)).join(field === 'circuit' ? ' → ' : ', ');
   if (typeof v === 'object') {
     return `${v.years != null ? `${v.years} ${t.years_short} · ` : ''}${t[`trig_${v.trigger}` as TKey] ?? v.trigger} · ${t[`disp_${v.disposition}` as TKey] ?? v.disposition}`;
@@ -1027,10 +1034,13 @@ function changeValueL(ctx: Ctx, field: string, v: AuditValue | undefined): strin
   const key = (prefix: string) => t[`${prefix}${v}` as TKey] ?? v;
   switch (field) {
     case 'title': return ctx.lang === 'fr' ? `« ${v} »` : `“${v}”`;
-    case 'ownerId': case 'processOwnerId': case 'holder': return ctx.userName(v);
+    case 'ownerId': case 'processOwnerId': case 'holder': case 'managerId': return ctx.userName(v);
     case 'conf': case 'confAllowed': case 'confDefault': return key('conf_');
-    case 'origin': return key('or_');
-    case 'attachment': return key('att_');
+    case 'origin': case 'origins': return key('or_');
+    case 'attachment': case 'attachments': return key('att_');
+    case 'family': return ctx.label('family', v);
+    case 'grp': return key('grp_');
+    case 'scope': return key('scope_');
     case 'lang': return key('lang_');
     case 'site': return ctx.label('site', v);
     case 'circuit': return ctx.label('function', v);
@@ -1158,7 +1168,8 @@ function auditTargetHref(ctx: Ctx, kind: AuditTargetKind | null, id: string | nu
   switch (kind) {
     case 'permission': return '/administration?tab=roles';
     case 'department': case 'site': return '/administration?tab=org';
-    case 'function': return '/administration?tab=functions';
+    case 'function': case 'program': return '/administration?tab=functions';
+    case 'family': return `/administration${id && ctx.families.some((f) => f.key === id) ? `?family=${encodeURIComponent(id)}` : ''}`;
     case 'type': {
       const family = id ? ctx.typeByCode.get(id)?.family : undefined;
       return `/administration${family ? `?family=${encodeURIComponent(family)}` : ''}`;
@@ -1293,6 +1304,48 @@ export function typeView(ctx: Ctx, x: typeof s.docTypes.$inferSelect) {
   };
 }
 export type TypeView = ReturnType<typeof typeView>;
+
+/**
+ * What refers to each entry of the register, counted over every document whatever its state or confidentiality (shown
+ * in Administration only): an entry referred to keeps its code or key and cannot be deleted (lib/actions.ts). The
+ * entries Codex's own rules name count as referred to (lib/registry-rules.ts BUILT_IN_TYPES, BUILT_IN_FUNCTIONS).
+ * - types: documents of the type, pieces Keystone expects of it on a project;
+ * - families: types and documents of the family;
+ * - functions: types whose circuit has it, holders, steps of circuits started (they keep its key);
+ * - programs: documents of the programme, holders of a research-scoped function for it.
+ * `docs`: documents only, per type and per programme, for the counts on screen.
+ */
+export async function registryUsage(tx?: Tx) {
+  const db = tx ?? (await getDb());
+  const count = sql<number>`count(*)::int`;
+  const [byType, expected, byFamily, typesByFamily, holders, steps, byProgram, programHolders, circuits] = await Promise.all([
+    db.select({ k: s.documents.typeCode, n: count }).from(s.documents).groupBy(s.documents.typeCode),
+    db.select({ k: s.projectExpected.typeCode, n: count }).from(s.projectExpected).where(isNotNull(s.projectExpected.typeCode)).groupBy(s.projectExpected.typeCode),
+    db.select({ k: s.documents.family, n: count }).from(s.documents).groupBy(s.documents.family),
+    db.select({ k: s.docTypes.family, n: count }).from(s.docTypes).groupBy(s.docTypes.family),
+    db.select({ k: s.functionHolders.functionKey, n: count }).from(s.functionHolders).groupBy(s.functionHolders.functionKey),
+    db.select({ k: s.workflowSteps.functionKey, n: count }).from(s.workflowSteps).where(isNotNull(s.workflowSteps.functionKey)).groupBy(s.workflowSteps.functionKey),
+    db.select({ k: s.documents.programCode, n: count }).from(s.documents).where(isNotNull(s.documents.programCode)).groupBy(s.documents.programCode),
+    db.select({ k: s.functionHolders.scopeValue, n: count }).from(s.functionHolders).innerJoin(s.functions, eq(s.functions.key, s.functionHolders.functionKey))
+      .where(and(eq(s.functions.scope, 'research'), isNotNull(s.functionHolders.scopeValue))).groupBy(s.functionHolders.scopeValue),
+    db.select({ circuit: s.docTypes.circuit }).from(s.docTypes),
+  ]);
+  const tally = (...lists: { k: string | null; n: number }[][]) => {
+    const m = new Map<string, number>();
+    for (const xs of lists) for (const { k, n } of xs) if (k) m.set(k, (m.get(k) ?? 0) + n);
+    return m;
+  };
+  const inCircuits = circuits.flatMap((c) => [...new Set(c.circuit)].map((k) => ({ k, n: 1 })));
+  const builtIn = (keys: readonly string[]) => keys.map((k) => ({ k, n: 1 }));
+  return {
+    types: tally(byType, expected, builtIn(BUILT_IN_TYPES)),
+    families: tally(byFamily, typesByFamily),
+    functions: tally(inCircuits, holders, steps, builtIn(BUILT_IN_FUNCTIONS)),
+    programs: tally(byProgram, programHolders),
+    docs: { types: tally(byType), programs: tally(byProgram) },
+  };
+}
+export type RegistryUsage = Awaited<ReturnType<typeof registryUsage>>;
 
 export async function listFunctionHolders(ctx: Ctx) {
   const db = await getDb();

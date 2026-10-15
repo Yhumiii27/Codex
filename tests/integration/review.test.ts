@@ -141,7 +141,13 @@ describe('periodicity of a type (Administration › Registre des types)', () => 
   /** The type dialog of PRO as the fixtures set it, with this periodicity. */
   function typeForm(reviewMonths: string) {
     const fd = new FormData();
+    fd.set('original', 'PRO');
     fd.set('code', 'PRO');
+    fd.set('labelFr', 'PRO');
+    fd.set('labelEn', 'PRO');
+    fd.set('family', 'qualite');
+    fd.set('origins', 'interne');
+    fd.set('attachments', 'none');
     for (const k of ['resp_departement', 'resp_qualite']) fd.append('circuit', k);
     for (const c of ['restreint', 'interne', 'confidentiel', 'tres_confidentiel']) fd.append('confAllowed', c);
     fd.set('confDefault', 'interne');

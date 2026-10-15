@@ -7,7 +7,7 @@ import { mayRecordReview } from '@/lib/access';
 import { restoreArchived } from '@/lib/actions';
 import { getCtx } from '@/lib/context';
 import { addDays, fmtDate, todayIso } from '@/lib/format';
-import { deadlines, listDocs } from '@/lib/queries';
+import { deadlines, listDocs, registryUsage } from '@/lib/queries';
 import { countBy, typeSpec } from '../administration/shared';
 import { DueTable, type DueRow } from './DueTable';
 
@@ -70,6 +70,8 @@ export default async function RetentionPage({ searchParams }: PageProps<'/archiv
   const counts = countBy(docs, (d) => d.typeCode);
   // The register's retention rules are edited in the 'type' dialog (records managers / administrators).
   const canEditRules = ctx.screens.admin;
+  // What refers to each type: one in use keeps its code in the type dialog (lib/actions.ts updateType).
+  const usage = canEditRules ? await registryUsage() : null;
   const archives = docs.filter((d) => d.state === 'archived');
   return (
     <div className="screen" style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }} data-screen-label="Archivage">
@@ -108,7 +110,7 @@ export default async function RetentionPage({ searchParams }: PageProps<'/archiv
                         <td className="tabnum" style={{ textAlign: 'right' }}>{counts.get(x.code) ?? 0}</td>
                         {canEditRules && (
                           <td style={{ textAlign: 'right', width: 44 }}>
-                            <DialogButton spec={typeSpec(x, lang)} className="btn btn-ghost btn-icon" icon="pen" ariaLabel={`${t.perm_edit} · ${x.code}`} style={{ width: 30, height: 30 }} />
+                            <DialogButton spec={typeSpec(x, !!usage?.types.has(x.code))} className="btn btn-ghost btn-icon" icon="pen" ariaLabel={`${t.perm_edit} · ${x.code}`} style={{ width: 30, height: 30 }} />
                           </td>
                         )}
                       </tr>

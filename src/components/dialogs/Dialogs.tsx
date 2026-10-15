@@ -1,22 +1,24 @@
 'use client';
 
-import { useId, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { useApp } from '@/components/shell/AppProvider';
 import { Icon } from '@/components/ui/Icon';
 import { Seg } from '@/components/ui/Seg';
 import type { Attachment, Conf, LinkRel, Origin } from '@/db/schema';
 import {
-  addDocLink, addFunctionHolder, addOrgValue, addWorkingVersion, createDocument, decideStep, delegateStep, graftChange, recallValidation, recordReview,
-  requestChange, requestValidation, saveSearch, setDepartmentFeatured, setReaders, simulateUser, simulateVigieDecision, updateMeta, updateType,
+  addDocLink, addFunctionHolder, addOrgValue, addWorkingVersion, createDocument, createFamily, createFunction, createProgram, createType, decideStep,
+  delegateStep, deleteFamily, deleteFunction, deleteProgram, deleteType, graftChange, recallValidation, recordReview, requestChange, requestValidation,
+  saveSearch, setDepartmentFeatured, setReaders, simulateUser, simulateVigieDecision, updateFamily, updateFunction, updateMeta, updateProgram, updateType,
 } from '@/lib/actions';
-import { contextOf, idMatches, seqWidth } from '@/lib/codes';
+import { contextOf, idMatches, seqWidth, TEMPLATE_TYPE } from '@/lib/codes';
 import { DEFAULT_FEATURED, FEATURABLE, MAX_FEATURED } from '@/lib/departments';
 import { fmtDate } from '@/lib/format';
 import { ATTACHMENTS, CONF_LEVELS, ORIGINS, PROJECT_PHASES, SEARCH_SCOPES, SIM_ROLES, type T, type TKey } from '@/lib/i18n';
 import { reviewDueHint } from '@/lib/review';
+import { BUILT_IN_SCOPES, DISPOSITIONS, FAMILY_GROUPS, FUNCTION_SCOPES, RETENTION_TRIGGERS } from '@/lib/registry-rules';
 import { FACET_LABEL, type FacetKey } from '@/lib/search';
 import { FilePicker, Modal, Select, useSubmit, type SelectOption } from './Modal';
-import type { DialogData, DialogSpec, MetaDoc, VersionLite } from './types';
+import type { DialogData, DialogSpec, MetaDoc, TypeSettings, VersionLite } from './types';
 
 export function Dialogs({ spec }: { spec: DialogSpec }) {
   switch (spec.kind) {
@@ -35,7 +37,10 @@ export function Dialogs({ spec }: { spec: DialogSpec }) {
     case 'vigie': return <VigieDecision requestId={spec.requestId} docTitle={spec.docTitle} change={spec.change} modifierId={spec.modifierId} drafters={spec.drafters} deferred={spec.deferred} />;
     case 'graft': return <Graft spec={spec} />;
     case 'review': return <RecordReview spec={spec} />;
-    case 'type': return <TypeEditor type={spec.type} />;
+    case 'type': return <TypeEditor type={spec.type} family={spec.family} />;
+    case 'family': return <FamilyEditor family={spec.family} />;
+    case 'function': return <FunctionEditor fn={spec.fn} />;
+    case 'program': return <ProgramEditor program={spec.program} />;
     case 'holder': return <AddHolder functionKey={spec.functionKey} functionLabel={spec.functionLabel} scope={spec.scope} />;
     case 'org': return <AddOrg what={spec.what} />;
     case 'featured': return <FeaturedEditor spec={spec} />;
@@ -220,7 +225,7 @@ function DocFields({ types, st, set, doc, preset, withOwner, locked, lockType, f
       )}
       {st.attachment === 'research' && (
         <Field label={t.program} span>
-          {(id) => <><Select id={id} name={locked ? undefined : 'programCode'} value={st.programCode} onChange={(v) => set({ programCode: v })} options={data.programs.map(codeLabel)} empty="—" required disabled={!!locked} />{locked && <input type="hidden" name="programCode" value={st.programCode} />}</>}
+          {(id) => <><Select id={id} name={locked ? undefined : 'programCode'} value={st.programCode} onChange={(v) => set({ programCode: v })} options={data.programs.filter((p) => p.active || p.key === doc?.programCode).map(codeLabel)} empty="—" required disabled={!!locked} />{locked && <input type="hidden" name="programCode" value={st.programCode} />}</>}
         </Field>
       )}
 
@@ -900,113 +905,361 @@ function UserSwitcher() {
 
 // ── Administration ──────────────────────────────────────────────────────
 
-const TRIGGERS = ['creation', 'in_force', 'superseded', 'project_end', 'contract_end', 'fiscal_year_end', 'expiry', 'asset_life', 'employee_departure', 'permanent'] as const;
-const DISPOSITIONS = ['destroy', 'review', 'archive', 'permanent'] as const;
+const iconBtn = { width: 26, height: 26 };
+const checkRow = { display: 'flex', gap: 8, alignItems: 'center', fontSize: 12.5, cursor: 'pointer' } as const;
 
-type TypeSpec = Extract<DialogSpec, { kind: 'type' }>['type'];
+/**
+ * Deletes an entry of the register that nothing uses, once confirmed; shown disabled, with the reason, when something
+ * does (the server checks again). Sits at the left of the dialog's actions.
+ */
+function DeleteEntry({ used, usedText, confirmText, pending, onDelete }: { used: boolean; usedText: string; confirmText: string; pending: boolean; onDelete: () => void }) {
+  const { t } = useApp();
+  return (
+    <button
+      type="button" className="btn btn-ghost" style={{ marginRight: 'auto', color: used ? undefined : 'var(--color-accent-300)' }} disabled={pending || used}
+      title={used ? usedText : undefined} onClick={() => { if (window.confirm(confirmText)) onDelete(); }}
+    >
+      <Icon name="close" size={14} />{t.reg_delete}
+    </button>
+  );
+}
 
-function TypeEditor({ type }: { type: TypeSpec }) {
-  const { t, data, close } = useApp();
-  const { pending, error, field, run } = useSubmit();
-  const [circuit, setCircuit] = useState<string[]>(type.circuit);
-  const [allowed, setAllowed] = useState<Conf[]>(type.confAllowed);
-  const [confDefault, setConfDefault] = useState<Conf>(type.confDefault);
-  const [active, setActive] = useState(type.active);
+/** Code or key of an entry: read-only once used (it stands in IDs, circuits and the journal), with why. */
+function CodeInput({ id, name, value, used, upper, maxLength, field, error }: { id: string; name: string; value: string; used: boolean; upper?: boolean; maxLength: number; field: string | null; error: string | null }) {
+  const bad = field === name;
+  return (
+    <input
+      id={id} className="input tabnum" name={name} defaultValue={value} required readOnly={used} maxLength={maxLength} autoComplete="off" spellCheck={false}
+      style={{ textTransform: upper ? 'uppercase' : undefined, maxWidth: upper ? 140 : undefined, opacity: used ? 0.75 : undefined }}
+      aria-invalid={bad ? true : undefined} aria-describedby={bad && error ? `${id}-error` : undefined}
+    />
+  );
+}
+
+/** Steps of a circuit, after the author's own: reordered, removed, added from the functions not in it yet. */
+function CircuitSteps({ circuit, setCircuit }: { circuit: string[]; setCircuit: (f: (xs: string[]) => string[]) => void }) {
+  const { t, data } = useApp();
   const free = data.functions.filter((f) => !circuit.includes(f.key));
   const [addKey, setAddKey] = useState(free[0]?.key ?? '');
   const fn = (k: string) => data.functions.find((f) => f.key === k);
   const move = (i: number, d: -1 | 1) => setCircuit((xs) => { const ys = [...xs]; [ys[i], ys[i + d]] = [ys[i + d], ys[i]]; return ys; });
-  const remove = (i: number) => setCircuit((xs) => xs.filter((_, j) => j !== i));
   const add = () => {
     if (!addKey || circuit.includes(addKey)) return;
     const next = [...circuit, addKey];
-    setCircuit(next);
+    setCircuit(() => next);
     setAddKey(data.functions.find((f) => !next.includes(f.key))?.key ?? '');
   };
+  return (
+    <Field label={t.circuit_steps}>
+      {circuit.map((k) => <input key={k} type="hidden" name="circuit" value={k} />)}
+      <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <li className="text-muted" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 8px', fontSize: 13 }}>
+          <span className="tabnum" style={{ width: 14 }}>0</span><span>{t.step_author}</span>
+        </li>
+        {circuit.map((k, i) => {
+          const f = fn(k);
+          return (
+            <li key={k} className="hover-tint" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '2px 4px 2px 8px', borderRadius: 'var(--radius-md)', fontSize: 13 }}>
+              <span className="text-muted tabnum" style={{ width: 14 }}>{i + 1}</span>
+              <span className="ellipsis" style={{ flex: 1 }}>{f?.label ?? k}</span>
+              {f && <span className="tag tag-neutral" style={{ padding: '1px 7px', fontSize: 10 }}>{t[`scope_${f.scope}`]}</span>}
+              <button type="button" className="btn btn-ghost btn-icon" style={iconBtn} disabled={i === 0} onClick={() => move(i, -1)} aria-label={`${t.move_up} · ${f?.label ?? k}`} title={t.move_up}>
+                <Icon name="chevronDown" size={14} style={{ transform: 'rotate(180deg)' }} />
+              </button>
+              <button type="button" className="btn btn-ghost btn-icon" style={iconBtn} disabled={i === circuit.length - 1} onClick={() => move(i, 1)} aria-label={`${t.move_down} · ${f?.label ?? k}`} title={t.move_down}>
+                <Icon name="chevronDown" size={14} />
+              </button>
+              <button type="button" className="btn btn-ghost btn-icon" style={iconBtn} onClick={() => setCircuit((xs) => xs.filter((_, j) => j !== i))} aria-label={`${t.remove} · ${f?.label ?? k}`} title={t.remove}>
+                <Icon name="close" size={14} />
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+      {circuit.length === 0 && <div className="text-muted field-hint" style={{ paddingLeft: 8 }}>{t.no_approval}</div>}
+      {free.length > 0 && (
+        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+          <Select value={addKey} onChange={setAddKey} options={free.map((f) => ({ key: f.key, label: f.label }))} ariaLabel={t.add_step} />
+          <button type="button" className="btn btn-secondary nowrap" onClick={add} disabled={!addKey}><Icon name="plus" size={14} />{t.add_step}</button>
+        </div>
+      )}
+    </Field>
+  );
+}
+
+const EMPTY_TYPE: TypeSettings = {
+  code: '', labelFr: '', labelEn: '', family: '', origins: ['interne'], attachments: ['none'], subtypes: [], circuit: [],
+  confAllowed: ['restreint', 'interne', 'confidentiel', 'tres_confidentiel'], confDefault: 'interne', retentionYears: null, retentionTrigger: 'superseded',
+  retentionDisposition: 'destroy', retentionBasis: '', reviewMonths: null, iso: null, clientDeliverable: false, active: true, used: false,
+};
+
+/**
+ * A type of the register, new or existing (Administration › Registre des types): code, labels, family, origins and
+ * attachments it admits, sub-types, circuit, confidentiality, retention, periodic review, ISO clause, client deliverable,
+ * active. A setting some of its documents would no longer meet is refused with their number until confirmed.
+ */
+function TypeEditor({ type, family }: { type?: TypeSettings; family?: string }) {
+  const { t, lang, data, close } = useApp();
+  const { pending, error, field, run, clear } = useSubmit();
+  const x = type ?? { ...EMPTY_TYPE, family: family ?? data.families[0]?.key ?? '' };
+  const creating = !type;
+  // Templates stay without attachment (their context is QMS, D-10): the server refuses any other.
+  const template = x.code === TEMPLATE_TYPE;
+  const [circuit, setCircuit] = useState<string[]>(x.circuit);
+  const [origins, setOrigins] = useState<Origin[]>(x.origins);
+  const [attachments, setAttachments] = useState<Attachment[]>(x.attachments);
+  const [allowed, setAllowed] = useState<Conf[]>(x.confAllowed);
+  const [confDefault, setConfDefault] = useState<Conf>(x.confDefault);
+  const [active, setActive] = useState(x.active);
+  const [rows, setRows] = useState(() => x.subtypes.map((st, i) => ({ ...st, id: i })));
+  const [nextRow, setNextRow] = useState(x.subtypes.length);
+  // The server named documents this setting would leave out: shown with the box that confirms, which sends back the
+  // token of that answer, good for those documents only (lib/actions.ts updateType).
+  const [outside, setOutside] = useState<{ text: string; token: string } | null>(null);
+  const [confirmed, setConfirmed] = useState(false);
+  // At the foot of a long dialog: brought into view when it appears.
+  const outsideRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (outside) outsideRef.current?.scrollIntoView({ block: 'nearest' }); }, [outside]);
+  const toggle = <K extends string>(xs: K[], k: K, order: readonly K[]) => order.filter((v) => (v === k ? !xs.includes(k) : xs.includes(v)));
+  // A change of what the type admits drops the answer and its confirmation: saving asks again.
+  const reconsider = () => { setOutside(null); setConfirmed(false); clear(); };
   const toggleConf = (c: Conf) => {
-    const next = CONF_LEVELS.filter((x) => (x === c ? !allowed.includes(c) : allowed.includes(x)));
+    reconsider();
+    const next = toggle(allowed, c, CONF_LEVELS);
     setAllowed(next);
     if (!next.includes(confDefault) && next.length) setConfDefault(next[0]);
   };
-  const iconBtn = { width: 26, height: 26 };
+  const errorOf = (name: string) => (field === name ? error : null);
+  const label = lang === 'fr' ? x.labelFr : x.labelEn;
+  const submit = (form: HTMLFormElement) => {
+    const fd = new FormData(form);
+    run(async () => {
+      const r = await (creating ? createType(fd) : updateType(fd));
+      if (!r.ok && r.field === 'confirmOut') { setOutside({ text: r.error, token: r.confirm ?? '' }); setConfirmed(false); }
+      return r;
+    }, { form });
+  };
 
   return (
-    <Modal title={`${type.code} — ${type.label}`} width={620} actions={<Actions pending={pending} label={t.save} onCancel={close} form="type-form" disabled={!allowed.length} />}>
-      <form id="type-form" onSubmit={(e) => { e.preventDefault(); const form = e.currentTarget; const fd = new FormData(form); run(() => updateType(fd), { form }); }} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <input type="hidden" name="code" value={type.code} />
-        {circuit.map((k) => <input key={k} type="hidden" name="circuit" value={k} />)}
+    <Modal
+      title={creating ? t.new_type : `${x.code} — ${label}`}
+      width={720}
+      actions={<>
+        {!creating && (
+          <DeleteEntry used={x.used} usedText={t.reg_type_in_use} pending={pending} confirmText={t.reg_delete_confirm.replace('{what}', `${x.code} · ${label}`)} onDelete={() => run(() => deleteType(x.code))} />
+        )}
+        <Actions pending={pending} label={creating ? t.create : t.save} onCancel={close} form="type-form" disabled={!allowed.length || !origins.length || !attachments.length || (!!outside && !confirmed)} />
+      </>}
+    >
+      <form id="type-form" onSubmit={(e) => { e.preventDefault(); submit(e.currentTarget); }} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {!creating && <input type="hidden" name="original" value={x.code} />}
         <input type="hidden" name="active" value={active ? 'on' : 'off'} />
+        <input type="hidden" name="confirmOut" value={confirmed && outside ? outside.token : ''} />
+        {origins.map((o) => <input key={o} type="hidden" name="origins" value={o} />)}
+        {attachments.map((a) => <input key={a} type="hidden" name="attachments" value={a} />)}
 
-        <Field label={t.circuit_steps}>
-          <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <li className="text-muted" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 8px', fontSize: 13 }}>
-              <span className="tabnum" style={{ width: 14 }}>0</span><span>{t.step_author}</span>
-            </li>
-            {circuit.map((k, i) => {
-              const f = fn(k);
-              return (
-                <li key={k} className="hover-tint" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '2px 4px 2px 8px', borderRadius: 'var(--radius-md)', fontSize: 13 }}>
-                  <span className="text-muted tabnum" style={{ width: 14 }}>{i + 1}</span>
-                  <span className="ellipsis" style={{ flex: 1 }}>{f?.label ?? k}</span>
-                  {f && <span className="tag tag-neutral" style={{ padding: '1px 7px', fontSize: 10 }}>{t[`scope_${f.scope}`]}</span>}
-                  <button type="button" className="btn btn-ghost btn-icon" style={iconBtn} disabled={i === 0} onClick={() => move(i, -1)} aria-label={t.move_up} title={t.move_up}>
-                    <Icon name="chevronDown" size={14} style={{ transform: 'rotate(180deg)' }} />
-                  </button>
-                  <button type="button" className="btn btn-ghost btn-icon" style={iconBtn} disabled={i === circuit.length - 1} onClick={() => move(i, 1)} aria-label={t.move_down} title={t.move_down}>
-                    <Icon name="chevronDown" size={14} />
-                  </button>
-                  <button type="button" className="btn btn-ghost btn-icon" style={iconBtn} onClick={() => remove(i)} aria-label={t.remove} title={t.remove}>
+        <div className="form-grid">
+          <Field label={t.rule_id} hint={x.used ? t.reg_code_locked : t.type_code_hint} error={errorOf('code')}>
+            {(id) => <CodeInput id={id} name="code" value={x.code} used={x.used} upper maxLength={3} field={field} error={error} />}
+          </Field>
+          <Field label={t.family} hint={x.used ? t.reg_family_follow : undefined} error={errorOf('family')}>
+            {(id) => <Select id={id} name="family" defaultValue={x.family} options={data.families} required />}
+          </Field>
+          <Field label={t.label_fr} error={errorOf('labelFr')}>{(id) => <input id={id} className="input" name="labelFr" defaultValue={x.labelFr} required maxLength={160} />}</Field>
+          <Field label={t.label_en} error={errorOf('labelEn')}>{(id) => <input id={id} className="input" name="labelEn" defaultValue={x.labelEn} maxLength={160} />}</Field>
+          <Field label={t.origin}>
+            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', minHeight: 34, alignItems: 'center' }}>
+              {ORIGINS.map((o) => (
+                <label key={o} style={checkRow}><input type="checkbox" checked={origins.includes(o)} onChange={() => { reconsider(); setOrigins(toggle(origins, o, ORIGINS)); }} style={{ margin: 0 }} />{t[`or_${o}`]}</label>
+              ))}
+            </div>
+          </Field>
+          <Field label={t.attachment} hint={template ? t.reg_template_attachments_hint : undefined}>
+            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', minHeight: 34, alignItems: 'center' }}>
+              {ATTACHMENTS.map((a) => (
+                <label key={a} style={{ ...checkRow, ...(template ? { opacity: 0.6, cursor: 'default' } : {}) }}><input type="checkbox" checked={attachments.includes(a)} disabled={template} onChange={() => { reconsider(); setAttachments(toggle(attachments, a, ATTACHMENTS)); }} style={{ margin: 0 }} />{t[`att_${a}`]}</label>
+              ))}
+            </div>
+          </Field>
+          <Field label={t.subtypes_label} span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {rows.map((r, i) => (
+                <div key={r.id} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input className="input" name="subtypeFr" defaultValue={r.fr} placeholder={t.label_fr} aria-label={`${t.subtype} ${i + 1} · ${t.label_fr}`} maxLength={120} />
+                  <input className="input" name="subtypeEn" defaultValue={r.en} placeholder={t.label_en} aria-label={`${t.subtype} ${i + 1} · ${t.label_en}`} maxLength={120} />
+                  <button type="button" className="btn btn-ghost btn-icon" style={iconBtn} onClick={() => setRows((xs) => xs.filter((y) => y.id !== r.id))} aria-label={`${t.remove} · ${t.subtype} ${i + 1}`} title={t.remove}>
                     <Icon name="close" size={14} />
                   </button>
-                </li>
-              );
-            })}
-          </ol>
-          {circuit.length === 0 && <div className="text-muted field-hint" style={{ paddingLeft: 8 }}>{t.no_approval}</div>}
-          {free.length > 0 && (
-            <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-              <Select value={addKey} onChange={setAddKey} options={free.map((f) => ({ key: f.key, label: f.label }))} ariaLabel={t.add_step} />
-              <button type="button" className="btn btn-secondary nowrap" onClick={add} disabled={!addKey}><Icon name="plus" size={14} />{t.add_step}</button>
+                </div>
+              ))}
+              <div>
+                <button type="button" className="btn btn-ghost" style={{ fontSize: 12 }} disabled={rows.length >= 40} onClick={() => { setRows((xs) => [...xs, { fr: '', en: '', id: nextRow }]); setNextRow((n) => n + 1); }}>
+                  <Icon name="plus" size={14} />{t.subtype_add}
+                </button>
+              </div>
             </div>
-          )}
-        </Field>
+          </Field>
+          <Field label={t.iso_clause} error={errorOf('iso')}>{(id) => <input id={id} className="input" name="iso" defaultValue={x.iso ?? ''} maxLength={120} />}</Field>
+          <Field label={t.client_deliverable}>
+            <label style={{ ...checkRow, minHeight: 34 }}><input type="checkbox" name="clientDeliverable" defaultChecked={x.clientDeliverable} style={{ margin: 0 }} />{t.yes}</label>
+          </Field>
+        </div>
+
+        <CircuitSteps circuit={circuit} setCircuit={setCircuit} />
 
         <div className="form-grid">
           <Field label={t.conf_allowed}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               {CONF_LEVELS.map((c) => (
-                <label key={c} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12.5, cursor: 'pointer' }}>
+                <label key={c} style={checkRow}>
                   <input type="checkbox" name="confAllowed" value={c} checked={allowed.includes(c)} onChange={() => toggleConf(c)} style={{ margin: 0 }} />{t[`conf_${c}`]}
                 </label>
               ))}
             </div>
           </Field>
-          <Field label={t.conf_default}>
+          <Field label={t.conf_default} error={errorOf('confDefault')}>
             {(id) => <Select id={id} name="confDefault" value={confDefault} onChange={(v) => setConfDefault(v as Conf)} options={allowed.map((c) => ({ key: c, label: t[`conf_${c}`] }))} required />}
           </Field>
           <GridSection>{t.retention_rule}</GridSection>
-          <Field label={t.years}>
-            {(id) => <input id={id} className="input" type="number" name="retentionYears" min={0} max={200} defaultValue={type.retentionYears ?? ''} />}
+          <Field label={t.years} error={errorOf('retentionYears')}>
+            {(id) => <input id={id} className="input" type="number" name="retentionYears" min={0} max={200} step={1} defaultValue={x.retentionYears ?? ''} aria-invalid={field === 'retentionYears' ? true : undefined} />}
           </Field>
           <Field label={t.trigger}>
-            {(id) => <Select id={id} name="retentionTrigger" defaultValue={type.retentionTrigger} options={TRIGGERS.map((k) => ({ key: k, label: t[`trig_${k}`] }))} />}
+            {(id) => <Select id={id} name="retentionTrigger" defaultValue={x.retentionTrigger} options={RETENTION_TRIGGERS.map((k) => ({ key: k, label: t[`trig_${k}`] }))} />}
           </Field>
           <Field label={t.disposition}>
-            {(id) => <Select id={id} name="retentionDisposition" defaultValue={type.retentionDisposition} options={DISPOSITIONS.map((k) => ({ key: k, label: t[`disp_${k}`] }))} />}
+            {(id) => <Select id={id} name="retentionDisposition" defaultValue={x.retentionDisposition} options={DISPOSITIONS.map((k) => ({ key: k, label: t[`disp_${k}`] }))} />}
           </Field>
-          {type.retentionBasis && (
-            <Field label={t.retention_basis}>
-              <div className="text-muted" style={{ fontSize: 12 }}>{type.retentionBasis}</div>
-            </Field>
-          )}
+          <Field label={t.retention_basis} span error={errorOf('retentionBasis')}>
+            {(id) => <textarea id={id} className="input" name="retentionBasis" defaultValue={x.retentionBasis} rows={2} maxLength={500} style={{ resize: 'vertical' }} />}
+          </Field>
           {/* Periodic review: sets the review date of a document entering into force without one (lib/review.ts). */}
           <GridSection>{t.review_months}</GridSection>
-          <Field label={t.duration} hint={t.review_months_hint} error={field === 'reviewMonths' ? error : null}>
-            {(id) => <input id={id} className="input" type="number" name="reviewMonths" min={1} max={240} step={1} defaultValue={type.reviewMonths ?? ''} aria-invalid={field === 'reviewMonths' ? true : undefined} />}
+          <Field label={t.duration} hint={t.review_months_hint} error={errorOf('reviewMonths')}>
+            {(id) => <input id={id} className="input" type="number" name="reviewMonths" min={1} max={240} step={1} defaultValue={x.reviewMonths ?? ''} aria-invalid={field === 'reviewMonths' ? true : undefined} />}
           </Field>
         </div>
-        <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12.5, cursor: 'pointer' }}>
+        <label style={checkRow}>
           <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} style={{ margin: 0 }} />{t.type_active}
+        </label>
+        {outside && (
+          <div ref={outsideRef} className="form-error" role="alert" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <span>{outside.text}</span>
+            <label style={{ ...checkRow, color: 'var(--color-text)' }}>
+              <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} style={{ margin: 0 }} />{t.reg_out_confirm}
+            </label>
+          </div>
+        )}
+        <ErrorLine error={field ? null : error} />
+      </form>
+    </Modal>
+  );
+}
+
+/** A family of types: key, labels, the deck group it comes from (D-08). */
+function FamilyEditor({ family }: { family?: Extract<DialogSpec, { kind: 'family' }>['family'] }) {
+  const { t, lang, close } = useApp();
+  const { pending, error, field, run } = useSubmit();
+  const x = family ?? { key: '', labelFr: '', labelEn: '', grp: 'DI', used: false };
+  const creating = !family;
+  const errorOf = (name: string) => (field === name ? error : null);
+  const label = lang === 'fr' ? x.labelFr : x.labelEn;
+  return (
+    <Modal
+      title={creating ? t.new_family : `${t.family} — ${label}`}
+      actions={<>
+        {!creating && <DeleteEntry used={x.used} usedText={t.reg_family_in_use} pending={pending} confirmText={t.reg_delete_confirm.replace('{what}', label)} onDelete={() => run(() => deleteFamily(x.key))} />}
+        <Actions pending={pending} label={creating ? t.create : t.save} onCancel={close} form="family-form" />
+      </>}
+    >
+      <form id="family-form" onSubmit={(e) => { e.preventDefault(); const form = e.currentTarget; const fd = new FormData(form); run(() => (creating ? createFamily(fd) : updateFamily(fd)), { form }); }}>
+        {!creating && <input type="hidden" name="original" value={x.key} />}
+        <div className="form-grid">
+          <Field label={t.key_label} hint={x.used ? t.reg_code_locked : t.key_hint} error={errorOf('key')}>
+            {(id) => <CodeInput id={id} name="key" value={x.key} used={x.used} maxLength={40} field={field} error={error} />}
+          </Field>
+          <Field label={t.family_group}>
+            {(id) => <Select id={id} name="grp" defaultValue={x.grp} options={FAMILY_GROUPS.map((g) => ({ key: g, label: t[`grp_${g}`] }))} />}
+          </Field>
+          <Field label={t.label_fr} error={errorOf('labelFr')}>{(id) => <input id={id} className="input" name="labelFr" defaultValue={x.labelFr} required maxLength={160} />}</Field>
+          <Field label={t.label_en} error={errorOf('labelEn')}>{(id) => <input id={id} className="input" name="labelEn" defaultValue={x.labelEn} maxLength={160} />}</Field>
+        </div>
+        <ErrorLine error={field ? null : error} />
+      </form>
+    </Modal>
+  );
+}
+
+/** A function circuits are made of: key, labels, the scope its holders are named for. */
+function FunctionEditor({ fn }: { fn?: Extract<DialogSpec, { kind: 'function' }>['fn'] }) {
+  const { t, lang, close } = useApp();
+  const { pending, error, field, run } = useSubmit();
+  const x = fn ?? { key: '', labelFr: '', labelEn: '', scope: 'global' as const, used: false, held: false };
+  const creating = !fn;
+  // The scope is fixed while holders are named for it, and for the functions the rules of Codex name.
+  const builtIn = !creating && BUILT_IN_SCOPES.has(x.key);
+  const scopeLocked = x.held || builtIn;
+  const errorOf = (name: string) => (field === name ? error : null);
+  const label = lang === 'fr' ? x.labelFr : x.labelEn;
+  return (
+    <Modal
+      title={creating ? t.new_function : `${t.function_label} — ${label}`}
+      actions={<>
+        {!creating && <DeleteEntry used={x.used} usedText={t.reg_function_in_use} pending={pending} confirmText={t.reg_delete_confirm.replace('{what}', label)} onDelete={() => run(() => deleteFunction(x.key))} />}
+        <Actions pending={pending} label={creating ? t.create : t.save} onCancel={close} form="function-form" />
+      </>}
+    >
+      <form id="function-form" onSubmit={(e) => { e.preventDefault(); const form = e.currentTarget; const fd = new FormData(form); run(() => (creating ? createFunction(fd) : updateFunction(fd)), { form }); }}>
+        {!creating && <input type="hidden" name="original" value={x.key} />}
+        <div className="form-grid">
+          <Field label={t.key_label} hint={x.used ? t.reg_code_locked : t.key_hint} error={errorOf('key')}>
+            {(id) => <CodeInput id={id} name="key" value={x.key} used={x.used} maxLength={40} field={field} error={error} />}
+          </Field>
+          <Field label={t.scope} hint={builtIn ? t.reg_scope_hint_built_in : x.held ? t.reg_scope_hint_locked : undefined} error={errorOf('scope')}>
+            {(id) => <>
+              <Select id={id} name={scopeLocked ? undefined : 'scope'} defaultValue={x.scope} options={FUNCTION_SCOPES.map((k) => ({ key: k, label: t[`scope_${k}`] }))} disabled={scopeLocked} />
+              {scopeLocked && <input type="hidden" name="scope" value={x.scope} />}
+            </>}
+          </Field>
+          <Field label={t.label_fr} error={errorOf('labelFr')}>{(id) => <input id={id} className="input" name="labelFr" defaultValue={x.labelFr} required maxLength={160} />}</Field>
+          <Field label={t.label_en} error={errorOf('labelEn')}>{(id) => <input id={id} className="input" name="labelEn" defaultValue={x.labelEn} maxLength={160} />}</Field>
+        </div>
+        <ErrorLine error={field ? null : error} />
+      </form>
+    </Modal>
+  );
+}
+
+/** A research programme: code (the context of its documents' IDs), name, manager, active. */
+function ProgramEditor({ program }: { program?: Extract<DialogSpec, { kind: 'program' }>['program'] }) {
+  const { t, data, close } = useApp();
+  const { pending, error, field, run } = useSubmit();
+  const x = program ?? { code: '', name: '', managerId: data.currentUserId, active: true, used: false };
+  const creating = !program;
+  const [active, setActive] = useState(x.active);
+  const errorOf = (name: string) => (field === name ? error : null);
+  return (
+    <Modal
+      title={creating ? t.new_program : `${x.code} — ${x.name}`}
+      actions={<>
+        {!creating && <DeleteEntry used={x.used} usedText={t.reg_program_in_use} pending={pending} confirmText={t.reg_delete_program_confirm.replace('{what}', `${x.code} · ${x.name}`)} onDelete={() => run(() => deleteProgram(x.code))} />}
+        <Actions pending={pending} label={creating ? t.create : t.save} onCancel={close} form="program-form" />
+      </>}
+    >
+      <form id="program-form" onSubmit={(e) => { e.preventDefault(); const form = e.currentTarget; const fd = new FormData(form); run(() => (creating ? createProgram(fd) : updateProgram(fd)), { form }); }} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {!creating && <input type="hidden" name="original" value={x.code} />}
+        <input type="hidden" name="active" value={active ? 'on' : 'off'} />
+        <div className="form-grid">
+          <Field label={t.rule_id} hint={x.used ? t.reg_code_locked : t.program_code_hint} error={errorOf('code')} span>
+            {(id) => <CodeInput id={id} name="code" value={x.code} used={x.used} upper maxLength={10} field={field} error={error} />}
+          </Field>
+          <Field label={t.program_name} span error={errorOf('name')}>{(id) => <input id={id} className="input" name="name" defaultValue={x.name} required maxLength={160} />}</Field>
+          <Field label={t.manager} span hint={t.program_manager_hint} error={errorOf('managerId')}>
+            {(id) => <Select id={id} name="managerId" defaultValue={x.managerId} options={userOptions(data)} required />}
+          </Field>
+        </div>
+        <label style={checkRow}>
+          <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} style={{ margin: 0 }} />{t.program_active}
         </label>
         <ErrorLine error={field ? null : error} />
       </form>
@@ -1020,7 +1273,7 @@ function AddHolder({ functionKey, functionLabel, scope }: { functionKey: string;
   // A holder decides approval steps: only people whose role may approve.
   const users = userOptions(data).filter((o) => data.users.find((u) => u.id === o.key)?.approver);
   const [userId, setUserId] = useState(users[0]?.key ?? '');
-  const values = scope === 'department' ? data.departments : scope === 'project' ? data.projects : scope === 'research' ? data.programs : [];
+  const values = scope === 'department' ? data.departments : scope === 'project' ? data.projects : scope === 'research' ? data.programs.filter((p) => p.active) : [];
   const [scopeValue, setScopeValue] = useState(scope === 'department' && data.currentDepartment ? data.currentDepartment : values[0]?.key ?? '');
   const scopeLabel = scope === 'department' ? t.department : scope === 'project' ? t.project : t.program;
   return (

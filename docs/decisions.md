@@ -951,6 +951,52 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     exiger `CODEX_TRUST_PROXY` (il ne sert qu'à relier des journaux), sinon un UUID ; renvoyé sur les réponses d'API.
     Une Server Action reçoit un UUID, non renvoyé au navigateur. Next.js signalant parfois deux fois l'échec d'un même
     rendu, une erreur de même `digest` sur le même chemin n'est écrite qu'une fois par 2 secondes.
+- **Administration du registre et des programmes de recherche** (points 61 et 58 de `docs/reste-a-faire.md`,
+  15 octobre ; D-07, D-08, D-10, D-15. Gouvernance des termes (A05 de l'audit), arbitrages du registre (O-05), date de
+  fin des programmes (point 3 de `docs/registre-points-ouverts.md`) non tranchés) :
+  - créer, modifier et supprimer types, familles, fonctions et programmes est réservé au droit « Administrer », comme
+    le reste de l'administration : qui peut créer, renommer ou retirer un terme (A05) reste à décider ;
+  - le contenu du registre ne change pas : aucun type n'est ajouté ni retiré, les 69 types restent provisoires (O-05) ;
+  - formats : code de type de 2 ou 3 lettres majuscules (comme tous les codes du registre, GA et PO compris) ; code de
+    programme fait d'une lettre majuscule puis de 2 à 9 lettres majuscules ou chiffres, sans tiret (R2601) ; clé de
+    famille ou de fonction en minuscules, chiffres et `_` (`resp_qualite`). Libellé FR obligatoire, libellé EN repris
+    du FR s'il est vide ;
+  - **un code ne désigne qu'une chose dans un identifiant** `TYPE-CONTEXTE-SEQ` : un nouveau code de type, de
+    département ou de programme ne peut reprendre ni un autre code de type, ni un code de département, de projet ou de
+    programme, ni `QMS`. C'est l'option prudente du point 1 de `docs/registre-points-ouverts.md` (« FIN-FIN-0001 :
+    garder ou renommer ? », O-05) : les codes déjà partagés (FIN, HSE, COM, types et départements) sont gardés, aucun
+    nouveau n'est créé. Pour deux contextes (un département et un programme du même code), le compteur serait de plus
+    commun ;
+  - **une entrée utilisée garde son code et ne se supprime pas** : un type qu'un document (quel que soit son état) ou une
+    pièce attendue sur un projet utilise ; une famille qui contient un type ou un document ; une fonction qui figure
+    dans un circuit, a des titulaires ou a servi dans un circuit lancé (ses étapes gardent sa clé) ; un programme qu'un
+    document ou un titulaire de fonction « par programme » utilise. Les entrées que les règles de Codex nomment comptent
+    comme utilisées, même sans document : le type des modèles FRM (contexte `QMS`, D-10) et les fonctions chef de
+    projet, validation client (le chef du projet y répond à défaut de titulaire) et responsable du département. Elles
+    gardent aussi les réglages dont le code dépend : FRM n'admet que « sans rattachement » (rattaché à un projet ou à un
+    programme, un modèle prendrait ce contexte au lieu de `QMS`) ; chef de projet et validation client restent « par
+    projet », responsable du département « par département ». Un type ou un programme utilisé se désactive : il
+    n'est plus proposé à un nouveau document, et ceux qui l'ont le gardent. Une entrée que rien n'utilise peut changer de
+    code ou être supprimée (créée par erreur, par exemple), ce qui est journalisé ;
+  - changer la famille d'un type change celle de ses documents (la famille d'un document est celle de son type) ;
+  - restreindre les origines, rattachements ou niveaux de confidentialité admis par un type est refusé tant qu'on ne
+    confirme pas, avec le nombre de documents de ce type qui ne seraient plus admis ; leurs identifiants ne sont donnés
+    qu'aux gestionnaires documentaires, la liste nommant des brouillons (D-14). La confirmation ne vaut que pour les
+    documents annoncés : si le réglage change ou qu'un autre document serait exclu entre-temps, la question est reposée
+    avec le nouveau nombre. Ces documents gardent leurs valeurs ; leur prochaine modification de métadonnées demande de
+    les reclasser ;
+  - la portée d'une fonction ne change pas tant qu'elle a des titulaires (chacun est nommé pour une valeur de la
+    portée) ; ses libellés changent pour les circuits à venir, les circuits lancés gardent ceux de leur lancement ;
+  - un titulaire de fonction est nommé pour un département ou un projet connu, pour un programme connu et actif, ou
+    pour tout le groupe : un programme désactivé garde ses titulaires mais n'en reçoit plus de nouveau ;
+  - un programme a un code, un libellé, un responsable (une personne, pas un acteur système), qui valide les étapes
+    « par programme » sans titulaire désigné, et un état actif. Pas de date de fin : elle servirait au déclencheur de
+    conservation « fin de programme » (point 3 de `docs/registre-points-ouverts.md`, O-05). Un programme désactivé reste
+    accepté par l'import (`POST /api/import`) : la migration reprend aussi les documents des programmes terminés (O-11) ;
+  - un type créé dans Codex porte `source: codex` dans `GET /api/registry` ; les programmes n'y figurent pas
+    (`docs/api.md`) ;
+  - chaque création, modification et suppression est journalisée comme une entrée sans document (cibles type, famille,
+    fonction, programme), avec chaque champ avant → après, lisible dans l'administration seulement.
 - **Git** (D-23) : premier commit sur une branche `codex-ged-v2` plutôt que sur `main`.
 
 ## Ce qui est explicitement hors périmètre

@@ -41,6 +41,9 @@ Fonction** (obligatoire) et **Site** (facultatif) — valeurs *provisoires* jusq
 Le **registre des types** fusionne les 45 types du deck et les 28 types de Keystone. Chaque type porte : code, libellés
 FR/EN, famille, origines et rattachements admis, sous-types, circuit de validation, règle de conservation, niveaux de
 confidentialité admis et par défaut, clause ISO 9001, livrable client. Codex est propriétaire du registre ; Keystone le lit.
+Le registre (types, familles, fonctions) et les programmes de recherche s'administrent dans Codex : une entrée utilisée
+garde son code et ne se supprime pas (un type ou un programme se désactive), et aucun nouveau code ne reprend celui d'un
+autre segment d'identifiant (*proposé, non confirmé*, `docs/decisions.md`).
 
 ## 3. Identifiant : `TYPE-CONTEXTE-SEQ`
 
