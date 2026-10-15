@@ -263,6 +263,18 @@ const fr = {
   orphans_removed:'Fichiers orphelins supprimés : {n} ({size}).', orphans_kept:'Laissés en place, plus orphelins depuis la recherche : {n}.', orphans_left:'Orphelins restants : {n}.', orphans_failures:'Non supprimés : {n} (voir le journal du serveur).',
   orphans_busy:'Un nettoyage du stockage est déjà en cours.', orphans_sp_list_only:'Liste seulement : la suppression sur SharePoint attend un essai sur un vrai tenant (O-01).',
   orphans_sp_error:'SharePoint n’a pas pu être listé : voir le journal du serveur.',
+  act_backup_created:'Sauvegarde créée', act_backup_restored:'Base restaurée', target_backup:'Sauvegarde',
+  backup_title:'Sauvegardes', backup_show:'Afficher', backup_last:'dernière : {date}', backup_none:'Aucune sauvegarde.',
+  backup_create:'Sauvegarder maintenant',
+  backup_confirm:'Sauvegarder maintenant la base et les fichiers ? Les écritures attendent pendant la copie de la base (quelques secondes). L’archive est écrite dans {dir} ; sont gardées les {n} plus récentes et la plus récente de chacun des {n} derniers jours, les autres sont supprimées.',
+  backup_hint:'Archive de la base et des fichiers qu’elle référence, avec un manifeste et l’empreinte SHA-256 de chaque élément, dans {dir} ; sont gardées les {n} plus récentes et la plus récente de chacun des {n} derniers jours. Une sauvegarde par quart d’heure au plus depuis l’application. La restauration se fait serveur arrêté, en ligne de commande (npm run restore, docs/sauvegarde.md). Aucune sauvegarde n’est programmée : la fréquence et le lieu de conservation restent à décider.',
+  backup_by_cli:'ligne de commande', backup_unreadable:'manifeste illisible', backup_archive_size:'Archive', backup_col_by:'Origine', backup_col_files:'Fichiers',
+  backup_done:'Sauvegarde créée : {name} ({size}).', backup_list_error:'Le dossier des sauvegardes n’a pas pu être lu : voir le journal du serveur.', backup_busy:'Une sauvegarde est déjà en cours.', backup_failed:'La sauvegarde a échoué : voir le journal du serveur.',
+  backup_missing:'Fichiers référencés absents du stockage, non sauvegardés : {n}.', backup_sharepoint:'Fichiers conservés sur SharePoint, non inclus : {n}.',
+  backup_rotated:'Anciennes sauvegardes supprimées : {n}.',
+  backup_recent:'La dernière sauvegarde date du {date}, il y a moins de 15 minutes : elle sert de point de restauration. Nouvelle sauvegarde depuis l’application possible à partir du {next} ; ce délai empêche une suite de sauvegardes d’écarter les plus anciennes.',
+  backup_docs:'{n} documents', backup_files:'fichiers : {n} ({size})', backup_archive:'archive {size}, SHA-256 {sha}…', backup_of:'sauvegarde du {date}',
+  backup_missing_n:'absents du stockage : {n}', backup_sharepoint_n:'sur SharePoint, non inclus : {n}', backup_replaced:'base précédente mise de côté',
 };
 
 type Dict = Record<keyof typeof fr, string>;
@@ -527,6 +539,18 @@ const en: Dict = {
   orphans_removed:'Orphan files removed: {n} ({size}).', orphans_kept:'Left in place, no longer orphans since the search: {n}.', orphans_left:'Orphans left: {n}.', orphans_failures:'Not removed: {n} (see the server log).',
   orphans_busy:'A storage clean-up is already running.', orphans_sp_list_only:'Listed only: removal on SharePoint waits for a trial on a real tenant (O-01).',
   orphans_sp_error:'SharePoint could not be listed: see the server log.',
+  act_backup_created:'Backup created', act_backup_restored:'Database restored', target_backup:'Backup',
+  backup_title:'Backups', backup_show:'Show', backup_last:'latest: {date}', backup_none:'No backup.',
+  backup_create:'Back up now',
+  backup_confirm:'Back up the database and files now? Writes wait while the database is copied (a few seconds). The archive is written to {dir}; the {n} most recent and the latest of each of the last {n} days are kept, the others removed.',
+  backup_hint:'Archive of the database and of the files it refers to, with a manifest and the SHA-256 of each item, in {dir}; the {n} most recent and the latest of each of the last {n} days are kept. At most one backup per quarter of an hour from the application. Restoring is done with the server stopped, from the command line (npm run restore, docs/sauvegarde.md). No backup is scheduled: how often, and where archives are kept, remain to be decided.',
+  backup_by_cli:'command line', backup_unreadable:'unreadable manifest', backup_archive_size:'Archive', backup_col_by:'Made by', backup_col_files:'Files',
+  backup_done:'Backup created: {name} ({size}).', backup_list_error:'The backup directory could not be read: see the server log.', backup_busy:'A backup is already running.', backup_failed:'The backup failed: see the server log.',
+  backup_missing:'Referenced files missing from storage, not backed up: {n}.', backup_sharepoint:'Files kept on SharePoint, not included: {n}.',
+  backup_rotated:'Older backups removed: {n}.',
+  backup_recent:'The latest backup was made on {date}, less than 15 minutes ago: it serves as the restore point. The application can back up again from {next}; this wait keeps a run of backups from pushing out the older ones.',
+  backup_docs:'{n} documents', backup_files:'files: {n} ({size})', backup_archive:'archive {size}, SHA-256 {sha}…', backup_of:'backup of {date}',
+  backup_missing_n:'missing from storage: {n}', backup_sharepoint_n:'on SharePoint, not included: {n}', backup_replaced:'previous database set aside',
 };
 
 export const DICT: Record<Lang, Dict> = { fr, en };

@@ -856,6 +856,57 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     la liste ; seuls les noms que Codex donne sont examinés. SharePoint est listé, jamais nettoyé, tant que le pilote n'a pas été essayé sur un vrai
     tenant (O-01). Pas de commande npm : PGlite n'ouvre la base que dans un seul processus, celui du serveur ; le
     planificateur (point 38 de `docs/reste-a-faire.md`) appellera la même fonction.
+- **Sauvegarde et restauration** (point 48 de `docs/reste-a-faire.md`, 15 octobre ; procédure dans
+  `docs/sauvegarde.md`. Hébergement, fréquence, lieu de conservation, chiffrement, perte de données et délai de reprise
+  tolérés (M22 de l'audit) non décidés ; SharePoint (O-01) non décidé) :
+  - une archive tar par sauvegarde (`codex-backup-<instant UTC>.tar`) : la base telle que PGlite la vide
+    (`dumpDataDir`, compressée), les fichiers locaux que ses versions de travail référencent, et un manifeste (date,
+    origine, version, migration du schéma, nombres, taille et SHA-256 de chaque entrée). Les fichiers qu'aucune
+    version ne référence (orphelins, dépôts en cours) ne sont pas sauvegardés ; les fichiers stockés sur SharePoint
+    sont comptés, pas copiés ;
+  - cohérence : la base est vidée pendant que sa connexion unique est tenue (transaction PGlite), après un
+    `CHECKPOINT` ; les écritures attendent pendant ce temps (quelques secondes). Les fichiers sont lus ensuite, sans
+    bloquer la base : un fichier stocké n'est jamais réécrit, un fichier référencé n'est retiré qu'après que la
+    référence a changé, et un fichier renommé entre-temps est lu sous son nouveau nom (même UUID, mêmes octets). Pas de
+    lien dur vers les fichiers : il déplacerait leur `ctime` et retarderait d'autant leur nettoyage comme orphelins ;
+  - archives dans `CODEX_BACKUP_DIR`, par défaut à côté du dossier de données (`.data-backups/`), hors de `.data/`
+    pour survivre à `npm run db:reset`, sur le même disque : cela protège d'une erreur ou d'une base abîmée, pas de la
+    perte du disque. Non chiffrées, lisibles par le seul compte qui fait tourner Codex (dossier `0700`, fichiers
+    `0600`) : la clé et la copie hors de la machine dépendent de l'hébergement. Rotation, après relecture de la
+    nouvelle : les 7 plus récentes (`CODEX_BACKUP_KEEP`) et la plus récente de chacun des 7 derniers jours (UTC) où une
+    sauvegarde a été faite, soit 14 au plus : des sauvegardes faites à la suite n'écartent jamais les jours d'avant ;
+  - aucune sauvegarde programmée, faute de fréquence décidée ; le planificateur (point 38) pourra appeler la même
+    fonction ;
+  - sauvegarde depuis Administration (serveur en marche) réservée aux gestionnaires documentaires ayant l'accès
+    Administration, comme le nettoyage du stockage : l'archive contient tous les brouillons et son manifeste nomme les
+    fichiers (D-14). Entrée de journal « Sauvegarde créée » avec l'archive, sa taille, le début de son SHA-256 et des
+    nombres, sans nommer de document ; ces nombres et tailles ne sont montrés qu'aux gestionnaires documentaires, car
+    le nombre total de documents dirait à un autre lecteur du journal combien lui sont cachés (D-14). Une sauvegarde
+    depuis l'application au plus tous les quarts d'heure (après la dernière archive, quelle que soit son origine), pour
+    qu'une suite de clics n'écarte pas par la rotation les archives d'avant ; la commande n'a pas ce délai. Ni
+    téléchargement ni restauration depuis l'application ;
+  - restauration seulement en ligne de commande, serveur arrêté (`npm run restore`). Refus d'une base ou de fichiers
+    déjà présents sans `--replace` ; avec `--replace`, l'existant est déplacé dans `replaced-<instant>/`, jamais
+    supprimé. Refus d'une archive altérée ou dont la migration n'est pas dans `drizzle/` (schéma régénéré) : drizzle
+    rejouerait sinon la migration unique sur la base restaurée. La base est chargée à côté, ses nombres, sa migration
+    et ses fichiers comparés au manifeste avant de remplacer quoi que ce soit ; entrée « Base restaurée » au journal de
+    la base restaurée, au nom de l'acteur système Codex. Mise en place entrée par entrée (les dossiers `pglite/` et
+    `files/` restent, qu'ils soient des points de montage ou des liens symboliques ; copie d'un système de fichiers à
+    l'autre), jamais par-dessus une entrée existante ; si un déplacement échoue, ceux faits sont défaits et rien n'est
+    remplacé ; si le retour arrière échoue aussi, la commande s'arrête et dit ce qui est où, sans rien supprimer ;
+  - verrou `codex.lock` dans le dossier de données (PGlite n'ouvre la base que dans un processus, et son propre
+    `postmaster.pid` porte toujours -42) : les commandes refusent de tourner tant que le serveur qui l'a écrit vit, et
+    le serveur refuse d'ouvrir la base pendant une sauvegarde ou une restauration en ligne de commande, et son erreur
+    nomme le fichier à supprimer si aucune commande ne tourne. Un verrou dont le processus n'existe plus est ignoré ;
+    une commande rafraîchit le sien toutes les 30 s, et il est ignoré 10 minutes après son dernier rafraîchissement
+    (commande tuée, numéro de processus repris). Un verrou que le serveur ne peut pas écrire ne l'empêche pas de
+    démarrer ;
+  - commandes en JavaScript (`src/lib/backup-core.mjs`, `scripts/codex-backup.mjs`), lancées par Node seul, sans
+    chargeur TypeScript : elles marchent avec toute version de Node admise par `engines` (20.19 compris). Elles lisent
+    les variables comme Next (`@next/env`, installé avec Next), en mode production par défaut (`next start` et l'app
+    Mac) et en mode développement avec `--dev`, et affichent d'abord les dossiers sur lesquels elles travaillent. Le
+    jour où la base passera sur un Postgres serveur (point 51), la sauvegarde passera à `pg_dump` ou aux outils de
+    l'hébergeur.
 - **Git** (D-23) : premier commit sur une branche `codex-ged-v2` plutôt que sur `main`.
 
 ## Ce qui est explicitement hors périmètre

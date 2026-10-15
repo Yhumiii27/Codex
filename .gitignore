@@ -64,6 +64,8 @@ next-env.d.ts
 # ── Local data ───────────────────────────────────────────
 # local database and uploaded files (PGlite)
 /.data
+# their backups (npm run backup, Administration; default CODEX_BACKUP_DIR)
+/.data-backups
 # design source archives (extracted in design/)
 /*.zip
 

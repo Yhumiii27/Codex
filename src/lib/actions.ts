@@ -5,11 +5,12 @@ import { cookies } from 'next/headers';
 import { refresh } from 'next/cache';
 import { getDb, schema as s } from '@/db';
 import type { Attachment, AuditChange, AuditValue, Conf, Disposition, Origin, RetentionTrigger, SearchScope } from '@/db/schema';
-import { buildAccessIndex, canRead, followsCircuit, getAccessIndex, inDraftingCircle, isUsableTemplate, mayCleanStorage, mayDeleteSearch, mayEditLinks, mayRecall, mayRecordReview, maySaveSearch, mayWorkOnDraft, readerMaySeeRevision, readersApply, seesSavedSearch } from './access';
+import { buildAccessIndex, canRead, followsCircuit, getAccessIndex, inDraftingCircle, isUsableTemplate, mayBackUp, mayCleanStorage, mayDeleteSearch, mayEditLinks, mayRecall, mayRecordReview, maySaveSearch, mayWorkOnDraft, readerMaySeeRevision, readersApply, seesSavedSearch } from './access';
 import { idMatches, nextDocId, nextWorkflowId } from './codification';
 import { changeAuthor, seenVersion, seenWorkingBase, staleText, workingIssue, workingStaleText, type WorkingBase } from './concurrency';
+import { backUpNow } from './backup';
 import { COOKIE_LANG, COOKIE_ROLE, COOKIE_USER, getCtx, type Ctx } from './context';
-import { addDays, fmtDate, fmtSize, loc, nowStamp, parseIsoDay, todayIso } from './format';
+import { addDays, fmtDate, fmtDateTime, fmtSize, loc, nowStamp, parisStamp, parseIsoDay, todayIso } from './format';
 import { ATTACHMENTS, CONF_LEVELS, ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLES, ORIGINS, PERMS, SEARCH_SCOPES, SIM_ROLES, SIMULATED_MATRIX_ROLES, type Perm, type SimRole, type TKey } from './i18n';
 import { addLink, applyChangeDecision, applyPendingDecision, approveRevision, audit, catchUpEffectiveDates, journalLink, linkBetween, lockOf, refreshHeadline, type ModifierSwap, type Tx } from './lifecycle';
 import { isLinkRel, linkIssue, otherEnd, replacementIssue, storedLink } from './links';
@@ -1260,6 +1261,43 @@ export async function purgeOrphanFiles(keys: string[]): Promise<ActionResult> {
       res.kept ? t.orphans_kept.replace('{n}', String(res.kept)) : '',
       res.failed ? t.orphans_failures.replace('{n}', String(res.failed)) : '',
       res.left - res.failed > 0 ? t.orphans_left.replace('{n}', String(res.left)) : '',
+    ].filter(Boolean).join(' '),
+  };
+}
+
+/**
+ * Backs up the database and the files it points to now (lib/backup.ts): an archive in the backup directory, checked once
+ * written, journaled, the oldest beyond the rotation removed; refused within 15 minutes of the latest archive
+ * (lib/backup.ts ONLINE_MIN_INTERVAL_MS). A records manager with access to Administration only (lib/access.ts
+ * mayBackUp). Restoring is not an action: it needs the server stopped (npm run restore).
+ */
+export async function backUpData(): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  if (!mayBackUp(ctx)) return fail(ctx, 'forbidden');
+  let res: Awaited<ReturnType<typeof backUpNow>>;
+  try {
+    res = await backUpNow(ctx.user.id);
+  } catch (err) {
+    console.error('[backup] failed', err);
+    return fail(ctx, 'backup_failed');
+  }
+  if (res === 'busy') return fail(ctx, 'backup_busy');
+  const { t, lang } = ctx;
+  if ('recent' in res) {
+    const at = (iso: string) => fmtDateTime(parisStamp(iso), lang);
+    return { ok: false, error: t.backup_recent.replace('{date}', at(res.recent)).replace('{next}', at(res.next)) };
+  }
+  const f = res.manifest.files;
+  refresh();
+  return {
+    ok: true,
+    message: [
+      t.backup_done.replace('{name}', res.name).replace('{size}', fmtSize(res.size, lang)),
+      f.missing.length ? t.backup_missing.replace('{n}', String(f.missing.length)) : '',
+      f.sharepoint ? t.backup_sharepoint.replace('{n}', String(f.sharepoint)) : '',
+      res.removed.length ? t.backup_rotated.replace('{n}', String(res.removed.length)) : '',
     ].filter(Boolean).join(' '),
   };
 }

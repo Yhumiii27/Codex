@@ -433,7 +433,8 @@ export const idCounters = pgTable('id_counters', {
 /** What an entry without document is about: a cell of the rights matrix, an organisation value, a function, a register type, a CSV export. */
 /** 'file': a file refused on its way in (target id: where it came from, lib/storage.ts UploadOrigin). */
 /** 'storage': a file store (target id: 'local' or 'sharepoint'), cleaned of its orphan files (lib/orphans.ts). */
-export type AuditTargetKind = 'permission' | 'department' | 'site' | 'function' | 'type' | 'export' | 'file' | 'storage';
+/** 'backup': an archive of the database and files (target id: its file name, lib/backup-core.mjs). */
+export type AuditTargetKind = 'permission' | 'department' | 'site' | 'function' | 'type' | 'export' | 'file' | 'storage' | 'backup';
 
 /** A value in a journal change, as stored: keys and codes, rendered in the reader's language (lib/queries.ts). */
 export type AuditValue = string | string[] | boolean | null | { years: number | null; trigger: string; disposition: string };
@@ -472,6 +473,17 @@ export type AuditData = {
    * managers only (D-14).
    */
   purge?: { files: { key: string; size: number; touched: string }[]; bytes: number; failed?: number };
+  /**
+   * An archive written (action 'backup_created': Administration, or npm run backup) or restored ('backup_restored': npm
+   * run restore, journaled in the restored database), lib/backup-core.mjs: its name, size and SHA-256 (of the whole
+   * file when written), what it holds (documents, local files and their size, files the store lacked, files kept by
+   * SharePoint and not archived); for a restore, when the backup was made and whether a database was replaced. Counts
+   * only: no document is named; the counts and sizes are shown to records managers only (lib/queries.ts backupL, D-14).
+   */
+  backup?: {
+    archive: string; size: number; sha256?: string; documents: number; files: number; bytes: number; missing: number; sharepoint: number;
+    createdAt?: string; replaced?: boolean;
+  };
 };
 
 /** Append-only: the database refuses UPDATE, DELETE and TRUNCATE on it (src/db/index.ts). */

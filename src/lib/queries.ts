@@ -985,7 +985,7 @@ export async function auditForReader(ctx: Ctx, all: AuditRow[]): Promise<AuditEn
   });
 }
 
-const TARGET_LABEL: Record<AuditTargetKind, TKey> = { permission: 'target_permission', department: 'department', site: 'site', function: 'function_label', type: 'type', export: 'target_export', file: 'target_file', storage: 'target_storage' };
+const TARGET_LABEL: Record<AuditTargetKind, TKey> = { permission: 'target_permission', department: 'department', site: 'site', function: 'function_label', type: 'type', export: 'target_export', file: 'target_file', storage: 'target_storage', backup: 'target_backup' };
 
 /** What an entry without document is about, as the Journal tab and its export name it: "Fonction · Responsable qualité". */
 export function auditTargetL(ctx: Ctx, kind: AuditTargetKind | null, id: string | null): string {
@@ -1000,6 +1000,7 @@ export function auditTargetL(ctx: Ctx, kind: AuditTargetKind | null, id: string 
     : kind === 'type' ? `${id} · ${ctx.label('type', id)}`
     : kind === 'file' ? t[`file_entry_${id}` as TKey] ?? id
     : kind === 'storage' ? t[`store_${id}` as TKey] ?? id
+    : kind === 'backup' ? id
     : id === 'search' ? t.adv_search : t.ad_audit;
   return `${t[TARGET_LABEL[kind]]} · ${name}`;
 }
@@ -1104,7 +1105,27 @@ function exportL(ctx: Ctx, targetId: string | null, x: NonNullable<AuditData['ex
 export function auditDetailL(ctx: Ctx, a: Pick<AuditRow, 'detail' | 'data' | 'targetId'>): string {
   const x = a.data;
   const link = x?.link ? `${ctx.t[`link_${x.link.rel}`]} ${x.link.other}${x.link.skipped ? ` : ${ctx.t[`link_skip_${x.link.skipped}`]}` : ''}` : '';
-  return [a.detail, link, x?.changes?.length ? x.changes.map((c) => changeL(ctx, c)).join(' ; ') : '', x?.export ? exportL(ctx, a.targetId, x.export) : '', x?.file ? refusedFileL(ctx, a.targetId, x.file) : '', x?.purge ? purgeL(ctx, x.purge) : ''].filter(Boolean).join(' · ');
+  return [a.detail, link, x?.changes?.length ? x.changes.map((c) => changeL(ctx, c)).join(' ; ') : '', x?.export ? exportL(ctx, a.targetId, x.export) : '', x?.file ? refusedFileL(ctx, a.targetId, x.file) : '', x?.purge ? purgeL(ctx, x.purge) : '', x?.backup ? backupL(ctx, x.backup) : ''].filter(Boolean).join(' · ');
+}
+
+/**
+ * A backup written or restored (lib/backup-core.mjs): for a restore, when the backup was made; what it holds; the
+ * archive's size and the start of its SHA-256 (of the whole file, to compare with the archive kept elsewhere). What it
+ * holds and its size to records managers only: they count every document, drafts and confidential ones included, so
+ * that another reader would learn how many are hidden from them, and when one is added out of their sight (D-14).
+ */
+function backupL(ctx: Ctx, b: NonNullable<AuditData['backup']>): string {
+  const { t, lang } = ctx;
+  const all = ctx.seesAll;
+  return [
+    b.createdAt ? t.backup_of.replace('{date}', fmtDateTime(parisStamp(b.createdAt), lang)) : '',
+    all ? t.backup_docs.replace('{n}', String(b.documents)) : '',
+    all ? t.backup_files.replace('{n}', String(b.files)).replace('{size}', fmtSize(b.bytes, lang)) : '',
+    all && b.missing ? t.backup_missing_n.replace('{n}', String(b.missing)) : '',
+    all && b.sharepoint ? t.backup_sharepoint_n.replace('{n}', String(b.sharepoint)) : '',
+    all && b.sha256 ? t.backup_archive.replace('{size}', fmtSize(b.size, lang)).replace('{sha}', b.sha256.slice(0, 16)) : '',
+    b.replaced ? t.backup_replaced : '',
+  ].filter(Boolean).join(' · ');
 }
 
 /**
@@ -1143,6 +1164,7 @@ function auditTargetHref(ctx: Ctx, kind: AuditTargetKind | null, id: string | nu
       return `/administration${family ? `?family=${encodeURIComponent(family)}` : ''}`;
     }
     case 'export': return id === 'search' ? '/recherche' : '/administration?tab=audit';
+    case 'backup': return '/administration?tab=audit&backups=1';
     default: return '/administration?tab=audit';
   }
 }

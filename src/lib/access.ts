@@ -182,6 +182,15 @@ export function mayCleanStorage(ctx: Pick<Ctx, 'seesAll' | 'screens'>): boolean 
 }
 
 /**
+ * Who may back up the database and files from Administration, and see the list of archives (lib/backup.ts): a records
+ * manager with access to Administration. An archive holds every document, drafts included, and its manifest names the
+ * stored files, whose names carry IDs and versions of drafts (D-14). Restoring is a command, run on the server.
+ */
+export function mayBackUp(ctx: Pick<Ctx, 'seesAll' | 'screens'>): boolean {
+  return ctx.seesAll && ctx.screens.admin;
+}
+
+/**
  * Revisions every reader of the document sees: the one in force and those it replaced. A draft, a revision under review
  * or waiting for its effective date, and a cancelled one belong to the drafting circle (D-14): outside it, they do not
  * exist, nor do their workflows, comments, designated author or change order.

@@ -17,7 +17,8 @@ données de démonstration (registre des types, organisation provisoire, projets
 déposés sont stockés dans `.data/files/` (ou dans SharePoint, voir `src/lib/storage.ts`).
 
 - Repartir de zéro : arrêter le serveur, `npm run db:reset`, relancer. **Obligatoire après le passage au modèle v2** :
-  une base créée avec l'ancien modèle ne peut pas recevoir la nouvelle migration.
+  une base créée avec l'ancien modèle ne peut pas recevoir la nouvelle migration. `db:reset` n'efface pas les
+  sauvegardes (`.data-backups/`, voir « Sauvegarde et restauration »).
 - Après une modification de `src/db/schema.ts` : tant qu'il n'y a pas de base de production, régénérer la migration
   unique (`rm -rf drizzle && npx drizzle-kit generate --name init`) puis `npm run db:reset`.
 - Contrôles : `npm test`, `npm run typecheck`, `npm run lint`, `npm run build`.
@@ -28,14 +29,15 @@ déposés sont stockés dans `.data/files/` (ou dans SharePoint, voir `src/lib/s
     des départements, dates, expiration et revue périodique, modifications simultanées, types de fichiers, formats,
     contenu (ZIP, fichiers composés OLE2, macros) et taille admis, analyse antivirus contre un faux clamd local,
     limites de débit, en-têtes de sécurité et `src/proxy.ts`, plages d'octets et requêtes conditionnelles, tri des
-    fichiers orphelins).
+    fichiers orphelins, noms et rotation des sauvegardes, lecture d'une archive altérée, verrou du dossier de données).
   - `tests/integration/` : règles métier sur une base PGlite en mémoire, migrée depuis `drizzle/` avec les
     déclencheurs du journal, de la version et des termes de recherche des documents (`openDb` dans `src/db/index.ts`)
     et remplie de données minimales (`tests/support/fixtures.ts`), pas de la base de démo. Identifiants et compteurs,
     révisions et dates d'effet, cohérence des dates, expiration et revue périodique, circuits, décisions Vigie et
     webhook, journal en ajout seul et ses pages, cercle de rédaction, import, recherche, recherches enregistrées, pages
     par département, modifications simultanées et limites de débit des routes et des actions (429), fichiers servis
-    en flux (206, 416, 304, HEAD) et nettoyage des fichiers orphelins. La visibilité en SQL, la recherche et l'explorateur lus par la base
+    en flux (206, 416, 304, HEAD), nettoyage des fichiers orphelins, sauvegarde et restauration (archive écrite,
+    relue, altérée, restaurée sur disque puis rouverte, retour arrière, commandes npm lancées comme par l'exploitant). La visibilité en SQL, la recherche et l'explorateur lus par la base
     sont comparés à leur version en mémoire, qui reste la référence (`access-sql`, `search-sql`, `tests/support/`).
     `tests/integration/dates.test.ts` et `seed-sql.test.ts` chargent aussi les données de démo (`src/db/seed.ts`), en
     mémoire, pour en vérifier toutes les dates et y refaire ces comparaisons.
@@ -54,8 +56,8 @@ déposés sont stockés dans `.data/files/` (ou dans SharePoint, voir `src/lib/s
     passe sous Node 22 et sous Node 26 (vérifié avec Node 26.11.1). Un caractère ajouté par Unicode 17.0 peut être
     replié autrement par la référence en mémoire que par la base.
 
-Variables : voir `.env.example` (Keystone, Vigie, dossier de données, jetons de l'API d'intégration, HTTPS, proxy de
-confiance, limites de débit). Aucune n'est nécessaire en local : sans elles, les limites de débit gardent des valeurs
+Variables : voir `.env.example` (Keystone, Vigie, dossier de données et de sauvegardes, jetons de l'API
+d'intégration, HTTPS, proxy de confiance, limites de débit). Aucune n'est nécessaire en local : sans elles, les limites de débit gardent des valeurs
 généreuses, HSTS reste coupé et `X-Forwarded-For` n'est pas tenu pour fiable.
 
 Le modèle fonctionnel fait foi dans `docs/modele-cible.md` ; l'API d'intégration est décrite dans `docs/api.md`.
@@ -305,6 +307,49 @@ Points 46 et 36 de `docs/reste-a-faire.md`.
   - Pas de commande npm : PGlite n'ouvre la base que dans un seul processus, celui du serveur. Le planificateur
     (point 38) appellera `purgeOrphans` quand il existera.
 
+## Sauvegarde et restauration
+
+Point 48 de `docs/reste-a-faire.md` ; procédure complète dans **`docs/sauvegarde.md`** (sauvegarder, restaurer, tester
+une restauration, dépannage).
+
+```bash
+npm run backup                          # serveur arrêté : archive de la base et des fichiers, rotation
+npm run backup:list                     # archives, de la plus récente à la plus ancienne
+npm run backup:check -- latest          # relit une archive : manifeste, SHA-256 de chaque entrée, schéma
+npm run restore -- <archive>            # serveur arrêté, dossier de données vide
+npm run restore -- <archive> --replace  # remplace la base et les fichiers, mis de côté dans replaced-<instant>/
+```
+
+- **Archive** (`src/lib/backup-core.mjs`) : `codex-backup-<instant UTC>.tar`, avec la base vidée par PGlite
+  (`dumpDataDir`) pendant que sa connexion est tenue, après un `CHECKPOINT`, les fichiers locaux que cette base
+  référence (pas les orphelins, pas les fichiers SharePoint, comptés) et un `manifest.json` : date, origine, version,
+  migration du schéma, nombres de documents, révisions, versions de travail, entrées de journal et fichiers, taille et
+  SHA-256 de chaque entrée. L'archive est relue avant la rotation, qui garde les `CODEX_BACKUP_KEEP` plus récentes (7)
+  et la plus récente de chacun des `CODEX_BACKUP_KEEP` derniers jours.
+- **Où** : `CODEX_BACKUP_DIR`, par défaut à côté du dossier de données (`.data-backups/`, ignoré par git), dossier en
+  `0700` et archives en `0600`, non chiffrées. Lieu de conservation, copie hors de la machine, chiffrement et fréquence
+  ne sont pas décidés (hébergement) : rien n'est programmé.
+- **Serveur en marche** : Administration › Journal d'audit › Sauvegardes, « Sauvegarder maintenant », réservé aux
+  gestionnaires documentaires ayant l'accès Administration (l'archive contient les brouillons, D-14) ; les écritures
+  attendent pendant le vidage de la base (quelques secondes) ; une sauvegarde par quart d'heure au plus, pour qu'une
+  suite de clics n'écarte pas les archives d'avant ; entrée « Sauvegarde créée » au journal (archive, taille, début du
+  SHA-256, nombres montrés aux seuls gestionnaires, aucun document nommé). Pas de restauration ni de téléchargement
+  depuis l'application.
+- **Verrou** : le serveur écrit `codex.lock` dans le dossier de données en ouvrant la base. `npm run backup` et
+  `npm run restore` refusent de tourner tant que ce processus vit (PGlite n'ouvre la base que dans un processus), et le
+  serveur refuse d'ouvrir la base pendant qu'une de ces commandes travaille. Un verrou laissé par un processus disparu
+  est ignoré ; celui d'une commande l'est aussi 10 minutes après son dernier rafraîchissement (toutes les 30 s), au cas
+  où son numéro de processus aurait été repris. En cas de doute, l'erreur du serveur nomme le fichier à supprimer
+  (dépannage dans `docs/sauvegarde.md`).
+- **Restauration** : refusée sur une base ou des fichiers en place sans `--replace` ; refusée pour une archive
+  altérée ou d'un schéma que le code ne connaît pas ; la base est chargée à côté, ses nombres et ses fichiers comparés
+  au manifeste, avant de remplacer quoi que ce soit ; mise en place entrée par entrée (un `files/` monté à part ou lien
+  symbolique reste en place), défaite si un déplacement échoue ; entrée « Base restaurée » au journal, au nom de Codex.
+- Les commandes lisent les variables comme Next : l'environnement, puis les fichiers de `next start`
+  (`.env.production.local`, `.env.local`, `.env.production`, `.env`), ou ceux de `next dev` avec `--dev` ; elles
+  affichent d'abord le dossier de données et celui des sauvegardes. App Mac :
+  `CODEX_DATA_DIR="$HOME/Library/Application Support/Codex/data" npm run backup`, app quittée.
+
 ## Organisation du code
 
 ```
@@ -338,6 +383,9 @@ src/
                        lecture en flux
     ranges.ts          plages d'octets (206, 416) et requêtes conditionnelles (ETag, 304) de la route fichier
     orphans.ts         fichiers orphelins du stockage : simulation, suppression journalisée, délai de grâce
+    backup-core.mjs    sauvegarde et restauration : archive tar, manifeste, empreintes, rotation, verrou du dossier de
+                       données (JavaScript, lancé aussi par scripts/codex-backup.mjs sans compilation)
+    backup.ts          sauvegarde depuis Administration (serveur en marche), journalisée
     filetypes.ts       formats, contenu (signatures, ZIP, OLE2, macros) et taille admis au dépôt ; types servis en
                        ligne et affichés en aperçu
     antivirus.ts       analyse antivirus des fichiers déposés (clamd, commande INSTREAM)
@@ -346,6 +394,8 @@ src/
     ratelimit.ts       limites de débit des routes sensibles et des Server Actions (en mémoire)
     security-headers.ts  en-têtes de sécurité HTTP et politique de sécurité du contenu
     i18n.ts            textes FR / EN
+scripts/
+  codex-backup.mjs     commandes npm run backup, backup:list, backup:check, restore (docs/sauvegarde.md)
 tests/
   unit/                tests unitaires des règles pures de src/lib (Vitest, vitest.config.ts)
   integration/         tests d'intégration sur PGlite en mémoire (règles métier de src/lib, Server Actions, webhook)

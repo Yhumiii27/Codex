@@ -4,9 +4,10 @@ import { Forbidden } from '@/components/ui/Forbidden';
 import { Icon } from '@/components/ui/Icon';
 import { Seg } from '@/components/ui/Seg';
 import { ActionButton, DialogButton } from '@/components/ui/client';
-import { mayCleanStorage } from '@/lib/access';
-import { purgeOrphanFiles, removeFunctionHolder, togglePermission } from '@/lib/actions';
+import { mayBackUp, mayCleanStorage } from '@/lib/access';
+import { backUpData, purgeOrphanFiles, removeFunctionHolder, togglePermission } from '@/lib/actions';
 import { antivirusStatus } from '@/lib/antivirus';
+import { backupList, backupSettings } from '@/lib/backup';
 import { getCtx, type Ctx } from '@/lib/context';
 import { featuredOf } from '@/lib/departments';
 import { fileRules, fmtMax } from '@/lib/filetypes';
@@ -416,6 +417,68 @@ async function Orphans({ ctx, open }: { ctx: Ctx; open: boolean }) {
 }
 
 /**
+ * Backups (lib/backup.ts), for a records manager: the date of the latest archive and a link that lists them
+ * (?backups=1), with what each holds and the button that backs up now. Restoring is a command (npm run restore).
+ */
+async function Backups({ ctx, open }: { ctx: Ctx; open: boolean }) {
+  const { t, lang } = ctx;
+  const when = (iso: string | null) => (iso ? fmtDateTime(parisStamp(iso), lang) : '—');
+  if (!open) {
+    const all = await backupList(false);
+    const latest = all?.[0];
+    return (
+      <p className={`${styles.filesPolicy} text-muted`}>
+        <strong>{t.backup_title}</strong>
+        {all ? <span>{latest ? t.backup_last.replace('{date}', when(latest.createdAt)) : t.backup_none}</span> : <span className={styles.filesOff}>{t.backup_list_error}</span>}
+        <Link href="/administration?tab=audit&backups=1" className="link-plain" scroll={false}>{t.backup_show}</Link>
+      </p>
+    );
+  }
+  const { dir, keep } = backupSettings();
+  const list = await backupList();
+  return (
+    <section className={styles.orphans} aria-label={t.backup_title}>
+      <div className={styles.orphansHead}>
+        <strong>{t.backup_title}</strong>
+        <span style={{ flex: 1 }} />
+        <ActionButton action={backUpData} className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} confirm={t.backup_confirm.replace('{dir}', dir).replaceAll('{n}', String(keep))} after="/administration?tab=audit&backups=1">
+          {t.backup_create}
+        </ActionButton>
+        <Link href="/administration?tab=audit" className="btn btn-ghost" style={{ fontSize: 12 }} scroll={false}>{t.close}</Link>
+      </div>
+      <p className="text-muted">{t.backup_hint.replace('{dir}', dir).replaceAll('{n}', String(keep))}</p>
+      {!list
+        ? <p className={styles.filesOff}>{t.backup_list_error}</p>
+        : list.length === 0
+        ? <p>{t.backup_none}</p>
+        : (
+          <table className={`table ${styles.orphanTable}`}>
+            <thead><tr><th>{t.when}</th><th>{t.backup_col_by}</th><th style={{ textAlign: 'right' }}>{t.count}</th><th>{t.backup_col_files}</th><th>{t.backup_archive_size}</th></tr></thead>
+            <tbody>
+              {list.map((b) => {
+                const m = b.manifest;
+                return (
+                  <tr key={b.name}>
+                    <td className="nowrap tabnum" title={b.name}>{when(b.createdAt)}</td>
+                    <td>{m ? (m.mode === 'online' ? ctx.userName(m.by) : t.backup_by_cli) : <span className={styles.filesOff}>{t.backup_unreadable}</span>}</td>
+                    <td className="tabnum" style={{ textAlign: 'right' }}>{m ? m.counts.documents : '—'}</td>
+                    <td className="tabnum">
+                      {m ? `${m.files.count} (${fmtSize(m.files.bytes, lang)})` : '—'}
+                      {m && m.files.missing.length > 0 && <span className={styles.filesOff}> · {t.backup_missing_n.replace('{n}', String(m.files.missing.length))}</span>}
+                      {m && m.files.sharepoint > 0 && <span className="text-muted"> · {t.backup_sharepoint_n.replace('{n}', String(m.files.sharepoint))}</span>}
+                    </td>
+                    <td className="nowrap tabnum text-muted">{fmtSize(b.size, lang)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+    </section>
+  );
+}
+
+/**
  * Journal tab: the entries the user may read, newest first, filtered and paged by the database (lib/queries.ts
  * auditPage), the filters and the page in the URL; the CSV export above it gives the whole journal.
  */
@@ -439,6 +502,7 @@ async function Audit({ ctx, sp }: { ctx: Ctx; sp: Record<string, string | undefi
     <>
       <FilesPolicy ctx={ctx} />
       {mayCleanStorage(ctx) && <Orphans ctx={ctx} open={sp.orphans === '1'} />}
+      {mayBackUp(ctx) && <Backups ctx={ctx} open={sp.backups === '1'} />}
       {/* Mounted again when the URL changes its filters (Effacer, a link), so that the fields show them. */}
       <div key={JSON.stringify(f)}>
         <Form action="/administration" scroll={false} className={styles.auditFilters}>

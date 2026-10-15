@@ -15,6 +15,10 @@
     "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",
     "db:reset": "rm -rf .data",
+    "backup": "node scripts/codex-backup.mjs create",
+    "backup:list": "node scripts/codex-backup.mjs list",
+    "backup:check": "node scripts/codex-backup.mjs check",
+    "restore": "node scripts/codex-backup.mjs restore",
     "app": "bash desktop/build-app.sh"
   },
   "dependencies": {

@@ -5,6 +5,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
 import { drizzle } from 'drizzle-orm/pglite';
 import { migrate } from 'drizzle-orm/pglite/migrator';
+import { lockForServer } from '../lib/backup-core.mjs';
 import * as schema from './schema';
 import { seed } from './seed';
 
@@ -120,6 +121,9 @@ export async function openDb(dataDir?: string): Promise<Db> {
 
 async function init(): Promise<Db> {
   await mkdir(FILES_DIR, { recursive: true });
+  // codex.lock: the backup and restore commands (npm run backup, npm run restore) refuse to run while this process holds
+  // the database, and this process refuses to open it while one of them works on it (lib/backup-core.mjs).
+  await lockForServer(DATA_DIR);
   const db = await openDb(path.join(DATA_DIR, 'pglite'));
   const [{ n }] = (await db.$client.query<{ n: number }>('select count(*)::int as n from users')).rows;
   if (n === 0) await seed(db);

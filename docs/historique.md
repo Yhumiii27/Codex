@@ -1458,6 +1458,7 @@ en dépend prend l'option la plus prudente et est consigné dans [decisions.md](
 | 1. En-têtes et débit (§16.1) | commit « Lot 7, étape 1 », qui suit `c7e7ce1` | 24, 25 | En-têtes de sécurité sur toutes les réponses, politique de sécurité du contenu des pages avec nonce, limites de débit des routes sensibles et des actions qui écrivent (429 avec `Retry-After`) | HSTS coupé sauf `CODEX_HTTPS=1` ; `X-Forwarded-For` tenu pour fiable seulement avec `CODEX_TRUST_PROXY=1` ; seuils généreux ; compteurs en mémoire pour une seule instance |
 | 2. Fichiers déposés (§16.2) | commit « Lot 7, étape 2 », qui suit `3c2dbe7` | 32, 64 | Formats admis (liste blanche, signatures et conteneurs, macros et programmes refusés), nom unique du contrôle au téléchargement, taille maximale unique, analyse antivirus par clamd avant stockage, refus journalisé | Liste commune à tous les types, archives exclues, Office chiffré admis ; 50 Mo pour l'écran et l'import ; analyse désactivée sans `CODEX_CLAMD`, dépôt refusé si clamd ne répond pas ou si le fichier dépasse ses limites ; nom du fichier refusé réservé aux gestionnaires (D-14) |
 | 3. Fichiers en flux et orphelins (§16.3) | commit « Lot 7, étape 3 », qui suit `ab6711e` | 46, 36 | Route fichier en flux, plages d'octets (206, 416), ETag, Last-Modified et 304, HEAD cohérent ; simulation puis suppression journalisée des seuls fichiers orphelins listés, stockage local | Copie gardée par le navigateur seulement pour le fichier en vigueur sous Confidentiel, revalidée à chaque usage ; téléchargement journalisé à partir du premier octet ; nettoyage réservé aux gestionnaires, délai de grâce de 24 h, SharePoint listé sans suppression (O-01) ; aperçu paginé des brouillons et confidentiels encore retéléchargé à chaque page |
+| 4. Sauvegarde et restauration (§16.4) | commit « Lot 7, étape 4 », qui suit `42e2d34` | 48 | Archive de la base et des fichiers référencés avec manifeste et empreintes, commandes `npm run backup`, `backup:list`, `backup:check`, `restore`, rotation, verrou du dossier de données, sauvegarde journalisée depuis Administration, procédure `docs/sauvegarde.md` | Rien de programmé ; archives à côté du dossier de données, non chiffrées, 7 plus récentes et une par jour sur 7 jours gardées ; une sauvegarde par quart d'heure au plus depuis l'application ; restauration en ligne de commande seulement, serveur arrêté, l'existant mis de côté et non supprimé ; action et nombres du journal réservés aux gestionnaires (D-14) ; fichiers SharePoint non copiés (O-01) |
 
 ### 16.1 En-têtes de sécurité HTTP et limitation de débit
 
@@ -1694,3 +1695,132 @@ qu'un arrêt entre le dépôt et l'enregistrement, ou un renommage inachevé, la
   46, avec les points 98 et 106) ; le lancement du nettoyage par le planificateur (point 38) ; la reprise de
   `nameStoredFile` sur les noms provisoires ; la suppression sur SharePoint et l'essai du flux et des plages sur un
   vrai tenant (O-01) ; l'aperçu de l'app Mac (WebKit) à vérifier sous macOS.
+
+### 16.4 Sauvegarde et restauration de la base et des fichiers
+
+Point 48 de [reste-a-faire.md](reste-a-faire.md), vérifié au commit `42e2d34` : ni script ni procédure de sauvegarde
+dans le dépôt, `npm run db:reset` efface `.data` entier (base et fichiers). PGlite ne laisse qu'un processus ouvrir la
+base, et son `postmaster.pid` porte toujours -42 : rien ne dit si le serveur la tient.
+
+- **Archive** (`src/lib/backup-core.mjs`, JavaScript pour tourner sous Node seul) : `codex-backup-<instant UTC>.tar`,
+  tar POSIX sans compression (lisible par `tar`), écrit sous un nom provisoire, synchronisé, renommé puis relu en
+  entier avant la rotation. Entrées : `database/pglite.tar.gz` (`dumpDataDir('gzip')`), `files/<clé>` pour chaque
+  fichier local référencé par une version de travail de cette base, `manifest.json` en dernier (format, date,
+  origine, version de Codex, PostgreSQL et PGlite, migration du schéma, nombres de documents, révisions, versions de
+  travail, entrées de journal et personnes, fichiers sauvegardés, absents du stockage et sur SharePoint, taille et
+  SHA-256 de chaque entrée). Noms longs en en-tête pax.
+- **Cohérence** : `CHECKPOINT`, lecture des nombres et des clés référencées, puis vidage de la base, dans une
+  transaction PGlite (aucune autre requête en cours : le vidage lit le dossier d'un seul tenant) ; les fichiers sont
+  lus ensuite, sans tenir la base, puisqu'un fichier stocké n'est jamais réécrit et qu'un fichier référencé n'est
+  retiré qu'après le changement de sa référence ; un fichier renommé entre le vidage et la copie est lu sous son
+  nouveau nom (même UUID). Les liens durs ont été écartés : ils déplacent le `ctime`, que le nettoyage des orphelins
+  lit (§16.3).
+- **Commandes** (`scripts/codex-backup.mjs`, messages en français) : `npm run backup`, `backup:list`,
+  `backup:check -- <archive|nom|latest>`, `restore -- <archive> [--replace]`. Variables lues comme Next les lit
+  (`@next/env`, voir « Relecture »). Verrou `codex.lock` : écrit par le serveur à l'ouverture de la base
+  (`src/db/index.ts`, `lockForServer`), retiré à sa sortie ; une commande refuse tant que ce processus vit, et le
+  serveur refuse d'ouvrir la base pendant qu'une commande travaille. Verrou d'un processus disparu ignoré, d'une
+  commande 10 minutes après son dernier rafraîchissement (voir « Relecture »).
+- **Restauration** (`restoreBackup`) : archive vérifiée entière, migration cherchée dans `drizzle/` (une archive d'un
+  schéma régénéré est refusée : drizzle rejouerait sa migration unique), refus d'un dossier qui contient déjà une base
+  ou des fichiers sans `--replace`. Tout est écrit à côté (`.restore-…`) : fichiers dont le SHA-256 est recalculé à
+  l'écriture, base chargée par PGlite (`loadDataDir`), qui rejoue son journal d'écriture, puis comparée au manifeste
+  (nombres, migration, fichiers référencés) ; entrée « Base restaurée » (acteur Codex) écrite, base fermée proprement,
+  puis l'existant déplacé dans `replaced-<instant>/` et la restauration mise en place, entrée par entrée avec retour
+  arrière (voir « Relecture »).
+- **Administration** : Journal d'audit › Sauvegardes, pour les gestionnaires documentaires ayant l'accès
+  Administration (`mayBackUp`) : date de la dernière archive, puis (`?backups=1`) dossier, rotation, liste (date,
+  origine, documents, fichiers, taille, archive illisible signalée) et « Sauvegarder maintenant » (`backUpData`,
+  confirmé, limité comme toute action qui écrit, une à la fois). Entrée « Sauvegarde créée », cible « Sauvegarde ·
+  <archive> » : nombres, taille et début du SHA-256 de l'archive, sans nom de document.
+- **Tests** : `tests/unit/backup-core.test.ts` (dossier et rotation par défaut, noms d'archive, noms d'entrée admis,
+  migrations, rotation sur disque, verrou : processus vivant ou disparu, délai d'une commande, refus du serveur
+  pendant une commande) ; `tests/integration/backup.test.ts` (archive et manifeste d'une base de test, orphelin exclu,
+  SharePoint compté, fichier référencé absent, fichier renommé entre le vidage et la copie, dossier de sauvegarde
+  interdit, rotation ; octet changé, archive tronquée, en-tête altéré, fichier qui n'est pas une archive ; restauration
+  sur disque rouverte par `openDb` avec documents, fichiers, termes de recherche, journal en ajout seul et entrée
+  « Base restaurée » ; refus sans `--replace` puis mise de côté avec ; rien d'écrit pour une archive altérée, d'un
+  autre schéma, ou dont la base ne correspond pas au manifeste ; action refusée aux autres rôles, y compris un
+  validateur à qui le droit Administrer est donné, puis sauvegarde et entrée de journal pour un gestionnaire, SHA-256
+  de l'archive conforme). Retirer le contrôle des empreintes, la comparaison au manifeste, le refus sans `--replace`
+  de `restoreBackup` ou la réserve aux gestionnaires fait échouer un test chacun ; les commandes elles-mêmes n'étaient
+  pas testées (voir « Relecture »).
+- **Vérifié** : `npm test` (53 fichiers, 890 tests), `npm run typecheck`, `npm run lint`, `npm run build` (sans
+  avertissement). Sur une copie de la base de démonstration (69 documents, 18 fichiers, 210 Mo) : `npm run backup`
+  (3 s, archive de 216 Mo lisible par `tar -tvf`, SHA-256 identique à `sha256sum`), `backup:check`, archive altérée et
+  tronquée refusées, restauration refusée sur un dossier occupé, puis faite dans un dossier vide et avec `--replace` ;
+  commande refusée tant que le serveur de développement tourne. Dans Chromium, pour cbardet : panneau en français et
+  en anglais, « Sauvegarder maintenant » confirmé, message, liste et entrée au journal ; panneau absent et écran refusé
+  pour jwagner, gcomte, jholt et cbardet en rôle validateur. Serveur arrêté, archive faite depuis l'application
+  restaurée dans un dossier vide ; le serveur relancé sur ce dossier sert le même export CSV de la recherche et les
+  mêmes empreintes des 18 fichiers qu'avant la sauvegarde, avec l'entrée « Base restaurée » ; de même après une
+  sauvegarde en ligne de commande restaurée avec `--replace`. Le serveur lancé pendant une restauration (verrou d'une
+  commande vivante) répond 500 « busy: restore », puis sert la base une fois la commande finie. Sur la build de
+  production (`next start`, port 3101) : sauvegarde depuis le panneau, ligne `[backup] …` au journal du serveur ;
+  procédure « Tester une restauration » de `docs/sauvegarde.md` suivie telle quelle.
+- **Relecture** (sept constats, dont deux identiques sur les fichiers `.env` ; tous retenus) :
+  - la mise en place d'une restauration renommait `pglite/` puis `files/` en entier, sans retour arrière : un échec du
+    second renommage (dossier `files/` monté à part, `EBUSY`, `EXDEV`, droits) laissait la base restaurée en place,
+    sans ses fichiers, l'ancienne base mise de côté, et effaçait les fichiers extraits ; un `files/` lien symbolique
+    était remplacé par un dossier local. Désormais le contenu des deux dossiers est déplacé entrée par entrée (les
+    dossiers restent, points de montage ou liens), copié puis retiré d'un système de fichiers à l'autre, jamais par
+    dessus une entrée existante ; si un déplacement échoue, ceux faits sont défaits du dernier au premier et la
+    commande annonce que rien n'a été remplacé (`swap_failed`) ; si le retour arrière échoue aussi, elle s'arrête,
+    garde le contenu extrait et dit ce qui est où (`swap_incomplete`) ;
+  - « Sauvegarder maintenant » appliquait la rotation à chaque clic : quelques clics de suite écartaient toutes les
+    archives d'avant, alors qu'elles servent à revenir sur une erreur faite dans l'application. Deux règles, signalées
+    dans [decisions.md](decisions.md) (fréquence et conservation non décidées) : depuis l'application, une sauvegarde
+    au plus 15 minutes après la dernière archive, quelle que soit son origine (message avec l'heure de la dernière et
+    celle de la prochaine possible) ; la rotation garde, en plus des `CODEX_BACKUP_KEEP` plus récentes, la plus
+    récente de chacun des `CODEX_BACKUP_KEEP` derniers jours (UTC), pour la commande comme pour l'application ;
+  - une taille pax négative était acceptée et faisait reculer la lecture : `tarEntries` relisait sans fin les mêmes
+    en-têtes (liste, vérification, restauration, panneau d'Administration bloqués, processus à 100 % du processeur).
+    La taille pax doit être un nombre entier écrit en chiffres (vide : celle de l'en-tête) et chaque en-tête doit être
+    après le précédent, sinon « Ce fichier n'est pas une archive tar lisible » ;
+  - les entrées « Sauvegarde créée » et « Base restaurée » donnaient à tout lecteur du journal d'Administration le
+    nombre total de documents (brouillons et confidentiels compris), de fichiers et leur volume : un validateur à qui
+    le droit Administrer est donné apprenait combien de documents lui sont cachés, et quand l'un d'eux est créé.
+    Nombres, tailles et empreinte ne sont plus montrés qu'aux gestionnaires documentaires (`backupL`, comme
+    `purgeL`), à l'écran comme dans l'export CSV ;
+  - les commandes ne lisaient que `.env.local` et `.env`, alors que `next start` lit aussi `.env.production.local` et
+    `.env.production` (et `next dev` ses fichiers `.env.development*`) : une commande pouvait viser un autre dossier
+    de données que le serveur, verrou compris. Elles lisent désormais les variables avec `loadEnvConfig` de
+    `@next/env` (installé avec Next), en mode production par défaut et en mode développement avec `--dev`, et
+    affichent en tête le dossier de données, le dossier des sauvegardes et les fichiers lus ;
+  - aucun test ne lançait les commandes ni le verrou du serveur : retirer `lockForServer` de `init()`,
+    `lockForCommand` de la commande, ou forcer `--replace`, laissait passer `npm test`.
+    `tests/integration/backup-commands.test.ts` lance `node scripts/codex-backup.mjs` dans un processus à part :
+    refus de `create` et de `restore` (avec ou sans `--replace`) tant que le serveur tient le dossier, rien d'écrit ;
+    refus sans `--replace` puis mise de côté avec ; sauvegarde et vérification de la base restaurée ; fichiers `.env`
+    lus comme Next ; et `getDb()` qui refuse d'ouvrir la base pendant une commande, puis écrit son verrou, que la
+    commande respecte. Chacune de ces trois mutations fait maintenant échouer un test ;
+  - un verrou de commande laissé par une commande tuée bloquait le serveur jusqu'à 24 h si son numéro de processus
+    était repris, avec une erreur muette. La commande rafraîchit son verrou toutes les 30 s et il est ignoré 10 minutes
+    après son dernier rafraîchissement ; l'erreur du serveur nomme `codex.lock` et dit de le supprimer si aucune
+    commande ne tourne ; dépannage complété dans `docs/sauvegarde.md`, phrase du README nuancée.
+  - *Vérifié* : `npm test` (54 fichiers, 904 tests), `npm run typecheck`, `npm run lint`, `npm run build` (sans
+    avertissement : la lecture d'un dossier de la mise en place porte `turbopackIgnore`). Quatorze mutations (retour
+    arrière, copie entre systèmes de fichiers, dossiers renommés en entier, taille pax, rotation par jour, délai de
+    l'application, nombres du journal, rafraîchissement et délai du verrou, verrous du serveur et des commandes,
+    `--replace` forcé, fichiers `.env`) font chacune échouer au moins un test. Sur une copie de la base de
+    démonstration (69 documents, 18 fichiers, 210 Mo), serveur de développement : `npm run backup` et `npm run
+    restore` refusés tant qu'il tourne ; dans Chromium, pour cbardet, « Sauvegarder maintenant » crée l'archive, les
+    trois clics suivants sont refusés (« La dernière sauvegarde date du 15/10/2026 15:01, il y a moins de 15 minutes
+    … »), en anglais aussi, et la liste reste la même ; une archive de 2,5 Ko à taille pax négative déposée dans le
+    dossier est listée « manifeste illisible » sans bloquer (panneau en 2 s, `backup:list` et `backup:check` en
+    0,5 s) ; gcomte, à qui cbardet donne le droit Administrer, lit l'entrée « Sauvegarde créée » sans nombres, à
+    l'écran et dans l'export CSV, cbardet avec. Archive faite depuis l'application restaurée dans un dossier vide dont
+    `files/` est un lien vers `/dev/shm` (autre système de fichiers) : lien conservé, 18 fichiers copiés ; le serveur
+    relancé sert le même export de la recherche et les mêmes empreintes des 18 fichiers qu'avant la sauvegarde, avec
+    l'entrée « Base restaurée ». Avec `files/` rendu non modifiable (`chattr +i`), `restore --replace` échoue au
+    déplacement des fichiers : « La base et les fichiers d'origine ont été remis en place : rien n'a été remplacé »,
+    l'ancienne base est intacte et rien ne traîne ; relancée après `chattr -i`, la restauration aboutit. Serveur lancé
+    avec un verrou de commande d'un processus vivant (pid 1) : 500 et « busy: a backup command (pid 1) holds
+    …/codex.lock; if no backup or restore command is running, delete that file » ; le même verrou daté de 11 minutes
+    est ignoré (200). Build de production (`next start`, port 3101, dossier de sauvegardes vide) : sauvegarde depuis le
+    panneau, second clic refusé, ligne `[backup] …` au journal du serveur ; puis, serveur arrêté, cette archive
+    restaurée avec `--replace` sur le dossier au lien `/dev/shm` (ancien contenu copié vers `replaced-…/`), même
+    export et mêmes empreintes après redémarrage.
+- **Reste** (décisions de l'utilisateur, M22 et hébergement) : fréquence et planification (point 38), lieu de
+  conservation et copie hors de la machine, chiffrement, perte de données et délai de reprise tolérés ; sauvegarde des
+  fichiers SharePoint (O-01) ; `pg_dump` avec un Postgres serveur (point 51).
