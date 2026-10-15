@@ -275,6 +275,11 @@ const fr = {
   backup_recent:'La dernière sauvegarde date du {date}, il y a moins de 15 minutes : elle sert de point de restauration. Nouvelle sauvegarde depuis l’application possible à partir du {next} ; ce délai empêche une suite de sauvegardes d’écarter les plus anciennes.',
   backup_docs:'{n} documents', backup_files:'fichiers : {n} ({size})', backup_archive:'archive {size}, SHA-256 {sha}…', backup_of:'sauvegarde du {date}',
   backup_missing_n:'absents du stockage : {n}', backup_sharepoint_n:'sur SharePoint, non inclus : {n}', backup_replaced:'base précédente mise de côté',
+  // Full export (lib/export-core.mjs, GET /api/export/full)
+  act_export_full:'Export complet', act_export_full_end:'Export complet envoyé', target_export_full:'toutes les données et tous les fichiers',
+  export_all_title:'Export complet', export_all_download:'Télécharger l’archive (ZIP)',
+  export_all_hint:'Toutes les données (documents, révisions, versions de travail, circuits, demandes Vigie, liens, registre, organisation, journal) et tous les fichiers, brouillons et documents confidentiels compris, avec un manifeste et l’empreinte SHA-256 de chaque élément : pour quitter Codex ou alimenter un autre système. Format : docs/export.md. Le début et la fin de l’export sont inscrits au journal. Serveur arrêté : npm run export.',
+  export_all_interrupted:'interrompu', export_all_failed:'échec', export_all_after:'après {size}',
   // Register administration (types, families, functions, research programmes)
   new_type:'Nouveau type', new_family:'Nouvelle famille', new_function:'Nouvelle fonction', new_program:'Nouveau programme',
   families_title:'Familles', programs_title:'Programmes de recherche', family_group:'Groupe d’origine (deck)',
@@ -611,6 +616,11 @@ const en: Dict = {
   backup_recent:'The latest backup was made on {date}, less than 15 minutes ago: it serves as the restore point. The application can back up again from {next}; this wait keeps a run of backups from pushing out the older ones.',
   backup_docs:'{n} documents', backup_files:'files: {n} ({size})', backup_archive:'archive {size}, SHA-256 {sha}…', backup_of:'backup of {date}',
   backup_missing_n:'missing from storage: {n}', backup_sharepoint_n:'on SharePoint, not included: {n}', backup_replaced:'previous database set aside',
+  // Full export (lib/export-core.mjs, GET /api/export/full)
+  act_export_full:'Full export', act_export_full_end:'Full export sent', target_export_full:'all data and files',
+  export_all_title:'Full export', export_all_download:'Download the archive (ZIP)',
+  export_all_hint:'All the data (documents, revisions, working versions, circuits, Vigie requests, links, register, organisation, journal) and every file, drafts and confidential documents included, with a manifest and the SHA-256 of each item: to leave Codex or feed another system. Format: docs/export.md. The start and the end of the export are journaled. Server stopped: npm run export.',
+  export_all_interrupted:'interrupted', export_all_failed:'failed', export_all_after:'after {size}',
   // Register administration (types, families, functions, research programmes)
   new_type:'New type', new_family:'New family', new_function:'New function', new_program:'New programme',
   families_title:'Families', programs_title:'Research programmes', family_group:'Deck group',

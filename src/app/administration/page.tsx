@@ -4,7 +4,7 @@ import { Forbidden } from '@/components/ui/Forbidden';
 import { Icon } from '@/components/ui/Icon';
 import { Seg } from '@/components/ui/Seg';
 import { ActionButton, DialogButton } from '@/components/ui/client';
-import { mayBackUp, mayCleanStorage } from '@/lib/access';
+import { mayBackUp, mayCleanStorage, mayExportAll } from '@/lib/access';
 import { backUpData, purgeOrphanFiles, removeFunctionHolder, togglePermission } from '@/lib/actions';
 import { antivirusStatus } from '@/lib/antivirus';
 import { backupList, backupSettings } from '@/lib/backup';
@@ -586,6 +586,21 @@ async function Backups({ ctx, open }: { ctx: Ctx; open: boolean }) {
 }
 
 /**
+ * Full export (lib/full-export.ts), for a records manager: a plain link, so that the browser downloads the archive as it
+ * is written (GET /api/export/full, journaled at its start and end).
+ */
+function FullExport({ ctx }: { ctx: Ctx }) {
+  const { t } = ctx;
+  return (
+    <p className={`${styles.filesPolicy} text-muted`}>
+      <strong>{t.export_all_title}</strong>
+      <a href="/api/export/full" className="link-plain" download>{t.export_all_download}</a>
+      <span>{t.export_all_hint}</span>
+    </p>
+  );
+}
+
+/**
  * Journal tab: the entries the user may read, newest first, filtered and paged by the database (lib/queries.ts
  * auditPage), the filters and the page in the URL; the CSV export above it gives the whole journal.
  */
@@ -610,6 +625,7 @@ async function Audit({ ctx, sp }: { ctx: Ctx; sp: Record<string, string | undefi
       <FilesPolicy ctx={ctx} />
       {mayCleanStorage(ctx) && <Orphans ctx={ctx} open={sp.orphans === '1'} />}
       {mayBackUp(ctx) && <Backups ctx={ctx} open={sp.backups === '1'} />}
+      {mayExportAll(ctx) && <FullExport ctx={ctx} />}
       {/* Mounted again when the URL changes its filters (Effacer, a link), so that the fields show them. */}
       <div key={JSON.stringify(f)}>
         <Form action="/administration" scroll={false} className={styles.auditFilters}>

@@ -4,6 +4,10 @@ Procédure d'exploitation pour sauvegarder la base et les fichiers de Codex, res
 restauration. Code : `src/lib/backup-core.mjs` (archive, contrôles, verrou), `scripts/codex-backup.mjs` (commandes),
 `src/lib/backup.ts` (action d'Administration). Point 48 de [reste-a-faire.md](reste-a-faire.md).
 
+Une sauvegarde sert à remettre Codex dans l'état d'une date. Pour quitter Codex ou alimenter un autre système, il y a
+l'export complet ([export.md](export.md)) : mêmes données, en JSON, CSV et fichiers sous un nom lisible, sans Codex
+pour les lire.
+
 **Non décidé** (à fixer par l'utilisateur, voir [decisions.md](decisions.md), « Choix de l'assistant non validés ») :
 la fréquence des sauvegardes, le lieu où les archives sont conservées (hébergement), leur chiffrement, la perte de
 données et le délai de reprise tolérés (M22 de l'audit). Rien n'est programmé : une sauvegarde se lance à la main.
@@ -129,8 +133,8 @@ plus, et dit ce qui est où : le contenu extrait de l'archive (gardé dans `.res
 chaque entrée à remettre à sa place.
 
 Pendant la restauration, le serveur refuse d'ouvrir la base : il répond par une erreur, et son journal dit « a restore
-command (pid N) holds …/codex.lock; if no backup or restore command is running, delete that file ». Relancé trop tôt,
-il suffit de recharger la page une fois la commande terminée. Une commande rafraîchit son verrou toutes les 30
+command (pid N) holds …/codex.lock; if no backup, restore or export command is running, delete that file ». Relancé
+trop tôt, il suffit de recharger la page une fois la commande terminée. Une commande rafraîchit son verrou toutes les 30
 secondes ; tuée sans avoir pu le retirer (arrêt brutal, coupure), son verrou est ignoré dès que son processus n'existe
 plus, ou 10 minutes après son dernier rafraîchissement si son numéro de processus a été repris par un autre.
 

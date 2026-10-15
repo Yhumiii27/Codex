@@ -17,7 +17,7 @@ let current: Db | null = null;
  * TRUNCATE (src/db/index.ts): session_replication_role = replica skips its trigger for this one transaction (SET
  * LOCAL), and the trigger itself stays in place for the test.
  */
-async function reset(db: Db): Promise<void> {
+export async function reset(db: Db): Promise<void> {
   const { rows } = await db.$client.query<{ name: string }>(`select quote_ident(tablename) as name from pg_tables where schemaname = 'public'`);
   await db.$client.transaction(async (tx) => {
     await tx.exec(`set local session_replication_role = replica; truncate ${rows.map((r) => r.name).join(', ')} restart identity cascade;`);

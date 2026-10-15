@@ -66,6 +66,8 @@ next-env.d.ts
 /.data
 # their backups (npm run backup, Administration; default CODEX_BACKUP_DIR)
 /.data-backups
+# full exports (npm run export without --out)
+/.data-exports
 # design source archives (extracted in design/)
 /*.zip
 

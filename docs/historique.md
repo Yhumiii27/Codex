@@ -1462,6 +1462,7 @@ en dépend prend l'option la plus prudente et est consigné dans [decisions.md](
 | 5. Journal technique, santé, configuration (§16.5) | commit « Lot 7, étape 5 », qui suit `55c0df4` | 49, 37 | Journal technique structuré (JSON en production) avec identifiant de requête, une ligne par requête d'API et par action d'écriture, jetons refusés et erreurs serveur journalisés sans secret ; `GET`/`HEAD /api/health` ; contrôle de la configuration au démarrage (`src/instrumentation.ts`), procédure `docs/exploitation.md` | Refus de démarrer en production pour une configuration dangereuse seulement (défaut sans erreur, `CODEX_CONFIG_CHECK=warn` pour passer outre) ; jeton de 32 caractères au moins ; santé sans authentification, sans raison d'échec ; aucune métrique ni rotation (hébergement non décidé) ; authentification simulée rappelée en production (O-02) |
 | 6. Administration du registre et des programmes (§16.6) | commit « Lot 7, étape 6 », qui suit `6823294` | 61, 58 | Création, modification et suppression des types (tous leurs réglages), familles, fonctions et programmes de recherche dans Administration, journalisées avant → après ; codes contrôlés ; `GET /api/registry` suit | Droit « Administrer » (A05 non tranché) ; aucun nouveau code ne reprend celui d'un autre segment d'identifiant ni `QMS` (point 1 du registre, FIN/HSE/COM gardés) ; entrée utilisée : code figé, pas de suppression, désactivation ; restriction des admissions d'un type confirmée, identifiants des documents aux seuls gestionnaires (D-14) ; contenu du registre inchangé (O-05) ; programme sans date de fin (point 3 du registre) |
 | 7. Administration de l'organisation (§16.7) | commit « Lot 7, étape 7 », qui suit `8171aa2` | 62 | Renommage (libellés FR/EN), désactivation, réactivation et suppression des départements et des sites dans Administration › Organisation, journalisés avant → après ; une valeur inactive n'est plus proposée et reste là où elle figure ; pages par département marquées | Droit « Administrer » (A05) ; code d'un département jamais modifié, même inutilisé ; « utilisé » compte aussi les recherches partagées et les identifiants déjà attribués sous le code ; un département actif au moins ; département inactif de l'utilisateur refusé plutôt que remplacé ; un département inactif prend encore des titulaires ; import accepté (D-21) ; pas de fusion (O-09) ; valeurs provisoires (O-04) |
+| 8. Export complet (§16.8) | commit « Lot 7, étape 8 », qui suit `6063aed` | 17 | Archive ZIP écrite en flux de toutes les tables (JSON, journal compris), des documents en CSV, de tous les fichiers sous `files/{ID}/{ID}_{lettre}.{n}.{ext}` et de chaque document au format de `POST /api/import`, avec manifeste et SHA-256 ; téléchargement depuis Administration, commandes `npm run export` et `export:check` ; format dans `docs/export.md` | Réservé aux gestionnaires documentaires ayant l'accès Administration ; pas de filtre D-14 mais journalisé au début et à la fin (taille et SHA-256), nombres montrés aux seuls gestionnaires ; ni chiffrement ni export programmé (hébergement, M22) ; fichiers SharePoint non configuré listés comme non inclus (O-01) ; une révision par document à la réimportation (O-11) |
 
 ### 16.1 En-têtes de sécurité HTTP et limitation de débit
 
@@ -2089,3 +2090,77 @@ facultatif depuis le 10 octobre. `saved_searches.department` est aussi une clé 
 - **Reste** : fusionner deux départements (le sort des brouillons jamais approuvés, qu'un reclassement renumérote,
   attend O-09) ; l'organigramme réel (O-04) ; qui peut renommer ou retirer une valeur (A05) ; le titulaire d'un
   programme clos dont le responsable est l'auteur de la révision (étape 6).
+
+### 16.8 Export complet pour la réversibilité
+
+Point 17 de [reste-a-faire.md](reste-a-faire.md), vérifié au commit `6063aed` : seuls deux exports existaient, le CSV
+des résultats de recherche visibles et le CSV du journal (`src/app/api/export/search` et `audit`), sans fichiers,
+révisions ni historique, et aucune dépendance ZIP. M22 de l'audit restait « Ouvert ». Le constat tenait entièrement.
+Un premier essai, interrompu presque terminé (limite d'usage), a été relu et repris tel quel ; il restait la
+documentation et la vérification réelle.
+
+- **Archive** (`src/lib/export-core.mjs`, JavaScript sans dépendance, comme `backup-core.mjs`) : ZIP aux éléments
+  stockés, écrit en flux (taille et CRC-32 après les octets, Zip64 au-delà de 4 Go ou de 65 534 éléments), relu et
+  vérifié par le même module. Contenu : `LISEZMOI.txt`, chaque table en JSON sous `data/` (champs nommés comme dans
+  `src/db/schema.ts`), dont le journal d'audit, `data/documents.csv`, le fichier de chaque version de travail sous
+  `files/{ID}/{ID}_{lettre}.{n}.{ext}`, `import/documents.json` (chaque document au format de `POST /api/import`, avec
+  son identifiant actuel comme `legacyRef` et le fichier à envoyer), `SHA256SUMS` et `manifest.json` (date, version de
+  Codex, dernière migration, nombre de lignes de chaque table, fichiers manquants ou non inclus, taille et SHA-256 de
+  chaque élément). L'index de recherche (`document_terms`) n'est pas exporté : la base le recalcule.
+- **Instantané** : tables copiées en une transaction dans des tables temporaires, puis lues par lots ; journal lu
+  jusqu'à la dernière entrée de cette transaction ; fichier renommé entre-temps par un reclassement retrouvé sous sa
+  nouvelle clé. Tables temporaires supprimées à la fin, à l'interruption ou à l'échec.
+- **Téléchargement** `GET /api/export/full` (`src/lib/full-export.ts`), lien « Télécharger l'archive (ZIP) » dans
+  Administration › Journal d'audit : réservé aux gestionnaires documentaires ayant l'accès Administration
+  (`mayExportAll`, `src/lib/access.ts`), 403 pour tout autre utilisateur, `HEAD` compris, et lien absent ; compté dans
+  `CODEX_RATE_EXPORTS`. Journal : « Export complet » au début, écrit dans la transaction de la copie (l'archive le
+  contient), « Export complet envoyé » quand le serveur a fini de l'envoyer, avec la taille et le SHA-256 de l'archive, ou « interrompu » / « échec » ;
+  nombres et empreinte montrés aux seuls gestionnaires (`archiveL`, `src/lib/queries.ts`), aucun document nommé.
+- **Commandes** (`scripts/codex-export.mjs`) : `npm run export`, serveur arrêté, sous le verrou du dossier de données
+  (`codex.lock`, type `export` ajouté à `backup-core.mjs`), archive écrite sous un nom provisoire, relue puis nommée,
+  dans `.data-exports/` par défaut (ignoré par git, dossier `0700`, archive `0600`) ou `--out` ; journalisée sous
+  l'acteur Codex. `npm run export:check -- <archive>` relit une archive. Fichiers SharePoint jamais lus par la commande,
+  signalés.
+- **Docs** : format, champs, correspondance avec `POST /api/import` et boucle de réimport dans `docs/export.md` ;
+  README (section « Export complet »), `docs/api.md`, `docs/sauvegarde.md` (export ≠ sauvegarde), `.env.example`
+  (aucune variable nouvelle), M22 de l'audit, point 17 de `reste-a-faire.md`, choix non validés dans `decisions.md`.
+- *Vérifié* : `npm test` (65 fichiers, 1 071 tests dont un sauté), `npm run typecheck`, `npm run lint`, `npm run
+  build`. Tests : `tests/unit/export-core.test.ts` (ZIP écrit et relu, Zip64 par seuils abaissés, archive altérée,
+  noms des champs et des fichiers, vue d'import), `tests/integration/full-export.test.ts` (archive relue, comptes et
+  empreintes comparés à la base, instantané, droits, limite de débit, interruption, réimport d'un document dans une
+  base vide par l'import : même identifiant, même révision, même fichier), `tests/integration/export-command.test.ts`
+  (commande, vérification, refus serveur en marche, dossier par défaut). Ouvrir l'export aux administrateurs non
+  gestionnaires, retirer l'entrée de début du journal ou fausser l'empreinte des éléments fait échouer chacun trois ou
+  quatre tests. Exécution réelle, `npm run dev` sur une base neuve, deux documents importés avec fichier (dont un
+  confidentiel en brouillon) : gcomte, jwagner et jholt reçoivent 403 (`GET` et `HEAD`) et ne voient pas le lien ; en
+  cbardet, dans Chromium, lien visible (FR et EN), archive téléchargée (`codex-export-….zip`, 296 Ko) ; `unzip -t`,
+  `zipfile` de Python, `sha256sum -c SHA256SUMS` après extraction et `npm run export:check` la trouvent intacte ; deux
+  fichiers sous `files/PID-HLT-026-002/PID-HLT-026-002_C.1.pdf` et `files/PRO-ACH-0001/PRO-ACH-0001_A.1.pdf`, le
+  brouillon confidentiel compris ; le SHA-256 inscrit au journal est celui du fichier téléchargé. `npm run export`
+  refusé tant que le serveur tourne, puis, serveur arrêté, archive écrite et vérifiée dans `.data-exports/`. Base
+  remise à zéro, la boucle de `docs/export.md` réimporte les deux documents sous leurs identifiants (même révision,
+  même statut, fichier identique octet pour octet), puis répond 409 `duplicate` au second passage. `npm run start` :
+  même téléchargement (200, `application/zip`), 403 pour jholt. Aucune erreur de serveur.
+- **Relecture** : (1) la fin d'export est inscrite quand le serveur a fini d'envoyer l'archive, pas quand le client l'a
+  reçue : une petite archive coupée après l'envoi était présentée comme « terminée ». L'entrée s'appelle désormais
+  « Export complet envoyé », et `docs/export.md`, `decisions.md` et le README disent qu'un fichier téléchargé se
+  vérifie par `npm run export:check` ou par son SHA-256. (2) `docs/exploitation.md` cite le `scope` `export`, la
+  commande `npm run export` parmi les causes d'un `database` en échec et ses messages en texte ; les deux
+  avertissements de `export-core.mjs` (fin non journalisée, tables temporaires non supprimées) passent, depuis
+  l'application, par le journal technique structuré (option `warn`), testé.
+- **Reste** (à l'utilisateur, M22) : délai de reprise, perte de données tolérée, hébergement, chiffrement et lieu de
+  conservation des exports, export programmé ; contrat de reprise par l'import des révisions antérieures, des liens et
+  des états (O-11) ; fichiers SharePoint (O-01).
+
+### Bilan du lot 7
+
+Huit étapes, huit points ou groupes de points de [reste-a-faire.md](reste-a-faire.md) (24, 25, 32, 64, 46, 36, 48, 49,
+37, 61, 58, 62, 17), tous développables sans décision de l'utilisateur. Ensemble, ils rendent Codex exploitable par
+une équipe informatique : en-têtes de sécurité et limites de débit (étape 1), contrôle des fichiers déposés et
+antivirus (2), fichiers servis en flux et nettoyage des orphelins (3), sauvegarde et restauration (4), journal
+technique, santé et contrôle de la configuration (5), administration complète du registre et de l'organisation (6,
+7), export complet pour la réversibilité (8). Aucune question ouverte n'a été tranchée : chaque protection a une
+configuration par défaut qui fonctionne en local (`npm run dev`, app Mac), décrite dans `.env.example` et le README, et
+chaque choix qui dépend d'une question ouverte (O-01 SharePoint, O-02 authentification, hébergement et M22, A05 droits,
+O-04 organigramme, O-09, O-11) prend l'option la plus prudente et figure dans « Choix de l'assistant non validés
+explicitement » de [decisions.md](decisions.md).

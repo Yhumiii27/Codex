@@ -325,6 +325,10 @@ L'import ne crée pas de liens entre documents (« remplace », « voir aussi »
 en ajouter un serait un contrat à définir avec l'outil de migration (O-11). Les liens entre documents repris
 s'ajoutent depuis leurs fiches (section « Documents liés »).
 
+Un export complet de Codex (`docs/export.md`) donne, dans `import/documents.json`, le `meta` de chaque document et le
+fichier à envoyer avec lui : un autre Codex peut ainsi reprendre ses documents par ce point d'entrée, une révision par
+document, en gardant leurs identifiants quand ils sont libres.
+
 ### Réponses
 
 | Code | Corps |

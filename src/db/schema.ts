@@ -450,7 +450,8 @@ export const idCounters = pgTable('id_counters', {
 
 /**
  * What an entry without document is about: a cell of the rights matrix, an organisation value, a function, a family or
- * a type of the register, a research programme, a CSV export.
+ * a type of the register, a research programme, an export (target id: 'search' or 'audit' for a CSV, 'full' for the
+ * full export of lib/export-core.mjs).
  */
 /** 'file': a file refused on its way in (target id: where it came from, lib/storage.ts UploadOrigin). */
 /** 'storage': a file store (target id: 'local' or 'sharepoint'), cleaned of its orphan files (lib/orphans.ts). */
@@ -504,6 +505,17 @@ export type AuditData = {
   backup?: {
     archive: string; size: number; sha256?: string; documents: number; files: number; bytes: number; missing: number; sharepoint: number;
     createdAt?: string; replaced?: boolean;
+  };
+  /**
+   * Full export (lib/export-core.mjs, target 'export' 'full'). At its start ('export_full', written in the snapshot the
+   * archive is made from): documents, files and their recorded size. At its end ('export_full_end'): the archive's size
+   * and SHA-256, the files written, missing from the store, or kept by a store the command line cannot reach; or that
+   * it was interrupted (stopped while being sent: sent is not received) or failed, after `size` bytes. Counts only, no document named; shown to
+   * records managers only (lib/queries.ts archiveL, D-14).
+   */
+  archive?: {
+    documents?: number; files?: number; bytes?: number; size?: number; sha256?: string; missing?: number; skipped?: number;
+    interrupted?: boolean; failed?: boolean;
   };
 };
 

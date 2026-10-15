@@ -1037,6 +1037,46 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     site), avec chaque champ avant → après (code ou clé, libellés, état), lisible dans l'administration seulement ;
   - la fusion de deux départements n'est pas faite : elle réaffecterait documents, personnes et titulaires, mais un
     brouillon jamais approuvé changerait d'identifiant (D-10, O-09).
+- **Export complet pour la réversibilité** (point 17 de `docs/reste-a-faire.md`, 15 octobre ; format dans
+  `docs/export.md`. Délai de reprise, perte de données tolérée et hébergement (M22 de l'audit), SharePoint (O-01) et
+  contrat de migration (O-11) non décidés) :
+  - **réservé aux gestionnaires documentaires ayant l'accès Administration**, comme la sauvegarde : l'archive contient
+    tout, brouillons et documents confidentiels compris, sans le filtre de D-14, et seuls les gestionnaires
+    documentaires voient déjà tous les brouillons. Un administrateur qui n'est pas gestionnaire documentaire n'y a pas
+    accès (403), ni la ligne qui le propose ;
+  - **journalisé deux fois** : « Export complet » au début, écrit dans la transaction de la copie (l'archive contient
+    donc sa propre entrée, et un téléchargement coupé ou un serveur arrêté laisse une trace), puis « Export
+    complet envoyé » avec la taille et le SHA-256 de l'archive quand le serveur a fini de l'envoyer (ils permettent
+    de reconnaître plus tard une archive comme celle que le serveur a envoyée), ou « interrompu » (coupure pendant
+    l'envoi), ou « échec ». Le serveur ne sait pas si le client a tout reçu : une petite archive coupée après l'envoi
+    est inscrite comme envoyée, et un fichier téléchargé se vérifie par `npm run export:check` ou par son SHA-256. Nombres, tailles et empreinte montrés aux seuls
+    gestionnaires documentaires, aucun document nommé, comme pour la sauvegarde ;
+  - **instantané** : toutes les tables sauf le journal sont copiées en une transaction dans des tables temporaires
+    (les écritures attendent quelques secondes, comme pour une sauvegarde), puis lues par lots ; le journal, en ajout
+    seul, est lu jusqu'à la dernière entrée de cette transaction. Ce qui change pendant le téléchargement n'entre pas
+    dans l'archive ;
+  - **format** : ZIP sans compression ni chiffrement, écrit en flux (descripteurs de données, Zip64 au-delà de 4 Go),
+    sans dépendance (`src/lib/export-core.mjs`) ; une table par fichier JSON, champs nommés comme dans
+    `src/db/schema.ts` (ceux de l'API d'import), dates telles que la base les garde (heure de Paris pour les
+    horodatages sans fuseau, UTC pour le journal) ; CSV des seuls documents, au format des autres exports (point-virgule,
+    BOM, formules neutralisées) ; fichiers sous `files/{ID}/{ID}_{lettre}.{n}.{ext}` (toutes les versions de travail,
+    pas seulement le fichier final) ; `SHA256SUMS` pour vérifier sans Codex. L'index de recherche (`document_terms`)
+    n'est pas exporté : la base le recalcule ;
+  - **vue d'import** (`import/documents.json`) : pour chaque document, le `meta` de `POST /api/import` et le fichier à
+    envoyer, avec son identifiant actuel comme `legacyRef` (gardé comme identifiant par le Codex qui importe quand il
+    est libre et au format de son type et de son contexte) ; la révision prise est celle en vigueur, sinon une révision
+    approuvée avec sa date d'effet, sinon la dernière, en brouillon ; état, gel juridique, révisions antérieures,
+    circuits, demandes, liens et journal restent dans `data/` sans équivalent dans l'import (O-11) ;
+  - **fichiers SharePoint** : depuis l'application, lus par Graph quand SharePoint est configuré ; sinon (O-01 non
+    tranché) listés comme non inclus dans le manifeste et le journal plutôt que de faire échouer tout l'export. La
+    commande ne les lit jamais (comme la sauvegarde) et le dit. Un stockage local illisible ou un SharePoint configuré
+    mais injoignable fait échouer l'export ;
+  - **commande** `npm run export`, serveur arrêté, sous le verrou du dossier de données ; archive par défaut à côté du
+    dossier de données (`.data-exports/`, ignoré par git), dossier `0700` et archive `0600`, écrite sous un nom
+    provisoire et relue avant d'être nommée ; aucune variable nouvelle (`--out` pour un autre endroit). Pas
+    d'export programmé, pas de chiffrement : à décider avec l'hébergement ;
+  - le téléchargement compte dans le budget des exports (`CODEX_RATE_EXPORTS`), sans autre limite : deux exports
+    simultanés sont possibles (chacun sa copie temporaire).
 - **Git** (D-23) : premier commit sur une branche `codex-ged-v2` plutôt que sur `main`.
 
 ## Ce qui est explicitement hors périmètre

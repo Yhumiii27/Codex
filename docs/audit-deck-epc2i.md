@@ -1629,7 +1629,7 @@ tranché dans le modèle ou le code, ouvert, ou sans objet.
 
 - **Pourquoi** : Une GED devient un actif critique, mais l'hébergement, les sauvegardes, le plan de reprise et la possibilité d'exporter toutes les données ne sont pas abordés.
 - **Question** : Quelles exigences fixez-vous en délai de reprise et en perte de données tolérée ? Où les données doivent-elles être hébergées ? Faut-il pouvoir exporter l'ensemble des documents avec leurs métadonnées et leur historique, en cas de changement d'outil ou de contrôle ?
-- **Suite** : **Ouvert.** Depuis le 15 octobre 2026, la base et les fichiers se sauvegardent et se restaurent (archive avec manifeste et empreintes, rotation, restauration contrôlée, procédure `docs/sauvegarde.md` ; point 48 de `docs/reste-a-faire.md`, choix signalés dans `docs/decisions.md`). Les exigences de reprise, la fréquence, le lieu de conservation et le chiffrement des sauvegardes restent à fixer, comme l'export complet (point 17).
+- **Suite** : **Ouvert.** Depuis le 15 octobre 2026, la base et les fichiers se sauvegardent et se restaurent (archive avec manifeste et empreintes, rotation, restauration contrôlée, procédure `docs/sauvegarde.md` ; point 48 de `docs/reste-a-faire.md`, choix signalés dans `docs/decisions.md`). Depuis le même jour, toutes les données (tables en JSON, documents en CSV, journal) et tous les fichiers s'exportent dans une archive ZIP vérifiable, avec chaque document au format de l'import pour une reprise dans un autre Codex (`docs/export.md`, point 17). Les exigences de reprise, la fréquence, le lieu de conservation et le chiffrement des sauvegardes et des exports restent à fixer.
 
 #### M23 — Accès terrain et mobile
 

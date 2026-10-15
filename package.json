@@ -19,6 +19,8 @@
     "backup:list": "node scripts/codex-backup.mjs list",
     "backup:check": "node scripts/codex-backup.mjs check",
     "restore": "node scripts/codex-backup.mjs restore",
+    "export": "node scripts/codex-export.mjs create",
+    "export:check": "node scripts/codex-export.mjs check",
     "app": "bash desktop/build-app.sh"
   },
   "dependencies": {

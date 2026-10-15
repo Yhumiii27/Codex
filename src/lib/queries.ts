@@ -1005,7 +1005,7 @@ export function auditTargetL(ctx: Ctx, kind: AuditTargetKind | null, id: string 
     : kind === 'file' ? t[`file_entry_${id}` as TKey] ?? id
     : kind === 'storage' ? t[`store_${id}` as TKey] ?? id
     : kind === 'backup' ? id
-    : id === 'search' ? t.adv_search : t.ad_audit;
+    : id === 'search' ? t.adv_search : id === 'full' ? t.target_export_full : t.ad_audit;
   return `${t[TARGET_LABEL[kind]]} · ${name}`;
 }
 
@@ -1116,7 +1116,7 @@ function exportL(ctx: Ctx, targetId: string | null, x: NonNullable<AuditData['ex
 export function auditDetailL(ctx: Ctx, a: Pick<AuditRow, 'detail' | 'data' | 'targetId'>): string {
   const x = a.data;
   const link = x?.link ? `${ctx.t[`link_${x.link.rel}`]} ${x.link.other}${x.link.skipped ? ` : ${ctx.t[`link_skip_${x.link.skipped}`]}` : ''}` : '';
-  return [a.detail, link, x?.changes?.length ? x.changes.map((c) => changeL(ctx, c)).join(' ; ') : '', x?.export ? exportL(ctx, a.targetId, x.export) : '', x?.file ? refusedFileL(ctx, a.targetId, x.file) : '', x?.purge ? purgeL(ctx, x.purge) : '', x?.backup ? backupL(ctx, x.backup) : ''].filter(Boolean).join(' · ');
+  return [a.detail, link, x?.changes?.length ? x.changes.map((c) => changeL(ctx, c)).join(' ; ') : '', x?.export ? exportL(ctx, a.targetId, x.export) : '', x?.file ? refusedFileL(ctx, a.targetId, x.file) : '', x?.purge ? purgeL(ctx, x.purge) : '', x?.backup ? backupL(ctx, x.backup) : '', x?.archive ? archiveL(ctx, x.archive) : ''].filter(Boolean).join(' · ');
 }
 
 /**
@@ -1136,6 +1136,25 @@ function backupL(ctx: Ctx, b: NonNullable<AuditData['backup']>): string {
     all && b.sharepoint ? t.backup_sharepoint_n.replace('{n}', String(b.sharepoint)) : '',
     all && b.sha256 ? t.backup_archive.replace('{size}', fmtSize(b.size, lang)).replace('{sha}', b.sha256.slice(0, 16)) : '',
     b.replaced ? t.backup_replaced : '',
+  ].filter(Boolean).join(' · ');
+}
+
+/**
+ * A full export (lib/export-core.mjs): at its start, the documents and files it holds; at its end, the archive's size and
+ * SHA-256 (or where it stopped), files missing from the store or not reachable. Like a backup's, the counts and sizes
+ * are shown to records managers only: they count drafts (D-14). An interruption or a failure is shown to every reader.
+ */
+function archiveL(ctx: Ctx, x: NonNullable<AuditData['archive']>): string {
+  const { t, lang } = ctx;
+  const all = ctx.seesAll;
+  const stopped = x.interrupted ? t.export_all_interrupted : x.failed ? t.export_all_failed : null;
+  return [
+    stopped ? `${stopped}${all ? ` ${t.export_all_after.replace('{size}', fmtSize(x.size ?? 0, lang))}` : ''}` : '',
+    all && x.documents != null ? t.backup_docs.replace('{n}', String(x.documents)) : '',
+    all && x.files != null ? t.backup_files.replace('{n}', String(x.files)).replace('{size}', fmtSize(x.bytes ?? 0, lang)) : '',
+    all && x.missing ? t.backup_missing_n.replace('{n}', String(x.missing)) : '',
+    all && x.skipped ? t.backup_sharepoint_n.replace('{n}', String(x.skipped)) : '',
+    all && x.sha256 ? t.backup_archive.replace('{size}', fmtSize(x.size ?? 0, lang)).replace('{sha}', x.sha256.slice(0, 16)) : '',
   ].filter(Boolean).join(' · ');
 }
 
