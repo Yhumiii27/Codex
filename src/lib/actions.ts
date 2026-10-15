@@ -5,7 +5,7 @@ import { cookies } from 'next/headers';
 import { refresh } from 'next/cache';
 import { getDb, schema as s } from '@/db';
 import type { Attachment, AuditChange, AuditValue, Conf, Disposition, Origin, RetentionTrigger, SearchScope } from '@/db/schema';
-import { buildAccessIndex, canRead, followsCircuit, getAccessIndex, inDraftingCircle, isUsableTemplate, mayDeleteSearch, mayEditLinks, mayRecall, mayRecordReview, maySaveSearch, mayWorkOnDraft, readerMaySeeRevision, readersApply, seesSavedSearch } from './access';
+import { buildAccessIndex, canRead, followsCircuit, getAccessIndex, inDraftingCircle, isUsableTemplate, mayCleanStorage, mayDeleteSearch, mayEditLinks, mayRecall, mayRecordReview, maySaveSearch, mayWorkOnDraft, readerMaySeeRevision, readersApply, seesSavedSearch } from './access';
 import { idMatches, nextDocId, nextWorkflowId } from './codification';
 import { changeAuthor, seenVersion, seenWorkingBase, staleText, workingIssue, workingStaleText, type WorkingBase } from './concurrency';
 import { COOKIE_LANG, COOKIE_ROLE, COOKIE_USER, getCtx, type Ctx } from './context';
@@ -18,6 +18,7 @@ import { decisionWaitL } from './queries';
 import { dateIssues, dateIssueText, effectIssue, issueFrom, latestEffect, type DateIssue } from './dates';
 import { cleanFeatured } from './departments';
 import { fileIssueReason, fileIssueText, fileRules } from './filetypes';
+import { MAX_PER_RUN, purgeOrphans } from './orphans';
 import { nextReviewDate, parseReviewMonths } from './review';
 import { beyondBounds, cleanCriteria, hasCriteria, type SearchInput } from './search';
 import { discardFile, FileRejectedError, fileColumns, nameStoredFile, readStored, renameDocFiles, stageFile, stageUpload, type StagedFile } from './storage';
@@ -1233,6 +1234,34 @@ export async function deleteSavedSearch(id: number): Promise<ActionResult> {
 
 function adminOnly(ctx: Ctx): ActionResult | null {
   return ctx.screens.admin ? null : fail(ctx, 'forbidden');
+}
+
+/**
+ * Removes the orphan files of the local store that Administration listed (lib/orphans.ts): `keys`, those the dry run
+ * showed, of which only the files still orphans go: named by no working version, older than the grace period, each
+ * checked again just before; journaled in one entry. A records manager with access to Administration only
+ * (lib/access.ts mayCleanStorage). SharePoint files are never removed (O-01).
+ */
+export async function purgeOrphanFiles(keys: string[]): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  if (!mayCleanStorage(ctx)) return fail(ctx, 'forbidden');
+  // Sent back by the page: a list of names, no longer than the one shown.
+  if (!Array.isArray(keys) || !keys.length || keys.length > MAX_PER_RUN || !keys.every((k) => typeof k === 'string' && k.length > 0 && k.length <= 512)) return fail(ctx);
+  const res = await purgeOrphans(ctx.user.id, { keys });
+  if (res === 'busy') return fail(ctx, 'orphans_busy');
+  const { t, lang } = ctx;
+  refresh();
+  return {
+    ok: true,
+    message: [
+      t.orphans_removed.replace('{n}', String(res.removed.length)).replace('{size}', fmtSize(res.bytes, lang)),
+      res.kept ? t.orphans_kept.replace('{n}', String(res.kept)) : '',
+      res.failed ? t.orphans_failures.replace('{n}', String(res.failed)) : '',
+      res.left - res.failed > 0 ? t.orphans_left.replace('{n}', String(res.left)) : '',
+    ].filter(Boolean).join(' '),
+  };
 }
 
 export async function togglePermission(role: string, perm: string): Promise<ActionResult> {

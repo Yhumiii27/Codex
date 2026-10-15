@@ -1457,6 +1457,7 @@ en dépend prend l'option la plus prudente et est consigné dans [decisions.md](
 |---|---|---|---|---|
 | 1. En-têtes et débit (§16.1) | commit « Lot 7, étape 1 », qui suit `c7e7ce1` | 24, 25 | En-têtes de sécurité sur toutes les réponses, politique de sécurité du contenu des pages avec nonce, limites de débit des routes sensibles et des actions qui écrivent (429 avec `Retry-After`) | HSTS coupé sauf `CODEX_HTTPS=1` ; `X-Forwarded-For` tenu pour fiable seulement avec `CODEX_TRUST_PROXY=1` ; seuils généreux ; compteurs en mémoire pour une seule instance |
 | 2. Fichiers déposés (§16.2) | commit « Lot 7, étape 2 », qui suit `3c2dbe7` | 32, 64 | Formats admis (liste blanche, signatures et conteneurs, macros et programmes refusés), nom unique du contrôle au téléchargement, taille maximale unique, analyse antivirus par clamd avant stockage, refus journalisé | Liste commune à tous les types, archives exclues, Office chiffré admis ; 50 Mo pour l'écran et l'import ; analyse désactivée sans `CODEX_CLAMD`, dépôt refusé si clamd ne répond pas ou si le fichier dépasse ses limites ; nom du fichier refusé réservé aux gestionnaires (D-14) |
+| 3. Fichiers en flux et orphelins (§16.3) | commit « Lot 7, étape 3 », qui suit `ab6711e` | 46, 36 | Route fichier en flux, plages d'octets (206, 416), ETag, Last-Modified et 304, HEAD cohérent ; simulation puis suppression journalisée des seuls fichiers orphelins listés, stockage local | Copie gardée par le navigateur seulement pour le fichier en vigueur sous Confidentiel, revalidée à chaque usage ; téléchargement journalisé à partir du premier octet ; nettoyage réservé aux gestionnaires, délai de grâce de 24 h, SharePoint listé sans suppression (O-01) ; aperçu paginé des brouillons et confidentiels encore retéléchargé à chaque page |
 
 ### 16.1 En-têtes de sécurité HTTP et limitation de débit
 
@@ -1610,3 +1611,86 @@ n'avait pas d'`accept` ; l'écran plafonnait à 50 Mo (limite des Server Actions
 - **Reste** : une liste de formats par type dans le registre et le PDF/A (question M12) ; la réanalyse des fichiers
   déjà stockés ; l'essai sur un vrai clamd ; le dépôt d'un fichier refusé dans la fenêtre de l'app Mac (session
   macOS).
+
+### 16.3 Fichiers servis en flux et nettoyage des fichiers orphelins
+
+Points 46 et 36 de [reste-a-faire.md](reste-a-faire.md), vérifiés au commit `ab6711e` : la route fichier lisait tout le
+fichier dans un `Buffer` (`readStored` : `readFile` en local, `arrayBuffer` pour SharePoint) puis le recopiait, sans
+`Accept-Ranges` ni `Content-Range`, en `Cache-Control: private, no-store` : l'aperçu paginé, qui recrée son iframe à
+chaque page, retéléchargeait tout le PDF. Aucun code ne comparait le stockage aux `working_versions.file_key`, alors
+qu'un arrêt entre le dépôt et l'enregistrement, ou un renommage inachevé, laisse un fichier sans référence.
+
+- **En flux** : `openStored` (src/lib/storage.ts) donne la taille et la date du fichier sans le lire ; le fichier
+  local est ouvert avant la réponse (un renommage qui retire l'ancien nom ensuite ne coupe pas l'envoi) puis lu par
+  morceaux ; pour SharePoint, le corps de `/content` est relayé avec l'en-tête Range, le délai ne couvrant que
+  l'attente de la réponse (non essayé sur un vrai tenant). Le PDF de démonstration reste construit en mémoire.
+- **Plages et validateurs** (`src/lib/ranges.ts`, appliqué une fois l'accès accordé) : 206 et `Content-Range`, 416 et
+  `bytes */taille`, fichier entier pour plusieurs plages ou une autre unité, `If-Range` ; ETag (empreinte de la
+  version, de sa taille, de sa date et du nom servi : identifiant, révision, état), Last-Modified du fichier local, 304
+  sur `If-None-Match`, ou sur `If-Modified-Since` en son absence. HEAD donne les mêmes en-têtes que GET (304 compris,
+  sans plage) et répond 404 pour un fichier manquant, comme GET.
+- **Cache** : copie gardée par le navigateur (`private, no-cache, no-transform`) seulement pour le fichier final de la
+  révision en vigueur sous Confidentiel (`browserMayKeep`, src/lib/access.ts) ; brouillons, confidentiels et
+  téléchargements restent en `no-store`. `no-transform` empêche `next start` de compresser les réponses texte, ce qui
+  fausserait les plages.
+- **Journal des téléchargements** : inchangé pour un téléchargement entier ; une reprise (plage qui ne part pas du
+  premier octet), un 416 ou un HEAD ne sont pas journalisés.
+- **Fichiers orphelins** (`src/lib/orphans.ts`) : Administration › Journal d'audit, réservé aux gestionnaires
+  documentaires ayant l'accès Administration (`mayCleanStorage`). « Rechercher » (`?tab=audit&orphans=1`) liste sans
+  rien supprimer ; « Supprimer ces fichiers » (`purgeOrphanFiles`, confirmé) retire, parmi les fichiers que la liste a
+  montrés et eux seuls, ceux qui sont encore orphelins : fichiers locaux nommés par Codex, sans référence, touchés
+  depuis plus que le délai de grâce (`CODEX_ORPHAN_GRACE_HOURS`, 24 h ; date la plus récente de `mtime` et `ctime`),
+  200 au plus par passage, chacun revérifié juste avant, un seul passage à la fois.
+  Une entrée « Fichiers orphelins supprimés » (cible « Stockage des fichiers · local ») garde nom, taille et date de
+  chaque fichier ; les noms ne sont montrés qu'aux gestionnaires (D-14). SharePoint (`_staging`) : liste seulement.
+- **Tests** : `tests/unit/ranges.test.ts` (plages, validateurs, ordre des décisions, découpe d'un flux),
+  `tests/unit/orphans.test.ts` (délai de grâce, noms de Codex, tri), `tests/integration/file-stream.test.ts` (fichier
+  de 3 Mo lu en flux et interrompu, 206, 416, 200 pour plusieurs plages, `If-Range`, 304, accès contrôlé avant tout,
+  brouillon et confidentiel jamais gardés, journal des téléchargements, suffixes, HEAD, fichier manquant),
+  `tests/integration/orphans.test.ts` (simulation sans suppression, fichier récent, fichier ancien renommé à l'instant,
+  SharePoint injoignable sans requête, suppression et journal, seuls les fichiers listés supprimés, fichier réécrit ou
+  référencé entre l'analyse et la suppression conservé, 200 par passage, un passage à la fois, action réservée et
+  liste reçue contrôlée, noms réservés aux gestionnaires). Journaliser une reprise, laisser le navigateur garder un brouillon, ou dater un
+  fichier par son seul `mtime` fait échouer un test chacun.
+- **Vérifié** : `npm test` (51 fichiers, 862 tests), `npm run typecheck`, `npm run lint`, `npm run build`. Sur le serveur
+  de développement : fichier entier, plage, 416, 304 et HEAD identiques au fichier stocké ; brouillon `POL-HSE-0002`
+  refusé (404) à jwagner et jholt, avec ou sans Range ou If-None-Match ; dans Chromium, le PDF de 2 pages importé en
+  vigueur (`PRO-QUA-0006`) est revalidé (304 au journal du serveur) au changement de page ; téléchargement entier
+  journalisé, reprise non. Panneau des orphelins en français et en anglais pour cbardet (un fichier récent compté et
+  conservé), écran refusé à gcomte. Sur la build de production (`next start`, copie de la base, horloge du processus
+  avancée de 25 h) : texte de 9,6 Ko servi sans compression, plage exacte ; suppression d'un orphelin depuis le
+  panneau, confirmation, message, entrée au journal et ligne `[orphans] removed …` au journal du serveur ; gcomte, à
+  qui le droit Administrer a été donné, lit l'entrée sans le nom du fichier, à l'écran comme dans l'export CSV, et n'a
+  pas le panneau.
+- **Relecture** (trois constats, tous retenus) :
+  - la suppression refaisait l'analyse au moment du clic et supprimait les orphelins trouvés à cet instant, alors que
+    la confirmation annonçait « les fichiers orphelins listés » : un fichier passé au-delà du délai de grâce pendant
+    que la page restait ouverte était supprimé sans avoir été montré. Le bouton envoie désormais les noms affichés
+    (`purgeOrphanFiles.bind(null, keys)`, 200 au plus, liste contrôlée par l'action) et `purgeOrphans` ne supprime
+    que ceux qui sont encore orphelins au moment du clic ; les autres sont laissés en place et comptés dans le
+    message (« Laissés en place, plus orphelins depuis la recherche : n ») ;
+  - l'étape 3 du point 46 n'est faite que pour le fichier final en vigueur sous Confidentiel : pour un brouillon, une
+    révision en circuit ou un document confidentiel ou très confidentiel, la réponse reste en `no-store` et l'aperçu
+    paginé recrée son iframe à chaque page (`key={page}`, `src/app/documents/[id]/DocClient.tsx`), donc retélécharge
+    tout le fichier. Changer de page sans recréer l'iframe dépend de la visionneuse PDF du navigateur et de celle de
+    WebKit dans l'app Mac, qui ne se vérifie que sous macOS : ce reste est consigné ici, dans le point 46 de
+    [reste-a-faire.md](reste-a-faire.md) et dans le README, plutôt que corrigé sans essai ;
+  - aucun test ne vérifiait les deux contrôles refaits juste avant chaque suppression. Deux tests provoquent la
+    course : un fichier que l'analyse date d'avant le délai de grâce mais réécrit depuis, et un fichier qu'une version
+    de travail vient référencer entre l'analyse et la suppression ; retirer l'un ou l'autre contrôle, ou supprimer
+    des orphelins qui n'étaient pas listés, fait échouer un test chacun.
+  - *Vérifié* : `npm test` (51 fichiers, 865 tests), `npm run typecheck`, `npm run lint`, `npm run build`. Sur le
+    serveur de développement (copie de la base) : fichier entier identique au fichier stocké, plage 206, 416, 304 et
+    HEAD de `PRO-QUA-0006`, brouillon `POL-HSE-0002` refusé (404) à jwagner avec Range ; panneau des orphelins en
+    français et en anglais (un fichier récent compté et conservé), absent pour gcomte. Sur la build de production
+    (`next start`, horloge du processus avancée de 25 h), dans Chromium : la simulation liste un orphelin, un second
+    fichier est écrit pendant que la page reste ouverte, la confirmation annonce « (1) » et seul le fichier listé est
+    supprimé (message, entrée au journal et ligne `[orphans] removed …` à son seul nom) ; le second apparaît à la
+    recherche suivante. Un fichier listé puis retiré du disque avant le clic est compté « Laissés en place… : 1 » ; en
+    anglais, « Orphan files removed: 1 (6 B). Orphans left: 1. »
+- **Reste** : l'aperçu paginé des brouillons, des révisions en circuit et des documents confidentiels ou très
+  confidentiels retélécharge encore tout le fichier à chaque page (iframe recréée, `no-store`) : changer de page sans
+  recréer l'iframe, à essayer dans Chromium et dans l'app Mac (point 46, étape 3) ; le dépôt en flux (étape 4 du point
+  46, avec les points 98 et 106) ; le lancement du nettoyage par le planificateur (point 38) ; la reprise de
+  `nameStoredFile` sur les noms provisoires ; la suppression sur SharePoint et l'essai du flux et des plages sur un
+  vrai tenant (O-01) ; l'aperçu de l'app Mac (WebKit) à vérifier sous macOS.

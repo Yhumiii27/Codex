@@ -23,3 +23,11 @@
 .filesPolicy { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 2px 0 6px; font-size: 12px; }
 .filesPolicy strong { font-weight: 500; color: var(--color-text); }
 .filesOff { color: var(--color-accent-300); }
+/* Journal tab: orphan files of the store (lib/orphans.ts), the dry run and its removal. */
+.orphans { margin: 4px 0 14px; padding: 10px 14px 12px; border: 1px solid var(--color-divider); border-radius: var(--radius-md); font-size: 12.5px; display: flex; flex-direction: column; gap: 6px; }
+.orphans p { margin: 0; }
+.orphansHead { display: flex; align-items: center; gap: 8px; }
+.orphansHead strong { font-weight: 500; }
+.orphanStore { font-weight: 500; margin-right: 8px; }
+.orphanTable { font-size: 12px; }
+.orphanKey { word-break: break-all; }

@@ -985,7 +985,7 @@ export async function auditForReader(ctx: Ctx, all: AuditRow[]): Promise<AuditEn
   });
 }
 
-const TARGET_LABEL: Record<AuditTargetKind, TKey> = { permission: 'target_permission', department: 'department', site: 'site', function: 'function_label', type: 'type', export: 'target_export', file: 'target_file' };
+const TARGET_LABEL: Record<AuditTargetKind, TKey> = { permission: 'target_permission', department: 'department', site: 'site', function: 'function_label', type: 'type', export: 'target_export', file: 'target_file', storage: 'target_storage' };
 
 /** What an entry without document is about, as the Journal tab and its export name it: "Fonction · Responsable qualité". */
 export function auditTargetL(ctx: Ctx, kind: AuditTargetKind | null, id: string | null): string {
@@ -999,6 +999,7 @@ export function auditTargetL(ctx: Ctx, kind: AuditTargetKind | null, id: string 
     : kind === 'function' ? ctx.label('function', id)
     : kind === 'type' ? `${id} · ${ctx.label('type', id)}`
     : kind === 'file' ? t[`file_entry_${id}` as TKey] ?? id
+    : kind === 'storage' ? t[`store_${id}` as TKey] ?? id
     : id === 'search' ? t.adv_search : t.ad_audit;
   return `${t[TARGET_LABEL[kind]]} · ${name}`;
 }
@@ -1103,7 +1104,20 @@ function exportL(ctx: Ctx, targetId: string | null, x: NonNullable<AuditData['ex
 export function auditDetailL(ctx: Ctx, a: Pick<AuditRow, 'detail' | 'data' | 'targetId'>): string {
   const x = a.data;
   const link = x?.link ? `${ctx.t[`link_${x.link.rel}`]} ${x.link.other}${x.link.skipped ? ` : ${ctx.t[`link_skip_${x.link.skipped}`]}` : ''}` : '';
-  return [a.detail, link, x?.changes?.length ? x.changes.map((c) => changeL(ctx, c)).join(' ; ') : '', x?.export ? exportL(ctx, a.targetId, x.export) : '', x?.file ? refusedFileL(ctx, a.targetId, x.file) : ''].filter(Boolean).join(' · ');
+  return [a.detail, link, x?.changes?.length ? x.changes.map((c) => changeL(ctx, c)).join(' ; ') : '', x?.export ? exportL(ctx, a.targetId, x.export) : '', x?.file ? refusedFileL(ctx, a.targetId, x.file) : '', x?.purge ? purgeL(ctx, x.purge) : ''].filter(Boolean).join(' · ');
+}
+
+/**
+ * Orphan files removed (lib/orphans.ts): how many, the space freed, failures; their names to records managers only, since
+ * a stored name may give a draft's ID and version ("…-PRO-ING-0007_A.2.docx", D-14).
+ */
+function purgeL(ctx: Ctx, p: NonNullable<AuditData['purge']>): string {
+  const { t, lang } = ctx;
+  return [
+    t.purge_files.replace('{n}', String(p.files.length)).replace('{size}', fmtSize(p.bytes, lang)),
+    p.failed ? t.purge_failed.replace('{n}', String(p.failed)) : '',
+    ctx.seesAll ? p.files.map((f) => f.key).join(', ') : '',
+  ].filter(Boolean).join(' · ');
 }
 
 /**

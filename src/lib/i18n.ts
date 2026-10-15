@@ -253,6 +253,16 @@ const fr = {
   file_entry_create:'nouveau document', file_entry_template:'copie d’un modèle', file_entry_working:'version de travail', file_entry_import:'import',
   files_policy:'Fichiers déposés', files_formats:'{n} formats admis', av_off:'analyse antivirus désactivée (CODEX_CLAMD non défini)',
   av_on:'analyse antivirus par clamd ({address})', av_on_error_refuse:'dépôt refusé si l’analyse échoue', av_on_error_accept:'fichier accepté sans analyse si l’analyse échoue',
+  act_files_purged:'Fichiers orphelins supprimés', target_storage:'Stockage des fichiers', store_local:'local', store_sharepoint:'SharePoint',
+  purge_files:'Fichiers : {n} ({size})', purge_failed:'non supprimés : {n}',
+  orphans_title:'Fichiers orphelins', orphans_find:'Rechercher', orphans_store_local:'Stockage local', orphans_store_sharepoint:'SharePoint (dossier _staging)',
+  orphans_hint:'Fichiers du stockage qu’aucune version de travail ne référence (dépôt interrompu, renommage inachevé). Cette recherche ne supprime rien. Un fichier écrit il y a moins de {h} h n’est jamais compté : il peut appartenir à un dépôt en cours.',
+  orphans_found:'Orphelins de plus de {h} h : {n} ({size})', orphans_recent:'récents, conservés : {n}', orphans_foreign:'autres fichiers, laissés en place : {n}',
+  orphans_none:'Aucun fichier orphelin.', orphans_more:'… et {n} de plus, au prochain passage', orphans_touched:'Dernière écriture',
+  orphans_delete:'Supprimer ces fichiers ({n})', orphans_confirm:'Supprimer définitivement du stockage local les fichiers orphelins listés ({n}) ? Chaque fichier est vérifié à nouveau juste avant, et la suppression est inscrite au journal.',
+  orphans_removed:'Fichiers orphelins supprimés : {n} ({size}).', orphans_kept:'Laissés en place, plus orphelins depuis la recherche : {n}.', orphans_left:'Orphelins restants : {n}.', orphans_failures:'Non supprimés : {n} (voir le journal du serveur).',
+  orphans_busy:'Un nettoyage du stockage est déjà en cours.', orphans_sp_list_only:'Liste seulement : la suppression sur SharePoint attend un essai sur un vrai tenant (O-01).',
+  orphans_sp_error:'SharePoint n’a pas pu être listé : voir le journal du serveur.',
 };
 
 type Dict = Record<keyof typeof fr, string>;
@@ -507,6 +517,16 @@ const en: Dict = {
   file_entry_create:'new document', file_entry_template:'copy of a template', file_entry_working:'working version', file_entry_import:'import',
   files_policy:'Uploaded files', files_formats:'{n} accepted formats', av_off:'virus scanning off (CODEX_CLAMD not set)',
   av_on:'virus scanning by clamd ({address})', av_on_error_refuse:'upload refused when the scan fails', av_on_error_accept:'file accepted unscanned when the scan fails',
+  act_files_purged:'Orphan files removed', target_storage:'File storage', store_local:'local', store_sharepoint:'SharePoint',
+  purge_files:'Files: {n} ({size})', purge_failed:'not removed: {n}',
+  orphans_title:'Orphan files', orphans_find:'Look for them', orphans_store_local:'Local storage', orphans_store_sharepoint:'SharePoint (_staging folder)',
+  orphans_hint:'Stored files that no working version refers to (interrupted upload, unfinished rename). This search removes nothing. A file written less than {h} h ago is never counted: it may belong to an upload in progress.',
+  orphans_found:'Orphans older than {h} h: {n} ({size})', orphans_recent:'recent, kept: {n}', orphans_foreign:'other files, left in place: {n}',
+  orphans_none:'No orphan file.', orphans_more:'… and {n} more, at the next run', orphans_touched:'Last written',
+  orphans_delete:'Remove these files ({n})', orphans_confirm:'Permanently remove the listed orphan files ({n}) from local storage? Each file is checked again just before, and the removal is journaled.',
+  orphans_removed:'Orphan files removed: {n} ({size}).', orphans_kept:'Left in place, no longer orphans since the search: {n}.', orphans_left:'Orphans left: {n}.', orphans_failures:'Not removed: {n} (see the server log).',
+  orphans_busy:'A storage clean-up is already running.', orphans_sp_list_only:'Listed only: removal on SharePoint waits for a trial on a real tenant (O-01).',
+  orphans_sp_error:'SharePoint could not be listed: see the server log.',
 };
 
 export const DICT: Record<Lang, Dict> = { fr, en };

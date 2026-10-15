@@ -4,14 +4,16 @@ import { Forbidden } from '@/components/ui/Forbidden';
 import { Icon } from '@/components/ui/Icon';
 import { Seg } from '@/components/ui/Seg';
 import { ActionButton, DialogButton } from '@/components/ui/client';
-import { removeFunctionHolder, togglePermission } from '@/lib/actions';
+import { mayCleanStorage } from '@/lib/access';
+import { purgeOrphanFiles, removeFunctionHolder, togglePermission } from '@/lib/actions';
 import { antivirusStatus } from '@/lib/antivirus';
 import { getCtx, type Ctx } from '@/lib/context';
 import { featuredOf } from '@/lib/departments';
 import { fileRules, fmtMax } from '@/lib/filetypes';
 import { ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLE_LABEL, MATRIX_ROLES, PERMS, SIMULATED_MATRIX_ROLES, type TKey } from '@/lib/i18n';
 import { AUDIT_ID_MAX, auditPage, getMatrix, listDocs, listFunctionHolders, listTemplates, typeView, type AuditFilter } from '@/lib/queries';
-import { parseIsoDay } from '@/lib/format';
+import { fmtDateTime, fmtSize, parisStamp, parseIsoDay } from '@/lib/format';
+import { MAX_PER_RUN, orphanReport, type OrphanScan } from '@/lib/orphans';
 import { FACET_LABEL, oneEach } from '@/lib/search';
 import { AddValue } from './AddValue';
 import { FamilyFilter } from './FamilyFilter';
@@ -346,6 +348,74 @@ function FilesPolicy({ ctx }: { ctx: Ctx }) {
 }
 
 /**
+ * Orphan files of the store (lib/orphans.ts), for a records manager: a link that runs the dry run (?orphans=1, nothing
+ * removed), then the list and the button that removes those of the local store. SharePoint's are listed only (O-01).
+ */
+async function Orphans({ ctx, open }: { ctx: Ctx; open: boolean }) {
+  const { t, lang } = ctx;
+  if (!open) {
+    return (
+      <p className={`${styles.filesPolicy} text-muted`}>
+        <strong>{t.orphans_title}</strong>
+        <Link href="/administration?tab=audit&orphans=1" className="link-plain" scroll={false}>{t.orphans_find}</Link>
+      </p>
+    );
+  }
+  const report = await orphanReport();
+  const h = String(report.graceHours);
+  const counts = (x: OrphanScan) => [
+    t.orphans_found.replace('{h}', h).replace('{n}', String(x.orphans.length)).replace('{size}', fmtSize(x.bytes, lang)),
+    ...(x.recent ? [t.orphans_recent.replace('{n}', String(x.recent))] : []),
+    ...(x.foreign ? [t.orphans_foreign.replace('{n}', String(x.foreign))] : []),
+  ].join(' · ');
+  const list = (x: OrphanScan) => x.orphans.length > 0 && (
+    <table className={`table ${styles.orphanTable}`}>
+      <thead><tr><th>{t.file}</th><th>{t.size}</th><th>{t.orphans_touched}</th></tr></thead>
+      <tbody>
+        {x.orphans.slice(0, MAX_PER_RUN).map((f) => (
+          <tr key={f.key}>
+            <td className={styles.orphanKey}>{f.key}</td>
+            <td className="nowrap tabnum">{fmtSize(f.size, lang)}</td>
+            <td className="nowrap tabnum text-muted">{fmtDateTime(parisStamp(new Date(f.touched).toISOString()), lang)}</td>
+          </tr>
+        ))}
+        {x.orphans.length > MAX_PER_RUN && <tr><td colSpan={3} className="text-muted">{t.orphans_more.replace('{n}', String(x.orphans.length - MAX_PER_RUN))}</td></tr>}
+      </tbody>
+    </table>
+  );
+  // The removal is given the keys shown here: an orphan that turns up while the page is open is not removed with them.
+  const shown = report.local.orphans.slice(0, MAX_PER_RUN).map((f) => f.key);
+  const n = shown.length;
+  return (
+    <section className={styles.orphans} aria-label={t.orphans_title}>
+      <div className={styles.orphansHead}>
+        <strong>{t.orphans_title}</strong>
+        <span style={{ flex: 1 }} />
+        {n > 0 && (
+          <ActionButton action={purgeOrphanFiles.bind(null, shown)} className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} confirm={t.orphans_confirm.replace('{n}', String(n))} after="/administration?tab=audit&orphans=1">
+            {t.orphans_delete.replace('{n}', String(n))}
+          </ActionButton>
+        )}
+        <Link href="/administration?tab=audit" className="btn btn-ghost" style={{ fontSize: 12 }} scroll={false}>{t.close}</Link>
+      </div>
+      <p className="text-muted">{t.orphans_hint.replace('{h}', h)}</p>
+      <p><span className={styles.orphanStore}>{t.orphans_store_local}</span>{report.local.orphans.length || report.local.recent || report.local.foreign ? counts(report.local) : t.orphans_none}</p>
+      {list(report.local)}
+      {report.sharepoint && (
+        'error' in report.sharepoint
+          ? <p><span className={styles.orphanStore}>{t.orphans_store_sharepoint}</span><span className={styles.filesOff}>{t.orphans_sp_error}</span></p>
+          : (
+            <>
+              <p><span className={styles.orphanStore}>{t.orphans_store_sharepoint}</span>{counts(report.sharepoint)} · <span className="text-muted">{t.orphans_sp_list_only}</span></p>
+              {list(report.sharepoint)}
+            </>
+          )
+      )}
+    </section>
+  );
+}
+
+/**
  * Journal tab: the entries the user may read, newest first, filtered and paged by the database (lib/queries.ts
  * auditPage), the filters and the page in the URL; the CSV export above it gives the whole journal.
  */
@@ -368,6 +438,7 @@ async function Audit({ ctx, sp }: { ctx: Ctx; sp: Record<string, string | undefi
   return (
     <>
       <FilesPolicy ctx={ctx} />
+      {mayCleanStorage(ctx) && <Orphans ctx={ctx} open={sp.orphans === '1'} />}
       {/* Mounted again when the URL changes its filters (Effacer, a link), so that the fields show them. */}
       <div key={JSON.stringify(f)}>
         <Form action="/administration" scroll={false} className={styles.auditFilters}>

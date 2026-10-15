@@ -653,6 +653,7 @@ Constaté : src/lib/lifecycle.ts:141-149 (retour d'erreur sans écriture pour un
 ### Exploitation et déploiement (16)
 
 #### 36. Nettoyage des fichiers orphelins
+- **Fait en partie le 15 octobre 2026** : dans Administration › Journal d'audit, un gestionnaire documentaire ayant l'accès Administration (`mayCleanStorage`, src/lib/access.ts : les noms stockés portent l'ID et la version des brouillons, D-14) lance une simulation qui liste sans rien supprimer les fichiers orphelins (`src/lib/orphans.ts` : fichiers nommés par Codex qu'aucun `working_versions.file_key` ne référence et touchés il y a plus que le délai de grâce `CODEX_ORPHAN_GRACE_HOURS`, 24 h par défaut, date la plus récente de `mtime` et `ctime` ; stockage local et, quand SharePoint sert, `_staging/`), puis, sur confirmation, supprime du stockage local les seuls fichiers listés qui sont encore orphelins, chacun revérifié juste avant, 200 au plus par passage, avec une entrée « Fichiers orphelins supprimés » au journal (noms montrés aux seuls gestionnaires) et une ligne par fichier au journal du serveur. Reste : le lancement par le planificateur (point 38), qui appellera `purgeOrphans` (pas de commande npm : PGlite n'ouvre la base que dans le processus du serveur) ; la reprise de `nameStoredFile` sur les clés restées sous leur nom provisoire ; la suppression sur SharePoint après un essai sur un vrai tenant (O-01). Tests : tests/unit/orphans.test.ts, tests/integration/orphans.test.ts.
 
 - **Effort** : faible · **Références** : T-01 (partie SharePoint)
 
@@ -802,6 +803,7 @@ src/db/index.ts:21-22 lance seed() dès que la table users est vide. seed() (src
 </details>
 
 #### 46. Servir les fichiers en flux, avec les requêtes partielles (Range)
+- **Fait en partie le 15 octobre 2026** : la route fichier sert le stockage en flux (`openStored`, src/lib/storage.ts ; pour SharePoint, corps de `/content` relayé avec l'en-tête Range, non essayé sur un vrai tenant) avec `Accept-Ranges`, 206 et `Content-Range`, 416, le fichier entier pour plusieurs plages, `If-Range`, ETag, Last-Modified, 304 et un HEAD cohérent (`src/lib/ranges.ts`), après les mêmes contrôles d'accès, D-14, suffixes et limite de débit qu'avant, un téléchargement étant journalisé quand sa réponse part du premier octet, et le navigateur garde, revalidé à chaque usage (`private, no-cache`), le seul fichier final de la révision en vigueur sous Confidentiel, dont l'aperçu paginé obtient un 304 à chaque page. Reste : pour un brouillon, une révision en circuit (`in_review`, `approved`) ou un document confidentiel ou très confidentiel, toujours en `no-store`, l'aperçu paginé recrée son iframe (`key={page}`, src/app/documents/[id]/DocClient.tsx:33) et retélécharge tout le fichier à chaque page : la seconde option de l'étape 3, changer de page sans recréer l'iframe, reste à faire et à essayer dans Chromium et dans l'app Mac (WebKit, session macOS) ; l'étape 4, le dépôt en flux (écriture sur disque puis comptage des pages), avec l'import par morceaux (points 98 et 106). Tests : tests/unit/ranges.test.ts, tests/integration/file-stream.test.ts.
 
 - **Effort** : moyen
 

@@ -834,6 +834,28 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     puisque son fichier entre dans un nouveau document : un modèle déposé dans un format désormais refusé n'est plus
     copiable, et le refus nomme le modèle et demande à son propriétaire d'en déposer une nouvelle version. La
     réanalyse de l'existant reste à faire (point 32 de `docs/reste-a-faire.md`).
+- **Fichiers servis en flux et nettoyage du stockage** (points 46 et 36 de `docs/reste-a-faire.md`, 15 octobre ;
+  hébergement, authentification (O-02) et SharePoint (O-01) non décidés) :
+  - le navigateur ne garde une copie que du fichier final de la révision en vigueur, sous le niveau Confidentiel, et la
+    revalide à chaque usage (`Cache-Control: private, no-cache`) : les droits sont contrôlés à chaque fois et l'aperçu
+    ne retélécharge plus le PDF à chaque page. Brouillons (D-14), documents confidentiels et très confidentiels et
+    téléchargements explicites restent en `no-store`, comme avant : l'historique d'un navigateur peut réafficher une
+    copie gardée sans redemander, et un poste peut être partagé (utilisateurs simulés tant qu'O-02 est ouverte). Pour
+    eux, l'aperçu paginé retélécharge encore tout le fichier à chaque page (point 46, reste) ;
+  - un téléchargement (`?download=1`) est journalisé quand sa réponse part du premier octet (200, ou 206 à partir de
+    0) : la reprise d'un téléchargement interrompu n'ajoute pas d'entrée. Il ne reçoit jamais 304 : il est toujours
+    envoyé, donc toujours journalisé. La consultation dans l'aperçu n'est pas journalisée, comme avant ;
+  - plusieurs plages dans une requête reçoivent le fichier entier (pas de `multipart/byteranges`) ; une plage mal
+    formée reçoit 416, comme une plage au-delà du fichier ;
+  - le nettoyage des fichiers orphelins est une action d'administration réservée aux gestionnaires documentaires qui
+    ont l'accès Administration, parce que les noms stockés portent l'identifiant et la version des brouillons (D-14) ;
+    la recherche est une simulation, la suppression demande un second clic confirmé et ne porte que sur les fichiers
+    que la simulation a listés, chacun revérifié juste avant (un orphelin apparu depuis attend la recherche suivante) ;
+    délai de grâce de 24 h (1 h au moins, `CODEX_ORPHAN_GRACE_HOURS`) compté depuis la dernière écriture, le dernier
+    lien ou le dernier déplacement du fichier ; 200 fichiers au plus par passage, une entrée de journal par passage avec
+    la liste ; seuls les noms que Codex donne sont examinés. SharePoint est listé, jamais nettoyé, tant que le pilote n'a pas été essayé sur un vrai
+    tenant (O-01). Pas de commande npm : PGlite n'ouvre la base que dans un seul processus, celui du serveur ; le
+    planificateur (point 38 de `docs/reste-a-faire.md`) appellera la même fonction.
 - **Git** (D-23) : premier commit sur une branche `codex-ged-v2` plutôt que sur `main`.
 
 ## Ce qui est explicitement hors périmètre

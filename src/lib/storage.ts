@@ -1,13 +1,15 @@
 import 'server-only';
 import { randomUUID } from 'node:crypto';
-import { link, readFile, rm, writeFile } from 'node:fs/promises';
+import { link, lstat, open as openFile, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { Readable } from 'node:stream';
 import { inflateSync } from 'node:zlib';
 import { eq } from 'drizzle-orm';
 import { FILES_DIR, getDb, schema as s } from '@/db';
 import { scanFile } from './antivirus';
 import { cleanFileName, DENIED_EXTENSIONS, extensionOf, fileIssue, fileRules, type FileIssue } from './filetypes';
 import { audit } from './lifecycle';
+import { sliceStream, type ByteRange } from './ranges';
 
 // File storage behind one interface (docs/modele-cible.md §1). Codex keeps all metadata; a store only holds bytes.
 //   CODEX_STORAGE=local       (default) files under .data/files
@@ -26,6 +28,23 @@ export type StagedFile = StoredFile & { ext: string };
 /** The store answered that the file does not exist (as opposed to a store that cannot be reached). */
 export class FileNotFoundError extends Error {}
 
+/**
+ * A stored file about to be served: its size and last change when known, its bytes only once read() is called, as a
+ * stream (the whole file, or one range of it). Nothing is held open before read().
+ */
+export type FileSource = {
+  size: number | null;
+  modified: Date | null;
+  /** Throws FileNotFoundError when the store has no such file, another error when it is out of reach. */
+  read(range?: ByteRange): Promise<ReadableStream<Uint8Array>>;
+};
+
+/**
+ * A file found in a store by the orphan check (lib/orphans.ts): its key, size, and the last time it was written,
+ * linked or moved (local: the later of its mtime and ctime; a hard link made by a rename moves the ctime).
+ */
+export type ListedFile = { key: string; size: number; touched: number };
+
 interface FileStore {
   readonly name: string;
   /** Uploads under a provisional name, never replacing an existing file; returns the key. */
@@ -36,7 +55,11 @@ interface FileStore {
    */
   rename(key: string, storedName: string, folder: string): Promise<string>;
   get(key: string): Promise<Buffer>;
+  /** The file as a stream; `size`: the record's, for a store that gives none without a request. */
+  open(key: string, size: number | null): Promise<FileSource>;
   remove(key: string): Promise<void>;
+  /** Files that may be orphans: every file of the local store, the provisional ones (`_staging`) of SharePoint. */
+  list(): Promise<ListedFile[]>;
 }
 
 const safeName = (x: string) => x.replace(/[^\w.\-]+/g, '_');
@@ -62,8 +85,34 @@ const local: FileStore = {
       throw err;
     }
   },
+  async open(key) {
+    const file = path.join(FILES_DIR, path.basename(key));
+    const st = await stat(file).catch((err: NodeJS.ErrnoException) => {
+      throw err.code === 'ENOENT' ? new FileNotFoundError(key) : err;
+    });
+    return {
+      size: st.size,
+      modified: st.mtime,
+      async read(range) {
+        // Opened before the response starts: a file renamed or removed afterwards (renameDocFiles) is still read whole.
+        const fh = await openFile(file, 'r').catch((err: NodeJS.ErrnoException) => {
+          throw err.code === 'ENOENT' ? new FileNotFoundError(key) : err;
+        });
+        const stream = fh.createReadStream(range ? { start: range.start, end: range.end } : {});
+        return Readable.toWeb(stream) as unknown as ReadableStream<Uint8Array>;
+      },
+    };
+  },
   async remove(key) {
     await rm(path.join(FILES_DIR, path.basename(key)), { force: true });
+  },
+  async list() {
+    const out: ListedFile[] = [];
+    for (const name of await readdir(FILES_DIR)) {
+      const st = await lstat(path.join(FILES_DIR, name)).catch(() => null);
+      if (st?.isFile()) out.push({ key: name, size: st.size, touched: Math.max(st.mtimeMs, st.ctimeMs) });
+    }
+    return out;
   },
 };
 
@@ -90,7 +139,7 @@ function sharepoint(): FileStore {
   /** Graph call with a timeout, retried (a few times, bounded) when Graph throttles: 429 / 503 with Retry-After. */
   async function graph(url: string, init: RequestInit = {}, timeoutMs = 30_000): Promise<Response> {
     for (let attempt = 1; ; attempt++) {
-      const res = await fetch(url, { ...init, headers: { Authorization: `Bearer ${await bearer()}`, ...init.headers }, signal: AbortSignal.timeout(timeoutMs) });
+      const res = await fetch(url, { ...init, headers: { Authorization: `Bearer ${await bearer()}`, ...init.headers }, signal: init.signal ?? AbortSignal.timeout(timeoutMs) });
       if ((res.status !== 429 && res.status !== 503) || attempt >= 3) return res;
       const wait = Math.min(Number(res.headers.get('retry-after')) || 2 ** attempt, 10);
       await new Promise((r) => setTimeout(r, wait * 1000));
@@ -120,9 +169,48 @@ function sharepoint(): FileStore {
       if (!res.ok) throw new Error(`SharePoint download failed: ${res.status}`);
       return Buffer.from(await res.arrayBuffer());
     },
+    async open(key, size) {
+      // Size from the record: Graph is only called once the bytes are read.
+      return {
+        size,
+        modified: null,
+        async read(range) {
+          // The time limit covers the answer, not the transfer, which may take longer for a large file.
+          const ctl = new AbortController();
+          const timer = setTimeout(() => ctl.abort(new Error('SharePoint download: no answer')), 60_000);
+          let res: Response;
+          try {
+            // Graph redirects /content to a download URL; the Range header follows the redirect.
+            res = await graph(`${drive()}/items/${encodeURIComponent(key)}/content`, { headers: range ? { Range: `bytes=${range.start}-${range.end}` } : {}, signal: ctl.signal });
+          } finally {
+            clearTimeout(timer);
+          }
+          if (res.status === 404) throw new FileNotFoundError(key);
+          if (!res.ok || !res.body) throw new Error(`SharePoint download failed: ${res.status}`);
+          // A whole file sent for a range is cut down to it.
+          return range && res.status !== 206 ? sliceStream(res.body, range) : res.body;
+        },
+      };
+    },
     async remove(key) {
       const res = await graph(`${drive()}/items/${encodeURIComponent(key)}`, { method: 'DELETE' });
       if (!res.ok && res.status !== 404) throw new Error(`SharePoint delete failed: ${res.status}`);
+    },
+    async list() {
+      // Files staged and never named: a record points to them only if its transaction committed. Paged by Graph.
+      const out: ListedFile[] = [];
+      let url: string | undefined = `${drive()}/root:/_staging:/children?$select=id,name,size,lastModifiedDateTime,file&$top=200`;
+      while (url) {
+        const res = await graph(url);
+        if (res.status === 404) break; // no _staging folder yet
+        if (!res.ok) throw new Error(`SharePoint listing failed: ${res.status}`);
+        const page = (await res.json()) as { value: { id: string; size?: number; lastModifiedDateTime?: string; file?: object }[]; '@odata.nextLink'?: string };
+        for (const item of page.value) {
+          if (item.file) out.push({ key: item.id, size: item.size ?? 0, touched: Date.parse(item.lastModifiedDateTime ?? '') || Date.now() });
+        }
+        url = page['@odata.nextLink'];
+      }
+      return out;
     },
   };
 }
@@ -327,4 +415,36 @@ export async function discardFile(f: StagedFile | null): Promise<void> {
 /** Bytes of a stored file. Throws FileNotFoundError when the store has no such file, another error when it is unreachable. */
 export async function readStored(storage: string | null, fileKey: string): Promise<Buffer> {
   return stores(storage).get(fileKey);
+}
+
+/**
+ * A stored file to stream (src/app/api/documents/[id]/file/route.ts): its size and last change, and its bytes on
+ * demand. `size`: the record's. Throws FileNotFoundError when the local store has no such file.
+ */
+export async function openStored(storage: string | null, fileKey: string, size: number | null): Promise<FileSource> {
+  return stores(storage).open(fileKey, size);
+}
+
+/** Store whose files the orphan check lists (lib/orphans.ts). */
+export type StoreName = 'local' | 'sharepoint';
+
+/** The active store's name: SharePoint only with CODEX_STORAGE=sharepoint. */
+export function activeStore(): StoreName {
+  return process.env.CODEX_STORAGE === 'sharepoint' ? 'sharepoint' : 'local';
+}
+
+/** Files that may be orphans in a store (lib/orphans.ts). */
+export async function listStoredFiles(storage: StoreName): Promise<ListedFile[]> {
+  return stores(storage).list();
+}
+
+/** Removes a file of the local store; SharePoint files are never removed by the orphan check (O-01). */
+export async function removeLocalFile(fileKey: string): Promise<void> {
+  await local.remove(fileKey);
+}
+
+/** The last time a local file was written, linked or moved (as list() gives it), or null when it is gone. */
+export async function localTouched(fileKey: string): Promise<number | null> {
+  const st = await lstat(path.join(FILES_DIR, path.basename(fileKey))).catch(() => null);
+  return st?.isFile() ? Math.max(st.mtimeMs, st.ctimeMs) : null;
 }

@@ -27,13 +27,15 @@ déposés sont stockés dans `.data/files/` (ou dans SharePoint, voir `src/lib/s
   - `tests/unit/` : règles pures (identifiants, révisions, visibilité, conservation, recherche, filtres mis en avant
     des départements, dates, expiration et revue périodique, modifications simultanées, types de fichiers, formats,
     contenu (ZIP, fichiers composés OLE2, macros) et taille admis, analyse antivirus contre un faux clamd local,
-    limites de débit, en-têtes de sécurité et `src/proxy.ts`).
+    limites de débit, en-têtes de sécurité et `src/proxy.ts`, plages d'octets et requêtes conditionnelles, tri des
+    fichiers orphelins).
   - `tests/integration/` : règles métier sur une base PGlite en mémoire, migrée depuis `drizzle/` avec les
     déclencheurs du journal, de la version et des termes de recherche des documents (`openDb` dans `src/db/index.ts`)
     et remplie de données minimales (`tests/support/fixtures.ts`), pas de la base de démo. Identifiants et compteurs,
     révisions et dates d'effet, cohérence des dates, expiration et revue périodique, circuits, décisions Vigie et
     webhook, journal en ajout seul et ses pages, cercle de rédaction, import, recherche, recherches enregistrées, pages
-    par département, modifications simultanées et limites de débit des routes et des actions (429). La visibilité en SQL, la recherche et l'explorateur lus par la base
+    par département, modifications simultanées et limites de débit des routes et des actions (429), fichiers servis
+    en flux (206, 416, 304, HEAD) et nettoyage des fichiers orphelins. La visibilité en SQL, la recherche et l'explorateur lus par la base
     sont comparés à leur version en mémoire, qui reste la référence (`access-sql`, `search-sql`, `tests/support/`).
     `tests/integration/dates.test.ts` et `seed-sql.test.ts` chargent aussi les données de démo (`src/db/seed.ts`), en
     mémoire, pour en vérifier toutes les dates et y refaire ces comparaisons.
@@ -259,6 +261,50 @@ ne laisse ni document, ni version, ni fichier.
   `CODEX_CLAMD=127.0.0.1:3310 npm run dev`. Les tests utilisent un faux clamd et le fichier de test EICAR
   (`tests/support/clamd.ts`).
 
+## Fichiers servis et nettoyage du stockage
+
+Points 46 et 36 de `docs/reste-a-faire.md`.
+
+- **En flux** : `/api/documents/[id]/file` lit le fichier stocké par morceaux (`createReadStream` en local ; corps de
+  la réponse de Graph pour SharePoint), sans le charger en mémoire. Les contrôles d'accès, le cercle de rédaction
+  (D-14), les suffixes `_OBSOLETE` et `_ARCHIVE`, la limite de débit et la journalisation des téléchargements passent
+  avant, comme auparavant. La fiche de visa (`/approval`), construite en mémoire (quelques Ko) et journalisée à chaque
+  demande, reste envoyée entière ; les exports CSV étaient déjà écrits en flux.
+- **Plages (`Range`)** : `Accept-Ranges: bytes` ; une plage (`bytes=0-99`, `bytes=100-`, `bytes=-500`) reçoit 206 avec
+  `Content-Range` ; une plage qui commence au-delà du fichier ou mal formée reçoit 416 avec `Content-Range: bytes */taille`.
+  Une autre unité ou plusieurs plages reçoivent le fichier entier (200). `If-Range` (ETag ou date) fait renvoyer le
+  fichier entier quand il a changé. `HEAD` donne les en-têtes de GET (taille entière, ETag, 304), sans corps ni plage.
+  Règles dans `src/lib/ranges.ts`.
+- **ETag, Last-Modified, 304** : l'ETag est calculé (empreinte) sur la version de travail, sa taille et sa date, et sur
+  le nom servi (identifiant, révision, état), Last-Modified vient du fichier local. Le navigateur ne garde une copie
+  (`Cache-Control: private, no-cache`, revalidée à chaque usage, donc droits contrôlés à chaque fois) que du fichier
+  final de la révision en vigueur, sous le niveau Confidentiel : changer de page dans l'aperçu ne retélécharge plus
+  le PDF (304). Brouillons, fichiers confidentiels et très confidentiels et téléchargements explicites
+  (`?download=1`) restent en `no-store`, envoyés en entier à chaque fois : pour eux, l'aperçu paginé, qui recrée son
+  iframe à chaque page (`key={page}`, `src/app/documents/[id]/DocClient.tsx`), retélécharge encore tout le fichier à
+  chaque page (reste du point 46). `no-transform` empêche la compression, qui
+  fausserait les plages.
+- **Téléchargements journalisés** : un téléchargement (`?download=1`) est inscrit au journal quand la réponse part du
+  premier octet (200, ou 206 à partir de 0) ; une reprise (plage plus loin), un 416 ou un HEAD ne le sont pas.
+- **Fichiers orphelins** (`src/lib/orphans.ts`) : fichiers du stockage qu'aucune version de travail ne référence
+  (arrêt du serveur entre le dépôt et l'enregistrement, renommage inachevé). Dans **Administration › Journal
+  d'audit**, un gestionnaire documentaire (seul à voir les noms stockés, qui portent l'identifiant et la version des
+  brouillons) clique sur « Rechercher » (`?tab=audit&orphans=1`) : c'est une **simulation**, qui liste sans rien
+  supprimer. « Supprimer ces fichiers » retire ensuite, du stockage local, les fichiers que cette liste montre et
+  eux seuls (200 au plus par passage, les plus anciens d'abord) : un orphelin apparu depuis attend la recherche
+  suivante. Chacun est revérifié juste avant (toujours sans référence, toujours ancien) ; un fichier qui ne l'est plus
+  est laissé en place et compté dans le message. La suppression est
+  inscrite au journal (« Fichiers orphelins supprimés », cible « Stockage des fichiers · local », avec nom, taille et
+  date de chaque fichier) et dans le journal du serveur (`[orphans] removed …`).
+  - Délai de grâce `CODEX_ORPHAN_GRACE_HOURS` (24 h par défaut, 1 h au moins) : un fichier écrit, lié ou déplacé
+    depuis moins longtemps n'est jamais compté (dépôt en cours). La date retenue est la plus récente de `mtime` et
+    `ctime` : le renommage par lien dur change la seconde.
+  - Seuls les noms que Codex donne (`<uuid>-…`) sont examinés ; un autre fichier (`.DS_Store`…) est laissé en place.
+  - SharePoint (dossier `_staging`) : listé seulement quand il est actif ou que des versions y pointent, jamais
+    supprimé tant que le pilote n'a pas été essayé sur un vrai tenant (O-01).
+  - Pas de commande npm : PGlite n'ouvre la base que dans un seul processus, celui du serveur. Le planificateur
+    (point 38) appellera `purgeOrphans` quand il existera.
+
 ## Organisation du code
 
 ```
@@ -288,7 +334,10 @@ src/
     concurrency.ts     modifications simultanées : version vue par un dialogue, version de travail de base
     search.ts          recherche : facettes, période, tri, pertinence
     departments.ts     pages par département : filtres mis en avant
-    storage.ts         stockage des fichiers (disque local ou SharePoint) ; contrôle et analyse avant stockage
+    storage.ts         stockage des fichiers (disque local ou SharePoint) ; contrôle et analyse avant stockage ;
+                       lecture en flux
+    ranges.ts          plages d'octets (206, 416) et requêtes conditionnelles (ETag, 304) de la route fichier
+    orphans.ts         fichiers orphelins du stockage : simulation, suppression journalisée, délai de grâce
     filetypes.ts       formats, contenu (signatures, ZIP, OLE2, macros) et taille admis au dépôt ; types servis en
                        ligne et affichés en aperçu
     antivirus.ts       analyse antivirus des fichiers déposés (clamd, commande INSTREAM)

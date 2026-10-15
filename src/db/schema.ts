@@ -432,7 +432,8 @@ export const idCounters = pgTable('id_counters', {
 
 /** What an entry without document is about: a cell of the rights matrix, an organisation value, a function, a register type, a CSV export. */
 /** 'file': a file refused on its way in (target id: where it came from, lib/storage.ts UploadOrigin). */
-export type AuditTargetKind = 'permission' | 'department' | 'site' | 'function' | 'type' | 'export' | 'file';
+/** 'storage': a file store (target id: 'local' or 'sharepoint'), cleaned of its orphan files (lib/orphans.ts). */
+export type AuditTargetKind = 'permission' | 'department' | 'site' | 'function' | 'type' | 'export' | 'file' | 'storage';
 
 /** A value in a journal change, as stored: keys and codes, rendered in the reader's language (lib/queries.ts). */
 export type AuditValue = string | string[] | boolean | null | { years: number | null; trigger: string; disposition: string };
@@ -465,6 +466,12 @@ export type AuditData = {
    * document it was meant for (shown to records managers only, D-14) or the legacy reference of an import.
    */
   file?: { name: string; size: number; threat: string; doc?: string; ref?: string };
+  /**
+   * Orphan files removed from a store (action 'files_purged', lib/orphans.ts): each one's key, size and last change, the
+   * bytes freed, the files that could not be removed. The keys may carry IDs and versions of drafts: shown to records
+   * managers only (D-14).
+   */
+  purge?: { files: { key: string; size: number; touched: string }[]; bytes: number; failed?: number };
 };
 
 /** Append-only: the database refuses UPDATE, DELETE and TRUNCATE on it (src/db/index.ts). */

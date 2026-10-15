@@ -163,6 +163,25 @@ export function readerMaySeeVersion(circle: boolean, revStatus: string, isFinal:
 }
 
 /**
+ * May the browser keep the file it is shown, to ask again with its ETag rather than download it at every page of the
+ * viewer? Only the final file of the revision in force below Confidentiel, which every reader of the document gets. Kept
+ * copies are revalidated at each use (Cache-Control: no-cache), so access is checked again, but a browser's history may
+ * show one again without asking: a draft (D-14) and a confidential or highly confidential file are never kept (no-store).
+ */
+export function browserMayKeep(revStatus: string, isFinal: boolean, conf: string): boolean {
+  return readerMaySeeVersion(false, revStatus, isFinal) && !readersApply(conf);
+}
+
+/**
+ * Who may look for files no working version points to and remove them (lib/orphans.ts): a records manager with access
+ * to Administration. The stored names carry IDs and versions of drafts (`PRO-ING-0007_A.2.docx`), which only records
+ * managers see whole (D-14).
+ */
+export function mayCleanStorage(ctx: Pick<Ctx, 'seesAll' | 'screens'>): boolean {
+  return ctx.seesAll && ctx.screens.admin;
+}
+
+/**
  * Revisions every reader of the document sees: the one in force and those it replaced. A draft, a revision under review
  * or waiting for its effective date, and a cancelled one belong to the drafting circle (D-14): outside it, they do not
  * exist, nor do their workflows, comments, designated author or change order.
