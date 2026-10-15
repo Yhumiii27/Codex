@@ -1,5 +1,6 @@
 import 'server-only';
 import { createConnection, type NetConnectOpts } from 'node:net';
+import { logger } from './log';
 
 // Virus scan of every file entering Codex, before it reaches the store (stageFile, src/lib/storage.ts).
 //   CODEX_CLAMD             clamd's address: host:port (TCP, port 3310 by default) or the absolute path of its Unix
@@ -11,6 +12,8 @@ import { createConnection, type NetConnectOpts } from 'node:net';
 // and 25 MB before; MaxScanSize (what is scanned once unpacked: 400 MB, 100 MB before 0.105). With AlertExceedsMax yes,
 // a file beyond MaxFileSize, MaxScanSize or MaxRecursion is reported "Heuristics.Limits.Exceeded…" rather than OK: Codex
 // then refuses it as beyond the scan's limits (ScanLimitError), like a stream beyond StreamMaxLength.
+
+const log = logger('antivirus');
 
 export type ScanVerdict = { infected: false } | { infected: true; threat: string };
 
@@ -163,19 +166,19 @@ export async function scanFile(buf: Buffer, name: string): Promise<ScanOutcome> 
   if (!scanner) {
     if (!toldOff) {
       toldOff = true;
-      console.warn('[antivirus] scanning off: CODEX_CLAMD is not set, uploaded files are stored unscanned');
+      log.warn('scanning off: CODEX_CLAMD is not set, uploaded files are stored unscanned');
     }
     return { kind: 'unscanned' };
   }
   try {
     const verdict = await scanner.scan(buf);
     if (!verdict.infected) return { kind: 'clean' };
-    console.warn('[antivirus] infected file refused', name, verdict.threat);
+    log.warn('infected file refused', { file: name, threat: verdict.threat });
     return { kind: 'infected', threat: verdict.threat };
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     const limit = err instanceof ScanLimitError;
-    console.error(limit ? '[antivirus] file beyond clamd limits' : '[antivirus] scan failed', name, buf.length, error, onError === 'accept' ? '(stored unscanned: CODEX_CLAMD_ON_ERROR=accept)' : '(refused)');
+    log.error(limit ? 'file beyond clamd limits' : 'scan failed', { file: name, size: buf.length, error, then: onError === 'accept' ? 'stored unscanned (CODEX_CLAMD_ON_ERROR=accept)' : 'refused' });
     if (onError === 'accept') return { kind: 'unscanned' };
     return limit ? { kind: 'too_large', error } : { kind: 'failed', error };
   }

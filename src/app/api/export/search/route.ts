@@ -3,6 +3,7 @@ import { getCtx } from '@/lib/context';
 import { csv, csvHeaders, csvResponse } from '@/lib/csv';
 import { todayIso } from '@/lib/format';
 import { audit } from '@/lib/lifecycle';
+import { withRequestLog } from '@/lib/log';
 import { searchDocs } from '@/lib/queries';
 import { limitReader } from '@/lib/ratelimit';
 import { parseSearch } from '@/lib/search';
@@ -13,7 +14,7 @@ const filename = () => `codex-recherche-${todayIso()}.csv`;
  * CSV of the advanced search results, same query string as /recherche (query, facets, period, order; visible documents
  * only, in the order of the screen, every page); journaled with its criteria and size.
  */
-export async function GET(req: Request) {
+async function handleGet(req: Request) {
   const ctx = await getCtx();
   // Counted per user as resolved from the session, never per raw cookie (lib/ratelimit.ts).
   const limited = limitReader(req, 'exports', ctx.user.id, ctx.t);
@@ -40,9 +41,12 @@ export async function GET(req: Request) {
 }
 
 /** Headers only, without running the search nor journaling an export (link checkers, download managers). */
-export async function HEAD(req: Request) {
+async function handleHead(req: Request) {
   const ctx = await getCtx();
   const limited = limitReader(req, 'exports', ctx.user.id, ctx.t);
   if (limited) return new Response(null, { status: limited.status, headers: limited.headers });
   return new Response(null, { headers: csvHeaders(filename()) });
 }
+
+export const GET = withRequestLog('/api/export/search', handleGet);
+export const HEAD = withRequestLog('/api/export/search', handleHead);

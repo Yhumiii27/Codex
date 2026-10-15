@@ -1,6 +1,7 @@
 import 'server-only';
 import { randomUUID } from 'node:crypto';
-import { link, lstat, open as openFile, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { constants as fsc } from 'node:fs';
+import { access, link, lstat, open as openFile, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { inflateSync } from 'node:zlib';
@@ -9,6 +10,7 @@ import { FILES_DIR, getDb, schema as s } from '@/db';
 import { scanFile } from './antivirus';
 import { cleanFileName, DENIED_EXTENSIONS, extensionOf, fileIssue, fileRules, type FileIssue } from './filetypes';
 import { audit } from './lifecycle';
+import { logger } from './log';
 import { sliceStream, type ByteRange } from './ranges';
 
 // File storage behind one interface (docs/modele-cible.md §1). Codex keeps all metadata; a store only holds bytes.
@@ -20,6 +22,8 @@ import { sliceStream, type ByteRange } from './ranges';
 // first under a provisional name, the record is written, then the file gets its name {ID}_{label}.{ext}. Before it is
 // staged, a file is checked (format and size, lib/filetypes.ts) and scanned (lib/antivirus.ts): a refused one never
 // reaches the store.
+
+const log = logger('storage');
 
 export type StoredFile = { storage: string; fileKey: string; fileName: string; mime: string; size: number; pages: number | null };
 /** A file in the store that no record may point to yet; `ext` is kept for its final name. */
@@ -60,6 +64,8 @@ interface FileStore {
   remove(key: string): Promise<void>;
   /** Files that may be orphans: every file of the local store, the provisional ones (`_staging`) of SharePoint. */
   list(): Promise<ListedFile[]>;
+  /** Throws when the store cannot be used: the local folder not readable and writable, SharePoint's library out of reach. */
+  probe(): Promise<void>;
 }
 
 const safeName = (x: string) => x.replace(/[^\w.\-]+/g, '_');
@@ -114,6 +120,10 @@ const local: FileStore = {
     }
     return out;
   },
+  async probe() {
+    if (!(await stat(FILES_DIR)).isDirectory()) throw new Error(`${FILES_DIR} is not a directory`);
+    await access(FILES_DIR, fsc.R_OK | fsc.W_OK);
+  },
 };
 
 // Not exercised against a real tenant yet: enable only once the app registration and the library exist.
@@ -124,8 +134,16 @@ function sharepoint(): FileStore {
     return v;
   };
   let token: { value: string; exp: number } | null = null;
-  async function bearer() {
-    if (token && token.exp > Date.now() + 60_000) return token.value;
+  let signingIn: Promise<string> | null = null;
+  /** The app's Graph token, asked again a minute before it expires; calls made meanwhile share one request. */
+  function bearer(): Promise<string> {
+    if (token && token.exp > Date.now() + 60_000) return Promise.resolve(token.value);
+    signingIn ??= signIn().finally(() => {
+      signingIn = null;
+    });
+    return signingIn;
+  }
+  async function signIn(): Promise<string> {
     const res = await fetch(`https://login.microsoftonline.com/${env('CODEX_SP_TENANT_ID')}/oauth2/v2.0/token`, {
       method: 'POST',
       body: new URLSearchParams({ client_id: env('CODEX_SP_CLIENT_ID'), client_secret: env('CODEX_SP_CLIENT_SECRET'), scope: 'https://graph.microsoft.com/.default', grant_type: 'client_credentials' }),
@@ -211,6 +229,12 @@ function sharepoint(): FileStore {
         url = page['@odata.nextLink'];
       }
       return out;
+    },
+    async probe() {
+      // The library's drive, its id only: the app registration can still sign in and reach it. Not retried: a health
+      // check answers at once.
+      const res = await fetch(`${drive()}?$select=id`, { headers: { Authorization: `Bearer ${await bearer()}` }, signal: AbortSignal.timeout(5_000) });
+      if (!res.ok) throw new Error(`SharePoint drive: ${res.status}`);
     },
   };
 }
@@ -323,7 +347,7 @@ async function journalInfected(origin: UploadOrigin, name: string, size: number,
       file: { name, size, threat, ...(origin.doc ? { doc: origin.doc } : {}), ...(origin.ref ? { ref: origin.ref } : {}) },
     });
   } catch (err) {
-    console.error('[antivirus] journal', name, err);
+    log.error('infected file not journaled', { file: name, err });
   }
 }
 
@@ -378,7 +402,7 @@ export async function nameStoredFile(f: StagedFile, docId: string, label: string
       await stores(f.storage).remove(f.fileKey);
     }
   } catch (err) {
-    console.error('[storage] naming', f.fileKey, err);
+    log.error('file left under its provisional name', { store: f.storage, key: f.fileKey, err });
   }
 }
 
@@ -408,7 +432,7 @@ export async function discardFile(f: StagedFile | null): Promise<void> {
   try {
     await stores(f.storage).remove(f.fileKey);
   } catch (err) {
-    console.error('[storage] discard', f.fileKey, err);
+    log.error('staged file not removed', { store: f.storage, key: f.fileKey, err });
   }
 }
 
@@ -431,6 +455,50 @@ export type StoreName = 'local' | 'sharepoint';
 /** The active store's name: SharePoint only with CODEX_STORAGE=sharepoint. */
 export function activeStore(): StoreName {
   return process.env.CODEX_STORAGE === 'sharepoint' ? 'sharepoint' : 'local';
+}
+
+/** How long a SharePoint check holds: the health route may be polled often, by anyone, and Graph throttles. */
+const PROBE_CACHE_MS = 60_000;
+let probed: { at: number; ok: boolean } | null = null;
+let probing: Promise<void> | null = null;
+
+/**
+ * Whether the active store can be used (GET /api/health): the local folder readable and writable, or SharePoint's
+ * library reachable. SharePoint's result is kept a minute, and checks asked while one runs wait for it: a burst of
+ * health requests makes one call to Graph (and at most one to Entra ID). Throws what failed, for the log; the health
+ * route shows none of it. `cached`: the answer of a check made before or by another request.
+ */
+export async function probeStore(now = Date.now()): Promise<{ store: StoreName; cached: boolean }> {
+  const name = activeStore();
+  if (name !== 'sharepoint') {
+    await stores(name).probe();
+    return { store: name, cached: false };
+  }
+  if (probed && now - probed.at < PROBE_CACHE_MS) {
+    if (!probed.ok) throw new Error('SharePoint drive: failed less than a minute ago');
+    return { store: name, cached: true };
+  }
+  const joined = !!probing;
+  probing ??= stores(name).probe().then(
+    () => {
+      probed = { at: now, ok: true };
+    },
+    (err: unknown) => {
+      probed = { at: now, ok: false };
+      throw err;
+    },
+  ).finally(() => {
+    probing = null;
+  });
+  await probing;
+  return { store: name, cached: joined };
+}
+
+/** Forgets the SharePoint store's token and last check (tests). */
+export function resetStores(): void {
+  sp = null;
+  probed = null;
+  probing = null;
 }
 
 /** Files that may be orphans in a store (lib/orphans.ts). */

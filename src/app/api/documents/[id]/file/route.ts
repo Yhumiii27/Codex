@@ -7,6 +7,7 @@ import { getCtx, type Ctx } from '@/lib/context';
 import { INLINE_SAFE } from '@/lib/filetypes';
 import { fmtDate } from '@/lib/format';
 import { audit } from '@/lib/lifecycle';
+import { logger, withRequestLog } from '@/lib/log';
 import { simplePdf } from '@/lib/pdf';
 import { getDoc, type DocView } from '@/lib/queries';
 import { fileAnswer, type FileAnswer } from '@/lib/ranges';
@@ -153,7 +154,7 @@ function headers(x: Target, { src, etag }: Source, a: FileAnswer): Headers {
 /** The store's failure as an answer: the file missing (404) or the store out of reach (502). */
 function storeFailure(err: unknown): Response {
   if (err instanceof FileNotFoundError) return notFound('File missing');
-  console.error('[api/documents/file]', err);
+  logger('storage').error('store unreachable', { err });
   return new Response('Storage unavailable', { status: 502, headers: { 'Retry-After': '30' } });
 }
 
@@ -162,7 +163,7 @@ function storeFailure(err: unknown): Response {
  * may keep (Target.keep) gets 304 while current. A download is journaled once per transfer that starts at its first
  * byte: a resumed transfer (a range further on) is the same download.
  */
-export async function GET(req: Request, { params }: RouteContext<'/api/documents/[id]/file'>) {
+async function handleGet(req: Request, { params }: RouteContext<'/api/documents/[id]/file'>) {
   const x = await resolve(req, (await params).id);
   if (x instanceof Response) return x;
   const { ctx, doc, version } = x;
@@ -199,7 +200,7 @@ export async function GET(req: Request, { params }: RouteContext<'/api/documents
  * Same checks and headers as GET (304 included; a Range is for GET only), without reading the file nor logging a
  * download (link checkers, download managers). The store is asked whether the file exists, as GET does.
  */
-export async function HEAD(req: Request, { params }: RouteContext<'/api/documents/[id]/file'>) {
+async function handleHead(req: Request, { params }: RouteContext<'/api/documents/[id]/file'>) {
   const x = await resolve(req, (await params).id);
   if (x instanceof Response) return new Response(null, { status: x.status, headers: x.headers });
   let file: Source;
@@ -212,3 +213,6 @@ export async function HEAD(req: Request, { params }: RouteContext<'/api/document
   const a = fileAnswer(req.headers, { method: 'HEAD', size: file.src.size, etag: file.etag, modified: file.src.modified, conditional: x.keep });
   return new Response(null, { status: a.status, headers: headers(x, file, a) });
 }
+
+export const GET = withRequestLog('/api/documents/[id]/file', handleGet);
+export const HEAD = withRequestLog('/api/documents/[id]/file', handleHead);

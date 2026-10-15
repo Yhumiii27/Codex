@@ -907,6 +907,50 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     Mac) et en mode développement avec `--dev`, et affichent d'abord les dossiers sur lesquels elles travaillent. Le
     jour où la base passera sur un Postgres serveur (point 51), la sauvegarde passera à `pg_dump` ou aux outils de
     l'hébergeur.
+- **Journal technique, santé et contrôle de la configuration** (points 37 et 49 de `docs/reste-a-faire.md`,
+  15 octobre ; procédure dans `docs/exploitation.md`. Hébergement et exploitation non décidés (question 3 de l'audit),
+  authentification simulée (O-02), SharePoint non décidé (O-01)) :
+  - **refus de démarrer en production** : une configuration classée « erreur » arrête le serveur au démarrage
+    (`next start`, app Mac), code de sortie 1, la raison écrite au journal : `CODEX_STORAGE` inconnu, SharePoint
+    incomplet ou mal formé, jeton d'intégration de moins de 32 caractères ou de moins de 10 caractères différents (ou
+    contenant un espace), adresse Vigie ou Keystone qui n'est pas une URL `http(s)` ou qui porte un identifiant ou un
+    mot de passe, `CODEX_CLAMD` illisible, dossier de données non inscriptible. Le reste n'est qu'un avertissement. En
+    développement, rien n'arrête le serveur. `CODEX_CONFIG_CHECK=warn` lève le refus (dépannage), `strict` l'impose
+    aussi en développement. La configuration par défaut (aucune variable) n'a aucune erreur : rien ne change pour
+    `npm run dev` ni pour l'app Mac ; un `.env.local` qui garderait un jeton d'exemple (`change-me`) empêcherait en
+    revanche l'app Mac de démarrer, avec la raison dans son journal. Seuil de 32 caractères : la moitié de ce que donne
+    `openssl rand -base64 32` (44), recommandé par `docs/api.md` ;
+  - le contrôle vérifie la forme des valeurs, sans contacter clamd ni SharePoint ; `VIGIE_API_URL` défini alors que
+    Codex n'appelle pas encore Vigie est un avertissement, pas une erreur (la simulation des décisions disparaît ; les
+    décisions passent alors par le webhook) ; en production, un avertissement rappelle à chaque démarrage que les
+    utilisateurs sont simulés par cookie (O-02) ;
+  - **`GET /api/health` sans authentification** : elle répond 200 ou 503, la version de Codex (`package.json`) et le
+    résultat de chaque contrôle (base, stockage), jamais la raison d'un échec, ni chemin, ni adresse, ni document.
+    SharePoint y est sondé au plus une fois par minute. Pas de route `/api/ready` distincte : un seul processus, qui ne
+    répond qu'après le contrôle de configuration. La joignabilité de clamd n'y figure pas (premier dépôt) ;
+  - **journal en JSON en production**, app Mac comprise (son `server.log` change donc de forme ; `CODEX_LOG_FORMAT=pretty`
+    le rend lisible), lisible en développement, niveau `info` par défaut ; sur la sortie standard, sans rotation ni
+    envoi ailleurs (hébergement) ;
+  - **contenu du journal** : une ligne par requête d'API (route par son modèle, sans identifiant de document ni chaîne
+    de requête ; statut ; durée jusqu'au début de la réponse) et par Server Action d'écriture (nom, issue : `ok`,
+    `refused`, `stale`, durée ; jamais le message montré à l'utilisateur, qui peut nommer des personnes ou des
+    documents) ; y figurent l'identifiant de l'utilisateur dont une écriture est refusée par la limite de débit,
+    l'adresse du client dont un jeton est refusé (avec la raison, jamais le jeton ; `client` derrière un proxy de
+    confiance seulement, sinon `forwardedFor` marqué non fiable, puisque le client a pu l'écrire), la clé ou le nom
+    d'un fichier dont le stockage ou l'analyse échoue (comme avant), mais aucun jeton, cookie, corps de requête ni
+    contenu de document ; d'une erreur, nom, message, code et lignes « at » de la pile, jamais les valeurs d'une
+    requête de base en échec (le message de Drizzle est réduit au SQL paramétré, la valeur citée par PostgreSQL masquée)
+    ni le `detail` d'une erreur de base. Une Server Action qui échoue ainsi remet à Next.js une erreur refaite sans ces
+    valeurs, puisque Next.js imprime lui-même, dans la même sortie, l'erreur entière ; une erreur pendant le rendu d'une
+    page reste imprimée par Next.js telle quelle (limite signalée dans `docs/exploitation.md` §4). Une requête d'API
+    qui lève une erreur répond 500 `{"error":"internal","requestId"}` au lieu de la page d'erreur de Next.js, comme
+    `/api/import` et `/api/integrations/vigie` pour l'erreur qu'elles rattrapent. La 503 `disabled` d'un point
+    d'entrée sans jeton, état par défaut, est écrite au niveau `info`, pas `error` : un client anonyme ne peut pas
+    remplir le journal d'erreurs ;
+  - identifiant de requête : l'en-tête `X-Request-Id` d'un reverse proxy est repris s'il est un simple jeton, sans
+    exiger `CODEX_TRUST_PROXY` (il ne sert qu'à relier des journaux), sinon un UUID ; renvoyé sur les réponses d'API.
+    Une Server Action reçoit un UUID, non renvoyé au navigateur. Next.js signalant parfois deux fois l'échec d'un même
+    rendu, une erreur de même `digest` sur le même chemin n'est écrite qu'une fois par 2 secondes.
 - **Git** (D-23) : premier commit sur une branche `codex-ged-v2` plutôt que sur `main`.
 
 ## Ce qui est explicitement hors périmètre

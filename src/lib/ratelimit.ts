@@ -1,4 +1,5 @@
 import type { T } from './i18n';
+import { logger } from './log';
 
 // Rate limiting of the sensitive endpoints (point 24 of docs/reste-a-faire.md): a token bucket per family and per key,
 // in memory. A key may send `limit` requests at once, then regains one every windowMs / limit; beyond, the request is
@@ -13,6 +14,8 @@ import type { T } from './i18n';
 // counts requests that already carry the right token (import, Vigie) and refused tokens, and the right token always
 // goes through. The browser endpoints count per user as resolved by lib/context.ts (an unknown cookie is the default
 // user), whose set is bounded by the real accounts, and per address behind a trusted proxy only.
+
+const log = logger('ratelimit');
 
 export type Rule = { limit: number; windowMs: number };
 
@@ -70,7 +73,7 @@ export function ruleFor(family: Family, env: Record<string, string | undefined> 
   if (own !== undefined) return own;
   if (raw?.trim() && !warned.has(`${spec.env}=${raw}`)) {
     warned.add(`${spec.env}=${raw}`);
-    console.warn(`[ratelimit] ${spec.env}="${raw}" is not a valid limit; default ${spec.def} applies`);
+    log.warn(`${spec.env}="${raw}" is not a valid limit; default ${spec.def} applies`);
   }
   return parseRule(spec.def)!;
 }

@@ -7,9 +7,10 @@ Points d'entrée prévus par `docs/modele-cible.md` §1 pour les applications vo
 | `/api/registry` | `GET` | Keystone | aucune (lecture seule, réseau du groupe) |
 | `/api/import` | `POST` | outil de migration | jeton `CODEX_IMPORT_TOKEN` |
 | `/api/integrations/vigie` | `POST` | Vigie (webhook) | jeton `VIGIE_WEBHOOK_TOKEN` |
+| `/api/health` | `GET`, `HEAD` | supervision | aucune (200 ou 503, sans détail : `docs/exploitation.md`) |
 
 Code : `src/app/api/registry/route.ts`, `src/app/api/import/route.ts`, `src/app/api/integrations/vigie/route.ts`,
-logique partagée dans `src/lib/importer.ts`.
+`src/app/api/health/route.ts`, logique partagée dans `src/lib/importer.ts`.
 
 ## Variables d'environnement
 
@@ -28,6 +29,8 @@ Les fichiers importés vont dans le stockage actif (`CODEX_STORAGE`, voir `src/l
 bibliothèque SharePoint en option.
 
 Générer un jeton : `openssl rand -base64 32`. Les mêmes valeurs sont déclarées (en commentaire) dans `.env.example`.
+Un jeton de moins de 32 caractères, ou de moins de 10 caractères différents, est refusé au démarrage : le serveur ne
+démarre pas en production (`token_weak`, `docs/exploitation.md` §3).
 
 ## Conventions
 
@@ -37,6 +40,14 @@ Générer un jeton : `openssl rand -base64 32`. Les mêmes valeurs sont déclar�
   - variable d'environnement non définie → **503** `{"error":"disabled"}` (le point d'entrée est fermé) ;
   - en-tête absent ou jeton faux → **401** `{"error":"unauthorized"}` avec `WWW-Authenticate: Bearer realm="codex"`.
 - Les réponses des points d'entrée protégés portent `Cache-Control: no-store`.
+- Chaque réponse porte l'en-tête `X-Request-Id` : celui de la requête quand il est un simple jeton (lettres, chiffres,
+  `. _ : -`, 128 caractères au plus), sinon un identifiant tiré par Codex. Le journal technique de Codex le porte sur
+  chaque entrée écrite pendant la requête : le donner suffit pour retrouver ce qui s'est passé. Une erreur interne
+  répond **500** `{"error":"internal","requestId":"…"}`, sans autre détail.
+- Un jeton refusé (401, 429) est écrit au journal technique avec la route, l'adresse du client et la raison, jamais le
+  jeton envoyé. L'adresse n'est donnée pour sûre (`client`) que derrière un proxy de confiance (`CODEX_TRUST_PROXY=1`) ;
+  sinon le client a pu écrire lui-même `X-Forwarded-For`, et sa valeur est notée à part (`forwardedFor`). Un appel à
+  un point d'entrée désactivé (503) est noté comme une simple information.
 - Trop de requêtes → **429** `{"error":"rate_limited","retryAfter":<secondes>}` avec l'en-tête `Retry-After` (mêmes
   secondes). La requête n'a rien fait : la renvoyer après ce délai. Voir « Limites de débit ».
 
@@ -306,6 +317,7 @@ s'ajoutent depuis leurs fiches (section « Documents liés »).
 | **422** | `{"error":"file_infected","threat"}` : l'analyse antivirus a détecté `threat` ; le fichier n'est pas stocké, le refus est journalisé |
 | **503** | `{"error":"scan_unavailable"}` + `Retry-After: 60` : l'analyse antivirus n'a pas pu être faite (clamd injoignable, délai dépassé, erreur) ; rien n'est importé |
 | **429** | `{"error":"rate_limited","retryAfter"}` : trop d'imports depuis cette adresse, ou trop de jetons refusés (jeton faux au-delà du quota ; bon jeton aussi avec `CODEX_TRUST_PROXY=1`, voir « Limites de débit ») ; rien n'est importé |
+| **500** | `{"error":"internal","requestId":"…"}` : erreur interne ; rien n'est importé. `requestId` est l'identifiant de la requête (le même que l'en-tête `X-Request-Id`), qui retrouve la cause dans le journal technique de Codex |
 
 Codes de `issues[].code` : `required`, `invalid_type`, `too_long`, `invalid_date`, `invalid_value`, `invalid_letter`,
 `unknown_type`, `unknown_department`, `unknown_site`, `unknown_user`, `type_mismatch`, `conf_not_allowed`,
@@ -481,6 +493,7 @@ les personnes qui peuvent rédiger le document, et un refus y est affiché comme
 | **404** | `{"error":"not_found"}` : demande inconnue de Codex |
 | **409** | `already_decided` (décision contraire déjà appliquée ou enregistrée ; `status` donne l'état de la demande). Une révision déjà ouverte ne donne plus de 409 (`revision_in_progress` a disparu) : 202 `revision_open`. |
 | **429** | `{"error":"rate_limited","retryAfter"}` : trop de requêtes depuis cette adresse, ou trop de jetons refusés (même règle que l'import) ; la décision n'est pas lue, Vigie la renvoie après `Retry-After` |
+| **500** | `{"error":"internal","requestId":"…"}` : erreur interne ; rien n'est enregistré, Vigie renvoie la décision plus tard. Ici `requestId` n'est pas la référence de la demande : c'est l'identifiant de la requête HTTP (le même que l'en-tête `X-Request-Id`), qui retrouve la cause dans le journal technique de Codex |
 
 ### Exemples
 

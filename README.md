@@ -29,7 +29,8 @@ déposés sont stockés dans `.data/files/` (ou dans SharePoint, voir `src/lib/s
     des départements, dates, expiration et revue périodique, modifications simultanées, types de fichiers, formats,
     contenu (ZIP, fichiers composés OLE2, macros) et taille admis, analyse antivirus contre un faux clamd local,
     limites de débit, en-têtes de sécurité et `src/proxy.ts`, plages d'octets et requêtes conditionnelles, tri des
-    fichiers orphelins, noms et rotation des sauvegardes, lecture d'une archive altérée, verrou du dossier de données).
+    fichiers orphelins, noms et rotation des sauvegardes, lecture d'une archive altérée, verrou du dossier de données,
+    journal technique sans secret, contrôle de la configuration au démarrage).
   - `tests/integration/` : règles métier sur une base PGlite en mémoire, migrée depuis `drizzle/` avec les
     déclencheurs du journal, de la version et des termes de recherche des documents (`openDb` dans `src/db/index.ts`)
     et remplie de données minimales (`tests/support/fixtures.ts`), pas de la base de démo. Identifiants et compteurs,
@@ -37,7 +38,8 @@ déposés sont stockés dans `.data/files/` (ou dans SharePoint, voir `src/lib/s
     webhook, journal en ajout seul et ses pages, cercle de rédaction, import, recherche, recherches enregistrées, pages
     par département, modifications simultanées et limites de débit des routes et des actions (429), fichiers servis
     en flux (206, 416, 304, HEAD), nettoyage des fichiers orphelins, sauvegarde et restauration (archive écrite,
-    relue, altérée, restaurée sur disque puis rouverte, retour arrière, commandes npm lancées comme par l'exploitant). La visibilité en SQL, la recherche et l'explorateur lus par la base
+    relue, altérée, restaurée sur disque puis rouverte, retour arrière, commandes npm lancées comme par l'exploitant),
+    route de santé et journal technique des routes et des actions. La visibilité en SQL, la recherche et l'explorateur lus par la base
     sont comparés à leur version en mémoire, qui reste la référence (`access-sql`, `search-sql`, `tests/support/`).
     `tests/integration/dates.test.ts` et `seed-sql.test.ts` chargent aussi les données de démo (`src/db/seed.ts`), en
     mémoire, pour en vérifier toutes les dates et y refaire ces comparaisons.
@@ -57,8 +59,10 @@ déposés sont stockés dans `.data/files/` (ou dans SharePoint, voir `src/lib/s
     replié autrement par la référence en mémoire que par la base.
 
 Variables : voir `.env.example` (Keystone, Vigie, dossier de données et de sauvegardes, jetons de l'API
-d'intégration, HTTPS, proxy de confiance, limites de débit). Aucune n'est nécessaire en local : sans elles, les limites de débit gardent des valeurs
-généreuses, HSTS reste coupé et `X-Forwarded-For` n'est pas tenu pour fiable.
+d'intégration, HTTPS, proxy de confiance, limites de débit, journal technique, contrôle de la configuration). Aucune
+n'est nécessaire en local : sans elles, les limites de débit gardent des valeurs généreuses, HSTS reste coupé,
+`X-Forwarded-For` n'est pas tenu pour fiable et le contrôle de la configuration ne trouve aucune erreur. Elles sont
+vérifiées à chaque démarrage (voir « Exploitation »).
 
 Le modèle fonctionnel fait foi dans `docs/modele-cible.md` ; l'API d'intégration est décrite dans `docs/api.md`.
 
@@ -73,7 +77,9 @@ Construit `Codex.app` (fenêtre native macOS, sans Electron), l'installe dans `~
 - lance le serveur de production de ce projet sur `http://127.0.0.1:3110` (recompilé automatiquement si le code a
   changé depuis la dernière build) et l'arrête quand on quitte l'app — y compris si l'app plante ;
 - garde ses données à part du serveur de développement : `~/Library/Application Support/Codex` (base et fichiers),
-  journal dans `~/Library/Logs/Codex/server.log` (menu Présentation › Afficher le journal du serveur) ;
+  journal dans `~/Library/Logs/Codex/server.log` (menu Présentation › Afficher le journal du serveur), une entrée JSON
+  par ligne comme tout serveur de production (`CODEX_LOG_FORMAT=pretty` dans `.env.local` du projet pour des lignes lisibles) ; un refus de la
+  configuration au démarrage (« Le serveur s'est arrêté au démarrage. ») y est expliqué (voir « Exploitation ») ;
 - ouvre les liens Keystone / Vigie dans le navigateur, enregistre les téléchargements dans `~/Téléchargements`.
 
 L'app pointe vers ce dossier de projet et vers le Node.js présents au moment de la construction : relancer
@@ -350,15 +356,45 @@ npm run restore -- <archive> --replace  # remplace la base et les fichiers, mis 
   affichent d'abord le dossier de données et celui des sauvegardes. App Mac :
   `CODEX_DATA_DIR="$HOME/Library/Application Support/Codex/data" npm run backup`, app quittée.
 
+## Exploitation : journal technique, santé, configuration
+
+Points 37 et 49 de `docs/reste-a-faire.md` ; procédure complète dans **`docs/exploitation.md`** (champs du journal,
+supervision, codes du contrôle de configuration et leur correction).
+
+- **Journal technique** (`src/lib/log.ts`), distinct du journal d'audit : une entrée par ligne sur la sortie du
+  serveur, en JSON en production (`next start`, app Mac : `~/Library/Logs/Codex/server.log`), lisible en
+  développement ; `CODEX_LOG_FORMAT`, `CODEX_LOG_LEVEL` (`info` par défaut). Une ligne par requête d'API (route,
+  statut, durée) et par Server Action d'écriture (nom, issue, durée), chaque jeton refusé (route, adresse, raison),
+  toute erreur serveur rattrapée par Next.js (`src/instrumentation.ts`, `onRequestError`), avec sa pile. Chaque entrée
+  porte l'identifiant de sa requête, renvoyé dans l'en-tête `X-Request-Id` des réponses d'API (repris d'un reverse
+  proxy s'il en pose un). Jamais de jeton, de cookie, de corps de requête, de contenu de document, de chaîne de
+  requête ni de valeur d'une requête de base en échec.
+- **Santé** : `GET /api/health` (ou `HEAD`) répond 200 quand la base répond et que le stockage actif est utilisable,
+  503 sinon, avec la version et le résultat de chaque contrôle, sans dire pourquoi (la raison est au journal, sous le
+  même identifiant). Sans session ni jeton.
+
+  ```bash
+  curl -fsS http://localhost:3100/api/health
+  # {"status":"ok","version":"0.1.0","checks":{"database":{"ok":true,"ms":1},"storage":{"ok":true,"ms":2}},…}
+  ```
+- **Contrôle de la configuration au démarrage** (`src/lib/config-check.ts`, appelé par `register` de
+  `src/instrumentation.ts`) : chaque variable de `.env.example` lue comme le code la lit ; ce qui serait ignoré ou mal
+  lu est écrit au journal avec la variable à corriger. Une erreur (stockage inconnu ou SharePoint incomplet, jeton
+  d'intégration de moins de 32 caractères, adresse Vigie ou Keystone qui n'est pas une URL http(s), `CODEX_CLAMD`
+  illisible, dossier de données non inscriptible) **arrête le serveur en production** (code de sortie 1) ; en
+  développement, elle est seulement écrite. `CODEX_CONFIG_CHECK=warn` ou `strict` change ce comportement. Sans
+  aucune variable, il n'y a aucune erreur : `npm run dev`, `npm run start` et l'app Mac démarrent comme avant.
+
 ## Organisation du code
 
 ```
 src/
   proxy.ts             politique de sécurité du contenu des pages (nonce par requête), HSTS si CODEX_HTTPS
+  instrumentation.ts   au démarrage, contrôle de la configuration ; erreurs serveur au journal technique
   app/                 routes (pages serveur) + styles par écran (*.module.css)
     nocturne.css       design system Nocturne (copie de design/_ds/…/styles.css)
     globals.css        règles d'application communes
-    api/               fichiers, fiches de visa, exports CSV, registre, import, webhook Vigie
+    api/               fichiers, fiches de visa, exports CSV, registre, import, webhook Vigie, santé (health)
   components/
     shell/             barre latérale, en-tête, contexte client (dialogues, toasts)
     dialogs/           toutes les boîtes de dialogue
@@ -393,6 +429,9 @@ src/
     importer.ts        API d'import (outil de migration)
     ratelimit.ts       limites de débit des routes sensibles et des Server Actions (en mémoire)
     security-headers.ts  en-têtes de sécurité HTTP et politique de sécurité du contenu
+    log.ts             journal technique : entrées JSON ou lisibles, identifiant de requête, routes et actions
+    config-check.ts    contrôle de la configuration au démarrage
+    version.ts         version de Codex (package.json), pour la santé et les sauvegardes
     i18n.ts            textes FR / EN
 scripts/
   codex-backup.mjs     commandes npm run backup, backup:list, backup:check, restore (docs/sauvegarde.md)

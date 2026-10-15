@@ -2,6 +2,7 @@ import { getDb } from '@/db';
 import { visaFileName, visaFooter, visaLines, type VisaRecord } from '@/lib/approval';
 import { getCtx, type Ctx } from '@/lib/context';
 import { audit } from '@/lib/lifecycle';
+import { withRequestLog } from '@/lib/log';
 import { simplePdf } from '@/lib/pdf';
 import { approvalRecord } from '@/lib/queries';
 import { limitReader } from '@/lib/ratelimit';
@@ -47,7 +48,7 @@ function headers(x: Found, size: number | null): HeadersInit {
 }
 
 /** Builds the record and journals it on its revision (D-14: its readers are those of the revision). */
-export async function GET(req: Request, { params }: RouteContext<'/api/documents/[id]/approval'>) {
+async function handleGet(req: Request, { params }: RouteContext<'/api/documents/[id]/approval'>) {
   const x = await resolve(req, (await params).id);
   if (x instanceof Response) return x;
   const { ctx } = x;
@@ -60,8 +61,11 @@ export async function GET(req: Request, { params }: RouteContext<'/api/documents
 }
 
 /** Same checks and headers as GET, without building nor journaling the record (link checkers, download managers). */
-export async function HEAD(req: Request, { params }: RouteContext<'/api/documents/[id]/approval'>) {
+async function handleHead(req: Request, { params }: RouteContext<'/api/documents/[id]/approval'>) {
   const x = await resolve(req, (await params).id);
   if (x instanceof Response) return new Response(null, { status: x.status, headers: x.headers });
   return new Response(null, { headers: headers(x, null) });
 }
+
+export const GET = withRequestLog('/api/documents/[id]/approval', handleGet);
+export const HEAD = withRequestLog('/api/documents/[id]/approval', handleHead);

@@ -2,6 +2,7 @@ import 'server-only';
 import { eq, isNotNull, sql } from 'drizzle-orm';
 import { getDb, schema as s } from '@/db';
 import { audit } from './lifecycle';
+import { logger } from './log';
 import { activeStore, listStoredFiles, localTouched, removeLocalFile, type ListedFile, type StoreName } from './storage';
 
 // Files of the store that no working version points to (point 36 of docs/reste-a-faire.md). A file is stored before
@@ -16,6 +17,8 @@ import { activeStore, listStoredFiles, localTouched, removeLocalFile, type Liste
 // makes a hard link, which moves the ctime), a file whose name Codex does not give (a .DS_Store, a file put there by
 // hand).
 
+const log = logger('orphans');
+
 export const DEFAULT_GRACE_HOURS = 24;
 /** Files removed at most per run: the journal entry lists each of them. */
 export const MAX_PER_RUN = 200;
@@ -28,7 +31,7 @@ export function graceHours(env: Record<string, string | undefined>): number {
   const raw = env.CODEX_ORPHAN_GRACE_HOURS?.trim();
   if (!raw) return DEFAULT_GRACE_HOURS;
   if (!/^\d{1,5}$/.test(raw)) {
-    console.warn(`[orphans] CODEX_ORPHAN_GRACE_HOURS=${raw} is not a whole number of hours: ${DEFAULT_GRACE_HOURS} h`);
+    log.warn(`CODEX_ORPHAN_GRACE_HOURS=${raw} is not a whole number of hours: ${DEFAULT_GRACE_HOURS} h`);
     return DEFAULT_GRACE_HOURS;
   }
   return Math.max(1, Number(raw));
@@ -103,7 +106,7 @@ export async function orphanReport(opts: { now?: number; env?: Record<string, st
     try {
       sharepoint = await scan('sharepoint', now, graceMs);
     } catch (err) {
-      console.error('[orphans] SharePoint listing', err);
+      log.error('SharePoint listing failed', { err });
       sharepoint = { error: true };
     }
   }
@@ -151,11 +154,11 @@ export async function purgeOrphans(
     for (const f of still.filter((x) => !named.has(x.key))) {
       try {
         await removeLocalFile(f.key);
-        console.info(`[orphans] removed ${f.key} (${f.size} bytes, last changed ${new Date(f.touched).toISOString()})`);
+        log.info('orphan file removed', { key: f.key, size: f.size, lastChanged: new Date(f.touched).toISOString() });
         removed.push(f);
       } catch (err) {
         failed++;
-        console.error('[orphans] could not remove', f.key, err);
+        log.error('orphan file not removed', { key: f.key, err });
       }
     }
     const bytes = removed.reduce((n, f) => n + f.size, 0);

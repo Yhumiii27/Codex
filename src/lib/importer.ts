@@ -9,7 +9,8 @@ import { dateIssues, dateIssueText } from './dates';
 import { fmtSize, parseIsoDay, todayIso } from './format';
 import { ATTACHMENTS, CONF_LEVELS, DICT, ORIGINS } from './i18n';
 import { audit, refreshHeadline, type Tx } from './lifecycle';
-import { countTokenFailure, tokenFailuresExceeded } from './ratelimit';
+import { currentRequest, expectedAnswer, logger } from './log';
+import { clientAddress, countTokenFailure, tokenFailuresExceeded, trustProxy } from './ratelimit';
 import { discardFile, FileRejectedError, fileColumns, nameStoredFile, stageFile, type FileRejection, type StagedFile } from './storage';
 
 // Integration endpoints (docs/api.md): bearer-token check shared by /api/import and /api/integrations/vigie, and the
@@ -27,6 +28,24 @@ export function json(body: unknown, status = 200, headers: Record<string, string
 
 const digest = (v: string) => createHash('sha256').update(v).digest();
 
+const log = logger('auth');
+
+/**
+ * A refused token, in the technical log: the route, the client's address and why, never the token sent. The address is
+ * `client` behind a trusted proxy only (CODEX_TRUST_PROXY, lib/ratelimit.ts); otherwise the client may have written
+ * X-Forwarded-For itself, and its last entry is logged as `forwardedFor`, with `clientTrusted: false`. A call to an
+ * endpoint left disabled (no variable, the default) is information, not a token being guessed.
+ */
+function refusedToken(req: Request, envVar: string, reason: 'disabled' | 'blocked' | 'missing' | 'invalid', res: Response): Response {
+  const address = clientAddress(req.headers);
+  log[reason === 'disabled' ? 'info' : 'warn']('integration token refused', {
+    route: currentRequest()?.route ?? new URL(req.url).pathname,
+    ...(trustProxy() ? { client: address } : { forwardedFor: address, clientTrusted: false }),
+    reason, variable: envVar, status: res.status,
+  });
+  return res;
+}
+
 /**
  * Null when the request carries `Authorization: Bearer <token>` matching the environment variable `envVar`.
  * Otherwise the response to send: 503 while the variable is unset (endpoint disabled), 401 for a missing or wrong token,
@@ -37,13 +56,14 @@ const digest = (v: string) => createHash('sha256').update(v).digest();
  */
 export function checkBearer(req: Request, envVar: 'CODEX_IMPORT_TOKEN' | 'VIGIE_WEBHOOK_TOKEN'): Response | null {
   const expected = process.env[envVar]?.trim();
-  if (!expected) return json({ error: 'disabled' }, 503);
+  if (!expected) return refusedToken(req, envVar, 'disabled', expectedAnswer(json({ error: 'disabled' }, 503)));
   const blocked = tokenFailuresExceeded(req);
-  if (blocked) return blocked;
+  if (blocked) return refusedToken(req, envVar, 'blocked', blocked);
   const m = /^Bearer[ \t]+(\S+)[ \t]*$/i.exec(req.headers.get('authorization') ?? '');
   // Comparing fixed-length digests keeps the check constant-time whatever the length of the token sent.
   if (!m || !timingSafeEqual(digest(m[1]), digest(expected))) {
-    return countTokenFailure(req) ?? json({ error: 'unauthorized' }, 401, { 'WWW-Authenticate': 'Bearer realm="codex"' });
+    const res = countTokenFailure(req) ?? json({ error: 'unauthorized' }, 401, { 'WWW-Authenticate': 'Bearer realm="codex"' });
+    return refusedToken(req, envVar, m ? 'invalid' : 'missing', res);
   }
   return null;
 }

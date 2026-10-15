@@ -14,6 +14,7 @@ import { addDays, fmtDate, fmtDateTime, fmtSize, loc, nowStamp, parisStamp, pars
 import { ATTACHMENTS, CONF_LEVELS, ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLES, ORIGINS, PERMS, SEARCH_SCOPES, SIM_ROLES, SIMULATED_MATRIX_ROLES, type Perm, type SimRole, type TKey } from './i18n';
 import { addLink, applyChangeDecision, applyPendingDecision, approveRevision, audit, catchUpEffectiveDates, journalLink, linkBetween, lockOf, refreshHeadline, type ModifierSwap, type Tx } from './lifecycle';
 import { isLinkRel, linkIssue, otherEnd, replacementIssue, storedLink } from './links';
+import { logger, traceAction } from './log';
 import { limitWrite } from './ratelimit';
 import { decisionWaitL } from './queries';
 import { dateIssues, dateIssueText, effectIssue, issueFrom, latestEffect, type DateIssue } from './dates';
@@ -32,6 +33,8 @@ import { submitChange, vigieSimulated } from './vigie';
 export type ActionResult = { ok: true; href?: string; message?: string } | { ok: false; error: string; field?: string; stale?: true };
 
 type DocRow = typeof s.documents.$inferSelect;
+
+const log = logger('action');
 
 const YEAR = 60 * 60 * 24 * 365;
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? '').trim();
@@ -54,11 +57,14 @@ function denied(ctx: Ctx, perm: Perm): ActionResult {
 
 /**
  * Every action that writes counts against its user's budget (CODEX_RATE_WRITES, lib/ratelimit.ts) before its own
- * checks: beyond it, the refusal to show, and the action does nothing.
+ * checks: beyond it, the refusal to show, and the action does nothing. Each write action runs through traceAction
+ * (lib/log.ts), which logs its name, outcome and duration.
  */
 function throttled(ctx: Ctx): ActionResult | null {
   const wait = limitWrite(ctx.user.id);
-  return wait ? { ok: false, error: ctx.t.rate_limited.replace('{n}', String(wait)) } : null;
+  if (!wait) return null;
+  log.warn('write rate limited', { user: ctx.user.id, retryAfter: wait });
+  return { ok: false, error: ctx.t.rate_limited.replace('{n}', String(wait)) };
 }
 
 /** A journal value with nothing in it (null, empty text or list) stored as null, so that "" and null are no change. */
@@ -253,7 +259,10 @@ async function withStaged<T>(staged: StagedFile | null, fn: () => Promise<T>): P
  * New document: ID TYPE-CONTEXTE-SEQ, revision A in draft, and working version A.1 from an uploaded file or a copy of
  * a template (FRM-QMS-…). Without either, the document exists with its ID and waits for its first working version.
  */
-export async function createDocument(fd: FormData): Promise<ActionResult> {
+export async function createDocument(...args: Parameters<typeof createDocumentNow>): Promise<ActionResult> {
+  return traceAction('createDocument', () => createDocumentNow(...args));
+}
+async function createDocumentNow(fd: FormData): Promise<ActionResult> {
   const ctx = await getCtx();
   const busy = throttled(ctx);
   if (busy) return busy;
@@ -351,7 +360,10 @@ async function uploadBehind(tx: Tx, ctx: Ctx, docId: string, rev: { id: number; 
  * (`baseRevision`, `baseVersion`): when another was uploaded since, the upload is refused with its label and author,
  * rather than added on top of a version its author has not seen (D-12 keeps both).
  */
-export async function addWorkingVersion(fd: FormData): Promise<ActionResult> {
+export async function addWorkingVersion(...args: Parameters<typeof addWorkingVersionNow>): Promise<ActionResult> {
+  return traceAction('addWorkingVersion', () => addWorkingVersionNow(...args));
+}
+async function addWorkingVersionNow(fd: FormData): Promise<ActionResult> {
   const ctx = await getCtx();
   const busy = throttled(ctx);
   if (busy) return busy;
@@ -428,7 +440,10 @@ async function releasePieces(tx: Tx, docId: string, f: Fields) {
  * The form sends back the version of the record it was filled from (`version`): every field it sends overwrites the
  * stored one, so a record changed since is refused as outdated, with nothing written (lib/concurrency.ts).
  */
-export async function updateMeta(fd: FormData): Promise<ActionResult> {
+export async function updateMeta(...args: Parameters<typeof updateMetaNow>): Promise<ActionResult> {
+  return traceAction('updateMeta', () => updateMetaNow(...args));
+}
+async function updateMetaNow(fd: FormData): Promise<ActionResult> {
   const ctx = await getCtx();
   const busy = throttled(ctx);
   if (busy) return busy;
@@ -508,7 +523,10 @@ export async function updateMeta(fd: FormData): Promise<ActionResult> {
  * `version`: the version of the record the dialog showed; the list replaces the stored one, so a record changed since
  * is refused as outdated, as by updateMeta (lib/concurrency.ts).
  */
-export async function setReaders(docId: string, userIds: string[], version: number): Promise<ActionResult> {
+export async function setReaders(...args: Parameters<typeof setReadersNow>): Promise<ActionResult> {
+  return traceAction('setReaders', () => setReadersNow(...args));
+}
+async function setReadersNow(docId: string, userIds: string[], version: number): Promise<ActionResult> {
   const ctx = await getCtx();
   const busy = throttled(ctx);
   if (busy) return busy;
@@ -554,7 +572,10 @@ const REVIEW_COMMENT_MAX = 2000;
  * next review date: the day entered, after today, else the type's periodicity counted from today (lib/review.ts,
  * nextReviewDate). Journaled on the document as a whole, with the optional comment and the review date before → after.
  */
-export async function recordReview(docId: string, next: string | null, comment = ''): Promise<ActionResult> {
+export async function recordReview(...args: Parameters<typeof recordReviewNow>): Promise<ActionResult> {
+  return traceAction('recordReview', () => recordReviewNow(...args));
+}
+async function recordReviewNow(docId: string, next: string | null, comment = ''): Promise<ActionResult> {
   const ctx = await getCtx();
   const busy = throttled(ctx);
   if (busy) return busy;
@@ -636,7 +657,10 @@ async function resolveFunction(tx: Tx, ctx: Ctx, key: string, d: DocRow, exclude
  * `base`: the last working version the dialog showed (as for an upload, lib/concurrency.ts): the circuit does not start
  * on a version uploaded since, which its requester has not seen.
  */
-export async function requestValidation(docId: string, effectiveAt: string | null, base: WorkingBase | null): Promise<ActionResult> {
+export async function requestValidation(...args: Parameters<typeof requestValidationNow>): Promise<ActionResult> {
+  return traceAction('requestValidation', () => requestValidationNow(...args));
+}
+async function requestValidationNow(docId: string, effectiveAt: string | null, base: WorkingBase | null): Promise<ActionResult> {
   const ctx = await getCtx();
   const busy = throttled(ctx);
   if (busy) return busy;
@@ -733,7 +757,10 @@ function closingReason(raw: string, required: boolean): { why: string } | { err:
  * Approve or reject the current step. `expectedStep` is the step the user saw: a stale click never acts on a later step.
  * A rejection needs its `reason`, kept on the circuit, in its comments and in the journal.
  */
-export async function decideStep(workflowId: string, approve: boolean, expectedStep: number, reason = ''): Promise<ActionResult> {
+export async function decideStep(...args: Parameters<typeof decideStepNow>): Promise<ActionResult> {
+  return traceAction('decideStep', () => decideStepNow(...args));
+}
+async function decideStepNow(workflowId: string, approve: boolean, expectedStep: number, reason = ''): Promise<ActionResult> {
   const ctx = await getCtx();
   const busy = throttled(ctx);
   if (busy) return busy;
@@ -793,7 +820,10 @@ export async function decideStep(workflowId: string, approve: boolean, expectedS
  * its approvers leave the drafting circle (D-14). `expectedStep` is the step the user saw: a circuit that moved on, or
  * ended, since is left alone. `reason` is optional.
  */
-export async function recallValidation(workflowId: string, expectedStep: number, reason = ''): Promise<ActionResult> {
+export async function recallValidation(...args: Parameters<typeof recallValidationNow>): Promise<ActionResult> {
+  return traceAction('recallValidation', () => recallValidationNow(...args));
+}
+async function recallValidationNow(workflowId: string, expectedStep: number, reason = ''): Promise<ActionResult> {
   const ctx = await getCtx();
   const busy = throttled(ctx);
   if (busy) return busy;
@@ -834,7 +864,10 @@ export async function recallValidation(workflowId: string, expectedStep: number,
 }
 
 /** Hands the current step to someone else. `expectedStep` is the step the user saw, as for decideStep. */
-export async function delegateStep(workflowId: string, toUserId: string, expectedStep: number): Promise<ActionResult> {
+export async function delegateStep(...args: Parameters<typeof delegateStepNow>): Promise<ActionResult> {
+  return traceAction('delegateStep', () => delegateStepNow(...args));
+}
+async function delegateStepNow(workflowId: string, toUserId: string, expectedStep: number): Promise<ActionResult> {
   const ctx = await getCtx();
   const busy = throttled(ctx);
   if (busy) return busy;
@@ -865,7 +898,10 @@ export async function delegateStep(workflowId: string, toUserId: string, expecte
   return { ok: true };
 }
 
-export async function addComment(workflowId: string, text: string): Promise<ActionResult> {
+export async function addComment(...args: Parameters<typeof addCommentNow>): Promise<ActionResult> {
+  return traceAction('addComment', () => addCommentNow(...args));
+}
+async function addCommentNow(workflowId: string, text: string): Promise<ActionResult> {
   const ctx = await getCtx();
   const busy = throttled(ctx);
   if (busy) return busy;
@@ -903,7 +939,10 @@ export async function addComment(workflowId: string, text: string): Promise<Acti
  * becomes « remplacé par » once the withdrawal applies (lib/lifecycle.ts implementChange); one they may not read is
  * answered as one that does not exist.
  */
-export async function requestChange(docId: string, kind: 'modification' | 'obsolescence', reason: string, description: string, replacementId: string | null = null): Promise<ActionResult> {
+export async function requestChange(...args: Parameters<typeof requestChangeNow>): Promise<ActionResult> {
+  return traceAction('requestChange', () => requestChangeNow(...args));
+}
+async function requestChangeNow(docId: string, kind: 'modification' | 'obsolescence', reason: string, description: string, replacementId: string | null = null): Promise<ActionResult> {
   const ctx = await getCtx();
   const busy = throttled(ctx);
   if (busy) return busy;
@@ -940,7 +979,10 @@ export async function requestChange(docId: string, kind: 'modification' | 'obsol
  * an acceptance on a locked document, or of a change while a revision is open, is recorded and applies later, and the
  * designated author must be able to draft the document.
  */
-export async function simulateVigieDecision(id: string, accepted: boolean, modifierId: string | null): Promise<ActionResult> {
+export async function simulateVigieDecision(...args: Parameters<typeof simulateVigieDecisionNow>): Promise<ActionResult> {
+  return traceAction('simulateVigieDecision', () => simulateVigieDecisionNow(...args));
+}
+async function simulateVigieDecisionNow(id: string, accepted: boolean, modifierId: string | null): Promise<ActionResult> {
   const ctx = await getCtx();
   const busy = throttled(ctx);
   if (busy) return busy;
@@ -962,7 +1004,10 @@ export async function simulateVigieDecision(id: string, accepted: boolean, modif
  * would mean running the circuit again: the change waits). For a records manager or the author of the open revision
  * (its designated modifier, else the owner), with the edit permission, on a document they can read.
  */
-export async function graftChange(requestId: string): Promise<ActionResult> {
+export async function graftChange(...args: Parameters<typeof graftChangeNow>): Promise<ActionResult> {
+  return traceAction('graftChange', () => graftChangeNow(...args));
+}
+async function graftChangeNow(requestId: string): Promise<ActionResult> {
   const ctx = await getCtx();
   const busy = throttled(ctx);
   if (busy) return busy;
@@ -1007,7 +1052,10 @@ export async function graftChange(requestId: string): Promise<ActionResult> {
  * does not exist). Only a document Vigie withdrew is replaced, by an active one (lib/links.ts linkIssue, D-17); a legal
  * hold on either freezes their links. One link per pair, journaled on both documents.
  */
-export async function addDocLink(docId: string, rel: string, otherId: string): Promise<ActionResult> {
+export async function addDocLink(...args: Parameters<typeof addDocLinkNow>): Promise<ActionResult> {
+  return traceAction('addDocLink', () => addDocLinkNow(...args));
+}
+async function addDocLinkNow(docId: string, rel: string, otherId: string): Promise<ActionResult> {
   const ctx = await getCtx();
   const busy = throttled(ctx);
   if (busy) return busy;
@@ -1042,7 +1090,10 @@ export async function addDocLink(docId: string, rel: string, otherId: string): P
  * hold on either freezes it. A link to a document the user may not read is not shown to them, and is answered as one
  * that does not exist. Journaled on both.
  */
-export async function removeDocLink(docId: string, linkId: number): Promise<ActionResult> {
+export async function removeDocLink(...args: Parameters<typeof removeDocLinkNow>): Promise<ActionResult> {
+  return traceAction('removeDocLink', () => removeDocLinkNow(...args));
+}
+async function removeDocLinkNow(docId: string, linkId: number): Promise<ActionResult> {
   const ctx = await getCtx();
   const busy = throttled(ctx);
   if (busy) return busy;
@@ -1076,7 +1127,10 @@ async function visibleDocs(tx: Tx, ctx: Ctx, ids: string[]) {
   return docs.filter((d) => canRead(ctx, d, ix));
 }
 
-export async function archiveDocuments(ids: string[]): Promise<ActionResult> {
+export async function archiveDocuments(...args: Parameters<typeof archiveDocumentsNow>): Promise<ActionResult> {
+  return traceAction('archiveDocuments', () => archiveDocumentsNow(...args));
+}
+async function archiveDocumentsNow(ids: string[]): Promise<ActionResult> {
   const ctx = await getCtx();
   const busy = throttled(ctx);
   if (busy) return busy;
@@ -1100,7 +1154,10 @@ export async function archiveDocuments(ids: string[]): Promise<ActionResult> {
   return { ok: true, message: skipped ? `${skipped} ${ctx.t.archive_skipped}` : undefined };
 }
 
-export async function holdDocuments(ids: string[]): Promise<ActionResult> {
+export async function holdDocuments(...args: Parameters<typeof holdDocumentsNow>): Promise<ActionResult> {
+  return traceAction('holdDocuments', () => holdDocumentsNow(...args));
+}
+async function holdDocumentsNow(ids: string[]): Promise<ActionResult> {
   const ctx = await getCtx();
   const busy = throttled(ctx);
   if (busy) return busy;
@@ -1133,7 +1190,10 @@ async function pendingApplied(ctx: Ctx, d: DocRow, swap: ModifierSwap | null): P
  * Lifts a legal hold: the document, its running circuit and an approved revision waiting for its date resume, and an
  * acceptance Vigie sent during the hold applies.
  */
-export async function releaseHold(docId: string): Promise<ActionResult> {
+export async function releaseHold(...args: Parameters<typeof releaseHoldNow>): Promise<ActionResult> {
+  return traceAction('releaseHold', () => releaseHoldNow(...args));
+}
+async function releaseHoldNow(docId: string): Promise<ActionResult> {
   const ctx = await getCtx();
   const busy = throttled(ctx);
   if (busy) return busy;
@@ -1158,7 +1218,10 @@ export async function releaseHold(docId: string): Promise<ActionResult> {
  * Restores an archived document to the state it had before: obsolete if Vigie withdrew it, otherwise active. An
  * acceptance Vigie sent while it was archived then applies.
  */
-export async function restoreArchived(docId: string): Promise<ActionResult> {
+export async function restoreArchived(...args: Parameters<typeof restoreArchivedNow>): Promise<ActionResult> {
+  return traceAction('restoreArchived', () => restoreArchivedNow(...args));
+}
+async function restoreArchivedNow(docId: string): Promise<ActionResult> {
   const ctx = await getCtx();
   const busy = throttled(ctx);
   if (busy) return busy;
@@ -1191,7 +1254,10 @@ const LABEL_MAX = 80;
  * and administrators (lib/access.ts maySaveSearch). Only criteria are kept: each person who opens it sees the documents
  * they may read.
  */
-export async function saveSearch(label: string, search: SearchInput, scope: string, department: string | null): Promise<ActionResult> {
+export async function saveSearch(...args: Parameters<typeof saveSearchNow>): Promise<ActionResult> {
+  return traceAction('saveSearch', () => saveSearchNow(...args));
+}
+async function saveSearchNow(label: string, search: SearchInput, scope: string, department: string | null): Promise<ActionResult> {
   const ctx = await getCtx();
   const busy = throttled(ctx);
   if (busy) return busy;
@@ -1216,7 +1282,10 @@ export async function saveSearch(label: string, search: SearchInput, scope: stri
 }
 
 /** Deletes a saved search: its owner for a personal one, records managers and administrators for a shared one. */
-export async function deleteSavedSearch(id: number): Promise<ActionResult> {
+export async function deleteSavedSearch(...args: Parameters<typeof deleteSavedSearchNow>): Promise<ActionResult> {
+  return traceAction('deleteSavedSearch', () => deleteSavedSearchNow(...args));
+}
+async function deleteSavedSearchNow(id: number): Promise<ActionResult> {
   const ctx = await getCtx();
   const busy = throttled(ctx);
   if (busy) return busy;
@@ -1243,7 +1312,10 @@ function adminOnly(ctx: Ctx): ActionResult | null {
  * checked again just before; journaled in one entry. A records manager with access to Administration only
  * (lib/access.ts mayCleanStorage). SharePoint files are never removed (O-01).
  */
-export async function purgeOrphanFiles(keys: string[]): Promise<ActionResult> {
+export async function purgeOrphanFiles(...args: Parameters<typeof purgeOrphanFilesNow>): Promise<ActionResult> {
+  return traceAction('purgeOrphanFiles', () => purgeOrphanFilesNow(...args));
+}
+async function purgeOrphanFilesNow(keys: string[]): Promise<ActionResult> {
   const ctx = await getCtx();
   const busy = throttled(ctx);
   if (busy) return busy;
@@ -1271,7 +1343,10 @@ export async function purgeOrphanFiles(keys: string[]): Promise<ActionResult> {
  * (lib/backup.ts ONLINE_MIN_INTERVAL_MS). A records manager with access to Administration only (lib/access.ts
  * mayBackUp). Restoring is not an action: it needs the server stopped (npm run restore).
  */
-export async function backUpData(): Promise<ActionResult> {
+export async function backUpData(...args: Parameters<typeof backUpDataNow>): Promise<ActionResult> {
+  return traceAction('backUpData', () => backUpDataNow(...args));
+}
+async function backUpDataNow(): Promise<ActionResult> {
   const ctx = await getCtx();
   const busy = throttled(ctx);
   if (busy) return busy;
@@ -1280,7 +1355,7 @@ export async function backUpData(): Promise<ActionResult> {
   try {
     res = await backUpNow(ctx.user.id);
   } catch (err) {
-    console.error('[backup] failed', err);
+    log.error('backup failed', { err });
     return fail(ctx, 'backup_failed');
   }
   if (res === 'busy') return fail(ctx, 'backup_busy');
@@ -1302,7 +1377,10 @@ export async function backUpData(): Promise<ActionResult> {
   };
 }
 
-export async function togglePermission(role: string, perm: string): Promise<ActionResult> {
+export async function togglePermission(...args: Parameters<typeof togglePermissionNow>): Promise<ActionResult> {
+  return traceAction('togglePermission', () => togglePermissionNow(...args));
+}
+async function togglePermissionNow(role: string, perm: string): Promise<ActionResult> {
   const ctx = await getCtx();
   const busy = throttled(ctx);
   if (busy) return busy;
@@ -1326,7 +1404,10 @@ export async function togglePermission(role: string, perm: string): Promise<Acti
 }
 
 /** Department (3-letter code used in IDs) or site. Provisional values until the org chart is provided. */
-export async function addOrgValue(kind: 'department' | 'site', code: string, labelFr: string, labelEn: string): Promise<ActionResult> {
+export async function addOrgValue(...args: Parameters<typeof addOrgValueNow>): Promise<ActionResult> {
+  return traceAction('addOrgValue', () => addOrgValueNow(...args));
+}
+async function addOrgValueNow(kind: 'department' | 'site', code: string, labelFr: string, labelEn: string): Promise<ActionResult> {
   const ctx = await getCtx();
   const busy = throttled(ctx);
   if (busy) return busy;
@@ -1360,7 +1441,10 @@ export async function addOrgValue(kind: 'department' | 'site', code: string, lab
  * MAX_FEATURED, none to put none forward), or null to follow the default ones again (lib/departments.ts). Which facets
  * suit each department awaits the survey of their needs: the default stands until then.
  */
-export async function setDepartmentFeatured(code: string, featured: string[] | null): Promise<ActionResult> {
+export async function setDepartmentFeatured(...args: Parameters<typeof setDepartmentFeaturedNow>): Promise<ActionResult> {
+  return traceAction('setDepartmentFeatured', () => setDepartmentFeaturedNow(...args));
+}
+async function setDepartmentFeaturedNow(code: string, featured: string[] | null): Promise<ActionResult> {
   const ctx = await getCtx();
   const busy = throttled(ctx);
   if (busy) return busy;
@@ -1384,7 +1468,10 @@ export async function setDepartmentFeatured(code: string, featured: string[] | n
   return { ok: true, message: ctx.t.saved_ok };
 }
 
-export async function addFunctionHolder(functionKey: string, scopeValue: string | null, userId: string): Promise<ActionResult> {
+export async function addFunctionHolder(...args: Parameters<typeof addFunctionHolderNow>): Promise<ActionResult> {
+  return traceAction('addFunctionHolder', () => addFunctionHolderNow(...args));
+}
+async function addFunctionHolderNow(functionKey: string, scopeValue: string | null, userId: string): Promise<ActionResult> {
   const ctx = await getCtx();
   const busy = throttled(ctx);
   if (busy) return busy;
@@ -1405,7 +1492,10 @@ export async function addFunctionHolder(functionKey: string, scopeValue: string 
   return { ok: true };
 }
 
-export async function removeFunctionHolder(id: number): Promise<ActionResult> {
+export async function removeFunctionHolder(...args: Parameters<typeof removeFunctionHolderNow>): Promise<ActionResult> {
+  return traceAction('removeFunctionHolder', () => removeFunctionHolderNow(...args));
+}
+async function removeFunctionHolderNow(id: number): Promise<ActionResult> {
   const ctx = await getCtx();
   const busy = throttled(ctx);
   if (busy) return busy;
@@ -1421,7 +1511,10 @@ export async function removeFunctionHolder(id: number): Promise<ActionResult> {
 }
 
 /** Circuit, confidentiality, retention and periodic review of a type in the register. */
-export async function updateType(fd: FormData): Promise<ActionResult> {
+export async function updateType(...args: Parameters<typeof updateTypeNow>): Promise<ActionResult> {
+  return traceAction('updateType', () => updateTypeNow(...args));
+}
+async function updateTypeNow(fd: FormData): Promise<ActionResult> {
   const ctx = await getCtx();
   const busy = throttled(ctx);
   if (busy) return busy;

@@ -1,5 +1,6 @@
 import { fileRules } from '@/lib/filetypes';
 import { checkBearer, importDocument, json, type ImportFile } from '@/lib/importer';
+import { currentRequest, logger, withRequestLog } from '@/lib/log';
 import { limitRequest } from '@/lib/ratelimit';
 import type { FileRejection } from '@/lib/storage';
 
@@ -46,7 +47,7 @@ function capped(req: Request, cap: number): { body: Response; over: () => boolea
   return { body: new Response(stream ?? null, { headers: { 'Content-Type': req.headers.get('content-type') ?? '' } }), over: () => over };
 }
 
-export async function POST(req: Request) {
+async function handlePost(req: Request) {
   const denied = checkBearer(req, 'CODEX_IMPORT_TOKEN');
   if (denied) return denied;
   // Counted once the token is checked: a client without it cannot spend the budget of the one holding it.
@@ -109,7 +110,10 @@ export async function POST(req: Request) {
       }
     }
   } catch (err) {
-    console.error('[api/import]', err);
-    return json({ error: 'internal' }, 500);
+    logger('import').error('import failed', { err });
+    // As withRequestLog answers an error it catches: the identifier finds the entry above in the technical log.
+    return json({ error: 'internal', requestId: currentRequest()?.requestId }, 500);
   }
 }
+
+export const POST = withRequestLog('/api/import', handlePost);

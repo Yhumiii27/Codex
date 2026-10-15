@@ -1459,6 +1459,7 @@ en dépend prend l'option la plus prudente et est consigné dans [decisions.md](
 | 2. Fichiers déposés (§16.2) | commit « Lot 7, étape 2 », qui suit `3c2dbe7` | 32, 64 | Formats admis (liste blanche, signatures et conteneurs, macros et programmes refusés), nom unique du contrôle au téléchargement, taille maximale unique, analyse antivirus par clamd avant stockage, refus journalisé | Liste commune à tous les types, archives exclues, Office chiffré admis ; 50 Mo pour l'écran et l'import ; analyse désactivée sans `CODEX_CLAMD`, dépôt refusé si clamd ne répond pas ou si le fichier dépasse ses limites ; nom du fichier refusé réservé aux gestionnaires (D-14) |
 | 3. Fichiers en flux et orphelins (§16.3) | commit « Lot 7, étape 3 », qui suit `ab6711e` | 46, 36 | Route fichier en flux, plages d'octets (206, 416), ETag, Last-Modified et 304, HEAD cohérent ; simulation puis suppression journalisée des seuls fichiers orphelins listés, stockage local | Copie gardée par le navigateur seulement pour le fichier en vigueur sous Confidentiel, revalidée à chaque usage ; téléchargement journalisé à partir du premier octet ; nettoyage réservé aux gestionnaires, délai de grâce de 24 h, SharePoint listé sans suppression (O-01) ; aperçu paginé des brouillons et confidentiels encore retéléchargé à chaque page |
 | 4. Sauvegarde et restauration (§16.4) | commit « Lot 7, étape 4 », qui suit `42e2d34` | 48 | Archive de la base et des fichiers référencés avec manifeste et empreintes, commandes `npm run backup`, `backup:list`, `backup:check`, `restore`, rotation, verrou du dossier de données, sauvegarde journalisée depuis Administration, procédure `docs/sauvegarde.md` | Rien de programmé ; archives à côté du dossier de données, non chiffrées, 7 plus récentes et une par jour sur 7 jours gardées ; une sauvegarde par quart d'heure au plus depuis l'application ; restauration en ligne de commande seulement, serveur arrêté, l'existant mis de côté et non supprimé ; action et nombres du journal réservés aux gestionnaires (D-14) ; fichiers SharePoint non copiés (O-01) |
+| 5. Journal technique, santé, configuration (§16.5) | commit « Lot 7, étape 5 », qui suit `55c0df4` | 49, 37 | Journal technique structuré (JSON en production) avec identifiant de requête, une ligne par requête d'API et par action d'écriture, jetons refusés et erreurs serveur journalisés sans secret ; `GET`/`HEAD /api/health` ; contrôle de la configuration au démarrage (`src/instrumentation.ts`), procédure `docs/exploitation.md` | Refus de démarrer en production pour une configuration dangereuse seulement (défaut sans erreur, `CODEX_CONFIG_CHECK=warn` pour passer outre) ; jeton de 32 caractères au moins ; santé sans authentification, sans raison d'échec ; aucune métrique ni rotation (hébergement non décidé) ; authentification simulée rappelée en production (O-02) |
 
 ### 16.1 En-têtes de sécurité HTTP et limitation de débit
 
@@ -1824,3 +1825,114 @@ base, et son `postmaster.pid` porte toujours -42 : rien ne dit si le serveur la 
 - **Reste** (décisions de l'utilisateur, M22 et hébergement) : fréquence et planification (point 38), lieu de
   conservation et copie hors de la machine, chiffrement, perte de données et délai de reprise tolérés ; sauvegarde des
   fichiers SharePoint (O-01) ; `pg_dump` avec un Postgres serveur (point 51).
+
+### 16.5 Journal technique, santé du serveur et contrôle de la configuration
+
+Points 49 et 37 de [reste-a-faire.md](reste-a-faire.md), vérifiés au commit `55c0df4` : le serveur écrivait par 17 appels
+`console.*` épars et non structurés (cinq à l'inventaire, les étapes précédentes en avaient ajouté ; sans compter
+`src/lib/backup-core.mjs` ni le client), sans identifiant de requête ; `checkBearer` refusait les jetons sans rien écrire ; aucune route de santé ; pas de
+`src/instrumentation.ts`, donc ni contrôle au démarrage ni `onRequestError` ; une valeur de `CODEX_STORAGE` autre que
+`sharepoint` (par exemple `SharePoint`) basculait en silence sur le stockage local, et les `CODEX_SP_*` n'étaient lues
+qu'au premier appel à Graph.
+
+- **Journal technique** (`src/lib/log.ts`) : une entrée par ligne, JSON en production, lisible en développement
+  (`CODEX_LOG_FORMAT`), niveau `CODEX_LOG_LEVEL` (`info`) ; `time`, `level`, `scope`, `msg`, et `requestId` pendant
+  une requête (`AsyncLocalStorage`, partagé par `globalThis` entre le paquet d'`instrumentation.ts` et celui des
+  routes). Les champs au nom de secret sont remplacés par `[redacted]`, les octets par leur nombre, les textes coupés à
+  500 caractères ; d'une erreur, nom, message, code, `errno`, `digest`, début de la pile et cause, jamais ses autres
+  propriétés (le `detail` d'une erreur Postgres cite des valeurs). Les `console.*` du serveur passent par lui
+  (stockage, antivirus, orphelins, sauvegarde, limites de débit, routes), sauf ceux de `src/lib/backup-core.mjs`,
+  partagé avec les commandes de sauvegarde.
+- **Routes d'API** (`withRequestLog`) : les sept routes existantes et la nouvelle route de santé écrivent méthode,
+  route (son modèle, sans identifiant de document ni chaîne de requête), statut, durée jusqu'au début de la réponse et
+  taille ; l'identifiant est repris de `X-Request-Id` s'il est un simple jeton, sinon tiré, et renvoyé ; une erreur
+  levée est écrite avec sa pile et répond 500 `{"error":"internal","requestId"}`.
+- **Server Actions** : les 29 actions d'écriture passent par `traceAction` (`export async function x(...args)` qui
+  appelle `xNow`) : nom, issue (`ok`, `refused`, `stale`), durée, jamais le message montré à l'utilisateur ; une
+  erreur est écrite une fois avec sa pile puis relancée pour Next.js ; une redirection n'est pas une erreur. Une
+  écriture refusée par la limite de débit est écrite avec l'utilisateur.
+- **Jetons refusés** : `checkBearer` écrit en `warn` la route, l'adresse du client, la raison (`missing`, `invalid`,
+  `disabled`, `blocked`) et le statut, jamais le jeton.
+- **`src/instrumentation.ts`** : `register` lance le contrôle de configuration ; `onRequestError` écrit toute erreur
+  serveur rattrapée par Next.js (chemin sans chaîne de requête, route, type, `digest`), sauf celles déjà écrites par
+  une route ou une action, et une seule fois quand Next.js signale deux fois le même rendu en échec (vu sur `next
+  start` : même `digest`, même chemin). Les modules sont importés dans les fonctions, comme le recommande le guide ;
+  `process.exit` vit dans `config-check.ts`, pas dans `instrumentation.ts`, que Next.js analyse aussi pour l'Edge.
+- **Santé** (`src/app/api/health/route.ts`, `force-dynamic`) : base (`select 1` par `getDb()`) puis stockage actif
+  (`probeStore` : dossier `files/` lisible et inscriptible, ou lecteur SharePoint par Graph, sans nouvel essai et
+  gardé une minute), l'un après l'autre, 5 s au plus chacun ; 200 ou 503 avec la version (`src/lib/version.ts`, aussi
+  utilisé par la sauvegarde) et le résultat de chaque contrôle ; la raison n'est qu'au journal ; `HEAD` pareil sans
+  corps ; une réponse 200 n'est écrite qu'au niveau `debug`. Pas de `/api/ready` (un seul processus).
+- **Contrôle de la configuration** (`src/lib/config-check.ts`) : forme de chaque variable de `.env.example`, telle que
+  le code la lit, et dossier de données ; erreurs, avertissements et informations écrits avec un code ; en production
+  une erreur arrête le serveur (`ConfigRefusedError`, code de sortie 1 au tour suivant pour que les lignes atteignent un
+  tube), sauf `CODEX_CONFIG_CHECK=warn`. Codes et corrections dans `docs/exploitation.md` §3.
+- Choix signalés dans [decisions.md](decisions.md) (choix de l'assistant) : refus de démarrer et son seuil de jeton,
+  santé sans authentification, JSON dans le journal de l'app Mac, contenu du journal (utilisateur d'une écriture
+  freinée, adresse d'un jeton refusé), reprise de `X-Request-Id` sans `CODEX_TRUST_PROXY`.
+- *Vérifié* : `npm test` (57 fichiers, 950 tests, un test sauté quand on est root : dossier en lecture seule),
+  `npm run typecheck`, `npm run lint`, `npm run build` sans avertissement (deux avertissements Turbopack corrigés :
+  `process.exit` dans `instrumentation.ts`, accès au disque à chemin variable sans `turbopackIgnore`). Trois mutations
+  (mode `strict` par défaut en production, masquage des secrets, ligne du jeton refusé) font chacune échouer un test.
+  `next start` : sans variable, démarrage normal, quatre lignes `config` (deux jetons absents, antivirus absent,
+  authentification simulée) puis `configuration checked` ; avec `CODEX_IMPORT_TOKEN=change-me CODEX_STORAGE=SharePoint`,
+  refus (`storage_unknown`, `token_weak`), code de sortie 1, aucune réponse sur le port, ni le jeton ni sa valeur dans le
+  journal ; les mêmes avec `CODEX_CONFIG_CHECK=warn` et `CODEX_LOG_FORMAT=pretty` : démarrage, lignes lisibles, jeton
+  faux sur `/api/import` avec `X-Request-Id: test-req-42` → 401, même identifiant renvoyé et sur les deux lignes
+  (`auth`, `http`). Base cassée (`pglite` remplacé par un fichier) : `/api/health` 503 `database` sans détail, la
+  raison au journal ; `/recherche?q=…` en 500 écrit une fois par `onRequestError` (sans la chaîne de requête) ;
+  `/api/registry` 500 `{"error":"internal","requestId"}`. Base neuve : première sonde 200 en 3,8 s (ouverture et
+  données de démonstration), suivantes en quelques millisecondes. Dans Chromium (développement et production),
+  cbardet, gcomte, jwagner et jholt ouvrent Accueil, Explorateur, Recherche, Validations et une fiche (200, aucune
+  erreur hormis l'absence connue de `favicon.ico`) ; deux bascules d'un droit dans Administration écrivent deux lignes
+  `action togglePermission ok`, un téléchargement une ligne `http` avec `X-Request-Id`.
+- **Relecture** (douze constats, dont deux identiques sur les erreurs de requête et deux sur `url_invalid` ; tous
+  retenus) :
+  - une erreur de requête de Drizzle a pour message « Failed query: <SQL> params: <valeurs> » : le texte d'un
+    commentaire, un motif de rejet, un titre ou des termes de recherche passaient au journal, dans le message et dans
+    la pile, à chaque échec d'écriture en base (octet nul refusé, disque plein, contrainte, verrou). `serializeError`
+    ne garde plus que le SQL paramétré, masque la valeur citée par une erreur de PostgreSQL (« invalid input syntax for
+    type integer: "…" »), ne lit jamais `params`, et refait la pile à partir de ce message et des seules lignes « at »,
+    chacune coupée à 300 caractères. Next.js imprimant lui-même, dans la même sortie, l'erreur entière d'une Server
+    Action (propriétés et cause comprises), `traceAction` lui remet une erreur refaite sans ces valeurs
+    (`withoutQueryValues`). Une erreur de requête pendant le rendu d'une page reste imprimée telle quelle par Next.js :
+    limite consignée dans `docs/exploitation.md` §4 ;
+  - la 503 `disabled` d'un point d'entrée d'intégration sans jeton, état par défaut, était écrite au niveau `error` :
+    n'importe quel client remplissait le journal d'erreurs. Elle est marquée prévue (`expectedAnswer`) et écrite en
+    `info`, la ligne `auth` aussi ; `error` reste aux 500, au stockage injoignable (502) et à la santé en échec ;
+  - la ligne `auth` d'un jeton refusé donnait comme `client` la dernière valeur de `X-Forwarded-For`, que le client
+    choisit librement sans proxy de confiance : elle n'est `client` qu'avec `CODEX_TRUST_PROXY=1`, sinon
+    `forwardedFor` avec `clientTrusted: false` ;
+  - des sondes `/api/health` simultanées contournaient le cache d'une minute de la sonde SharePoint (une rafale :
+    autant d'appels à Graph et d'appels de jeton à Entra ID, avec le secret client). La sonde en cours et l'obtention du
+    jeton sont désormais partagées : 50 sondes simultanées, un appel à chacun ;
+  - `url_invalid` recopiait la valeur de `VIGIE_API_URL` ou d'une adresse publique : sans `https://`, « admin:motdepasse@
+    hôte » passait au journal. Le message dit seulement ce qui manque ; l'adresse de `CODEX_CLAMD` n'est citée que sans
+    « utilisateur:motdepasse@ » ni chaîne de requête ;
+  - aucun test ne chargeait `src/instrumentation.ts` : `tests/unit/instrumentation.test.ts` vérifie le refus de
+    démarrer en production (rejet et `process.exit(1)`), le démarrage par défaut, l'absence d'effet sur l'Edge et la
+    ligne `next` d'`onRequestError` ;
+  - les exemples `jq` du guide d'exploitation s'arrêtaient à la première ligne non JSON (Next.js, app Mac) : ils
+    passent par `jq -cR 'fromjson? | …'` (ou `grep '^{'`), et le guide dit quelles lignes ne sont pas du JSON ;
+  - le seuil de 32 caractères des jetons n'était encodé par aucun test (tous les jetons refusés l'étaient aussi pour
+    leurs caractères trop peu variés) : un jeton varié de 16, 23 ou 31 caractères est refusé, de 32 accepté ;
+  - `/api/import` et `/api/integrations/vigie` répondaient 500 `{"error":"internal"}` sans `requestId`, contrairement à
+    `docs/api.md` : le corps le porte désormais (pour Vigie, c'est l'identifiant de la requête HTTP, pas la référence
+    de la demande ; précisé dans `docs/api.md`) ;
+  - la journalisation n'était vérifiée que sur quelques actions et routes : un test appelle chaque export de
+    `src/lib/actions.ts` (hors langue et utilisateur simulé) et attend sa ligne `action`, et chaque méthode de chaque
+    `route.ts` de `src/app/api` (trouvés sur le disque) et attend `X-Request-Id` et sa ligne `http`. Retirer
+    `traceAction` de `decideStep` le fait échouer.
+  - *Vérifié* : `npm test` (58 fichiers, 965 tests dont un sauté), `npm run typecheck`, `npm run lint`, `npm run build`.
+    `npm run dev` : commentaire contenant un octet nul envoyé depuis Validations dans Chromium (cbardet, W-305) → toast
+    d'erreur, ligne `action failed` et ligne « ⨯ » de Next.js sans le texte (seule la ligne de développement
+    « └─ ƒ addComment(…) » de Next.js le montre, absente en production) ; `/api/export/search?q=…%00` → 500 avec
+    `requestId`, sans les termes. `next start` : `VIGIE_API_URL=admin:S3cretPass@…` et `CODEX_IMPORT_TOKEN=change-me` →
+    refus (`token_weak`, `url_invalid`), code 1, ni l'un ni l'autre au journal ; démarré : webhook désactivé avec
+    `X-Forwarded-For` forgé → deux lignes `info`, `forwardedFor`, `clientTrusted:false` ; même commentaire et même
+    export → aucune trace des textes dans tout le journal ; `jq -c` sans `-R` s'arrête (« parse error », code 5),
+    `jq -cR 'fromjson? | …'` trouve les deux erreurs et les deux lignes de `test-req-42`. Accueil, Explorateur,
+    Recherche, Validations et une fiche s'ouvrent pour cbardet, gcomte, jwagner et jholt.
+- **Reste**, selon l'hébergement (question 3 de l'audit) : métriques et alertes, conservation, rotation et
+  centralisation du journal ; joignabilité de clamd non sondée (premier dépôt) ; sonde SharePoint non essayée sur un
+  vrai tenant (O-01) ; lignes « ⨯ » de Next.js pour une erreur de requête pendant le rendu d'une page.

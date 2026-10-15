@@ -1,13 +1,16 @@
 import 'server-only';
-import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { DATA_DIR, FILES_DIR, getDb } from '@/db';
 import { backupDirOf, createBackup, journalData, keepOf, listBackups, readMigrations, type BackupResult } from './backup-core.mjs';
 import { audit } from './lifecycle';
+import { logger } from './log';
+import { appVersion } from './version';
 
 // Backups while the server runs (Administration › Journal d'audit › Sauvegardes): the archive of lib/backup-core.mjs,
 // made from this process, which holds the database. Restoring needs the server stopped: npm run restore
 // (docs/sauvegarde.md). Nothing is scheduled: how often, and where archives should live, are not decided.
+
+const log = logger('backup');
 
 /**
  * The application backs up again only this long after the latest archive, whatever made it: a run of clicks cannot
@@ -28,15 +31,7 @@ export async function backupList(manifests = true) {
   try {
     return await listBackups(backupSettings().dir, { manifests });
   } catch (err) {
-    console.error('[backup] could not list', backupSettings().dir, err);
-    return null;
-  }
-}
-
-async function appVersion(): Promise<string | null> {
-  try {
-    return JSON.parse(await readFile(path.join(/*turbopackIgnore: true*/ process.cwd(), 'package.json'), 'utf8')).version ?? null;
-  } catch {
+    log.error('backup directory not readable', { dir: backupSettings().dir, err });
     return null;
   }
 }
@@ -64,7 +59,7 @@ export async function backUpNow(userId: string): Promise<BackupResult | 'busy' |
       migrations: await readMigrations(path.join(/*turbopackIgnore: true*/ process.cwd(), 'drizzle')), app: await appVersion(),
     });
     await audit(db, userId, 'backup_created', { kind: 'backup', id: res.name }, '', null, { backup: journalData(res.manifest, res) });
-    console.info(`[backup] ${res.path} (${res.size} bytes, sha256 ${res.sha256})${res.removed.length ? `, rotated out: ${res.removed.join(', ')}` : ''}`);
+    log.info('backup created', { path: res.path, size: res.size, sha256: res.sha256, rotatedOut: res.removed.length ? res.removed : undefined });
     return res;
   } finally {
     running = false;

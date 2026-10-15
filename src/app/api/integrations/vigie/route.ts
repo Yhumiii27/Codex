@@ -2,6 +2,7 @@ import { and, eq } from 'drizzle-orm';
 import { getDb, schema as s } from '@/db';
 import { checkBearer, json } from '@/lib/importer';
 import { applyChangeDecision, decisionWait, lockOf } from '@/lib/lifecycle';
+import { currentRequest, logger, withRequestLog } from '@/lib/log';
 import { limitRequest } from '@/lib/ratelimit';
 
 // Webhook through which Vigie sends its decision on a change (ECR) or withdrawal request (docs/api.md).
@@ -27,7 +28,7 @@ function parse(body: unknown): Decision | { field: string } {
   return { requestId, accepted: b.accepted, ecoRef, modifierId, note };
 }
 
-export async function POST(req: Request) {
+async function handlePost(req: Request) {
   const denied = checkBearer(req, 'VIGIE_WEBHOOK_TOKEN');
   if (denied) return denied;
   // Counted once the token is checked: a client without it cannot spend the budget of the one holding it.
@@ -83,7 +84,10 @@ export async function POST(req: Request) {
       });
     });
   } catch (err) {
-    console.error('[api/integrations/vigie]', err);
-    return json({ error: 'internal' }, 500);
+    logger('vigie').error('decision not applied', { changeRequest: d.requestId, err });
+    // As withRequestLog answers an error it catches: the identifier finds the entry above in the technical log.
+    return json({ error: 'internal', requestId: currentRequest()?.requestId }, 500);
   }
 }
+
+export const POST = withRequestLog('/api/integrations/vigie', handlePost);
