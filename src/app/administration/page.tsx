@@ -12,9 +12,10 @@ import { getCtx, type Ctx } from '@/lib/context';
 import { featuredOf } from '@/lib/departments';
 import { fileRules, fmtMax } from '@/lib/filetypes';
 import { ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLE_LABEL, MATRIX_ROLES, PERMS, SIMULATED_MATRIX_ROLES, type TKey } from '@/lib/i18n';
-import { AUDIT_ID_MAX, auditPage, getMatrix, listDocs, listFunctionHolders, listTemplates, registryUsage, typeView, type AuditFilter, type RegistryUsage } from '@/lib/queries';
+import { AUDIT_ID_MAX, auditPage, getMatrix, listFunctionHolders, listTemplates, orgUsage, registryUsage, typeView, type AuditFilter, type RegistryUsage } from '@/lib/queries';
 import { fmtDateTime, fmtSize, parisStamp, parseIsoDay } from '@/lib/format';
 import { MAX_PER_RUN, orphanReport, type OrphanScan } from '@/lib/orphans';
+import { inUse } from '@/lib/org-rules';
 import { DEPARTMENT_HEAD_FUNCTION } from '@/lib/registry-rules';
 import { FACET_LABEL, oneEach } from '@/lib/search';
 import { AddValue } from './AddValue';
@@ -312,18 +313,17 @@ async function Roles({ ctx }: { ctx: Ctx }) {
 }
 
 /**
- * Departments (3-letter code used in document IDs) and sites — provisional until the organisation chart. Each department
- * has the facets its page puts forward (/departements/[code]): the default ones until it has its own.
+ * Departments (3-letter code used in document IDs) and sites — provisional until the organisation chart (O-04). Each one
+ * is renamed, made inactive or active again, or deleted while nothing refers to it (lib/queries.ts orgUsage), in the
+ * 'org' dialog. Each department has the facets its page puts forward (/departements/[code]): the default ones until it
+ * has its own.
  */
 async function Organisation({ ctx }: { ctx: Ctx }) {
-  const { t } = ctx;
-  const [docs, fns] = await Promise.all([listDocs(ctx, { includeHidden: true }), listFunctionHolders(ctx)]);
-  const byDept = countBy(docs, (d) => d.department);
-  const bySite = countBy(docs, (d) => d.site);
-  const people = [...ctx.users.values()].filter((u) => !u.isSystem);
-  const peopleByDept = countBy(people, (u) => u.department);
-  const peopleBySite = countBy(people, (u) => u.site);
+  const { t, lang } = ctx;
+  // Counts cover every document, drafts and confidential ones included (administration only).
+  const [usage, fns] = await Promise.all([orgUsage(), listFunctionHolders(ctx)]);
   const heads = fns.find((f) => f.key === DEPARTMENT_HEAD_FUNCTION)?.holders ?? [];
+  const inactive = { opacity: 0.55 };
   return (
     <>
       <p className="text-muted" style={{ fontSize: 12, margin: '0 0 14px', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
@@ -335,19 +335,20 @@ async function Organisation({ ctx }: { ctx: Ctx }) {
           {/* The table scrolls within its column rather than spilling over the sites beside it. */}
           <div className={styles.tableScroll}>
             <table className="table" style={{ fontSize: 13 }}>
-              <thead><tr><th>{t.rule_id}</th><th>{t.label_fr}</th><th>{t.label_en}</th><th>{t.manager}</th><th style={{ textAlign: 'right' }}>{t.people}</th><th style={{ textAlign: 'right' }}>{t.count}</th><th>{t.featured_filters}</th></tr></thead>
+              <thead><tr><th>{t.rule_id}</th><th>{t.label_fr}</th><th>{t.label_en}</th><th>{t.manager}</th><th style={{ textAlign: 'right' }}>{t.people}</th><th style={{ textAlign: 'right' }}>{t.count}</th><th>{t.featured_filters}</th><th /></tr></thead>
               <tbody>
                 {ctx.departments.map((d) => {
                   const featured = featuredOf(d);
                   const label = ctx.label('department', d.code);
+                  const used = usage.departments.get(d.code);
                   return (
-                    <tr key={d.code}>
+                    <tr key={d.code} style={d.active ? undefined : inactive}>
                       <td className="nowrap tabnum"><Link href={`/departements/${encodeURIComponent(d.code)}`} className="link-plain">{d.code}</Link></td>
-                      <td>{d.labelFr}</td>
+                      <td><div>{d.labelFr}</div>{!d.active && <div className="text-muted" style={sub}>{t.inactive}</div>}</td>
                       <td className="text-muted">{d.labelEn}</td>
                       <td className="text-muted">{heads.filter((h) => h.scopeValue === d.code).map((h) => h.user).join(', ') || '—'}</td>
-                      <td className="tabnum" style={{ textAlign: 'right' }}>{peopleByDept.get(d.code) ?? 0}</td>
-                      <td className="tabnum" style={{ textAlign: 'right' }}>{byDept.get(d.code) ?? 0}</td>
+                      <td className="tabnum" style={{ textAlign: 'right' }}>{used?.people ?? 0}</td>
+                      <td className="tabnum" style={{ textAlign: 'right' }}>{used?.documents ?? 0}</td>
                       {/* The default facets are named on hover only: every department follows them until it has its own. */}
                       <td style={{ paddingTop: 0, paddingBottom: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -360,6 +361,12 @@ async function Organisation({ ctx }: { ctx: Ctx }) {
                           />
                         </div>
                       </td>
+                      <td style={{ textAlign: 'right', width: 44 }}>
+                        <DialogButton
+                          spec={{ kind: 'org', what: 'department', value: { id: d.code, labelFr: d.labelFr, labelEn: d.labelEn, active: d.active, used: inUse(used) } }}
+                          className="btn btn-ghost btn-icon" icon="pen" ariaLabel={`${t.perm_edit} · ${d.code}`} style={{ width: 30, height: 30 }}
+                        />
+                      </td>
                     </tr>
                   );
                 })}
@@ -370,15 +377,29 @@ async function Organisation({ ctx }: { ctx: Ctx }) {
         <section>
           <h6 className="sec-title" style={{ marginBottom: 10 }}>{t.site_label}</h6>
           <table className="table" style={{ fontSize: 13 }}>
-            <thead><tr><th>{t.site_label}</th><th style={{ textAlign: 'right' }}>{t.people}</th><th style={{ textAlign: 'right' }}>{t.count}</th></tr></thead>
+            <thead><tr><th>{t.site_label}</th><th style={{ textAlign: 'right' }}>{t.people}</th><th style={{ textAlign: 'right' }}>{t.count}</th><th /></tr></thead>
             <tbody>
-              {ctx.sites.map((s) => (
-                <tr key={s.key}>
-                  <td><div>{s.label}</div><div className="text-muted" style={sub}>{s.key}</div></td>
-                  <td className="tabnum" style={{ textAlign: 'right' }}>{peopleBySite.get(s.key) ?? 0}</td>
-                  <td className="tabnum" style={{ textAlign: 'right' }}>{bySite.get(s.key) ?? 0}</td>
-                </tr>
-              ))}
+              {ctx.sites.map((x) => {
+                const label = ctx.label('site', x.key);
+                const other = lang === 'fr' ? x.labelEn : x.labelFr;
+                const used = usage.sites.get(x.key);
+                return (
+                  <tr key={x.key} style={x.active ? undefined : inactive}>
+                    <td>
+                      <div>{label}</div>
+                      <div className="text-muted" style={sub}>{[other !== label && other, x.key, !x.active && t.inactive].filter(Boolean).join(' · ')}</div>
+                    </td>
+                    <td className="tabnum" style={{ textAlign: 'right' }}>{used?.people ?? 0}</td>
+                    <td className="tabnum" style={{ textAlign: 'right' }}>{used?.documents ?? 0}</td>
+                    <td style={{ textAlign: 'right', width: 44 }}>
+                      <DialogButton
+                        spec={{ kind: 'org', what: 'site', value: { id: x.key, labelFr: x.labelFr, labelEn: x.labelEn, active: x.active, used: inUse(used) } }}
+                        className="btn btn-ghost btn-icon" icon="pen" ariaLabel={`${t.perm_edit} · ${label}`} style={{ width: 30, height: 30 }}
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </section>

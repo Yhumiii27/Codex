@@ -24,6 +24,12 @@ export type SearchOrder = 'relevance' | 'modified' | 'issued' | 'due' | 'id' | '
 
 // ── Organisation (provisional until the org chart is provided) ─────────────
 
+/**
+ * Departments and sites are renamed and retired in Administration › Organisation (lib/org-rules.ts). A department's code
+ * is the context of the IDs without attachment (PRO-QUA-0003): it never changes. One that something uses is made
+ * inactive rather than deleted: no longer offered to a new document or a shared search, still shown wherever it is
+ * already set; an inactive department still takes function holders, for the circuits of its documents.
+ */
 export const departments = pgTable('departments', {
   code: text('code').primaryKey(), // 3 letters, used in document IDs without attachment
   labelFr: text('label_fr').notNull(),
@@ -34,12 +40,16 @@ export const departments = pgTable('departments', {
    * Administration › Organisation; the choice per department awaits the survey of each department's needs.
    */
   featured: jsonb('featured').$type<string[]>(),
+  active: boolean('active').notNull().default(true),
 });
 
 export const sites = pgTable('sites', {
+  /** Made from the French label when the site is added; stored on documents and people, never shown, never changed. */
   key: text('key').primaryKey(),
-  label: text('label').notNull(),
+  labelFr: text('label_fr').notNull(),
+  labelEn: text('label_en').notNull(),
   sort: integer('sort').notNull().default(0),
+  active: boolean('active').notNull().default(true),
 });
 
 /** People of the group. `role` is the default simulated application role; system actors (Codex, Keystone, Vigie) are flagged. */

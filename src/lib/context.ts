@@ -51,8 +51,9 @@ export const getCtx = cache(async (): Promise<Ctx> => {
   const lang: Lang = jar.get(COOKIE_LANG)?.value === 'en' ? 'en' : 'fr';
   const [users, departments, sites, families, types, functions, projects, programs, rows] = await Promise.all([
     db.select().from(s.users),
-    db.select().from(s.departments).orderBy(asc(s.departments.sort)),
-    db.select().from(s.sites).orderBy(asc(s.sites.sort)),
+    // Code or key break a tie of ranks: the order must not follow a row's place in the table, which an update changes.
+    db.select().from(s.departments).orderBy(asc(s.departments.sort), asc(s.departments.code)),
+    db.select().from(s.sites).orderBy(asc(s.sites.sort), asc(s.sites.key)),
     db.select().from(s.families).orderBy(asc(s.families.sort)),
     db.select().from(s.docTypes).orderBy(asc(s.docTypes.sort), asc(s.docTypes.code)),
     db.select().from(s.functions).orderBy(asc(s.functions.sort)),
@@ -70,7 +71,7 @@ export const getCtx = cache(async (): Promise<Ctx> => {
   const fr = lang === 'fr';
   const labels = new Map<string, string>();
   departments.forEach((x) => labels.set(`department:${x.code}`, fr ? x.labelFr : x.labelEn));
-  sites.forEach((x) => labels.set(`site:${x.key}`, x.label));
+  sites.forEach((x) => labels.set(`site:${x.key}`, fr ? x.labelFr : x.labelEn));
   families.forEach((x) => labels.set(`family:${x.key}`, fr ? x.labelFr : x.labelEn));
   types.forEach((x) => labels.set(`type:${x.code}`, fr ? x.labelFr : x.labelEn));
   functions.forEach((x) => labels.set(`function:${x.key}`, fr ? x.labelFr : x.labelEn));

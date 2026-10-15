@@ -12,6 +12,7 @@ import { addDays, clip, daysBetween, fmtDate, fmtDateTime, fmtSize, fmtWhen, loc
 import { CONF_LEVELS, MATRIX_ROLE_LABEL, TAGCLS, type T, type TKey } from './i18n';
 import { decisionWait, lockOf, type DecisionWait, type Tx } from './lifecycle';
 import { LINK_RELS, otherEnd, relOf } from './links';
+import { NO_USAGE, type OrgUsage } from './org-rules';
 import { BUILT_IN_FUNCTIONS, BUILT_IN_TYPES } from './registry-rules';
 import { retainUntil } from './retention';
 import { isExpired, isReviewOverdue } from './review';
@@ -1347,6 +1348,39 @@ export async function registryUsage(tx?: Tx) {
 }
 export type RegistryUsage = Awaited<ReturnType<typeof registryUsage>>;
 
+/**
+ * What refers to each department and site (lib/org-rules.ts OrgUsage), counted over every document whatever its state
+ * or confidentiality (Administration only): one referred to is made inactive rather than deleted (lib/actions.ts).
+ * - departments: documents, people (system actors aside), holders of a department-scoped function for it, searches
+ *   shared with it, and the identifiers given under its code (the counters of lib/codification.ts, kept for good:
+ *   `doc:TYPE-CONTEXT`, a type code holding no dash);
+ * - sites: documents and people.
+ */
+export async function orgUsage(tx?: Tx): Promise<{ departments: Map<string, OrgUsage>; sites: Map<string, OrgUsage> }> {
+  const db = tx ?? (await getDb());
+  const count = sql<number>`count(*)::int`;
+  const context = sql<string>`substring(${s.idCounters.scope} from '^doc:[^-]+-(.*)$')`;
+  const [docsByDept, docsBySite, peopleByDept, peopleBySite, holders, searches, ids] = await Promise.all([
+    db.select({ k: s.documents.department, n: count }).from(s.documents).groupBy(s.documents.department),
+    db.select({ k: s.documents.site, n: count }).from(s.documents).where(isNotNull(s.documents.site)).groupBy(s.documents.site),
+    db.select({ k: s.users.department, n: count }).from(s.users).where(and(eq(s.users.isSystem, false), isNotNull(s.users.department))).groupBy(s.users.department),
+    db.select({ k: s.users.site, n: count }).from(s.users).where(and(eq(s.users.isSystem, false), isNotNull(s.users.site))).groupBy(s.users.site),
+    db.select({ k: s.functionHolders.scopeValue, n: count }).from(s.functionHolders).innerJoin(s.functions, eq(s.functions.key, s.functionHolders.functionKey))
+      .where(and(eq(s.functions.scope, 'department'), isNotNull(s.functionHolders.scopeValue))).groupBy(s.functionHolders.scopeValue),
+    db.select({ k: s.savedSearches.department, n: count }).from(s.savedSearches).where(isNotNull(s.savedSearches.department)).groupBy(s.savedSearches.department),
+    db.select({ k: context, n: count }).from(s.idCounters).where(sql`${s.idCounters.scope} like 'doc:%'`).groupBy(context),
+  ]);
+  const tally = (parts: Partial<Record<keyof OrgUsage, { k: string | null; n: number }[]>>) => {
+    const m = new Map<string, OrgUsage>();
+    for (const [field, rows] of Object.entries(parts) as [keyof OrgUsage, { k: string | null; n: number }[]][]) {
+      for (const { k, n } of rows) if (k) m.set(k, { ...(m.get(k) ?? NO_USAGE), [field]: n });
+    }
+    return m;
+  };
+  // A counter's context may also be a project, a programme or QMS: read by department code, those are never looked up.
+  return { departments: tally({ documents: docsByDept, people: peopleByDept, holders, searches, ids }), sites: tally({ documents: docsBySite, people: peopleBySite }) };
+}
+
 export async function listFunctionHolders(ctx: Ctx) {
   const db = await getDb();
   const rows = await db.select().from(s.functionHolders);
@@ -1408,6 +1442,8 @@ export async function departmentPage(ctx: Ctx, code: string) {
   return {
     code,
     label: ctx.label('department', code),
+    /** Inactive (Administration › Organisation): no longer offered to a new document; its page stays for its documents. */
+    active: row.active,
     /** Documents of the department the user may read, in force, most recently modified first. */
     inForce: own.filter((d) => d.status === 'in_force'),
     deadlines: deadlines(ctx, own),

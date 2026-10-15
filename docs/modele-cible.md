@@ -6,7 +6,8 @@ et des arbitrages du 7 octobre 2026. Ce document fait foi pour l'implémentation
 Certaines règles ci-dessous sont des propositions de l'assistant, implémentées mais **non confirmées par l'utilisateur** :
 authentification Entra ID (§1), code département hors rattachement, largeur et portée du compteur, ID attribué au
 brouillon, alias et nom de fichier (§3), « Remplacé », mise en vigueur automatique, bandeau et nom de téléchargement
-d'un document obsolète ou archivé, liens « remplace » / « remplacé par » et « voir aussi » (§4), partage des recherches enregistrées et pages par département (§5), longueur du
+d'un document obsolète ou archivé, liens « remplace » / « remplacé par » et « voir aussi » (§4), renommage et
+désactivation des départements et des sites (§2), partage des recherches enregistrées et pages par département (§5), longueur du
 motif de rejet, droit de rappeler une demande de validation et fiche de visa (§6), lecture stricte de la cohérence des dates,
 indicateurs d'expiration et de revue, « Revue effectuée » et périodicité de revue par type, détection des
 modifications simultanées (§4, §7).
@@ -36,7 +37,10 @@ Deux axes indépendants remplacent le « Domaine » du deck :
 | Rattachement | Aucun · Projet (code projet Keystone) · Recherche (programme) |
 
 Puis : **Famille** (catégorie du deck) › **Type** (porte un code) › **Sous-type** (facultatif). Plus : **Département /
-Fonction** (obligatoire) et **Site** (facultatif) — valeurs *provisoires* jusqu'à l'organigramme.
+Fonction** (obligatoire) et **Site** (facultatif) — valeurs *provisoires* jusqu'à l'organigramme. Elles se renomment
+(libellés FR/EN) dans Codex ; le code d'un département ne change jamais, et une valeur utilisée (documents, personnes,
+titulaires, recherches partagées, identifiants déjà attribués) se désactive au lieu d'être supprimée : elle n'est plus
+proposée à un nouveau document et reste là où elle figure (*proposé, non confirmé*, `docs/decisions.md`).
 
 Le **registre des types** fusionne les 45 types du deck et les 28 types de Keystone. Chaque type porte : code, libellés
 FR/EN, famille, origines et rattachements admis, sous-types, circuit de validation, règle de conservation, niveaux de

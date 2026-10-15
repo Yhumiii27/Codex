@@ -277,7 +277,7 @@ describe('Server Actions that write (CODEX_RATE_WRITES), per simulated user', ()
       'createDocument', 'addWorkingVersion', 'updateMeta', 'setReaders', 'recordReview', 'requestValidation', 'decideStep',
       'recallValidation', 'delegateStep', 'addComment', 'requestChange', 'simulateVigieDecision', 'graftChange', 'addDocLink',
       'removeDocLink', 'archiveDocuments', 'holdDocuments', 'releaseHold', 'restoreArchived', 'saveSearch', 'deleteSavedSearch',
-      'togglePermission', 'addOrgValue', 'setDepartmentFeatured', 'addFunctionHolder', 'removeFunctionHolder', 'createType', 'updateType',
+      'togglePermission', 'addOrgValue', 'updateOrgValue', 'deleteOrgValue', 'setDepartmentFeatured', 'addFunctionHolder', 'removeFunctionHolder', 'createType', 'updateType',
       'deleteType', 'createFamily', 'updateFamily', 'deleteFamily', 'createFunction', 'updateFunction', 'deleteFunction', 'createProgram',
       'updateProgram', 'deleteProgram', 'purgeOrphanFiles', 'backUpData',
     ];

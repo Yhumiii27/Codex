@@ -338,7 +338,9 @@ Règles de lecture :
 - **Mise en œuvre** :
   - `src/db/seed-org.ts` : `DEPARTMENTS` (15 codes, de DIR à RDI), `SITES` (Lyon, Le Havre, Marseille) et personnes
     alignées sur le jeu de données de Keystone.
-  - Ces valeurs sont modifiables dans Administration › Organisation.
+  - Ces valeurs sont modifiables dans Administration › Organisation : ajout, renommage (libellés FR/EN), désactivation
+    et réactivation, suppression d'une valeur inutilisée (15 octobre ; règles non confirmées, voir « Choix de
+    l'assistant non validés explicitement »).
   - En attente (O-04).
 
 ### D-20 — Conservation par type de document
@@ -997,6 +999,44 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     (`docs/api.md`) ;
   - chaque création, modification et suppression est journalisée comme une entrée sans document (cibles type, famille,
     fonction, programme), avec chaque champ avant → après, lisible dans l'administration seulement.
+- **Administration de l'organisation** (point 62 de `docs/reste-a-faire.md`, 15 octobre ; D-10, D-19. Organigramme
+  (O-04), gouvernance des termes (A05 de l'audit) et sort des brouillons reclassés (O-09) non tranchés) :
+  - renommer, désactiver, réactiver ou supprimer un département ou un site est réservé au droit « Administrer », comme
+    le reste de l'administration ; les valeurs restent les valeurs provisoires du seed tant que l'organigramme n'est
+    pas fourni ;
+  - **le code d'un département ne change jamais**, même tant que rien ne l'utilise : il entre dans les identifiants des
+    documents sans rattachement (`PRO-QUA-0003`). Un département créé par erreur se supprime et se recrée. La clé d'un
+    site (tirée de son libellé à la création, enregistrée sur les documents et les personnes) ne change pas non plus ;
+  - les sites ont désormais un libellé FR et un libellé EN, comme les départements (« Lyon — siège et atelier » /
+    « Lyon — head office and workshop ») ;
+  - **une valeur utilisée ne se supprime pas, elle se désactive**. Un département est utilisé par des documents (quel
+    que soit leur état), des personnes, des titulaires d'une fonction « par département », des recherches partagées
+    avec lui, ou des identifiants déjà attribués sous son code, même si le document a été reclassé depuis (son ancien
+    identifiant reste en alias et son compteur demeure) : c'est l'option prudente, qui évite qu'un code ayant servi
+    dans des identifiants soit repris par un type ou un programme. Un site est utilisé par des documents ou des
+    personnes ;
+  - **une valeur inactive n'est plus proposée** pour un nouveau document ni le partage d'une recherche (le serveur le
+    refuse aussi), mais reste affichée et acceptée là où elle figure déjà : un document qui l'a la garde, y compris à
+    sa prochaine modification ; les titulaires et recherches existants restent ; la page du département reste
+    ouverte, marquée « Inactif », avec ses documents ; elle reste dans les facettes de la recherche et l'explorateur
+    tant que des documents l'ont. La réactivation la propose de nouveau ;
+  - **un département inactif prend encore des titulaires de fonction** « par département », proposé marqué
+    « (inactif) » dans le dialogue du titulaire : ses documents restent et passent encore par des circuits, qui
+    cherchent le responsable de leur département. Sans cela, le départ de son responsable bloquait toute demande de
+    validation sur ses documents, sauf à le réactiver le temps de nommer un successeur (relecture du 15 octobre) ;
+  - un programme clos (étape 6) ne prend toujours pas de nouveau titulaire ; son responsable, modifiable même
+    programme clos, répond pour lui des fonctions « par programme ». Reste bloqué le cas où ce responsable est l'auteur
+    de la révision et où personne ne tient la fonction pour tout le groupe : à arbitrer avec le reste des programmes ;
+  - un document créé sans département explicite prend celui de l'utilisateur : s'il est inactif, la création est
+    refusée avec le message, plutôt que de prendre un autre département à son insu ; le dialogue propose alors le
+    premier département actif. `/departements` ouvre toujours la page du département de l'utilisateur, même inactif ;
+  - **un département au moins reste actif** : un nouveau document sans rattachement prend le code de son département ;
+  - l'import (`POST /api/import`) accepte un département ou un site inactif : la migration reprend aussi les documents
+    des services fermés (D-21), comme pour les programmes ;
+  - chaque ajout, modification et suppression est journalisé comme une entrée sans document (cibles département et
+    site), avec chaque champ avant → après (code ou clé, libellés, état), lisible dans l'administration seulement ;
+  - la fusion de deux départements n'est pas faite : elle réaffecterait documents, personnes et titulaires, mais un
+    brouillon jamais approuvé changerait d'identifiant (D-10, O-09).
 - **Git** (D-23) : premier commit sur une branche `codex-ged-v2` plutôt que sur `main`.
 
 ## Ce qui est explicitement hors périmètre

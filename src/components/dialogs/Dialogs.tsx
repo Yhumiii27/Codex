@@ -7,13 +7,14 @@ import { Seg } from '@/components/ui/Seg';
 import type { Attachment, Conf, LinkRel, Origin } from '@/db/schema';
 import {
   addDocLink, addFunctionHolder, addOrgValue, addWorkingVersion, createDocument, createFamily, createFunction, createProgram, createType, decideStep,
-  delegateStep, deleteFamily, deleteFunction, deleteProgram, deleteType, graftChange, recallValidation, recordReview, requestChange, requestValidation,
-  saveSearch, setDepartmentFeatured, setReaders, simulateUser, simulateVigieDecision, updateFamily, updateFunction, updateMeta, updateProgram, updateType,
+  delegateStep, deleteFamily, deleteFunction, deleteOrgValue, deleteProgram, deleteType, graftChange, recallValidation, recordReview, requestChange, requestValidation,
+  saveSearch, setDepartmentFeatured, setReaders, simulateUser, simulateVigieDecision, updateFamily, updateFunction, updateMeta, updateOrgValue, updateProgram, updateType,
 } from '@/lib/actions';
 import { contextOf, idMatches, seqWidth, TEMPLATE_TYPE } from '@/lib/codes';
 import { DEFAULT_FEATURED, FEATURABLE, MAX_FEATURED } from '@/lib/departments';
 import { fmtDate } from '@/lib/format';
 import { ATTACHMENTS, CONF_LEVELS, ORIGINS, PROJECT_PHASES, SEARCH_SCOPES, SIM_ROLES, type T, type TKey } from '@/lib/i18n';
+import { markInactive, newDocDepartment, offered, type OrgKind } from '@/lib/org-rules';
 import { reviewDueHint } from '@/lib/review';
 import { BUILT_IN_SCOPES, DISPOSITIONS, FAMILY_GROUPS, FUNCTION_SCOPES, RETENTION_TRIGGERS } from '@/lib/registry-rules';
 import { FACET_LABEL, type FacetKey } from '@/lib/search';
@@ -42,7 +43,7 @@ export function Dialogs({ spec }: { spec: DialogSpec }) {
     case 'function': return <FunctionEditor fn={spec.fn} />;
     case 'program': return <ProgramEditor program={spec.program} />;
     case 'holder': return <AddHolder functionKey={spec.functionKey} functionLabel={spec.functionLabel} scope={spec.scope} />;
-    case 'org': return <AddOrg what={spec.what} />;
+    case 'org': return <OrgEditor what={spec.what} value={spec.value} />;
     case 'featured': return <FeaturedEditor spec={spec} />;
     case 'saveSearch': return <SaveSearch spec={spec} />;
   }
@@ -245,11 +246,12 @@ function DocFields({ types, st, set, doc, preset, withOwner, locked, lockType, f
         {(id) => <><input id={id} className="input" name="subtype" list="codex-subtypes" value={st.subtype} onChange={(e) => set({ subtype: e.target.value })} autoComplete="off" />
           <datalist id="codex-subtypes">{type?.subtypes.map((x) => <option key={x} value={x} />)}</datalist></>}
       </Field>
-      <Field label={t.department}>
-        {(id) => <><Select id={id} name={locked ? undefined : 'department'} value={st.department} onChange={(v) => set({ department: v })} options={data.departments.map(codeLabel)} required disabled={!!locked} />{locked && <input type="hidden" name="department" value={st.department} />}</>}
+      {/* An inactive department or site is offered only to a document that already has it (lib/org-rules.ts). */}
+      <Field label={t.department} error={errorOf('department')}>
+        {(id) => <><Select id={id} name={locked ? undefined : 'department'} value={st.department} onChange={(v) => set({ department: v })} options={offered(data.departments, doc?.department).map(codeLabel)} required disabled={!!locked} />{locked && <input type="hidden" name="department" value={st.department} />}</>}
       </Field>
-      <Field label={t.site_label}>
-        {(id) => <Select id={id} name="site" defaultValue={doc?.site ?? ''} options={data.sites} empty="—" />}
+      <Field label={t.site_label} error={errorOf('site')}>
+        {(id) => <Select id={id} name="site" defaultValue={doc?.site ?? ''} options={offered(data.sites, doc?.site)} empty="—" />}
       </Field>
       <Field label={t.conf} hint={confHint}>
         {(id) => <Select id={id} name="conf" value={st.conf} onChange={(v) => set({ conf: v as Conf, confTouched: true })} options={(type?.confAllowed ?? []).map((c) => ({ key: c, label: t[`conf_${c}`] }))} required />}
@@ -359,7 +361,7 @@ function NewDocument({ preset }: { preset: NewPreset }) {
       attachment: lockProject ? 'project' : 'none',
       projectCode: preset?.projectCode ?? '', programCode: '',
       family: presetType?.family ?? '', typeCode: preset?.typeCode ?? '', subtype: '',
-      department: data.currentDepartment ?? data.departments[0]?.key ?? '',
+      department: newDocDepartment(data.currentDepartment, data.departments),
       conf: 'interne', confTouched: false,
     }, lockProject);
     const type = types.find((x) => x.code === s.typeCode);
@@ -1273,8 +1275,10 @@ function AddHolder({ functionKey, functionLabel, scope }: { functionKey: string;
   // A holder decides approval steps: only people whose role may approve.
   const users = userOptions(data).filter((o) => data.users.find((u) => u.id === o.key)?.approver);
   const [userId, setUserId] = useState(users[0]?.key ?? '');
-  const values = scope === 'department' ? data.departments : scope === 'project' ? data.projects : scope === 'research' ? data.programs.filter((p) => p.active) : [];
-  const [scopeValue, setScopeValue] = useState(scope === 'department' && data.currentDepartment ? data.currentDepartment : values[0]?.key ?? '');
+  // An inactive department still takes holders, marked: its documents go through circuits (lib/actions.ts scopeValueOk).
+  // A closed programme keeps its holders but takes no new one: its manager answers for it.
+  const values = scope === 'department' ? markInactive(data.departments, t.inactive.toLowerCase()) : scope === 'project' ? data.projects : scope === 'research' ? offered(data.programs) : [];
+  const [scopeValue, setScopeValue] = useState(scope === 'department' ? newDocDepartment(data.currentDepartment, data.departments) : values[0]?.key ?? '');
   const scopeLabel = scope === 'department' ? t.department : scope === 'project' ? t.project : t.program;
   return (
     <Modal
@@ -1296,32 +1300,70 @@ function AddHolder({ functionKey, functionLabel, scope }: { functionKey: string;
   );
 }
 
-function AddOrg({ what }: { what: 'department' | 'site' }) {
-  const { t, close } = useApp();
-  const { pending, error, run } = useSubmit();
+/**
+ * A department or a site (Administration › Organisation): a new one, or one to rename (French and English labels), make
+ * inactive or active again, or delete when nothing uses it. A department's code and a site's key never change.
+ */
+function OrgEditor({ what, value }: { what: OrgKind; value?: Extract<DialogSpec, { kind: 'org' }>['value'] }) {
+  const { t, lang, close } = useApp();
+  const { pending, error, field, run } = useSubmit();
+  const x = value ?? { id: '', labelFr: '', labelEn: '', active: true, used: false };
+  const creating = !value;
+  const [active, setActive] = useState(x.active);
+  const errorOf = (name: string) => (field === name ? error : null);
+  const dept = what === 'department';
+  const label = lang === 'fr' ? x.labelFr : x.labelEn;
+  const name = dept ? `${x.id} · ${label}` : label;
   return (
-    <Modal title={what === 'department' ? t.new_department : t.new_site} actions={<Actions pending={pending} label={t.create} onCancel={close} form="org-form" />}>
+    <Modal
+      title={creating ? (dept ? t.new_department : t.new_site) : dept ? `${x.id} — ${label}` : `${t.site_label} — ${label}`}
+      actions={<>
+        {!creating && (
+          <DeleteEntry
+            used={x.used} usedText={dept ? t.org_department_in_use : t.org_site_in_use} pending={pending}
+            confirmText={t.org_delete_confirm.replace('{what}', name)} onDelete={() => run(() => deleteOrgValue(what, x.id))}
+          />
+        )}
+        <Actions pending={pending} label={creating ? t.create : t.save} onCancel={close} form="org-form" />
+      </>}
+    >
       <form
         id="org-form"
         onSubmit={(e) => {
           e.preventDefault();
-          const fd = new FormData(e.currentTarget);
-          const s = (k: string) => String(fd.get(k) ?? '');
-          run(() => addOrgValue(what, s('code'), s('labelFr'), s('labelEn')));
+          const form = e.currentTarget;
+          const fd = new FormData(form);
+          run(() => (creating ? addOrgValue(what, String(fd.get('code') ?? ''), String(fd.get('labelFr') ?? ''), String(fd.get('labelEn') ?? '')) : updateOrgValue(what, fd)), { form });
         }}
+        style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
       >
-        {what === 'department' ? (
-          <div className="form-grid">
-            <Field label={t.dept_code} hint={t.dept_code_hint} span>
-              {(id) => <input id={id} className="input tabnum" name="code" required minLength={3} maxLength={3} pattern="[A-Za-z]{3}" autoComplete="off" style={{ textTransform: 'uppercase', maxWidth: 120 }} />}
+        {!creating && <input type="hidden" name="original" value={x.id} />}
+        <input type="hidden" name="active" value={active ? 'on' : 'off'} />
+        <div className="form-grid">
+          {dept && (
+            <Field label={t.dept_code} hint={creating ? t.dept_code_hint : t.org_code_fixed} error={errorOf('code')} span>
+              {(id) => creating
+                ? <input id={id} className="input tabnum" name="code" required minLength={3} maxLength={3} pattern="[A-Za-z]{3}" autoComplete="off" style={{ textTransform: 'uppercase', maxWidth: 120 }} />
+                : <CodeInput id={id} name="code" value={x.id} used upper maxLength={3} field={field} error={error} />}
             </Field>
-            <Field label={t.label_fr}>{(id) => <input id={id} className="input" name="labelFr" required />}</Field>
-            <Field label={t.label_en}>{(id) => <input id={id} className="input" name="labelEn" />}</Field>
-          </div>
-        ) : (
-          <Field label={t.site_label}>{(id) => <input id={id} className="input" name="labelFr" required />}</Field>
+          )}
+          {!dept && !creating && (
+            <Field label={t.key_label} hint={t.org_key_fixed} span>
+              {(id) => <CodeInput id={id} name="key" value={x.id} used maxLength={32} field={field} error={error} />}
+            </Field>
+          )}
+          <Field label={t.label_fr} error={errorOf('labelFr')}>{(id) => <input id={id} className="input" name="labelFr" defaultValue={x.labelFr} required maxLength={160} />}</Field>
+          <Field label={t.label_en} error={errorOf('labelEn')}>{(id) => <input id={id} className="input" name="labelEn" defaultValue={x.labelEn} maxLength={160} />}</Field>
+        </div>
+        {!creating && (
+          <>
+            <label style={checkRow}>
+              <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} style={{ margin: 0 }} />{dept ? t.org_active_department : t.org_active_site}
+            </label>
+            {!active && <p className="text-muted" style={{ margin: 0, fontSize: 12 }}>{dept ? t.org_inactive_hint_department : t.org_inactive_hint}</p>}
+          </>
         )}
-        <ErrorLine error={error} />
+        <ErrorLine error={field ? null : error} />
       </form>
     </Modal>
   );
@@ -1406,7 +1448,7 @@ function SaveSearch({ spec }: { spec: Extract<DialogSpec, { kind: 'saveSearch' }
   const { t, data, close } = useApp();
   const { pending, error, run } = useSubmit();
   const [scope, setScope] = useState<(typeof SEARCH_SCOPES)[number]>('personal');
-  const [department, setDepartment] = useState(data.currentDepartment ?? data.departments[0]?.key ?? '');
+  const [department, setDepartment] = useState(newDocDepartment(data.currentDepartment, data.departments));
   return (
     <Modal title={t.search_save} actions={<Actions pending={pending} label={t.save} onCancel={close} form="save-search-form" disabled={scope === 'department' && !department} />}>
       <form
@@ -1436,7 +1478,7 @@ function SaveSearch({ spec }: { spec: Extract<DialogSpec, { kind: 'saveSearch' }
               </div>
             </Field>
             {scope === 'department' && (
-              <Field label={t.department}>{(id) => <Select id={id} name="department" value={department} onChange={setDepartment} options={data.departments.map(codeLabel)} />}</Field>
+              <Field label={t.department}>{(id) => <Select id={id} name="department" value={department} onChange={setDepartment} options={offered(data.departments).map(codeLabel)} />}</Field>
             )}
           </>
         ) : (

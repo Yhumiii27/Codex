@@ -23,8 +23,12 @@ export type DialogData = {
     reviewMonths: number | null;
   }[];
   families: Option[];
-  departments: Option[];
-  sites: Option[];
+  /**
+   * Departments and sites; an inactive one is only offered where it is already set (lib/org-rules.ts offered), and an
+   * inactive department, marked, to a new holder of a department-scoped function (markInactive).
+   */
+  departments: (Option & { active: boolean })[];
+  sites: (Option & { active: boolean })[];
   projects: Option[];
   /** Research programmes; an inactive (closed) one is only offered to a document that already has it. */
   programs: (Option & { active: boolean })[];
@@ -148,7 +152,12 @@ export type DialogSpec =
   /** A research programme (lib/actions.ts createProgram, updateProgram); `used`: documents or holders have it. */
   | { kind: 'program'; program?: { code: string; name: string; managerId: string; active: boolean; used: boolean } }
   | { kind: 'holder'; functionKey: string; functionLabel: string; scope: 'global' | 'department' | 'project' | 'research' }
-  | { kind: 'org'; what: 'department' | 'site' }
+  /**
+   * Administration › Organisation: a new department or site, or one to rename, make inactive or active again, or delete
+   * (lib/actions.ts addOrgValue, updateOrgValue, deleteOrgValue). `value.id`: the department's code or the site's key,
+   * which never change; `used`: something refers to it (lib/queries.ts orgUsage), so it is made inactive, not deleted.
+   */
+  | { kind: 'org'; what: 'department' | 'site'; value?: { id: string; labelFr: string; labelEn: string; active: boolean; used: boolean } }
   /**
    * Administration › Organisation: facets the page of a department puts forward (lib/actions.ts setDepartmentFeatured).
    * `featured`: those it puts forward now; `isDefault`: they are the default ones, the department has none of its own.

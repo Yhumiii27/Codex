@@ -250,14 +250,14 @@ Dans tous ces cas, rien n'est importé et la `legacyRef` reste libre : l'outil p
 | `legacyRef` | oui | Référence dans l'ancien système, unique (≤ 200 caractères). |
 | `title` | oui | Titre du document. |
 | `typeCode` | oui | Code d'un type **actif** du registre (`/api/registry`). |
-| `department` | oui | Code du département propriétaire (3 lettres, ex. `QUA`). |
+| `department` | oui | Code du département propriétaire (3 lettres, ex. `QUA`). Un département désactivé est accepté, comme un programme clos : la reprise porte aussi sur les documents des services fermés. |
 | `ownerId` | oui | Identifiant de l'utilisateur propriétaire. |
 | `origin` | non | `interne` / `externe`. Défaut : première origine admise par le type. |
 | `attachment` | non | `none` / `project` / `research`. Défaut : `project` si `projectCode` est fourni, `research` si `programCode` l'est, sinon `none` (ou le premier rattachement admis par le type). |
 | `projectCode` | si projet | Code projet Keystone connu de Codex (ex. `HLT-026`). |
 | `programCode` | si recherche | Code du programme de recherche (ex. `R2601`). Un programme désactivé (clos) est accepté : la reprise porte aussi sur les documents des programmes terminés, alors que l'écran ne le propose plus à un nouveau document. |
 | `subtype` | non | Sous-type (texte). |
-| `site` | non | Clé d'un site connu. |
+| `site` | non | Clé d'un site connu, désactivé ou non. |
 | `author` | non | Identifiant d'un utilisateur, sinon texte libre (auteur externe, ancien salarié…). |
 | `conf` | non | `public`, `restreint`, `interne`, `confidentiel`, `tres_confidentiel`. Défaut : niveau par défaut du type ; doit être admis par le type. |
 | `readers` | non | Identifiants des lecteurs désignés : documents confidentiels ou très confidentiels seulement (sinon `readers_conf`). |

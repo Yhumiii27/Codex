@@ -1461,6 +1461,7 @@ en dépend prend l'option la plus prudente et est consigné dans [decisions.md](
 | 4. Sauvegarde et restauration (§16.4) | commit « Lot 7, étape 4 », qui suit `42e2d34` | 48 | Archive de la base et des fichiers référencés avec manifeste et empreintes, commandes `npm run backup`, `backup:list`, `backup:check`, `restore`, rotation, verrou du dossier de données, sauvegarde journalisée depuis Administration, procédure `docs/sauvegarde.md` | Rien de programmé ; archives à côté du dossier de données, non chiffrées, 7 plus récentes et une par jour sur 7 jours gardées ; une sauvegarde par quart d'heure au plus depuis l'application ; restauration en ligne de commande seulement, serveur arrêté, l'existant mis de côté et non supprimé ; action et nombres du journal réservés aux gestionnaires (D-14) ; fichiers SharePoint non copiés (O-01) |
 | 5. Journal technique, santé, configuration (§16.5) | commit « Lot 7, étape 5 », qui suit `55c0df4` | 49, 37 | Journal technique structuré (JSON en production) avec identifiant de requête, une ligne par requête d'API et par action d'écriture, jetons refusés et erreurs serveur journalisés sans secret ; `GET`/`HEAD /api/health` ; contrôle de la configuration au démarrage (`src/instrumentation.ts`), procédure `docs/exploitation.md` | Refus de démarrer en production pour une configuration dangereuse seulement (défaut sans erreur, `CODEX_CONFIG_CHECK=warn` pour passer outre) ; jeton de 32 caractères au moins ; santé sans authentification, sans raison d'échec ; aucune métrique ni rotation (hébergement non décidé) ; authentification simulée rappelée en production (O-02) |
 | 6. Administration du registre et des programmes (§16.6) | commit « Lot 7, étape 6 », qui suit `6823294` | 61, 58 | Création, modification et suppression des types (tous leurs réglages), familles, fonctions et programmes de recherche dans Administration, journalisées avant → après ; codes contrôlés ; `GET /api/registry` suit | Droit « Administrer » (A05 non tranché) ; aucun nouveau code ne reprend celui d'un autre segment d'identifiant ni `QMS` (point 1 du registre, FIN/HSE/COM gardés) ; entrée utilisée : code figé, pas de suppression, désactivation ; restriction des admissions d'un type confirmée, identifiants des documents aux seuls gestionnaires (D-14) ; contenu du registre inchangé (O-05) ; programme sans date de fin (point 3 du registre) |
+| 7. Administration de l'organisation (§16.7) | commit « Lot 7, étape 7 », qui suit `8171aa2` | 62 | Renommage (libellés FR/EN), désactivation, réactivation et suppression des départements et des sites dans Administration › Organisation, journalisés avant → après ; une valeur inactive n'est plus proposée et reste là où elle figure ; pages par département marquées | Droit « Administrer » (A05) ; code d'un département jamais modifié, même inutilisé ; « utilisé » compte aussi les recherches partagées et les identifiants déjà attribués sous le code ; un département actif au moins ; département inactif de l'utilisateur refusé plutôt que remplacé ; un département inactif prend encore des titulaires ; import accepté (D-21) ; pas de fusion (O-09) ; valeurs provisoires (O-04) |
 
 ### 16.1 En-têtes de sécurité HTTP et limitation de débit
 
@@ -2010,3 +2011,81 @@ facultatif depuis l'étape 6 du lot 2 (cibles sans document).
 - **Reste** : la date de fin des programmes (déclencheur de conservation « fin de programme », point 3 du registre,
   O-05) ; la gouvernance des termes (A05) ; l'application des évolutions du registre à une base existante par script
   (point 60) ; les vocabulaires contrôlés des sous-types (point 59).
+
+### 16.7 Administration de l'organisation : renommer ou retirer un département ou un site
+
+Point 62 de [reste-a-faire.md](reste-a-faire.md), vérifié au commit `8171aa2` : l'onglet Organisation n'offrait que
+« Nouveau département » et « Nouveau site » (et le réglage des filtres mis en avant) ; `departments` et `sites`
+n'avaient pas de colonne `active`, les sites un seul libellé ; aucune action ne renommait ni ne retirait une valeur.
+Deux éléments du constat ne tenaient plus : `addOrgValue` journalisait déjà ses ajouts, et `audit_log.doc_id` est
+facultatif depuis le 10 octobre. `saved_searches.department` est aussi une clé étrangère vers `departments` depuis le
+11 octobre.
+
+- **Schéma** : `departments.active`, `sites.active`, libellés FR et EN des sites (`label_fr`, `label_en` au lieu de
+  `label` ; seed : « Lyon — siège et atelier » / « Lyon — head office and workshop »…). Migration unique régénérée :
+  une base existante repart de zéro (`npm run db:reset`).
+- **Règles** (`src/lib/org-rules.ts`, sans dépendance au serveur, testées seules) : libellé FR obligatoire, EN repris
+  du FR, 160 caractères au plus ; valeurs proposées à une nouvelle saisie (`offered` : les actives, plus celle que
+  l'entrée a déjà) ; département d'un nouveau document (celui de l'utilisateur s'il est actif, sinon le premier
+  actif) ; un département actif au moins (`lastActiveIssue`). `defaultDepartment` (`/departements`) ouvre toujours le
+  département de l'utilisateur, même inactif, sinon le premier actif.
+- **Usage** (`orgUsage`, `src/lib/queries.ts`) : par département, documents (tous états), personnes (acteurs système
+  exclus), titulaires d'une fonction « par département », recherches partagées avec lui et identifiants attribués sous
+  son code (compteurs `doc:TYPE-CONTEXTE` de `id_counters`, qui demeurent après un reclassement) ; par site, documents
+  et personnes. Les nombres de personnes et de documents de l'onglet en viennent (au lieu de la liste de tous les
+  documents).
+- **Actions** (`src/lib/actions.ts`, droit « Administrer », limite d'écriture, `traceAction`) : `updateOrgValue`
+  (libellés et état ; le code ou la clé, nommés par `original`, ne sont jamais lus du formulaire), `deleteOrgValue`
+  (refus avec la raison pour une valeur utilisée ; un département actif au moins) ; `addOrgValue` donne aux sites leurs
+  deux libellés et journalise désormais champ par champ. Journal : `org_add`, `org_edit` (« Valeur d'organisation
+  modifiée »), `org_remove`, cibles département et site, code ou clé, libellés et état avant → après.
+- **Valeur inactive** : `validateFields` refuse un département ou un site inactif sauf pour le document qui l'a déjà
+  (message sous le champ) ; un document créé sans département explicite prend celui de l'utilisateur, et la création
+  est refusée s'il est inactif plutôt que d'en choisir un autre ; `saveSearch` refuse de partager avec un département
+  inactif. `addFunctionHolder` accepte en revanche un département inactif : ses documents passent encore par des
+  circuits (contrairement à un programme clos, dont le responsable répond). Les dialogues (nouveau document,
+  métadonnées, recherche enregistrée) ne proposent que les valeurs actives, plus la valeur actuelle du document ; celui
+  du titulaire liste tous les départements, l'inactif marqué « (inactif) » (`markInactive`, comme le sélecteur de la
+  page du département) ; le nouveau document part du département de l'utilisateur s'il est actif, sinon du premier
+  actif. L'import accepte un département ou un site inactif (D-21).
+- **Ordre** : un département ou un site ajouté prend le rang qui suit le plus grand (`nextSort`, comme les types,
+  familles et fonctions) et non le nombre de valeurs, qui après une suppression pouvait redonner un rang déjà pris ;
+  à rang égal, `getCtx` les range par code ou par clé, pour qu'un renommage ou une désactivation ne change plus
+  l'ordre des listes.
+- **Écrans** : un crayon par département et par site ouvre le dialogue de la valeur (code ou clé en lecture seule avec
+  sa raison, libellés FR/EN, « Département actif (proposé à la création) », « Supprimer » désactivé avec la raison
+  quand la valeur est utilisée, confirmation sinon) ; lignes inactives grisées et marquées « Inactif » ; libellé EN
+  du site sous le libellé ; texte d'en-tête de l'onglet complété. Page d'un département inactif : étiquette
+  « Inactif » et phrase d'explication, « (inactif) » dans le sélecteur ; ses documents et ses filtres mis en avant
+  restent. Le libellé renommé suit partout (`ctx.label`), filtres mis en avant compris.
+- *Vérifié* : `npm test` (62 fichiers, 1 047 tests dont un sauté), `npm run typecheck`, `npm run lint`. Retirer le
+  refus d'une valeur inactive dans `validateFields`, le contrôle du dernier département actif ou les identifiants de
+  `orgUsage` fait échouer cinq tests. `npm run dev` sur une base neuve, dans Chromium : en cbardet, CMN renommé
+  « Communication & marque » / « Communication & brand » (code en lecture seule, « Supprimer » désactivé avec la
+  raison), le nouveau libellé dans le dialogue de création et sur la page `/departements/CMN` ; ACH désactivé (ligne
+  grisée « Inactif ») : absent du dialogue de création, toujours proposé et enregistrable dans les
+  métadonnées de COC-HLT-026-001 (ACH), page `/departements/ACH` marquée « Inactif » ; LGO créé puis supprimé après
+  confirmation ; site Marseille renommé et désactivé (Fabien Bertrand y est : non supprimable), absent du dialogue de
+  création ; journal : « Valeur d'organisation modifiée / ajoutée / supprimée » avec chaque champ avant → après ;
+  écran et dialogue en anglais. En jwagner : Administration refusée ; ING désactivé par cbardet → le dialogue de
+  création part de DIR et `/departements` ouvre toujours ING ; ING réactivé → de nouveau proposé par défaut. Aucune
+  erreur de page ni de serveur (seul `/favicon.ico` répond 404, comme avant).
+- **Relecture** (trois points, tous retenus) :
+  - la suppression du dernier département actif, même inutilisé, n'était testée que par la règle pure : un test
+    d'intégration passe désormais par `deleteOrgValue` (LGO seul actif, refusé, rien au journal) ;
+  - un département inactif refusait tout nouveau titulaire : le départ de son responsable bloquait les demandes de
+    validation de ses documents, sauf à le réactiver. Il en prend désormais (ci-dessus), testé jusqu'au circuit
+    lancé. Un programme clos garde la règle de l'étape 6 ; le cas restant est consigné dans `docs/decisions.md` ;
+  - le rang d'un département ou d'un site ajouté était le nombre de valeurs, repris après une suppression, et l'ordre
+    des listes changeait alors à chaque renommage : `nextSort` et clé secondaire (ci-dessus), testés.
+  - *Vérifié* : `npm test` (62 fichiers, 1 051 tests dont un sauté), `npm run typecheck`, `npm run lint`. Retirer le
+    contrôle du dernier département dans `deleteOrgValue`, accepter de nouveau seulement les départements actifs pour
+    un titulaire, revenir au rang « nombre de valeurs » ou retirer la clé secondaire fait chacun échouer un test.
+    `npm run dev` sur une base neuve, dans Chromium, en cbardet : ACH désactivé (le dialogue l'explique) puis proposé
+    « ACH · Achats & stock (inactif) » dans le dialogue du titulaire, Gabriel Comte nommé (« Titulaire ajouté » au
+    journal), ACH resté inactif et toujours absent du dialogue de création ; LGO et XYZ ajoutés, LGO supprimé, ABC
+    ajouté : ABC suit XYZ, et l'ordre ne bouge plus quand XYZ est renommé ou ABC désactivé ; en anglais, dialogue du
+    titulaire (« (inactive) ») et explication du dialogue du département. Aucune erreur de page ni de serveur.
+- **Reste** : fusionner deux départements (le sort des brouillons jamais approuvés, qu'un reclassement renumérote,
+  attend O-09) ; l'organigramme réel (O-04) ; qui peut renommer ou retirer une valeur (A05) ; le titulaire d'un
+  programme clos dont le responsable est l'auteur de la révision (étape 6).

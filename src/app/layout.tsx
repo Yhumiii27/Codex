@@ -38,8 +38,8 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
       };
     }),
     families: ctx.families.map((x) => ({ key: x.key, label: fr ? x.labelFr : x.labelEn })),
-    departments: ctx.departments.map((x) => ({ key: x.code, label: fr ? x.labelFr : x.labelEn })),
-    sites: ctx.sites.map((x) => ({ key: x.key, label: x.label })),
+    departments: ctx.departments.map((x) => ({ key: x.code, label: fr ? x.labelFr : x.labelEn, active: x.active })),
+    sites: ctx.sites.map((x) => ({ key: x.key, label: fr ? x.labelFr : x.labelEn, active: x.active })),
     projects: ctx.projects.map((x) => ({ key: x.code, label: x.name })),
     programs: ctx.programs.map((x) => ({ key: x.code, label: x.name, active: x.active })),
     confs: CONF_LEVELS.map((c) => ({ key: c, label: ctx.t[`conf_${c}` as TKey] })),

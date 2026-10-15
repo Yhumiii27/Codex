@@ -4,6 +4,7 @@ import { Forbidden } from '@/components/ui/Forbidden';
 import { Icon } from '@/components/ui/Icon';
 import { ClickRow } from '@/components/ui/client';
 import { getCtx } from '@/lib/context';
+import { markInactive } from '@/lib/org-rules';
 import { departmentPage } from '@/lib/queries';
 import { FACET_LABEL } from '@/lib/search';
 import { DepartmentPicker } from '../DepartmentPicker';
@@ -34,15 +35,19 @@ export default async function DepartmentPage({ params }: PageProps<'/departement
       <div style={{ maxWidth: 1180 }}>
         <div className={styles.top}>
           <div style={{ minWidth: 0 }}>
-            <h2 className={styles.title}>{page.label}{page.label !== page.code && <> <span className="tag tag-outline tabnum" style={{ verticalAlign: 'middle' }}>{page.code}</span></>}</h2>
+            <h2 className={styles.title}>
+              {page.label}{page.label !== page.code && <> <span className="tag tag-outline tabnum" style={{ verticalAlign: 'middle' }}>{page.code}</span></>}
+              {!page.active && <> <span className="tag tag-neutral" style={{ verticalAlign: 'middle' }}>{t.inactive}</span></>}
+            </h2>
             <div className="text-muted">{t.department_short}</div>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-            <DepartmentPicker value={page.code} ariaLabel={t.department_short} options={ctx.departments.map((d) => ({ key: d.code, label: ctx.label('department', d.code) }))} />
+            {/* Inactive departments stay listed, marked: their pages show their documents. */}
+            <DepartmentPicker value={page.code} ariaLabel={t.department_short} options={markInactive(ctx.departments.map((d) => ({ key: d.code, label: ctx.label('department', d.code), active: d.active })), t.inactive.toLowerCase())} />
             <Link href={page.href.all} className="btn btn-secondary"><Icon name="search" size={14} />{t.dept_search}</Link>
           </div>
         </div>
-        <p className={`text-muted ${styles.hint}`}><Icon name="info" size={14} style={{ flex: 'none', marginTop: 1 }} />{page.featuredDefault ? t.dept_hint : t.dept_hint_set}</p>
+        <p className={`text-muted ${styles.hint}`}><Icon name="info" size={14} style={{ flex: 'none', marginTop: 1 }} />{page.active ? '' : `${t.dept_inactive_hint} `}{page.featuredDefault ? t.dept_hint : t.dept_hint_set}</p>
 
         <div className={styles.kpis}>
           <Kpi href={page.href.inForce}><div className="card-kicker">{t.dept_in_force}</div><div className={styles.kpiValue}>{page.inForce.length}</div><div className="card-meta">{t.dept_in_force_sub}</div></Kpi>

@@ -97,7 +97,7 @@ quitter l'app et supprimer `~/Library/Application Support/Codex/data`.
 | `/departements/[code]` | Page d'un département (`/departements` ouvre celui de l'utilisateur, un sélecteur passe aux autres) : documents en vigueur, échéances, circuits en cours qu'il suit, recherches partagées avec le département et le groupe, filtres mis en avant (valeurs les plus fréquentes, chacune un lien vers la recherche filtrée), le tout limité à ce que l'utilisateur peut lire. Départements provisoires (organigramme attendu) ; filtres par défaut (type, statut, projet), réglables par département dans Administration › Organisation, en attendant le recueil des besoins de chaque métier |
 | `/validations` | Circuits de validation : à valider, mes demandes, en cours, terminées ; approuver / rejeter (motif obligatoire) / déléguer, rappeler sa demande avant la dernière approbation, commentaires. Vue « Mes demandes Vigie » : demandes de modification et de retrait envoyées par l'utilisateur, avec leur statut |
 | `/archivage` | Échéances (archivage, gel juridique, revue effectuée ; filtres « Expirés » et « Revues en retard »), règles de conservation du registre, archives |
-| `/administration` | Registre des types (création et modification complète des types et des familles, dont la périodicité de revue), fonctions & circuits (fonctions, titulaires, programmes de recherche), rôles & droits, organisation (départements et leurs filtres mis en avant, sites), modèles (QMS), journal d'audit (filtres par document ou cible, personne, action et période ; 100 entrées par page ; export CSV complet) |
+| `/administration` | Registre des types (création et modification complète des types et des familles, dont la périodicité de revue), fonctions & circuits (fonctions, titulaires, programmes de recherche), rôles & droits, organisation (départements et sites : ajout, renommage FR/EN, désactivation ou suppression d'une valeur inutilisée ; filtres mis en avant des départements), modèles (QMS), journal d'audit (filtres par document ou cible, personne, action et période ; 100 entrées par page ; export CSV complet) |
 
 API : `/api/registry` (lu par Keystone), `/api/import` (outil de migration), `/api/integrations/vigie` (décisions
 Vigie), `/api/documents/[id]/file` (fichier d'une version de travail), `/api/documents/[id]/approval?rev=B` (fiche de
@@ -116,8 +116,10 @@ Tout l'état d'écran est dans l'URL (onglets, filtres, sélection) : les liens 
   (création, modification et suppression des types, familles et fonctions : code, libellés FR/EN, famille, origines et
   rattachements admis, sous-types, circuit, confidentialité, conservation et son fondement, périodicité de revue, clause
   ISO, livrable client, actif), programmes de recherche (code, libellé, responsable, actif), titulaires des fonctions,
-  départements (et filtres mis en avant sur leur page) et sites. Une entrée du registre utilisée garde son code et ne se
-  supprime pas : un type ou un programme utilisé se désactive (`docs/api.md`, `GET /api/registry`). L'expiration et la revue en retard sont des indicateurs, sans nouveau statut : le
+  départements (et filtres mis en avant sur leur page) et sites (libellés FR/EN, actif). Une entrée du registre utilisée
+  garde son code et ne se supprime pas : un type ou un programme utilisé se désactive (`docs/api.md`, `GET
+  /api/registry`) ; de même un département ou un site utilisé, qui n'est plus proposé à un nouveau document mais reste
+  sur ceux qui l'ont. Le code d'un département ne change jamais. L'expiration et la revue en retard sont des indicateurs, sans nouveau statut : le
   retrait reste une demande à Vigie. Métadonnées, lecteurs désignés, versions de travail et demandes de validation
   refusent une action faite depuis une fiche périmée (« modifié entre-temps par … ; rechargez la fiche »), sans
   réserver le brouillon.
@@ -415,6 +417,7 @@ src/
     codes.ts           identifiants TYPE-CONTEXTE-SEQ et lettres de révision
     registry-rules.ts  administration du registre : formats des codes, collisions entre segments d'un identifiant,
                        lecture des formulaires de type, famille, fonction et programme
+    org-rules.ts       administration de l'organisation : libellés, valeurs proposées (actives), un département actif
     retention.ts       fin de conservation
     review.ts          expiration et revue périodique : indicateurs, prochaine date de revue
     concurrency.ts     modifications simultanées : version vue par un dialogue, version de travail de base

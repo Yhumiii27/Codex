@@ -17,9 +17,10 @@ import { addLink, applyChangeDecision, applyPendingDecision, approveRevision, au
 import { isLinkRel, linkIssue, otherEnd, replacementIssue, storedLink } from './links';
 import { logger, traceAction } from './log';
 import { limitWrite } from './ratelimit';
-import { decisionWaitL, registryUsage } from './queries';
+import { decisionWaitL, orgUsage, registryUsage } from './queries';
 import { dateIssues, dateIssueText, effectIssue, issueFrom, latestEffect, type DateIssue } from './dates';
 import { cleanFeatured } from './departments';
+import { inUse, isOrgKind, lastActiveIssue, orgLabels, parseOrgForm, type OrgKind } from './org-rules';
 import { fileIssueReason, fileIssueText, fileRules } from './filetypes';
 import { MAX_PER_RUN, purgeOrphans } from './orphans';
 import {
@@ -194,7 +195,8 @@ function readFields(ctx: Ctx, fd: FormData, base?: DocRow): Fields {
     typeCode, subtype: opt(fd, 'subtype'), origin, attachment,
     projectCode: attachment === 'project' ? opt(fd, 'projectCode') : null,
     programCode: attachment === 'research' ? opt(fd, 'programCode') : null,
-    department: str(fd, 'department') || base?.department || ctx.user.department || ctx.departments[0]?.code || '',
+    // Not sent: the user's department, refused by validateFields when inactive; without one, the first active department.
+    department: str(fd, 'department') || base?.department || ctx.user.department || ctx.departments.find((d) => d.active)?.code || '',
     site: opt(fd, 'site'),
     ownerId: str(fd, 'ownerId') || base?.ownerId || ctx.user.id,
     authorText: opt(fd, 'authorText'),
@@ -225,9 +227,9 @@ function metaChanges(d: DocRow, f: Fields, retention: Partial<Pick<DocRow, 'rete
 
 /**
  * Business rules of the register: type admits origin, attachment and confidentiality; contextual fields are filled.
- * An inactive type or programme is refused, except for a document that already has it (`current`).
+ * An inactive type, programme, department or site is refused, except for a document that already has it (`current`).
  */
-function validateFields(ctx: Ctx, f: Fields, current?: Pick<DocRow, 'typeCode' | 'programCode'>): ActionResult | null {
+function validateFields(ctx: Ctx, f: Fields, current?: Pick<DocRow, 'typeCode' | 'programCode' | 'department' | 'site'>): ActionResult | null {
   const type = ctx.typeByCode.get(f.typeCode);
   if (!f.title || !type || !(type.active || type.code === current?.typeCode)) return fail(ctx);
   if (!type.origins.includes(f.origin) || !type.attachments.includes(f.attachment)) return fail(ctx, 'type_mismatch');
@@ -236,8 +238,13 @@ function validateFields(ctx: Ctx, f: Fields, current?: Pick<DocRow, 'typeCode' |
   // An inactive programme (closed) is no longer offered, except to a document that already has it.
   if (f.attachment === 'research' && !ctx.programs.some((p) => p.code === f.programCode && (p.active || p.code === current?.programCode))) return fail(ctx, 'program_required');
   if (f.origin === 'externe' && !f.sourceOrg) return fail(ctx, 'source_required');
-  if (!ctx.departments.some((d) => d.code === f.department)) return fail(ctx);
-  if (f.site && !ctx.sites.some((x) => x.key === f.site)) return fail(ctx);
+  // A department or a site made inactive (Administration › Organisation) is no longer offered, except where it is set.
+  const dept = ctx.departments.find((d) => d.code === f.department);
+  if (!dept) return fail(ctx);
+  if (!dept.active && dept.code !== current?.department) return { ok: false, error: ctx.t.department_inactive, field: 'department' };
+  const site = f.site ? ctx.sites.find((x) => x.key === f.site) : null;
+  if (site === undefined) return fail(ctx);
+  if (site && !site.active && site.key !== current?.site) return { ok: false, error: ctx.t.site_inactive, field: 'site' };
   if (!ctx.users.has(f.ownerId) || ctx.users.get(f.ownerId)!.isSystem) return fail(ctx);
   if (f.processOwnerId && !ctx.users.has(f.processOwnerId)) return fail(ctx);
   // Dates: real calendar days, sent by the form as YYYY-MM-DD (a Server Action can be called with anything).
@@ -1277,7 +1284,10 @@ async function saveSearchNow(label: string, search: SearchInput, scope: string, 
   const criteria = cleanCriteria(search);
   if (!hasCriteria(criteria)) return fail(ctx, 'search_no_criteria');
   const dept = scope === 'department' ? department ?? '' : null;
-  if (dept !== null && !ctx.departments.some((d) => d.code === dept)) return fail(ctx);
+  // Shared with an existing department, still active: an inactive one takes no new search (lib/org-rules.ts).
+  const shared = dept === null ? null : ctx.departments.find((d) => d.code === dept);
+  if (shared === undefined) return fail(ctx);
+  if (shared && !shared.active) return fail(ctx, 'department_inactive');
   const db = await getDb();
   const [{ last }] = await db.select({ last: sql<number>`coalesce(max(${s.savedSearches.sort}), -1)` }).from(s.savedSearches);
   await db.insert(s.savedSearches).values({
@@ -1410,6 +1420,26 @@ async function togglePermissionNow(role: string, perm: string): Promise<ActionRe
   return { ok: true };
 }
 
+// ── Organisation: departments and sites (provisional until the organisation chart, D-19, O-04) ──────────
+
+type OrgRow = { labelFr: string; labelEn: string; active: boolean };
+
+/** A department or a site as the journal stores it: its code or key, labels and state. */
+const orgJournal = (kind: OrgKind, id: string, x: OrgRow): [string, AuditValue][] =>
+  [[kind === 'department' ? 'code' : 'key', id], ['labelFr', x.labelFr], ['labelEn', x.labelEn], ['active', x.active]];
+
+async function orgRow(tx: Tx, kind: OrgKind, id: string): Promise<OrgRow | undefined> {
+  const [row] = kind === 'department'
+    ? await tx.select().from(s.departments).where(eq(s.departments.code, id)).for('update')
+    : await tx.select().from(s.sites).where(eq(s.sites.key, id)).for('update');
+  return row;
+}
+
+/** Why this department may not become inactive or be deleted (`next`: its state after, null when deleted), or null. */
+async function departmentsIssue(tx: Tx, code: string, next: boolean | null): Promise<TKey | null> {
+  return lastActiveIssue(await tx.select({ code: s.departments.code, active: s.departments.active }).from(s.departments), code, next);
+}
+
 /** Department (3-letter code used in IDs) or site. Provisional values until the org chart is provided. */
 export async function addOrgValue(...args: Parameters<typeof addOrgValueNow>): Promise<ActionResult> {
   return traceAction('addOrgValue', () => addOrgValueNow(...args));
@@ -1420,29 +1450,99 @@ async function addOrgValueNow(kind: 'department' | 'site', code: string, labelFr
   if (busy) return busy;
   const no = adminOnly(ctx);
   if (no) return no;
-  const fr = labelFr.trim();
-  if (!fr) return fail(ctx);
+  if (!isOrgKind(kind)) return fail(ctx);
+  const names = orgLabels(labelFr, labelEn);
+  if (!names.ok) return formIssue(ctx, names);
+  const { labelFr: fr, labelEn: en } = names.value;
   const db = await getDb();
   if (kind === 'department') {
-    const key = code.trim().toUpperCase();
+    const key = String(code ?? '').trim().toUpperCase();
     // The context of IDs without attachment: no other code of an ID may read the same (lib/registry-rules.ts).
     const bad = departmentCodeIssue(key, codeSpace(ctx));
     if (bad) return { ok: false, error: ctx.t[bad], field: 'code' };
-    const en = labelEn.trim() || fr;
     await db.transaction(async (tx) => {
-      await tx.insert(s.departments).values({ code: key, labelFr: fr, labelEn: en, sort: ctx.departments.length });
-      await audit(tx, ctx.user.id, 'org_add', { kind: 'department', id: key }, `— → ${key} · ${fr} / ${en}`);
+      await tx.insert(s.departments).values({ code: key, labelFr: fr, labelEn: en, sort: await nextSort(tx, s.departments.sort) });
+      await audit(tx, ctx.user.id, 'org_add', { kind: 'department', id: key }, '', null, { changes: entryChanges(null, orgJournal(kind, key, { labelFr: fr, labelEn: en, active: true })) });
     });
   } else {
     const key = fr.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 32) || 'site';
     if (ctx.sites.some((x) => x.key === key)) return fail(ctx, 'error', key);
     await db.transaction(async (tx) => {
-      await tx.insert(s.sites).values({ key, label: fr, sort: ctx.sites.length });
-      await audit(tx, ctx.user.id, 'org_add', { kind: 'site', id: key }, `— → ${fr}`);
+      await tx.insert(s.sites).values({ key, labelFr: fr, labelEn: en, sort: await nextSort(tx, s.sites.sort) });
+      await audit(tx, ctx.user.id, 'org_add', { kind: 'site', id: key }, '', null, { changes: entryChanges(null, orgJournal(kind, key, { labelFr: fr, labelEn: en, active: true })) });
     });
   }
   refresh();
   return { ok: true };
+}
+
+/**
+ * Renames a department or a site (French and English labels), makes it inactive or active again. A department's code
+ * never changes: it stands in the IDs of documents without attachment (D-10). An inactive value is no longer offered
+ * to a new document or a shared search, and stays wherever it is set (validateFields); an inactive department still
+ * takes function holders, for the circuits of its documents (scopeValueOk). One department at least stays active.
+ * Journaled before → after.
+ */
+export async function updateOrgValue(...args: Parameters<typeof updateOrgValueNow>): Promise<ActionResult> {
+  return traceAction('updateOrgValue', () => updateOrgValueNow(...args));
+}
+async function updateOrgValueNow(kind: OrgKind, fd: FormData): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  const no = adminOnly(ctx);
+  if (no) return no;
+  if (!isOrgKind(kind) || !(fd instanceof FormData)) return fail(ctx);
+  const id = str(fd, 'original');
+  const p = parseOrgForm(fd);
+  if (!p.ok) return formIssue(ctx, p);
+  const next = p.value;
+  const db = await getDb();
+  const res = await db.transaction(async (tx): Promise<ActionResult> => {
+    const cur = await orgRow(tx, kind, id);
+    if (!cur) return fail(ctx, 'org_not_found');
+    const last = kind === 'department' && cur.active && !next.active ? await departmentsIssue(tx, id, false) : null;
+    if (last) return fail(ctx, last);
+    if (kind === 'department') await tx.update(s.departments).set(next).where(eq(s.departments.code, id));
+    else await tx.update(s.sites).set(next).where(eq(s.sites.key, id));
+    const changed = entryChanges(orgJournal(kind, id, cur), orgJournal(kind, id, next));
+    // Saving without a change leaves no entry.
+    if (changed.length) await audit(tx, ctx.user.id, 'org_edit', { kind, id }, '', null, { changes: changed });
+    return { ok: true, message: ctx.t.saved_ok };
+  });
+  if (res.ok) refresh();
+  return res;
+}
+
+/**
+ * Deletes a department or a site nothing refers to (lib/queries.ts orgUsage), created by mistake for instance; one in
+ * use is made inactive instead. Journaled with the values it had.
+ */
+export async function deleteOrgValue(...args: Parameters<typeof deleteOrgValueNow>): Promise<ActionResult> {
+  return traceAction('deleteOrgValue', () => deleteOrgValueNow(...args));
+}
+async function deleteOrgValueNow(kind: OrgKind, id: string): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  const no = adminOnly(ctx);
+  if (no) return no;
+  if (!isOrgKind(kind) || typeof id !== 'string') return fail(ctx);
+  const db = await getDb();
+  const res = await db.transaction(async (tx): Promise<ActionResult> => {
+    const cur = await orgRow(tx, kind, id);
+    if (!cur) return fail(ctx, 'org_not_found');
+    const usage = await orgUsage(tx);
+    if (inUse((kind === 'department' ? usage.departments : usage.sites).get(id))) return fail(ctx, kind === 'department' ? 'org_department_in_use' : 'org_site_in_use');
+    const last = kind === 'department' ? await departmentsIssue(tx, id, null) : null;
+    if (last) return fail(ctx, last);
+    if (kind === 'department') await tx.delete(s.departments).where(eq(s.departments.code, id));
+    else await tx.delete(s.sites).where(eq(s.sites.key, id));
+    await audit(tx, ctx.user.id, 'org_remove', { kind, id }, '', null, { changes: entryChanges(orgJournal(kind, id, cur), null) });
+    return { ok: true, message: ctx.t.reg_deleted };
+  });
+  if (res.ok) refresh();
+  return res;
 }
 
 /**
@@ -1478,8 +1578,9 @@ async function setDepartmentFeaturedNow(code: string, featured: string[] | null)
 }
 
 /**
- * Whether a holder may be named for this value of a function's scope: a known department or project, a programme known
- * and still active (a closed one keeps its holders but takes no new one).
+ * Whether a holder may be named for this value of a function's scope: a known project; a known department, even
+ * inactive (its documents still go through circuits, resolveFunction looks up their department's holders); a programme
+ * known and still active (a closed one keeps its holders but takes no new one; its manager answers for it).
  */
 async function scopeValueOk(tx: Tx, scope: string, value: string): Promise<boolean> {
   const rows = scope === 'department' ? await tx.select({ code: s.departments.code }).from(s.departments).where(eq(s.departments.code, value))
@@ -1573,8 +1674,11 @@ function typeJournal(x: TypeValues | TypeRow): [string, AuditValue][] {
 
 const typeRefs = (ctx: Ctx) => ({ families: ctx.families.map((f) => f.key), functions: ctx.functions.map((f) => f.key) });
 
-/** Next display order of a register table: after the last one. */
-async function nextSort(tx: Tx, column: typeof s.docTypes.sort | typeof s.families.sort | typeof s.functions.sort) {
+/**
+ * Next display order of a register or organisation table: after the last one, so never one a value already holds, even
+ * after a deletion (the count of values would be).
+ */
+async function nextSort(tx: Tx, column: typeof s.docTypes.sort | typeof s.families.sort | typeof s.functions.sort | typeof s.departments.sort | typeof s.sites.sort) {
   const [{ last }] = await tx.select({ last: sql<number>`coalesce(max(${column}), -1)::int` }).from(column.table);
   return Number(last) + 1;
 }

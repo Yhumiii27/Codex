@@ -94,7 +94,7 @@ const fr = {
   wf_circuits:'Circuits', wf_vigie:'Mes demandes Vigie', vigie_empty:'Aucune demande de modification ou de retrait envoyée à Vigie.', ecr_sent_on:'Envoyée le', ecr_decided_on:'Décision de Vigie', ecr_note:'Note de Vigie', ecr_wait_vigie:'En attente de la décision de Vigie.',
   wf_requested:'Mes demandes', due_kind:'Nature', due_retention:'Conservation', due_expiry:'Expiration', due_review:'Révision périodique',
   all_families:'Toutes les familles', types_count:'types', inactive:'Inactif', people:'Personnes', function_label:'Fonction', scope:'Portée',
-  org_provisional:'Valeurs provisoires, en attente de l’organigramme. Le code à 3 lettres du département entre dans l’identifiant des documents sans rattachement.',
+  org_provisional:'Valeurs provisoires, en attente de l’organigramme. Le code à 3 lettres du département entre dans l’identifiant des documents sans rattachement : il ne change jamais. Libellés modifiables ; une valeur utilisée se désactive au lieu d’être supprimée.',
   // Rules and states added after review
   st_cancelled:'Annulée', act_release:'Levée du gel', release_hold:'Lever le gel juridique', follow_workflow:'Suivre le circuit',
   invalid_date:'Date invalide : choisissez aujourd’hui ou une date à venir.',
@@ -321,6 +321,20 @@ const fr = {
   act_type_add:'Type ajouté', act_type_remove:'Type supprimé', act_family_add:'Famille ajoutée', act_family:'Famille modifiée', act_family_remove:'Famille supprimée',
   act_function_add:'Fonction ajoutée', act_function:'Fonction modifiée', act_function_remove:'Fonction supprimée',
   act_program_add:'Programme ajouté', act_program:'Programme modifié', act_program_remove:'Programme supprimé',
+  act_org_edit:'Valeur d’organisation modifiée', act_org_remove:'Valeur d’organisation supprimée',
+  org_active_department:'Département actif (proposé à la création)', org_active_site:'Site actif (proposé à la création)',
+  org_inactive_hint:'Inactif : n’est plus proposé pour un nouveau document ; reste affiché là où il figure déjà.',
+  org_inactive_hint_department:'Inactif : n’est plus proposé pour un nouveau document ni une recherche partagée ; reste affiché là où il figure déjà. Ses titulaires de fonction se nomment encore, pour les circuits de ses documents.',
+  org_code_fixed:'Le code entre dans les identifiants des documents sans rattachement : il ne change jamais.',
+  org_key_fixed:'Clé enregistrée sur les documents et les personnes : elle ne change pas quand le site est renommé.',
+  org_department_in_use:'Ce département est utilisé (documents, personnes, titulaires de fonction, recherches partagées ou identifiants déjà attribués sous son code) : il ne peut pas être supprimé, seulement désactivé.',
+  org_site_in_use:'Ce site est utilisé (documents ou personnes) : il ne peut pas être supprimé, seulement désactivé.',
+  org_last_department:'Au moins un département doit rester actif : un nouveau document sans rattachement prend le code de son département.',
+  org_delete_confirm:'Supprimer définitivement « {what} » ? Rien ne l’utilise ; la suppression est journalisée.',
+  org_not_found:'Cette valeur n’existe plus : rechargez la page.',
+  department_inactive:'Ce département est désactivé : il n’est plus proposé, sauf là où il figure déjà.',
+  site_inactive:'Ce site est désactivé : il n’est plus proposé, sauf là où il figure déjà.',
+  dept_inactive_hint:'Ce département est désactivé : il n’est plus proposé pour un nouveau document ; ses documents restent consultables ici.',
 };
 
 type Dict = Record<keyof typeof fr, string>;
@@ -416,7 +430,7 @@ const en: Dict = {
   wf_circuits:'Workflows', wf_vigie:'My Vigie requests', vigie_empty:'No change or withdrawal request sent to Vigie.', ecr_sent_on:'Sent on', ecr_decided_on:'Vigie decision', ecr_note:'Vigie note', ecr_wait_vigie:'Waiting for Vigie’s decision.',
   wf_requested:'My requests', due_kind:'Kind', due_retention:'Retention', due_expiry:'Expiry', due_review:'Periodic review',
   all_families:'All families', types_count:'types', inactive:'Inactive', people:'People', function_label:'Function', scope:'Scope',
-  org_provisional:'Provisional values, pending the organisation chart. The 3-letter department code is part of the ID of documents without attachment.',
+  org_provisional:'Provisional values, pending the organisation chart. The 3-letter department code is part of the ID of documents without attachment: it never changes. Labels can be edited; a value in use is made inactive instead of being deleted.',
   // Rules and states added after review
   st_cancelled:'Cancelled', act_release:'Hold released', release_hold:'Release legal hold', follow_workflow:'Follow the workflow',
   invalid_date:'Invalid date: pick today or a later date.',
@@ -643,6 +657,20 @@ const en: Dict = {
   act_type_add:'Type added', act_type_remove:'Type deleted', act_family_add:'Family added', act_family:'Family changed', act_family_remove:'Family deleted',
   act_function_add:'Function added', act_function:'Function changed', act_function_remove:'Function deleted',
   act_program_add:'Programme added', act_program:'Programme changed', act_program_remove:'Programme deleted',
+  act_org_edit:'Organisation value changed', act_org_remove:'Organisation value deleted',
+  org_active_department:'Active department (offered on creation)', org_active_site:'Active site (offered on creation)',
+  org_inactive_hint:'Inactive: no longer offered for a new document; still shown wherever it is already set.',
+  org_inactive_hint_department:'Inactive: no longer offered for a new document or a shared search; still shown wherever it is already set. Its function holders can still be named, for the workflows of its documents.',
+  org_code_fixed:'The code is part of the IDs of documents without attachment: it never changes.',
+  org_key_fixed:'Key stored on documents and people: it does not change when the site is renamed.',
+  org_department_in_use:'This department is in use (documents, people, function holders, shared searches or IDs already given under its code): it cannot be deleted, only made inactive.',
+  org_site_in_use:'This site is in use (documents or people): it cannot be deleted, only made inactive.',
+  org_last_department:'At least one department must stay active: a new document without attachment takes the code of its department.',
+  org_delete_confirm:'Delete “{what}” for good? Nothing uses it; the deletion is journaled.',
+  org_not_found:'This value no longer exists: reload the page.',
+  department_inactive:'This department is inactive: it is no longer offered, except where it is already set.',
+  site_inactive:'This site is inactive: it is no longer offered, except where it is already set.',
+  dept_inactive_hint:'This department is inactive: it is no longer offered for a new document; its documents can still be read here.',
 };
 
 export const DICT: Record<Lang, Dict> = { fr, en };

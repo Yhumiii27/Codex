@@ -36,9 +36,12 @@ export function cleanFeatured(input: unknown): FacetKey[] | null | undefined {
   return new Set(input).size === input.length ? [...input] : undefined;
 }
 
-/** The department a page opens on when none is named (/departements): the user's own, else the first one. */
-export function defaultDepartment(userDepartment: string | null, departments: readonly { code: string }[]): string | null {
-  return departments.find((d) => d.code === userDepartment)?.code ?? departments[0]?.code ?? null;
+/**
+ * The department a page opens on when none is named (/departements): the user's own, even inactive (its page stays for
+ * its documents), else the first active one, else the first one.
+ */
+export function defaultDepartment(userDepartment: string | null, departments: readonly { code: string; active?: boolean }[]): string | null {
+  return departments.find((d) => d.code === userDepartment)?.code ?? departments.find((d) => d.active !== false)?.code ?? departments[0]?.code ?? null;
 }
 
 export type FeaturedValue = { value: string; label: string; count: number; href: string };
