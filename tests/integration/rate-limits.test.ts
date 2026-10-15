@@ -118,7 +118,7 @@ describe('integration endpoints, per client address', () => {
   });
 
   it('POST /api/import: a body sent in chunks beyond the size allowed is cut off with 413', async () => {
-    vi.stubEnv('CODEX_IMPORT_MAX_MB', '0.001');
+    vi.stubEnv('CODEX_MAX_FILE_MB', '0.001');
     let sent = 0;
     const chunk = new Uint8Array(64 * 1024).fill(0x20);
     const body = new ReadableStream<Uint8Array>({
@@ -135,7 +135,7 @@ describe('integration endpoints, per client address', () => {
   });
 
   it('POST /api/import: a multipart body sent in chunks beyond the size allowed is cut off early with 413, nothing imported', async () => {
-    vi.stubEnv('CODEX_IMPORT_MAX_MB', '0.001');
+    vi.stubEnv('CODEX_MAX_FILE_MB', '0.001');
     const enc = new TextEncoder();
     const head = enc.encode([
       '--b0undary', 'Content-Disposition: form-data; name="meta"', '', JSON.stringify(META),

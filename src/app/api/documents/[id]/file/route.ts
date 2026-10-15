@@ -1,4 +1,3 @@
-import path from 'node:path';
 import { asc, eq } from 'drizzle-orm';
 import { getDb, schema as s } from '@/db';
 import { readerMaySeeVersion } from '@/lib/access';
@@ -10,7 +9,7 @@ import { audit } from '@/lib/lifecycle';
 import { simplePdf } from '@/lib/pdf';
 import { getDoc, type DocView } from '@/lib/queries';
 import { limitReader } from '@/lib/ratelimit';
-import { EXT_BY_MIME, FileNotFoundError, normalizeMime, readStored } from '@/lib/storage';
+import { FileNotFoundError, normalizeMime, readStored, storedExt } from '@/lib/storage';
 
 const WORKING = new Set(['draft', 'in_review', 'approved']);
 /** Suffix of the proposed name for a document withdrawn or archived; the file itself is served unchanged. */
@@ -72,8 +71,9 @@ async function resolve(req: Request, id: string): Promise<Target | Response> {
   const name = version.fileName ?? '';
   // Rows imported before the type was normalised (text/plain for a PDF…) are corrected from the file name.
   const mime = normalizeMime(version.mime, name);
-  // The extension comes from the original name, else the type: the key carries the version label ("…_A.1"), not one.
-  const ext = (path.extname(name) || EXT_BY_MIME[mime] || '').toLowerCase().replace(/[^.\w]/g, '');
+  // The extension comes from the original name, else the type, as at upload (storedExt): the key carries the version
+  // label ("…_A.1"), not one.
+  const ext = storedExt(name, mime);
   return { ctx, doc, version, label, mime, ext, download };
 }
 

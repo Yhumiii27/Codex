@@ -234,6 +234,25 @@ const fr = {
   audit_newer:'Plus récentes', audit_older:'Plus anciennes', audit_latest:'Les plus récentes', audit_none:'Aucune entrée ne correspond à ces critères.',
   // Rate limiting (lib/ratelimit.ts)
   rate_limited:'Trop de demandes en peu de temps : réessayez dans {n}\u00a0s.',
+  // Files entering Codex (lib/filetypes.ts, lib/antivirus.ts)
+  file_too_large:'Fichier trop volumineux : {size}, pour {max} au plus.', file_max_hint:'{max} au plus',
+  file_executable:'Ce fichier est un programme exécutable : il est refusé, quel que soit son nom.',
+  file_no_extension:'Fichier sans extension dont le contenu n’est pas reconnu : nommez-le avec l’extension de son format. Formats admis : {list}.',
+  file_format:'Format non admis : {ext}. Formats admis : {list}.',
+  file_signature:'Le contenu de ce fichier n’est pas celui d’un fichier {ext} : il est refusé.',
+  file_infected:'Fichier refusé : l’analyse antivirus a détecté « {threat} ». Il n’a pas été enregistré.',
+  file_scan_failed:'Dépôt refusé : l’analyse antivirus n’a pas pu être faite. Réessayez plus tard ou prévenez l’administrateur.',
+  file_scan_too_large:'Fichier refusé : il dépasse les limites de l’analyse antivirus (taille ou contenu imbriqué), qui n’a pas pu l’examiner. Il n’a pas été enregistré ; le renvoyer n’y changera rien. Prévenez l’administrateur : les limites de clamd (StreamMaxLength, MaxFileSize, MaxScanSize) sont à relever.',
+  file_macros:'Ce fichier contient des macros : il est refusé. Enregistrez-le dans un format sans macros (.docx, .xlsx, .pptx…).',
+  file_template_refused:'Le fichier du modèle {id} n’est plus admis ({reason}) : son propriétaire doit en déposer une nouvelle version.',
+  file_reason_too_large:'trop volumineux : {size}, pour {max} au plus', file_reason_format:'format {ext} non admis',
+  file_reason_signature:'son contenu n’est pas celui d’un fichier {ext}', file_reason_executable:'c’est un programme exécutable',
+  file_reason_no_extension:'sans extension, contenu non reconnu', file_reason_macros:'il contient des macros',
+  file_reason_infected:'l’analyse antivirus a détecté « {threat} »',
+  act_file_rejected:'Fichier refusé (antivirus)', target_file:'Fichier déposé',
+  file_entry_create:'nouveau document', file_entry_template:'copie d’un modèle', file_entry_working:'version de travail', file_entry_import:'import',
+  files_policy:'Fichiers déposés', files_formats:'{n} formats admis', av_off:'analyse antivirus désactivée (CODEX_CLAMD non défini)',
+  av_on:'analyse antivirus par clamd ({address})', av_on_error_refuse:'dépôt refusé si l’analyse échoue', av_on_error_accept:'fichier accepté sans analyse si l’analyse échoue',
 };
 
 type Dict = Record<keyof typeof fr, string>;
@@ -469,6 +488,25 @@ const en: Dict = {
   audit_newer:'Newer', audit_older:'Older', audit_latest:'Most recent', audit_none:'No entry matches these criteria.',
   // Rate limiting (lib/ratelimit.ts)
   rate_limited:'Too many requests in a short time: try again in {n}\u00a0s.',
+  // Files entering Codex (lib/filetypes.ts, lib/antivirus.ts)
+  file_too_large:'File too large: {size}, {max} at most.', file_max_hint:'{max} at most',
+  file_executable:'This file is an executable program: it is refused, whatever its name.',
+  file_no_extension:'File without extension whose content is not recognised: name it with the extension of its format. Accepted formats: {list}.',
+  file_format:'Format not accepted: {ext}. Accepted formats: {list}.',
+  file_signature:'The content of this file is not that of a {ext} file: it is refused.',
+  file_infected:'File refused: the virus scan found “{threat}”. It was not stored.',
+  file_scan_failed:'Upload refused: the virus scan could not be run. Try again later or tell the administrator.',
+  file_scan_too_large:'File refused: it is beyond the limits of the virus scan (size or nested content), which could not examine it. It was not stored; sending it again will change nothing. Tell the administrator: clamd’s limits (StreamMaxLength, MaxFileSize, MaxScanSize) need raising.',
+  file_macros:'This file contains macros: it is refused. Save it in a format without macros (.docx, .xlsx, .pptx…).',
+  file_template_refused:'The file of template {id} is no longer accepted ({reason}): its owner must upload a new version of it.',
+  file_reason_too_large:'too large: {size}, {max} at most', file_reason_format:'format {ext} not accepted',
+  file_reason_signature:'its content is not that of a {ext} file', file_reason_executable:'it is an executable program',
+  file_reason_no_extension:'no extension, content not recognised', file_reason_macros:'it contains macros',
+  file_reason_infected:'the virus scan found “{threat}”',
+  act_file_rejected:'File refused (virus scan)', target_file:'Uploaded file',
+  file_entry_create:'new document', file_entry_template:'copy of a template', file_entry_working:'working version', file_entry_import:'import',
+  files_policy:'Uploaded files', files_formats:'{n} accepted formats', av_off:'virus scanning off (CODEX_CLAMD not set)',
+  av_on:'virus scanning by clamd ({address})', av_on_error_refuse:'upload refused when the scan fails', av_on_error_accept:'file accepted unscanned when the scan fails',
 };
 
 export const DICT: Record<Lang, Dict> = { fr, en };

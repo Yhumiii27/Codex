@@ -788,6 +788,52 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
   - compteurs en mémoire, pour une seule instance (PGlite l'impose déjà), une table par famille, au plus 10 000 clés
     chacune ; seul un seau redevenu plein est oublié. Plusieurs instances demanderaient un magasin partagé ou une limite
     au proxy.
+- **Fichiers déposés : formats, taille, antivirus** (point 32 de `docs/reste-a-faire.md`, 15 octobre ; question M12 de
+  l'audit non tranchée, hébergement non décidé) :
+  - une seule liste blanche d'extensions pour tous les types de document (la liste par type attend M12), choisie
+    d'après le registre : documents Office et OpenDocument, PDF, RTF, texte, CSV, Visio, Project, courriels, images
+    (dont HEIC pour les photos de chantier), MP4 (supports de formation), plans et maquettes (DWG, DXF, STEP, IGES, IFC,
+    STL), JSON et XML. Les archives (`.zip`…) sont refusées par défaut, puisqu'elles peuvent porter n'importe quoi
+    au-delà du contrôle de format ; les extensions Office à macros (`.docm`, `.xlsm`…), les exécutables, scripts, pages
+    web, SVG et images disque le sont toujours, même ajoutés par `CODEX_FILE_EXTENSIONS` ;
+  - signature vérifiée pour les formats où elle est fiable, conteneurs compris : un fichier Office récent doit être le
+    paquet qu'il annonce (`[Content_Types].xml` dans le ZIP ; `mimetype` ou le manifeste pour OpenDocument), un fichier
+    Office 97-2003 un fichier composé dont le répertoire se lit. Une extension admet plusieurs contenus quand l'usage
+    l'impose : un `.docx`, `.xlsx`, `.pptx` (et leurs modèles, `.vsdx`) **chiffré** par un mot de passe ou une étiquette
+    de confidentialité est un fichier composé (`EncryptedPackage`) et reste admis, pour que les documents les plus
+    sensibles puissent entrer dans la GED, bien que ni Codex ni clamd ne voient ce qu'il contient ; un `.doc` peut être
+    du RTF. Un fichier sans extension n'est admis que si son contenu désigne un format admis sans ambiguïté (PDF, image,
+    DWG ; pas un conteneur ZIP ou OLE2) ;
+  - les macros VBA sont refusées quelle que soit l'extension (`vbaProject.bin` dans un ZIP, `_VBA_PROJECT` dans un
+    fichier composé, y compris dans un message Outlook qui embarque un tel fichier). Les macros de PowerPoint 97-2003,
+    les macros Excel 4.0 et les macros Basic d'OpenDocument ne sont pas détectées : elles relèvent de l'antivirus ;
+  - le nom retenu est le dernier segment du nom reçu, sans caractères de contrôle ou bidirectionnels ni séparateurs,
+    points ou espaces finaux, et c'est sous ce nom que le fichier est contrôlé, enregistré, nommé dans le stockage et
+    téléchargé : l'extension contrôlée est celle que voit le poste qui ouvre le fichier. Un fichier sans extension
+    prend celle de son contenu (PDF), jamais celle du type annoncé à l'envoi, qui n'est pas contrôlé ;
+  - une seule taille maximale pour l'écran et l'import, **50 Mo** par défaut (`CODEX_MAX_FILE_MB`) : la limite que
+    l'écran avait déjà. L'import, jusque-là à 100 Mo, descend à 50 Mo ; les volumes de la migration ne sont pas connus
+    (O-11), et l'outil de migration peut relever la limite le temps de la reprise ;
+  - l'analyse antivirus se branche par `CODEX_CLAMD` (clamd, `INSTREAM`) et reste **désactivée sans configuration**,
+    pour ne pas casser l'usage local ni l'app Mac : le journal du serveur et l'onglet Journal d'audit de
+    l'administration le disent. Un scanner configuré qui ne répond pas fait **refuser** le dépôt
+    (`CODEX_CLAMD_ON_ERROR=accept` pour l'accepter sans analyse) ;
+  - un fichier que clamd n'examine pas faute de limites suffisantes (au-delà de `StreamMaxLength`, ou signalé
+    « Heuristics.Limits.Exceeded » avec `AlertExceedsMax`) est **refusé** comme tel, avec sa cause, et non comme une
+    panne passagère (import : 413 `scan_too_large`, sans `Retry-After`). La documentation demande de régler
+    `MaxFileSize` et `MaxScanSize` au moins à la taille maximale et d'activer `AlertExceedsMax`, faute de quoi clamd
+    répond « OK » sans analyser ;
+  - le fichier est contrôlé et analysé avant d'être écrit dans le stockage (local ou SharePoint) : un fichier infecté
+    n'y entre jamais. Le refus est journalisé comme une entrée sans document (cible « Fichier déposé »), lisible
+    seulement dans l'administration. Pour un dépôt à l'écran, le nom du fichier, qui peut donner l'identifiant et la
+    version d'un brouillon (`PRO-ING-0007_A.2.docx`), et le document visé ne sont montrés qu'aux gestionnaires
+    documentaires ; les autres administrateurs lisent la voie, l'extension, la taille et la menace, pour ne rien montrer
+    du travail en cours hors du cercle de rédaction (D-14). L'entrée d'un import garde le nom et la référence ancienne.
+    Les refus de format ne sont pas journalisés ;
+  - les fichiers déjà stockés ne sont ni recontrôlés ni réanalysés. Seule la copie d'un modèle refait les contrôles,
+    puisque son fichier entre dans un nouveau document : un modèle déposé dans un format désormais refusé n'est plus
+    copiable, et le refus nomme le modèle et demande à son propriétaire d'en déposer une nouvelle version. La
+    réanalyse de l'existant reste à faire (point 32 de `docs/reste-a-faire.md`).
 - **Git** (D-23) : premier commit sur une branche `codex-ged-v2` plutôt que sur `main`.
 
 ## Ce qui est explicitement hors périmètre

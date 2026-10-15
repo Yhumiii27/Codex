@@ -16,7 +16,9 @@ logique partagée dans `src/lib/importer.ts`.
 | Variable | Rôle |
 |---|---|
 | `CODEX_IMPORT_TOKEN` | Jeton attendu par `/api/import`. Absente ou vide : l'import est **désactivé** (503). |
-| `CODEX_IMPORT_MAX_MB` | Taille maximale d'un fichier importé, en Mo (100 par défaut ; 250 au plus avec `CODEX_STORAGE=sharepoint`). |
+| `CODEX_MAX_FILE_MB` | Taille maximale d'un fichier, en Mo, la même pour l'import et pour les dépôts à l'écran (50 par défaut ; 250 au plus avec `CODEX_STORAGE=sharepoint`). Remplace `CODEX_IMPORT_MAX_MB`, qui n'est plus lue. |
+| `CODEX_FILE_EXTENSIONS` | Extensions admises (liste complète) ; par défaut, voir le README, « Fichiers déposés ». |
+| `CODEX_CLAMD`, `CODEX_CLAMD_TIMEOUT_MS`, `CODEX_CLAMD_ON_ERROR` | Analyse antivirus par clamd avant stockage ; absente : pas d'analyse. Voir le README, « Fichiers déposés ». |
 | `VIGIE_WEBHOOK_TOKEN` | Jeton attendu par `/api/integrations/vigie`. Absente ou vide : le webhook est **désactivé** (503). |
 | `CODEX_RATE_IMPORT`, `CODEX_RATE_VIGIE`, `CODEX_RATE_REGISTRY` | Requêtes admises par adresse de client (600, 600 et 300 par minute par défaut ; voir « Limites de débit »). |
 | `CODEX_RATE_TOKEN_FAILURES` | Jetons refusés admis par adresse de client sur `/api/import` et `/api/integrations/vigie` (20 par 15 minutes par défaut). |
@@ -180,9 +182,31 @@ un reclassement, et seule cette colonne dit depuis quelle référence un documen
     aperçu.
 - ou `application/json` : les métadonnées seules, sans fichier.
 
-Taille maximale du fichier : `CODEX_IMPORT_MAX_MB` (100 Mo par défaut, 250 Mo au plus avec SharePoint), au-delà **413**.
-Le corps entier est lui aussi borné à cette taille plus 1 Mo (métadonnées et découpage multipart) : refusé d'emblée si
-`Content-Length` la dépasse, et coupé en cours de lecture, avec 413, s'il est envoyé par morceaux sans `Content-Length`.
+Taille maximale du fichier : `CODEX_MAX_FILE_MB` (50 Mo par défaut, 250 Mo au plus avec SharePoint), la même qu'à
+l'écran, au-delà **413**. Le corps entier est lui aussi borné à cette taille plus 1 Mo (métadonnées et découpage
+multipart) : refusé d'emblée si `Content-Length` la dépasse, et coupé en cours de lecture, avec 413, s'il est envoyé par
+morceaux sans `Content-Length`. Pour reprendre de plus gros fichiers, relever `CODEX_MAX_FILE_MB` le temps de la
+migration (redémarrage du serveur).
+
+Le fichier passe les mêmes contrôles qu'un dépôt à l'écran (`stageFile`, `src/lib/storage.ts`), après la validation des
+métadonnées et avant tout enregistrement :
+- **nom** : seul compte le dernier segment du `filename` de la partie, sans caractères de contrôle ni séparateurs,
+  points ou espaces finaux : `GED1/2019/proc.pdf` est enregistré `proc.pdf`, `note.hta/` est lu `note.hta` et refusé.
+  C'est sous ce nom, et donc sous cette extension, que le fichier est stocké et servi ;
+- **format** : son extension doit être admise (`CODEX_FILE_EXTENSIONS`, `src/lib/filetypes.ts`), et le contenu d'un
+  format courant (PDF, images, Office, OpenDocument, DWG…) doit être celui qu'elle annonce : un `.docx` est un ZIP qui
+  contient `[Content_Types].xml`, ou un fichier composé chiffré (flux `EncryptedPackage`) ; un `.doc` un fichier
+  composé lisible ou du RTF ; un programme est refusé quel que soit son nom, des macros VBA quelle que soit
+  l'extension ; un fichier sans extension n'est admis que si son contenu désigne un format admis (PDF, image, DWG).
+  Refus : **415** `file_format`, avec la raison et la liste des extensions admises ;
+- **antivirus** : avec `CODEX_CLAMD`, le fichier est analysé par clamd. Infecté : **422** `file_infected`, et une entrée
+  « Fichier refusé (antivirus) » au journal, sous l'acteur `codex` avec la `legacyRef`. Au-delà des limites de clamd
+  (`StreamMaxLength`, et avec `AlertExceedsMax` : `MaxFileSize`, `MaxScanSize`…) : **413** `scan_too_large`, sans
+  `Retry-After` : renvoyer le même fichier n'y changera rien tant que ces limites ne sont pas relevées. Analyse
+  impossible (clamd injoignable, délai dépassé, erreur) : **503** `scan_unavailable` avec `Retry-After: 60` (à renvoyer
+  plus tard). `CODEX_CLAMD_ON_ERROR=accept` accepte ces deux derniers cas sans analyse.
+
+Dans tous ces cas, rien n'est importé et la `legacyRef` reste libre : l'outil peut renvoyer le document corrigé.
 
 ### Métadonnées (`meta`)
 
@@ -275,8 +299,12 @@ s'ajoutent depuis leurs fiches (section « Documents liés »).
 | **401** / **503** | jeton absent ou faux / import désactivé |
 | **409** | `{"error":"duplicate","id":"<ID existant>"}` : `legacyRef` déjà importée ; `id` est l'identifiant actuel du document repris, même s'il a été reclassé depuis. Vérifié avant la validation : un document déjà repris répond 409 même si le registre a changé depuis (type désactivé…). |
 | **409** | `{"error":"ref_is_codex_id","id":"<ID>"}` : `legacyRef` est l'identifiant Codex, actuel ou ancien (gardé en alias après un reclassement), d'**un autre** document, qui n'a pas été importé depuis elle ; `id` est l'identifiant actuel de ce document. Ce n'est pas un rejeu : l'outil ne doit pas enregistrer cette correspondance. |
-| **413** | fichier ou corps trop volumineux |
-| **415** | type de contenu autre que `multipart/form-data` ou `application/json` |
+| **413** | `{"error":"too_large","maxBytes"}` : fichier ou corps trop volumineux |
+| **413** | `{"error":"scan_too_large"}` : fichier au-delà des limites de l'analyse antivirus (taille ou contenu imbriqué) ; rien n'est importé, et le renvoyer ne changera rien avant que les limites de clamd soient relevées |
+| **415** | `{"error":"unsupported_media_type"}` : type de contenu autre que `multipart/form-data` ou `application/json` |
+| **415** | `{"error":"file_format","reason","ext","allowed":[…]}` : fichier refusé ; `reason` vaut `format` (extension non admise), `signature` (contenu qui n'est pas celui de l'extension `ext`), `executable` (programme), `macros` (macros VBA) ou `no_extension` (sans extension, contenu non reconnu) ; `allowed` liste les extensions admises |
+| **422** | `{"error":"file_infected","threat"}` : l'analyse antivirus a détecté `threat` ; le fichier n'est pas stocké, le refus est journalisé |
+| **503** | `{"error":"scan_unavailable"}` + `Retry-After: 60` : l'analyse antivirus n'a pas pu être faite (clamd injoignable, délai dépassé, erreur) ; rien n'est importé |
 | **429** | `{"error":"rate_limited","retryAfter"}` : trop d'imports depuis cette adresse, ou trop de jetons refusés (jeton faux au-delà du quota ; bon jeton aussi avec `CODEX_TRUST_PROXY=1`, voir « Limites de débit ») ; rien n'est importé |
 
 Codes de `issues[].code` : `required`, `invalid_type`, `too_long`, `invalid_date`, `invalid_value`, `invalid_letter`,

@@ -7,6 +7,7 @@ import { canRead, changeAsSeen, deadlineActor, draftingCircleSql, draftTodo, fol
 import { visaCircuit, type VisaRecord } from './approval';
 import { revLabel } from './codification';
 import type { Ctx } from './context';
+import { extensionOf } from './filetypes';
 import { addDays, clip, daysBetween, fmtDate, fmtDateTime, fmtSize, fmtWhen, loc, nowStamp, parisStamp, parseIsoDay, TIME_ZONE, todayIso } from './format';
 import { CONF_LEVELS, MATRIX_ROLE_LABEL, TAGCLS, type T, type TKey } from './i18n';
 import { decisionWait, lockOf, type DecisionWait } from './lifecycle';
@@ -984,7 +985,7 @@ export async function auditForReader(ctx: Ctx, all: AuditRow[]): Promise<AuditEn
   });
 }
 
-const TARGET_LABEL: Record<AuditTargetKind, TKey> = { permission: 'target_permission', department: 'department', site: 'site', function: 'function_label', type: 'type', export: 'target_export' };
+const TARGET_LABEL: Record<AuditTargetKind, TKey> = { permission: 'target_permission', department: 'department', site: 'site', function: 'function_label', type: 'type', export: 'target_export', file: 'target_file' };
 
 /** What an entry without document is about, as the Journal tab and its export name it: "Fonction · Responsable qualité". */
 export function auditTargetL(ctx: Ctx, kind: AuditTargetKind | null, id: string | null): string {
@@ -997,6 +998,7 @@ export function auditTargetL(ctx: Ctx, kind: AuditTargetKind | null, id: string 
     : kind === 'site' ? ctx.label('site', id)
     : kind === 'function' ? ctx.label('function', id)
     : kind === 'type' ? `${id} · ${ctx.label('type', id)}`
+    : kind === 'file' ? t[`file_entry_${id}` as TKey] ?? id
     : id === 'search' ? t.adv_search : t.ad_audit;
   return `${t[TARGET_LABEL[kind]]} · ${name}`;
 }
@@ -1101,7 +1103,19 @@ function exportL(ctx: Ctx, targetId: string | null, x: NonNullable<AuditData['ex
 export function auditDetailL(ctx: Ctx, a: Pick<AuditRow, 'detail' | 'data' | 'targetId'>): string {
   const x = a.data;
   const link = x?.link ? `${ctx.t[`link_${x.link.rel}`]} ${x.link.other}${x.link.skipped ? ` : ${ctx.t[`link_skip_${x.link.skipped}`]}` : ''}` : '';
-  return [a.detail, link, x?.changes?.length ? x.changes.map((c) => changeL(ctx, c)).join(' ; ') : '', x?.export ? exportL(ctx, a.targetId, x.export) : ''].filter(Boolean).join(' · ');
+  return [a.detail, link, x?.changes?.length ? x.changes.map((c) => changeL(ctx, c)).join(' ; ') : '', x?.export ? exportL(ctx, a.targetId, x.export) : '', x?.file ? refusedFileL(ctx, a.targetId, x.file) : ''].filter(Boolean).join(' · ');
+}
+
+/**
+ * A file refused by the virus scan: name, size, what was found, and the legacy reference of an import. Outside the
+ * drafting circle, work in progress stays unseen (D-14): the name of a file sent from a screen (a new document, a
+ * working version, the copy of a template) may give a draft's ID, version and subject ("PRO-ING-0007_A.2.docx"), so it is
+ * shown, with the document it was meant for, to records managers only; other readers get its extension.
+ */
+function refusedFileL(ctx: Ctx, entry: string | null, f: NonNullable<AuditData['file']>): string {
+  const threat = ctx.lang === 'fr' ? `« ${f.threat} »` : `“${f.threat}”`;
+  const named = ctx.seesAll || entry === 'import';
+  return [named ? f.name : extensionOf(f.name), fmtSize(f.size, ctx.lang), threat, f.ref ?? '', ctx.seesAll && f.doc ? f.doc : ''].filter(Boolean).join(' · ');
 }
 
 /** Screen where the target of an entry without document is managed. */

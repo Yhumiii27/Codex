@@ -5,6 +5,9 @@ import path from 'node:path';
 import { inflateSync } from 'node:zlib';
 import { eq } from 'drizzle-orm';
 import { FILES_DIR, getDb, schema as s } from '@/db';
+import { scanFile } from './antivirus';
+import { cleanFileName, DENIED_EXTENSIONS, extensionOf, fileIssue, fileRules, type FileIssue } from './filetypes';
+import { audit } from './lifecycle';
 
 // File storage behind one interface (docs/modele-cible.md §1). Codex keeps all metadata; a store only holds bytes.
 //   CODEX_STORAGE=local       (default) files under .data/files
@@ -12,7 +15,9 @@ import { FILES_DIR, getDb, schema as s } from '@/db';
 //     CODEX_SP_TENANT_ID, CODEX_SP_CLIENT_ID, CODEX_SP_CLIENT_SECRET, CODEX_SP_DRIVE_ID (the library's drive)
 //
 // Uploads never run inside a database transaction (PGlite holds one lock for the whole database): a file is staged
-// first under a provisional name, the record is written, then the file gets its name {ID}_{label}.{ext}.
+// first under a provisional name, the record is written, then the file gets its name {ID}_{label}.{ext}. Before it is
+// staged, a file is checked (format and size, lib/filetypes.ts) and scanned (lib/antivirus.ts): a refused one never
+// reaches the store.
 
 export type StoredFile = { storage: string; fileKey: string; fileName: string; mime: string; size: number; pages: number | null };
 /** A file in the store that no record may point to yet; `ext` is kept for its final name. */
@@ -96,7 +101,7 @@ function sharepoint(): FileStore {
   return {
     name: 'sharepoint',
     async put(buf, name) {
-      // Simple upload (≤ 250 MB, see /api/import's cap); `fail` never silently replaces another file.
+      // Simple upload (≤ 250 MB, the cap of lib/filetypes.ts maxFileBytes); `fail` never silently replaces another file.
       const target = `_staging/${encodeURIComponent(`${randomUUID()}-${name}`)}`;
       const res = await graph(`${drive()}/root:/${target}:/content?@microsoft.graph.conflictBehavior=fail`, { method: 'PUT', body: new Uint8Array(buf) }, 60_000 + buf.length / 1000);
       if (!res.ok) throw new Error(`SharePoint upload failed: ${res.status}`);
@@ -133,10 +138,6 @@ function stores(name: string | null): FileStore {
   return name === 'sharepoint' ? (sp ??= sharepoint()) : local;
 }
 
-export function storageIsSharepoint(): boolean {
-  return store().name === 'sharepoint';
-}
-
 // ── File types ──────────────────────────────────────────────────────────
 
 export const EXT_BY_MIME: Record<string, string> = {
@@ -159,13 +160,23 @@ const TEXT_EXTS = new Set(['.txt', '.csv', '.log']);
  */
 export function normalizeMime(raw: string | null | undefined, name: string, buf?: Buffer): string {
   const essence = (raw ?? '').split(';')[0].trim().toLowerCase();
-  const ext = path.extname(name).toLowerCase();
+  const ext = extensionOf(name);
   const generic = !essence || essence === 'application/octet-stream' || (essence === 'text/plain' && !TEXT_EXTS.has(ext));
   if (!generic) return essence;
   const byExt = MIME_BY_EXT[ext];
   if (byExt) return byExt;
   if (buf && buf.subarray(0, 5).toString('latin1') === '%PDF-') return 'application/pdf';
   return 'application/octet-stream';
+}
+
+/**
+ * Extension a stored file is named and served with ({ID}_{label}{ext}): that of its name, the one fileIssue checked
+ * (lib/filetypes.ts extensionOf, never path.extname, which reads "procedure.hta/" as ".hta"), else that of its type,
+ * unless the type is one Codex never admits (SVG).
+ */
+export function storedExt(name: string, mime: string): string {
+  const byMime = EXT_BY_MIME[mime];
+  return (extensionOf(name) || (byMime && !DENIED_EXTENSIONS.has(byMime) ? byMime : '')).replace(/[^.\w]/g, '');
 }
 
 /**
@@ -195,17 +206,70 @@ export function countPdfPages(buf: Buffer, mime: string): number | null {
 
 // ── Staging and naming ──────────────────────────────────────────────────
 
-/** Uploads a file to the active store under a provisional name. Call before the transaction that records it. */
-export async function stageFile(buf: Buffer, originalName: string, rawMime: string): Promise<StagedFile> {
-  const mime = normalizeMime(rawMime, originalName, buf);
-  const ext = (path.extname(originalName) || EXT_BY_MIME[mime] || '').toLowerCase().replace(/[^.\w]/g, '');
-  const st = store();
-  const fileKey = await st.put(buf, `upload${ext}`);
-  return { storage: st.name, fileKey, fileName: originalName, mime, size: buf.length, pages: countPdfPages(buf, mime), ext };
+/**
+ * Why a file was refused on its way in: its format or size, or the virus scan (infected; not scanned: clamd failed, or
+ * the file is beyond its limits).
+ */
+export type FileRejection = FileIssue | { code: 'infected'; threat: string } | { code: 'scan_failed' } | { code: 'scan_too_large' };
+
+export class FileRejectedError extends Error {
+  constructor(readonly rejection: FileRejection) {
+    super(`file refused: ${rejection.code}`);
+  }
 }
 
-export async function stageUpload(file: File): Promise<StagedFile> {
-  return stageFile(Buffer.from(await file.arrayBuffer()), file.name, file.type);
+/**
+ * Who sends a file and through which entry, for the journal entry of a file the scan refuses: a new document, a copy of
+ * a template (`doc`: the template), a working version (`doc`: its document), an import (`ref`: its legacy reference).
+ */
+export type UploadOrigin = { userId: string; entry: 'create' | 'template' | 'working' | 'import'; doc?: string; ref?: string };
+
+/**
+ * An infected file is journaled as an entry without document (target 'file'): the Administration journal shows it,
+ * never the document's (lib/queries.ts auditForReader). A journal out of reach does not let the file in.
+ */
+async function journalInfected(origin: UploadOrigin, name: string, size: number, threat: string) {
+  try {
+    const db = await getDb();
+    await audit(db, origin.userId, 'file_rejected', { kind: 'file', id: origin.entry }, '', null, {
+      file: { name, size, threat, ...(origin.doc ? { doc: origin.doc } : {}), ...(origin.ref ? { ref: origin.ref } : {}) },
+    });
+  } catch (err) {
+    console.error('[antivirus] journal', name, err);
+  }
+}
+
+/**
+ * Uploads a file to the active store under a provisional name. Call before the transaction that records it.
+ * Throws FileRejectedError, with nothing stored, for a file of a format or size not admitted (lib/filetypes.ts), one the
+ * virus scan finds infected (journaled), or one it could not scan while CODEX_CLAMD_ON_ERROR refuses (lib/antivirus.ts).
+ */
+export async function stageFile(buf: Buffer, originalName: string, rawMime: string, origin: UploadOrigin): Promise<StagedFile> {
+  // One name for the check, the record and the stored file: the extension checked is the one the file is served with.
+  const name = cleanFileName(originalName);
+  const issue = fileIssue(name, buf.length, buf, fileRules(process.env));
+  if (issue) throw new FileRejectedError(issue);
+  const scan = await scanFile(buf, name);
+  if (scan.kind === 'infected') {
+    await journalInfected(origin, name, buf.length, scan.threat);
+    throw new FileRejectedError({ code: 'infected', threat: scan.threat });
+  }
+  if (scan.kind === 'failed') throw new FileRejectedError({ code: 'scan_failed' });
+  if (scan.kind === 'too_large') throw new FileRejectedError({ code: 'scan_too_large' });
+  // A name without extension was admitted on its content: the type the sender declared, which nothing checked, does
+  // not give it one.
+  const mime = normalizeMime(extensionOf(name) ? rawMime : '', name, buf);
+  const ext = storedExt(name, mime);
+  const st = store();
+  const fileKey = await st.put(buf, `upload${ext}`);
+  return { storage: st.name, fileKey, fileName: name, mime, size: buf.length, pages: countPdfPages(buf, mime), ext };
+}
+
+export async function stageUpload(file: File, origin: UploadOrigin): Promise<StagedFile> {
+  // Refused on its size before its bytes are copied.
+  const { maxBytes } = fileRules(process.env);
+  if (file.size > maxBytes) throw new FileRejectedError({ code: 'too_large', size: file.size, maxBytes });
+  return stageFile(Buffer.from(await file.arrayBuffer()), file.name, file.type, origin);
 }
 
 /** Columns of a working version that describe its file. */
@@ -245,7 +309,7 @@ export async function renameDocFiles(docId: string): Promise<void> {
     if (!r.fileKey) continue;
     // Same extension as at upload (stageFile): a SharePoint key is a driveItem id and carries none.
     const name = r.fileName ?? '';
-    const ext = (path.extname(name) || EXT_BY_MIME[normalizeMime(r.mime, name)] || '').toLowerCase().replace(/[^.\w]/g, '');
+    const ext = storedExt(name, normalizeMime(r.mime, name));
     await nameStoredFile({ storage: r.storage ?? 'local', fileKey: r.fileKey, fileName: name, mime: r.mime ?? '', size: 0, pages: null, ext }, docId, `${r.letter}.${r.n}`);
   }
 }

@@ -431,7 +431,8 @@ export const idCounters = pgTable('id_counters', {
 // ── Audit, rights, saved searches ───────────────────────────────────────
 
 /** What an entry without document is about: a cell of the rights matrix, an organisation value, a function, a register type, a CSV export. */
-export type AuditTargetKind = 'permission' | 'department' | 'site' | 'function' | 'type' | 'export';
+/** 'file': a file refused on its way in (target id: where it came from, lib/storage.ts UploadOrigin). */
+export type AuditTargetKind = 'permission' | 'department' | 'site' | 'function' | 'type' | 'export' | 'file';
 
 /** A value in a journal change, as stored: keys and codes, rendered in the reader's language (lib/queries.ts). */
 export type AuditValue = string | string[] | boolean | null | { years: number | null; trigger: string; disposition: string };
@@ -459,6 +460,11 @@ export type AuditData = {
    * `skipped` (action 'link_skipped'): the replacement proposed with a withdrawal was not linked when it applied, and why.
    */
   link?: { rel: LinkRel; other: string; skipped?: LinkSkip };
+  /**
+   * File refused by the virus scan (action 'file_rejected'), never stored: its name and size, what the scanner found, the
+   * document it was meant for (shown to records managers only, D-14) or the legacy reference of an import.
+   */
+  file?: { name: string; size: number; threat: string; doc?: string; ref?: string };
 };
 
 /** Append-only: the database refuses UPDATE, DELETE and TRUNCATE on it (src/db/index.ts). */
@@ -472,7 +478,7 @@ export const auditLog = pgTable(
     action: text('action').notNull(),
     /** Document under its ID at the time: a later reclassification adds an alias and never rewrites the entry. */
     docId: text('doc_id'),
-    /** Target of an entry without document (role:permission, department code, site key, function key, type code, export). */
+    /** Target of an entry without document (role:permission, department code, site key, function key, type code, export, file). */
     targetKind: text('target_kind').$type<AuditTargetKind>(),
     targetId: text('target_id'),
     detail: text('detail').notNull().default(''),

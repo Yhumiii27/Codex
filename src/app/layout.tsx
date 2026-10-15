@@ -7,6 +7,7 @@ import { Header } from '@/components/shell/Header';
 import { Sidebar } from '@/components/shell/Sidebar';
 import type { DialogData } from '@/components/dialogs/types';
 import { getCtx } from '@/lib/context';
+import { fileRules } from '@/lib/filetypes';
 import { CONF_LEVELS, MATRIX_ROLE, type SimRole, type TKey } from '@/lib/i18n';
 import { keystoneUrl } from '@/lib/keystone';
 import { getMatrix, listAudit, listDocs, listTemplates, myTodo, typeView } from '@/lib/queries';
@@ -50,6 +51,7 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
     currentDepartment: ctx.user.department,
     perms: [...ctx.perms],
     seesAll: ctx.seesAll,
+    files: fileRules(process.env),
   };
   return (
     <html lang={ctx.lang} className={inter.variable}>

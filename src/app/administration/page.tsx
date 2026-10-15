@@ -5,8 +5,10 @@ import { Icon } from '@/components/ui/Icon';
 import { Seg } from '@/components/ui/Seg';
 import { ActionButton, DialogButton } from '@/components/ui/client';
 import { removeFunctionHolder, togglePermission } from '@/lib/actions';
+import { antivirusStatus } from '@/lib/antivirus';
 import { getCtx, type Ctx } from '@/lib/context';
 import { featuredOf } from '@/lib/departments';
+import { fileRules, fmtMax } from '@/lib/filetypes';
 import { ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLE_LABEL, MATRIX_ROLES, PERMS, SIMULATED_MATRIX_ROLES, type TKey } from '@/lib/i18n';
 import { AUDIT_ID_MAX, auditPage, getMatrix, listDocs, listFunctionHolders, listTemplates, typeView, type AuditFilter } from '@/lib/queries';
 import { parseIsoDay } from '@/lib/format';
@@ -324,6 +326,26 @@ async function Templates({ ctx }: { ctx: Ctx }) {
 }
 
 /**
+ * What Codex checks on every file it receives (lib/filetypes.ts, lib/antivirus.ts), above the journal where the files
+ * the scan refuses are recorded: a scan left off by the configuration is said here, not only in the server log.
+ */
+function FilesPolicy({ ctx }: { ctx: Ctx }) {
+  const { t, lang } = ctx;
+  const rules = fileRules(process.env);
+  const av = antivirusStatus();
+  return (
+    <p className={`${styles.filesPolicy} text-muted`}>
+      <strong>{t.files_policy}</strong>
+      <span>{t.file_max_hint.replace('{max}', fmtMax(rules.maxBytes, lang))}</span>
+      <span title={rules.extensions.join(' ')}>{t.files_formats.replace('{n}', String(rules.extensions.length))}</span>
+      {av
+        ? <span>{t.av_on.replace('{address}', av.address)} · {av.onError === 'accept' ? t.av_on_error_accept : t.av_on_error_refuse}</span>
+        : <span className={styles.filesOff}>{t.av_off}</span>}
+    </p>
+  );
+}
+
+/**
  * Journal tab: the entries the user may read, newest first, filtered and paged by the database (lib/queries.ts
  * auditPage), the filters and the page in the URL; the CSV export above it gives the whole journal.
  */
@@ -345,6 +367,7 @@ async function Audit({ ctx, sp }: { ctx: Ctx; sp: Record<string, string | undefi
   const step = { fontSize: 12, padding: '4px 10px' };
   return (
     <>
+      <FilesPolicy ctx={ctx} />
       {/* Mounted again when the URL changes its filters (Effacer, a link), so that the fields show them. */}
       <div key={JSON.stringify(f)}>
         <Form action="/administration" scroll={false} className={styles.auditFilters}>

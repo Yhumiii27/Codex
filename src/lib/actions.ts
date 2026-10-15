@@ -17,9 +17,10 @@ import { limitWrite } from './ratelimit';
 import { decisionWaitL } from './queries';
 import { dateIssues, dateIssueText, effectIssue, issueFrom, latestEffect, type DateIssue } from './dates';
 import { cleanFeatured } from './departments';
+import { fileIssueReason, fileIssueText, fileRules } from './filetypes';
 import { nextReviewDate, parseReviewMonths } from './review';
 import { beyondBounds, cleanCriteria, hasCriteria, type SearchInput } from './search';
-import { discardFile, fileColumns, nameStoredFile, readStored, renameDocFiles, stageFile, stageUpload, type StagedFile } from './storage';
+import { discardFile, FileRejectedError, fileColumns, nameStoredFile, readStored, renameDocFiles, stageFile, stageUpload, type StagedFile } from './storage';
 import { submitChange, vigieSimulated } from './vigie';
 
 /**
@@ -73,6 +74,24 @@ function changes(parts: [field: string, before: AuditValue, after: AuditValue][]
 /** Retention class of a type or a document, as the journal stores it. */
 function retentionValue(x: { retentionYears: number | null; retentionTrigger: string; retentionDisposition: string }): AuditValue {
   return { years: x.retentionYears, trigger: x.retentionTrigger, disposition: x.retentionDisposition };
+}
+
+/**
+ * The refusal of a file stopped on its way in (lib/storage.ts stageFile: format, size, virus scan), in the user's
+ * language; any other error (a store out of reach) is thrown again. `template`: the file is the copy of this template,
+ * which the user did not choose: the refusal names it and says who can replace it.
+ */
+function refusedFile(ctx: Ctx, err: unknown, template?: string): ActionResult {
+  if (!(err instanceof FileRejectedError)) throw err;
+  const r = err.rejection;
+  const { t, lang } = ctx;
+  if (r.code === 'scan_failed') return { ok: false, error: t.file_scan_failed };
+  if (r.code === 'scan_too_large') return { ok: false, error: t.file_scan_too_large };
+  if (template) {
+    const reason = r.code === 'infected' ? t.file_reason_infected.replace('{threat}', r.threat) : fileIssueReason(t, lang, r);
+    return { ok: false, error: t.file_template_refused.replace('{id}', template).replace('{reason}', reason) };
+  }
+  return { ok: false, error: r.code === 'infected' ? t.file_infected.replace('{threat}', r.threat) : fileIssueText(t, lang, r, fileRules(process.env)) };
 }
 
 function uploadedFile(fd: FormData, key = 'file'): File | null {
@@ -274,7 +293,15 @@ export async function createDocument(fd: FormData): Promise<ActionResult> {
 
   const today = todayIso();
   // The file goes to the store before the transaction: an upload never holds the database.
-  const staged = file ? await stageUpload(file) : template?.buf.length ? await stageFile(template.buf, template.name, template.mime) : null;
+  let staged: StagedFile | null;
+  try {
+    staged = file ? await stageUpload(file, { userId: ctx.user.id, entry: 'create' })
+      : template?.buf.length ? await stageFile(template.buf, template.name, template.mime, { userId: ctx.user.id, entry: 'template', doc: templateId ?? undefined })
+      : null;
+  } catch (err) {
+    // A template stored before formats were checked, or in a format refused since, is checked again here.
+    return refusedFile(ctx, err, file ? undefined : templateId ?? undefined);
+  }
   const id = await withStaged(staged, () => db.transaction(async (tx) => {
     const id = await nextDocId(tx, f);
     await tx.insert(s.documents).values({
@@ -346,7 +373,12 @@ export async function addWorkingVersion(fd: FormData): Promise<ActionResult> {
   // Before the file goes to the store, and again in the transaction.
   const behind = await uploadBehind(db, ctx, docId, open, base);
   if (behind) return behind;
-  const staged = await stageUpload(file);
+  let staged: StagedFile;
+  try {
+    staged = await stageUpload(file, { userId: ctx.user.id, entry: 'working', doc: docId });
+  } catch (err) {
+    return refusedFile(ctx, err);
+  }
   const comment = str(fd, 'comment');
   const res = await withStaged(staged, () => db.transaction(async (tx): Promise<{ err: TKey } | { behind: ActionResult } | { label: string }> => {
     // Checked again inside the transaction: a validation request or another upload may have come in during the upload.

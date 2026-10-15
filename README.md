@@ -25,8 +25,9 @@ déposés sont stockés dans `.data/files/` (ou dans SharePoint, voir `src/lib/s
 - Tests : `npm test` lance Vitest une fois (`npm run test:watch` en continu), en une à deux minutes selon la machine,
   sans serveur ni réseau et sans toucher à `.data/`.
   - `tests/unit/` : règles pures (identifiants, révisions, visibilité, conservation, recherche, filtres mis en avant
-    des départements, dates, expiration et revue périodique, modifications simultanées, types de fichiers, limites de
-    débit, en-têtes de sécurité et `src/proxy.ts`).
+    des départements, dates, expiration et revue périodique, modifications simultanées, types de fichiers, formats,
+    contenu (ZIP, fichiers composés OLE2, macros) et taille admis, analyse antivirus contre un faux clamd local,
+    limites de débit, en-têtes de sécurité et `src/proxy.ts`).
   - `tests/integration/` : règles métier sur une base PGlite en mémoire, migrée depuis `drizzle/` avec les
     déclencheurs du journal, de la version et des termes de recherche des documents (`openDb` dans `src/db/index.ts`)
     et remplie de données minimales (`tests/support/fixtures.ts`), pas de la base de démo. Identifiants et compteurs,
@@ -144,7 +145,7 @@ Tout l'état d'écran est dans l'URL (onglets, filtres, sélection) : les liens 
   React, pas une page, et Next.js recopie en mémoire le corps de chaque requête que voit un proxy, coupé sans erreur
   au-delà de `experimental.proxyClientMaxBodySize` (10 Mo par défaut). Les dépôts de fichiers de 10 à 50 Mo échouaient
   sinon. Un formulaire envoyé avant l'hydratation de la page passe, lui, par le proxy : `next.config.ts` règle cette
-  copie sur la limite des Server Actions (50 Mo, une seule constante).
+  copie sur la limite des Server Actions (taille maximale d'un fichier plus 1 Mo, voir « Fichiers déposés »).
 - `Strict-Transport-Security` (un an, cet hôte seulement) et `upgrade-insecure-requests` seulement avec
   `CODEX_HTTPS=1`, à poser quand Codex est servi en HTTPS derrière un proxy TLS. Coupés par défaut : en local et dans
   l'app Mac, Codex est en HTTP, et HSTS sur `localhost` imposerait HTTPS à toutes les applications locales (Keystone,
@@ -193,6 +194,71 @@ secondes), sans rien exécuter (ni import, ni lecture de fichier, ni export jour
   table : seuls les seaux redevenus pleins sont oubliés, et tant qu'aucun ne l'est, une clé nouvelle attend (429) plutôt
   qu'un seau entamé ne soit effacé.
 
+## Fichiers déposés : formats, taille, antivirus
+
+Point 32 de `docs/reste-a-faire.md` (et point 64 pour la taille). Tout fichier qui entre dans Codex passe par
+`stageFile` (`src/lib/storage.ts`), quelle que soit sa voie : nouveau document, version de travail, copie d'un modèle,
+import (`POST /api/import`). Il y est contrôlé puis analysé **avant** d'être écrit dans le stockage : un fichier refusé
+ne laisse ni document, ni version, ni fichier.
+
+- **Formats admis** (`src/lib/filetypes.ts`) : une liste blanche d'extensions, la même pour tous les types de document
+  (la liste par type attend la question M12 de l'audit). Par défaut : PDF, Word, Excel, PowerPoint (et leurs modèles
+  `.dotx`, `.xltx`, `.potx`), OpenDocument, RTF, texte, CSV, Visio, Project, courriels (`.msg`, `.eml`), images (PNG,
+  JPEG, GIF, WebP, TIFF, HEIC), MP4, plans et maquettes (DWG, DXF, STEP, IGES, IFC, STL), JSON et XML. Les archives
+  (`.zip`…) n'y sont pas. `CODEX_FILE_EXTENSIONS` remplace la liste entière ; les exécutables, scripts, pages web, SVG,
+  images disque et extensions Office à macros (`.exe`, `.bat`, `.js`, `.ps1`, `.html`, `.hta`, `.svg`, `.iso`, `.docm`,
+  `.xlsm`…) restent refusés même s'ils y figurent.
+- **Nom** : le fichier est contrôlé, enregistré et servi sous un seul nom, le dernier segment de celui reçu, sans
+  caractères de contrôle ni séparateurs, points ou espaces finaux (`procedure.hta/` devient `procedure.hta`, refusé ;
+  `C:\fakepath\plan.pdf` devient `plan.pdf`). L'extension contrôlée est donc celle du fichier stocké et du
+  téléchargement. Un fichier sans extension prend celle de son contenu (PDF), jamais celle du type annoncé à l'envoi.
+- **Contenu** : un format courant doit avoir le contenu qu'annonce son extension : PDF, PNG, JPEG, GIF, WebP, TIFF, RTF,
+  DWG, MP4 et HEIC par leur en-tête ; Office 97-2003, Project et Outlook par le répertoire de leur fichier composé
+  (OLE2), qui doit se lire ; Word, Excel, PowerPoint et Visio (`.docx`…) par l'entrée `[Content_Types].xml` de leur
+  ZIP, ou, chiffrés par un mot de passe ou une étiquette de confidentialité, par le flux `EncryptedPackage` de leur
+  fichier composé ; OpenDocument par l'entrée `mimetype` ou `META-INF/manifest.xml` de leur ZIP. Un `.doc` peut aussi
+  être du RTF, comme l'exportent d'anciens systèmes. Une archive ZIP quelconque renommée `.docx` ou `.odt` est donc
+  refusée. Les formats texte et d'échange (TXT, CSV, DXF, STEP…) sont pris sur leur nom. Un programme (Windows, Linux,
+  macOS) est refusé quel que soit son nom. Un fichier sans extension n'est admis que si son contenu désigne un format
+  admis (un PDF, une image, un DWG).
+- **Macros** : les extensions à macros (`.docm`, `.xlsm`…) sont toujours refusées, et les macros VBA le sont quelle
+  que soit l'extension : partie `vbaProject.bin` d'un ZIP, flux `_VBA_PROJECT` d'un fichier composé (Word, Excel et
+  Project 97-2003, message Outlook qui en embarque un). Ne sont pas détectées sans antivirus : les macros de PowerPoint
+  97-2003 (compressées dans la présentation), les macros Excel 4.0, les macros Basic d'OpenDocument et ce que contient
+  un fichier chiffré.
+- **Taille maximale** : `CODEX_MAX_FILE_MB`, 50 Mo par défaut, la même pour toutes les voies (250 Mo au plus avec
+  SharePoint). Elle règle aussi, au démarrage du serveur, la taille d'une requête de Server Action (`next.config.ts` :
+  la limite plus 1 Mo pour les autres champs), si bien qu'un fichier trop gros reçoit un refus explicite et non
+  l'erreur générique du framework. Elle remplace `CODEX_IMPORT_MAX_MB`, qui n'est plus lue.
+- **Dans les dialogues** : le sélecteur de fichier propose les extensions admises (`accept`), affiche la taille
+  maximale et dit tout de suite pourquoi un fichier sera refusé (extension, taille) ; le formulaire ne part pas avec
+  lui. Le serveur refait tous les contrôles. Refus traduits en français et en anglais (`src/lib/i18n.ts`).
+- **Antivirus** (`src/lib/antivirus.ts`) : avec `CODEX_CLAMD` (`hôte:port`, port 3310 par défaut, ou chemin du socket
+  Unix), chaque fichier est envoyé à clamd par la commande `INSTREAM` avant d'être stocké. Un fichier infecté est
+  refusé (« Fichier refusé : l'analyse antivirus a détecté … ») et journalisé (action « Fichier refusé (antivirus) »,
+  visible dans l'onglet Journal d'audit de l'administration). Hors gestionnaires documentaires, l'entrée d'un dépôt à
+  l'écran ne donne ni le nom du fichier, qui peut porter l'identifiant et la version d'un brouillon
+  (`PRO-ING-0007_A.2.docx`), ni le document visé, mais la voie, l'extension, la taille et la menace (D-14) ; celle d'un
+  import garde le nom et la référence ancienne. Si clamd ne répond pas (injoignable, délai `CODEX_CLAMD_TIMEOUT_MS` de
+  30 s dépassé, erreur), le dépôt est refusé (« réessayez plus tard »), sauf avec `CODEX_CLAMD_ON_ERROR=accept`, qui
+  l'accepte sans analyse en le notant dans le journal du serveur.
+- **Limites de clamd** : elles doivent couvrir `CODEX_MAX_FILE_MB`. `StreamMaxLength` (au-delà, clamd coupe l'envoi) et
+  `MaxFileSize` (au-delà, clamd répond « OK » **sans analyser**) valent 100 Mo par défaut depuis ClamAV 0.105, 25 Mo
+  avant ; `MaxScanSize` (contenu décompressé) 400 Mo, 100 Mo avant. Réglez-les au moins à `CODEX_MAX_FILE_MB` et
+  activez `AlertExceedsMax yes` : clamd signale alors un fichier qui dépasse `MaxFileSize`, `MaxScanSize` ou
+  `MaxRecursion` (« Heuristics.Limits.Exceeded… ») au lieu de le dire sain. Codex refuse ce fichier, comme celui que
+  clamd coupe, avec un message qui en donne la cause (limites de l'analyse antivirus à relever) et sans inviter à
+  réessayer ; à l'import, 413 `scan_too_large`. `CODEX_CLAMD_ON_ERROR=accept` l'accepte sans analyse.
+- **Fichiers déjà stockés** : ils ne sont ni recontrôlés ni réanalysés. Seule la copie d'un modèle refait les contrôles,
+  puisque son fichier entre dans un nouveau document : un modèle déposé avant ce contrôle dans un format désormais
+  refusé (`.dotm`, PDF nommé `.docx`…) n'est plus copiable, et le refus nomme le modèle et demande à son propriétaire
+  d'en déposer une nouvelle version.
+- **Sans `CODEX_CLAMD`** (usage local, app Mac), rien n'est analysé : le journal du serveur le dit au premier dépôt
+  (`[antivirus] scanning off`) et l'onglet Journal d'audit de l'administration l'affiche au-dessus des filtres, avec la
+  taille maximale et le nombre de formats admis. Pour essayer en local : `docker run -p 3310:3310 clamav/clamav`, puis
+  `CODEX_CLAMD=127.0.0.1:3310 npm run dev`. Les tests utilisent un faux clamd et le fichier de test EICAR
+  (`tests/support/clamd.ts`).
+
 ## Organisation du code
 
 ```
@@ -222,8 +288,10 @@ src/
     concurrency.ts     modifications simultanées : version vue par un dialogue, version de travail de base
     search.ts          recherche : facettes, période, tri, pertinence
     departments.ts     pages par département : filtres mis en avant
-    storage.ts         stockage des fichiers (disque local ou SharePoint)
-    filetypes.ts       types de fichier servis en ligne et affichés en aperçu
+    storage.ts         stockage des fichiers (disque local ou SharePoint) ; contrôle et analyse avant stockage
+    filetypes.ts       formats, contenu (signatures, ZIP, OLE2, macros) et taille admis au dépôt ; types servis en
+                       ligne et affichés en aperçu
+    antivirus.ts       analyse antivirus des fichiers déposés (clamd, commande INSTREAM)
     keystone.ts, vigie.ts  frontières d'intégration
     importer.ts        API d'import (outil de migration)
     ratelimit.ts       limites de débit des routes sensibles et des Server Actions (en mémoire)
@@ -232,7 +300,8 @@ src/
 tests/
   unit/                tests unitaires des règles pures de src/lib (Vitest, vitest.config.ts)
   integration/         tests d'intégration sur PGlite en mémoire (règles métier de src/lib, Server Actions, webhook)
-  support/             base de test et données minimales, session simulée, remplacement de server-only, lecture des PDF
+  support/             base de test et données minimales, session simulée, remplacement de server-only, lecture des PDF,
+                       faux clamd, ZIP et fichiers composés (OLE2) minimaux
 ```
 
 ## Décisions et points ouverts

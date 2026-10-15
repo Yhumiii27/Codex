@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useId, useRef, useState, useTransition, type CSSProperties, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import type { ActionResult } from '@/lib/actions';
+import { acceptAttr, fileIssue, fileIssueText, fmtMax } from '@/lib/filetypes';
 import { fmtSize } from '@/lib/format';
 import { useApp } from '@/components/shell/AppProvider';
 
@@ -135,15 +136,42 @@ export function Select({ id, name, value, onChange, options, defaultValue, requi
   );
 }
 
+/**
+ * File input of the upload dialogs: offers the admitted formats and gives the largest size (lib/filetypes.ts); a file
+ * whose name or size the server would refuse is said at once, and the form is not sent with it. The server checks again,
+ * content and virus scan included (lib/storage.ts stageFile).
+ */
 export function FilePicker({ label, required }: { label: string; required?: boolean }) {
-  const { lang } = useApp();
+  const { lang, t, data } = useApp();
+  const rules = data.files;
   const [file, setFile] = useState<File | null>(null);
+  const [issue, setIssue] = useState<string | null>(null);
+  const errorId = useId();
   return (
-    <label className="file-drop" style={{ position: 'relative' }}>
-      <input type="file" name="file" required={required} onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--color-accent)', flex: 'none' }}><path d="M12 16V4M7 9l5-5 5 5M4 20h16" /></svg>
-      <span className="ellipsis" style={{ flex: 1 }}>{file ? file.name : label}</span>
-      {file && <span className="text-muted sub">{fmtSize(file.size, lang)}</span>}
-    </label>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <label className="file-drop" style={{ position: 'relative' }}>
+        <input
+          type="file"
+          name="file"
+          required={required}
+          accept={acceptAttr(rules)}
+          aria-invalid={issue ? true : undefined}
+          aria-describedby={issue ? errorId : undefined}
+          onChange={(e) => {
+            const input = e.currentTarget;
+            const f = input.files?.[0] ?? null;
+            const found = f ? fileIssue(f.name, f.size, null, rules) : null;
+            const text = found ? fileIssueText(t, lang, found, rules) : null;
+            input.setCustomValidity(text ?? '');
+            setFile(f);
+            setIssue(text);
+          }}
+        />
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--color-accent)', flex: 'none' }}><path d="M12 16V4M7 9l5-5 5 5M4 20h16" /></svg>
+        <span className="ellipsis" style={{ flex: 1 }}>{file ? file.name : label}</span>
+        <span className="text-muted sub nowrap">{file ? fmtSize(file.size, lang) : t.file_max_hint.replace('{max}', fmtMax(rules.maxBytes, lang))}</span>
+      </label>
+      {issue && <p id={errorId} className="form-error" role="alert">{issue}</p>}
+    </div>
   );
 }

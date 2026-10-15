@@ -1,19 +1,31 @@
+import { fileRules } from '@/lib/filetypes';
 import { checkBearer, importDocument, json, type ImportFile } from '@/lib/importer';
 import { limitRequest } from '@/lib/ratelimit';
-import { storageIsSharepoint } from '@/lib/storage';
+import type { FileRejection } from '@/lib/storage';
 
 // Import API for the migration tool (docs/api.md): one legacy document per call, bearer token CODEX_IMPORT_TOKEN.
 //   multipart/form-data: part "meta" (JSON, text or file) + optional part "file"
 //   application/json:    the metadata alone, without a file
 
-/** CODEX_IMPORT_MAX_MB (100 by default), capped at 250 MB with SharePoint: Graph's simple upload goes no further. */
-function maxBytes(): number {
-  const mb = Number(process.env.CODEX_IMPORT_MAX_MB);
-  const wanted = Number.isFinite(mb) && mb > 0 ? mb : 100;
-  return (storageIsSharepoint() ? Math.min(wanted, 250) : wanted) * 1024 * 1024;
-}
+/** The largest file, the same for every entry (CODEX_MAX_FILE_MB, lib/filetypes.ts). */
+const maxBytes = () => fileRules(process.env).maxBytes;
 
 const tooLarge = () => json({ error: 'too_large', maxBytes: maxBytes() }, 413);
+
+/**
+ * A file refused on its way in: 413 for its size, or for being beyond the virus scan's limits (sending it again changes
+ * nothing), 415 for its format (with the extensions admitted), 422 when the virus scan finds it infected, 503 when the
+ * scan could not be run (to be sent again later).
+ */
+function refused(r: FileRejection): Response {
+  switch (r.code) {
+    case 'too_large': return tooLarge();
+    case 'scan_too_large': return json({ error: 'scan_too_large' }, 413);
+    case 'infected': return json({ error: 'file_infected', threat: r.threat }, 422);
+    case 'scan_failed': return json({ error: 'scan_unavailable' }, 503, { 'Retry-After': '60' });
+    default: return json({ error: 'file_format', reason: r.code, ...('ext' in r ? { ext: r.ext } : {}), allowed: fileRules(process.env).extensions }, 415);
+  }
+}
 
 /**
  * The request's body, cut off once it passes `cap` bytes: a body sent in chunks has no Content-Length to check
@@ -89,6 +101,8 @@ export async function POST(req: Request) {
       case 'conflict':
         // Not a replay: the legacy reference is another document's Codex ID. The tool must not record this mapping.
         return json({ error: 'ref_is_codex_id', id: res.id }, 409);
+      case 'file_rejected':
+        return refused(res.rejection);
       case 'created': {
         const href = `/documents/${encodeURIComponent(res.id)}`;
         return json({ id: res.id, revision: res.revision, version: res.version, status: res.revStatus, file: res.file, href, warnings: res.warnings }, 201, { Location: href });

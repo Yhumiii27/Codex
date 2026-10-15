@@ -10,7 +10,7 @@ import { fmtSize, parseIsoDay, todayIso } from './format';
 import { ATTACHMENTS, CONF_LEVELS, DICT, ORIGINS } from './i18n';
 import { audit, refreshHeadline, type Tx } from './lifecycle';
 import { countTokenFailure, tokenFailuresExceeded } from './ratelimit';
-import { discardFile, fileColumns, nameStoredFile, stageFile, type StagedFile } from './storage';
+import { discardFile, FileRejectedError, fileColumns, nameStoredFile, stageFile, type FileRejection, type StagedFile } from './storage';
 
 // Integration endpoints (docs/api.md): bearer-token check shared by /api/import and /api/integrations/vigie, and the
 // import of one legacy document for the migration tool. The business rules repeat those of actions.validateFields,
@@ -299,7 +299,9 @@ export type ImportResult =
    * The legacy reference is a Codex ID, current or former (an alias left by a reclassification), of another document,
    * which was not imported from it: id is that document's current ID.
    */
-  | { kind: 'conflict'; id: string };
+  | { kind: 'conflict'; id: string }
+  /** The file was refused (format, size, virus scan: lib/storage.ts stageFile); nothing was imported. */
+  | { kind: 'file_rejected'; rejection: FileRejection };
 
 /** `legacyRef` as parseImportMeta reads it, or null when it is missing or invalid. */
 function legacyRefOf(raw: unknown): string | null {
@@ -362,7 +364,15 @@ export async function importDocument(raw: unknown, file: ImportFile | null): Pro
   const label = revStatus === 'draft' ? `${v.letter}.1` : v.letter;
 
   // The file goes to the store before the transaction (an upload never holds the database), then gets its name.
-  const staged: StagedFile | null = file ? await stageFile(file.buf, file.name, file.mime) : null;
+  let staged: StagedFile | null = null;
+  if (file) {
+    try {
+      staged = await stageFile(file.buf, file.name, file.mime, { userId: IMPORT_ACTOR, entry: 'import', ref: v.legacyRef });
+    } catch (err) {
+      if (err instanceof FileRejectedError) return { kind: 'file_rejected', rejection: err.rejection };
+      throw err;
+    }
+  }
   let res: ImportResult;
   try {
     res = await db.transaction(async (tx): Promise<ImportResult> => {

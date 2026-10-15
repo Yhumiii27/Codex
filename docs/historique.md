@@ -1456,6 +1456,7 @@ en dépend prend l'option la plus prudente et est consigné dans [decisions.md](
 | Étape | Commit | Points | Ce qui change | Choix prudents |
 |---|---|---|---|---|
 | 1. En-têtes et débit (§16.1) | commit « Lot 7, étape 1 », qui suit `c7e7ce1` | 24, 25 | En-têtes de sécurité sur toutes les réponses, politique de sécurité du contenu des pages avec nonce, limites de débit des routes sensibles et des actions qui écrivent (429 avec `Retry-After`) | HSTS coupé sauf `CODEX_HTTPS=1` ; `X-Forwarded-For` tenu pour fiable seulement avec `CODEX_TRUST_PROXY=1` ; seuils généreux ; compteurs en mémoire pour une seule instance |
+| 2. Fichiers déposés (§16.2) | commit « Lot 7, étape 2 », qui suit `3c2dbe7` | 32, 64 | Formats admis (liste blanche, signatures et conteneurs, macros et programmes refusés), nom unique du contrôle au téléchargement, taille maximale unique, analyse antivirus par clamd avant stockage, refus journalisé | Liste commune à tous les types, archives exclues, Office chiffré admis ; 50 Mo pour l'écran et l'import ; analyse désactivée sans `CODEX_CLAMD`, dépôt refusé si clamd ne répond pas ou si le fichier dépasse ses limites ; nom du fichier refusé réservé aux gestionnaires (D-14) |
 
 ### 16.1 En-têtes de sécurité HTTP et limitation de débit
 
@@ -1522,3 +1523,90 @@ en-tête de sécurité (seule la route fichier posait `nosniff`), il n'y avait n
     une autre adresse servie ; registre limité par adresse.
 - **Reste** : vérifier l'app Mac (WebKit) en session macOS ; journalisation des refus (point 23) ; plusieurs instances
   demanderaient un magasin partagé ou une limite au proxy.
+
+### 16.2 Fichiers déposés : formats admis et analyse antivirus
+
+Points 32 et 64 de [reste-a-faire.md](reste-a-faire.md), vérifiés au commit `3c2dbe7` : `stageFile`
+(src/lib/storage.ts) stockait tout fichier, exécutables et archives compris, sans analyse ; le sélecteur de fichier
+n'avait pas d'`accept` ; l'écran plafonnait à 50 Mo (limite des Server Actions, erreur générique au-delà) et l'import à
+100 Mo (`CODEX_IMPORT_MAX_MB`).
+
+- **Un seul point de passage** : nouveau document, copie d'un modèle, version de travail et import passent par
+  `stageFile`, qui contrôle le fichier, l'analyse, puis seulement l'écrit dans le stockage. Un refus lève
+  `FileRejectedError` : les actions le rendent dans la langue de l'utilisateur, l'import en 413, 415, 422 ou 503.
+- **Formats** (`src/lib/filetypes.ts`, sans `server-only` : le sélecteur s'en sert) : liste blanche d'extensions
+  (`CODEX_FILE_EXTENSIONS`, 39 par défaut, archives exclues) ; refus permanent des exécutables, scripts, pages web, SVG,
+  images disque et extensions Office à macros ; signature vérifiée quand elle est fiable (PDF dans le premier kilo-octet,
+  PNG, JPEG, GIF, WebP, TIFF, ZIP, OLE2, RTF, DWG, MP4 et HEIC) ; programme Windows, Linux ou macOS refusé quel que soit
+  son nom (« MZ » seul ne suffit pas, il faut l'en-tête PE) ; fichier sans extension admis seulement si son contenu
+  désigne un format admis sans ambiguïté.
+- **Taille** : `CODEX_MAX_FILE_MB` (50 Mo par défaut, 250 avec SharePoint) pour toutes les voies ; `next.config.ts` en
+  tire au démarrage la limite des Server Actions et de la copie du proxy (plus 1 Mo), pour qu'un fichier trop gros
+  reçoive le refus explicite de `stageUpload`.
+- **Sélecteur** (`FilePicker`, src/components/dialogs/Modal.tsx) : `accept` avec les extensions admises, « 50 Mo au
+  plus » tant qu'aucun fichier n'est choisi, refus immédiat (extension, taille) sous le champ, et
+  `setCustomValidity` pour que le formulaire ne parte pas. Les règles viennent du serveur par les données du layout.
+- **Antivirus** (`src/lib/antivirus.ts`) : interface `Scanner`, connecteur clamd par `INSTREAM` (TCP ou socket Unix,
+  morceaux de 64 Ko, délai `CODEX_CLAMD_TIMEOUT_MS`), réponse lue même si clamd répond avant la fin de l'envoi (limite
+  `StreamMaxLength`). Infecté : refus, rien d'écrit, entrée `file_rejected` sans document (cible « Fichier déposé » et
+  voie d'entrée ; nom, taille, menace ; document visé montré aux seuls gestionnaires documentaires, D-14 ; référence
+  ancienne pour l'import), lisible dans l'onglet Journal d'audit. Échec de l'analyse : refus, sauf
+  `CODEX_CLAMD_ON_ERROR=accept`. Sans `CODEX_CLAMD` : pas d'analyse, dit une fois dans le journal du serveur et en tête
+  de l'onglet Journal d'audit, avec la taille maximale et le nombre de formats admis.
+- **Tests** : `tests/unit/filetypes.test.ts` (liste, refus permanents, signatures, programmes, fichiers sans extension,
+  taille, textes FR/EN, limite des Server Actions lue de l'environnement), `tests/unit/antivirus.test.ts` (faux clamd de
+  `tests/support/clamd.ts` en TCP et en socket Unix, envoi en plusieurs morceaux, EICAR, réponse d'erreur, limite de
+  taille, silence, clamd absent), `tests/integration/file-checks.test.ts` (chaque voie d'entrée, rien de créé ni de
+  stocké après un refus, journal et D-14, import 413, 415, 422 et 503, `CODEX_CLAMD_ON_ERROR=accept`, pas d'analyse
+  sans `CODEX_CLAMD`). La chaîne EICAR est assemblée à l'exécution : aucun fichier du dépôt ne la contient entière.
+  Retirer l'analyse ou le contrôle de format de `stageFile` fait échouer cinq tests chacun. Un test existant changeait de
+  sens : un PDF nommé `.docx` était stocké sous le type de son extension, il est désormais refusé (415 `signature`).
+- **Vérifié** : `npm test` (47 fichiers, 803 tests), `npm run typecheck`, `npm run lint`, `npm run build`. Dans Chromium,
+  sur le serveur de développement : sélecteur (« 50 Mo au plus », `accept`), `.exe` et fichier de 51 Mo refusés sans
+  envoi, faux PDF refusé par le serveur, vrai PDF accepté ; fichier de 50,5 Mo envoyé en contournant le sélecteur :
+  refus explicite du serveur ; avec un faux clamd (`CODEX_CLAMD=127.0.0.1:3310`) : EICAR refusé, entrée au journal
+  d'audit (FR et EN), PDF propre accepté ; clamd arrêté : dépôt refusé. Sur la build de production lancée avec
+  `CODEX_MAX_FILE_MB=2` : « 2 Mo au plus », 2,5 Mo refusé explicitement, 3,5 Mo coupé par la limite des Server Actions à
+  3 Mo (lue au démarrage).
+- **Corrections après relecture** :
+  - *Extension contrôlée et extension servie* : `fileIssue` lisait l'extension du dernier segment du nom, alors que le
+    stockage, le renommage et le téléchargement prenaient `path.extname` : `procedure.hta/` (gardé tel quel par l'import
+    et par une Server Action postée en formulaire) passait comme un PDF et se téléchargeait en `.hta`. `stageFile`
+    réduit désormais le nom à son dernier segment, sans caractères de contrôle ou bidirectionnels ni séparateurs, points
+    ou espaces finaux (`cleanFileName`), et une seule fonction (`storedExt`, sur `extensionOf`) donne l'extension du
+    fichier stocké, renommé et téléchargé ; un fichier sans extension prend celle de son contenu, jamais celle du type
+    annoncé (un PDF annoncé `image/svg+xml` ne devient pas `.svg`).
+  - *D-14* : le nom d'un fichier refusé à l'écran (`PRO-ING-0007_A.2.docx`) donnait l'identifiant, la version et le
+    rédacteur d'un brouillon à tout titulaire du droit Administrer ; hors gestionnaires, le journal et son export ne
+    montrent plus que l'extension (le nom reste pour l'import).
+  - *Conteneurs* : un ZIP quelconque passait pour un `.docx`, un `.xls` pouvait porter des macros VBA. Les fichiers
+    Office et OpenDocument sont lus par le répertoire central de leur ZIP (`[Content_Types].xml`, `mimetype` ou
+    manifeste), les fichiers Office 97-2003 par le répertoire de leur fichier composé, lu par la table d'allocation
+    (MS-CFB) ; les macros VBA (`vbaProject.bin`, `_VBA_PROJECT`) sont refusées quelle que soit l'extension. Limites
+    documentées : macros PowerPoint 97-2003, Excel 4.0, Basic d'OpenDocument, contenu chiffré.
+  - *Office chiffré et `.doc` RTF* : une extension admet plusieurs contenus ; un `.docx` chiffré par mot de passe ou
+    étiquette de confidentialité (fichier composé `EncryptedPackage`) et un `.doc` en RTF étaient refusés, ils sont
+    admis. Vérifié sur des fichiers produits par LibreOffice 24.2 (`.doc`, `.xls`, `.ppt`, `.docx`, `.xlsx`, `.pptx`,
+    `.odt`, `.ods`, `.odp`, `.rtf`, ainsi que `.docx`, `.xlsx` et `.pptx` chiffrés et un `.doc` de 9 Mo dont le
+    répertoire n'est atteint que par la chaîne DIFAT) : tous admis.
+  - *Limites de clamd* : « INSTREAM size limit exceeded » était traité comme une panne passagère (« réessayez »,
+    503 avec `Retry-After`). Il est classé à part (`ScanLimitError`), comme « Heuristics.Limits.Exceeded… » renvoyé
+    avec `AlertExceedsMax` : refus qui en donne la cause, 413 `scan_too_large` sans `Retry-After` à l'import. La
+    documentation corrige les valeurs par défaut de clamd (vérifiées dans `clamd.conf.sample` : `StreamMaxLength` et
+    `MaxFileSize` 100 Mo depuis ClamAV 0.105, 25 Mo avant ; `MaxScanSize` 400 Mo, 100 Mo avant) et demande
+    `MaxFileSize`, `MaxScanSize` et `AlertExceedsMax yes`, sans quoi clamd répond « OK » sans analyser un gros fichier.
+  - *Modèles* : la copie d'un modèle dont le fichier n'est plus admis donne un message qui nomme le modèle et demande à
+    son propriétaire d'en déposer une nouvelle version ; les fichiers déjà stockés ne sont ni recontrôlés ni réanalysés
+    (README, `docs/decisions.md`).
+  - *Vérifié* : `npm test` (47 fichiers, 819 tests), `npm run typecheck`, `npm run lint`, `npm run build`. Sur le
+    serveur de développement, base du scratchpad et faux clamd : la Server Action postée en formulaire par jwagner
+    avec `procedure.hta/` ne crée rien et ne stocke aucun `.hta`, celle avec `C:\fakepath\procedure.pdf` crée un
+    document servi en `.pdf` ; l'import de `note.hta/` répond 415 ; dans Chromium, `.docx` à macros, ZIP renommé
+    `.docx`, PDF de 2 Mo au-delà de la limite du faux clamd et EICAR nommé `PRO-ING-0001_A.1.txt` refusés avec leur
+    message, `.docx` chiffré accepté ; journal lu par cbardet (nom et document) et par gcomte, validateur à qui le
+    droit Administrer a été donné (`.txt`, sans `PRO-ING-0001`, à l'écran comme dans l'export CSV). Sur la build de
+    production : mêmes refus de la Server Action en formulaire et du dialogue, en français et en anglais, sans
+    erreur dans la console.
+- **Reste** : une liste de formats par type dans le registre et le PDF/A (question M12) ; la réanalyse des fichiers
+  déjà stockés ; l'essai sur un vrai clamd ; le dépôt d'un fichier refusé dans la fenêtre de l'app Mac (session
+  macOS).

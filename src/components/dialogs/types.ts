@@ -1,4 +1,5 @@
 import type { Attachment, Conf, Origin } from '@/db/schema';
+import type { FileRules } from '@/lib/filetypes';
 import type { Search } from '@/lib/search';
 
 export type Option = { key: string; label: string };
@@ -29,6 +30,8 @@ export type DialogData = {
   perms: string[];
   /** Records manager (sees every document, simulates Vigie decisions). */
   seesAll: boolean;
+  /** Formats and size admitted on upload (lib/filetypes.ts), checked by the file picker before sending; the server decides. */
+  files: FileRules;
 };
 
 /** Every editable metadata field of a document (edit dialog). */

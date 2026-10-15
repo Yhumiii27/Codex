@@ -1569,7 +1569,7 @@ tranché dans le modèle ou le code, ouvert, ou sans objet.
 
 - **Pourquoi** : Rien ne dit s'il faut publier en PDF/A, conserver le fichier natif, ajouter un filigrane 'Brouillon', ni quels formats sont admis (plans CAO, jeux de données volumineux en DR, vidéos).
 - **Question** : Une version approuvée est-elle publiée en PDF/A, à côté du fichier natif ? Quels formats sont acceptés ou refusés, et avec quelle taille maximale ? Les en-têtes et pieds de page (ID, révision, statut) sont-ils générés automatiquement ?
-- **Suite** : **Ouvert.**
+- **Suite** : **Ouvert.** Depuis le 15 octobre 2026, une liste blanche d'extensions et une taille maximale (50 Mo) provisoires, communes à tous les types et réglables (`CODEX_FILE_EXTENSIONS`, `CODEX_MAX_FILE_MB`), sont appliquées à tout fichier entrant (point 32 de `docs/reste-a-faire.md`, choix signalés dans `docs/decisions.md`). La liste par type, le PDF/A, le filigrane et les en-têtes générés restent à décider.
 
 #### M13 — Indicateurs et pilotage
 

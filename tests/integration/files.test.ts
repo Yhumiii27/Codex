@@ -6,6 +6,7 @@ import { POST } from '@/app/api/import/route';
 import { FILES_DIR, schema as s } from '@/db';
 import { previewKind } from '@/lib/filetypes';
 import { normalizeMime } from '@/lib/storage';
+import { zip } from '../support/containers';
 import { fixClock, setupDb } from '../support/db';
 import { actAs } from '../support/session';
 
@@ -104,6 +105,7 @@ describe('a file sent without a usable type', () => {
   });
 
   it('gives a file without extension no extension, and serves it as a download', async () => {
+    // Admitted without extension because its content is recognised as a drawing (lib/filetypes.ts fileIssue).
     const id = await importFile('GED1/LISEZMOI', 'LISEZMOI', DWG);
     const v = await versionOf(id);
     expect(v).toMatchObject({ mime: 'application/octet-stream', fileName: 'LISEZMOI' });
@@ -136,11 +138,26 @@ describe('a file sent without a usable type', () => {
     expect(await previewOf(id)).toBe('pdf');
   });
 
-  it('takes the type of a known extension before the PDF signature', async () => {
-    const pdf = Buffer.from('%PDF-1.7\n%%EOF\n');
-    const id = await importFile('GED1/RAPPORT', 'rapport.docx', pdf);
+  it('takes the type of a known extension, served as a download', async () => {
+    const docx = zip([['[Content_Types].xml', '<Types/>'], ['word/document.xml', '<w:document/>']]);
+    const id = await importFile('GED1/RAPPORT', 'rapport.docx', docx);
     expect(await versionOf(id)).toMatchObject({ mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', fileName: 'rapport.docx', pages: null });
-    expect(await fetchFile(id)).toMatchObject({ type: 'application/octet-stream', disposition: `attachment; filename*=UTF-8''${id}_C.docx`, body: pdf });
+    expect(await fetchFile(id)).toMatchObject({ type: 'application/octet-stream', disposition: `attachment; filename*=UTF-8''${id}_C.docx`, body: docx });
     expect(await previewOf(id)).toBeNull();
+  });
+
+  // Since formats are checked on the way in (lib/filetypes.ts), a known extension whose content says otherwise is refused
+  // rather than stored under the type of its extension; normalizeMime's order is covered in tests/unit/storage.test.ts.
+  it('refuses a PDF named .docx', async () => {
+    const b = 'codex-test-boundary';
+    const meta = { legacyRef: 'GED1/RAPPORT/2', title: 'Rapport', typeCode: 'PRO', department: 'QUA', ownerId: 'owner', revision: 'C', inForceAt: '2025-03-12' };
+    const body = Buffer.concat([
+      Buffer.from(`--${b}\r\nContent-Disposition: form-data; name="meta"\r\n\r\n${JSON.stringify(meta)}\r\n`),
+      Buffer.from(`--${b}\r\nContent-Disposition: form-data; name="file"; filename="rapport.docx"\r\n\r\n%PDF-1.7\n%%EOF\n\r\n--${b}--\r\n`),
+    ]);
+    const res = await POST(new Request('http://codex.test/api/import', { method: 'POST', headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': `multipart/form-data; boundary=${b}` }, body }));
+    expect(res.status).toBe(415);
+    expect(await res.json()).toMatchObject({ error: 'file_format', reason: 'signature', ext: '.docx' });
+    expect(await db().select().from(s.documents).where(eq(s.documents.legacyRef, 'GED1/RAPPORT/2'))).toEqual([]);
   });
 });

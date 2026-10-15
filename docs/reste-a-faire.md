@@ -579,6 +579,7 @@ Constaté : src/db/schema.ts:229-247 (working_versions : storage, file_key, file
 </details>
 
 #### 32. Fichiers déposés : antivirus et formats admis
+- **Fait le 15 octobre 2026** : tout fichier entrant (nouveau document, copie d'un modèle, version de travail, import) passe par `stageFile`, qui le contrôle sous un seul nom (dernier segment du nom reçu : l'extension contrôlée est celle du fichier stocké et téléchargé) puis l'analyse avant de l'écrire dans le stockage : liste blanche d'extensions commune à tous les types (`CODEX_FILE_EXTENSIONS`, archives exclues ; exécutables, scripts, pages web, SVG et extensions à macros toujours refusés), contenu vérifié (en-têtes, paquets ZIP Office et OpenDocument, fichiers composés OLE2, Office chiffré admis, macros VBA refusées, programme refusé quel que soit son nom), taille unique `CODEX_MAX_FILE_MB` (50 Mo, point 64), analyse par clamd en `INSTREAM` avec `CODEX_CLAMD` (infecté : refusé et journalisé, nom du fichier et document réservés aux gestionnaires selon D-14 ; clamd injoignable ou limites de clamd dépassées : refusé avec sa cause, sauf `CODEX_CLAMD_ON_ERROR=accept` ; sans `CODEX_CLAMD` : pas d'analyse, dit dans le journal du serveur et dans l'administration), refus traduits à l'écran et codes 413, 415, 422 ou 503 à l'import (`docs/api.md`), choix prudents dans `docs/decisions.md` ; restent la liste de formats par type et le PDF/A (M12), la réanalyse des fichiers déjà stockés et l'essai sur un vrai clamd.
 
 - **Effort** : moyen · **Références** : M12
 
@@ -1120,6 +1121,7 @@ Le manque est confirmé. La maquette dessine le stepper aux lignes design/GED Gr
 </details>
 
 #### 64. Limites de taille incohérentes et message d'erreur générique pour un gros fichier
+- **Fait le 15 octobre 2026**, avec le point 32 : une seule taille maximale, `CODEX_MAX_FILE_MB` (50 Mo par défaut, 250 Mo au plus avec SharePoint), pour l'écran et l'import, qui remplace `CODEX_IMPORT_MAX_MB` ; `next.config.ts` en tire la limite des Server Actions (plus 1 Mo pour les autres champs). Le sélecteur de fichier affiche « 50 Mo au plus », refuse tout de suite un fichier plus gros avec la taille et la limite, et le serveur rend le même message (README, « Fichiers déposés »). Contrairement à ce que proposait ce point, les deux limites sont alignées plutôt que documentées séparément : choix signalé dans `docs/decisions.md`.
 
 - **Effort** : faible
 

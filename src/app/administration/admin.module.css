@@ -19,3 +19,7 @@
 .auditFilters select:global(.input) { padding-right: 28px; }
 .auditDay { display: inline-flex; align-items: center; gap: 6px; }
 .auditPager { display: flex; align-items: center; gap: 8px; padding: 12px 0 0; }
+/* Journal tab: what Codex checks on the files it receives (formats, size, virus scan). */
+.filesPolicy { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 2px 0 6px; font-size: 12px; }
+.filesPolicy strong { font-weight: 500; color: var(--color-text); }
+.filesOff { color: var(--color-accent-300); }
