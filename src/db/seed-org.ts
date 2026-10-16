@@ -21,10 +21,10 @@ export const DEPARTMENTS: [code: string, fr: string, en: string][] = [
   ['RDI', 'Recherche & innovation', 'Research & innovation'],
 ];
 
-export const SITES: [key: string, label: string][] = [
-  ['lyon', 'Lyon — siège et atelier'],
-  ['le_havre', 'Le Havre — magasin'],
-  ['marseille', 'Marseille — magasin'],
+export const SITES: [key: string, fr: string, en: string][] = [
+  ['lyon', 'Lyon — siège et atelier', 'Lyon — head office and workshop'],
+  ['le_havre', 'Le Havre — magasin', 'Le Havre — warehouse'],
+  ['marseille', 'Marseille — magasin', 'Marseille — warehouse'],
 ];
 
 /** Holders of an approval function (HOLDERS) have a role that may approve (seed.ts checks it). */

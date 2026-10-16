@@ -87,7 +87,7 @@ export async function seed(db: Db) {
 
   await db.transaction(async (tx) => {
     await tx.insert(s.departments).values(DEPARTMENTS.map(([code, labelFr, labelEn], sort) => ({ code, labelFr, labelEn, sort })));
-    await tx.insert(s.sites).values(SITES.map(([key, label], sort) => ({ key, label, sort })));
+    await tx.insert(s.sites).values(SITES.map(([key, labelFr, labelEn], sort) => ({ key, labelFr, labelEn, sort })));
     await tx.insert(s.users).values(USERS.map((u) => ({
       id: u.id, name: u.name, role: u.role, isSystem: !!u.system, department: u.dept ?? null, site: u.site ?? null,
       title: u.title ? loc(u.title) : null,

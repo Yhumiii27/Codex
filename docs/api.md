@@ -100,6 +100,30 @@ Keystone l'appelle de serveur à serveur (pas d'en-têtes CORS).
 **Cache** : `Cache-Control: public, max-age=60, must-revalidate` et un `ETag` calculé sur le contenu du registre ;
 une requête avec `If-None-Match` reçoit **304** tant que le registre n'a pas changé.
 
+**Évolutions du registre.** Le registre s'administre dans Codex (Administration › Registre des types et Fonctions &
+circuits, droit « Administrer ») : création et modification complète des types, des familles et des fonctions. La
+réponse suit immédiatement chaque changement (nouvel `ETag`), au plus 60 secondes plus tard pour un client qui respecte
+`max-age`. Règles de stabilité sur lesquelles Keystone peut compter :
+- le `code` d'un type **utilisé** (au moins un document, quel que soit son état, ou une pièce attendue sur un projet) ne
+  change jamais, et ce type n'est jamais supprimé : il passe `active: false` et reste listé ;
+- un type qu'aucun document n'utilise peut être renommé (nouveau `code`) ou supprimé : il disparaît alors de la
+  réponse. Keystone doit tolérer la disparition d'un code qu'il ne voit plus, ou le revoir sous un autre code ;
+- une famille garde sa `key` dès qu'elle contient un type ou un document, et n'est supprimée que vide ; une famille
+  sans type figure dans `families` avec `types: []` ;
+- une fonction garde sa clé (`circuit[].function`) dès qu'elle figure dans un circuit, a des titulaires ou a servi
+  dans un circuit lancé ; ses libellés peuvent changer, et `circuit[].labels` suit ;
+- les entrées dont dépendent les règles de Codex gardent leur code et leurs réglages structurants : le type `FRM`
+  (modèles, contexte `QMS`) n'admet que `attachments: ["none"]` ; les fonctions `chef_projet` et `validation_client`
+  restent de portée `project`, `resp_departement` de portée `department` ;
+- un code de type ne reprend jamais le code d'un département, d'un projet, d'un programme de recherche ni `QMS`
+  (contexte des modèles) : un identifiant `TYPE-CONTEXTE-SEQ` se lit sans ambiguïté. Les trois codes du registre
+  initial qui sont aussi des départements (FIN, HSE, COM) restent tels quels : c'est le point 1 de
+  `docs/registre-points-ouverts.md`, non tranché (O-05) ;
+- un type créé dans Codex porte `source: "codex"`.
+
+Les programmes de recherche (code, libellé, responsable, actif) s'administrent au même endroit, mais ne figurent pas dans
+cette réponse : ils ne sont pas du ressort de Keystone, qui gère les projets.
+
 **Débit** : avec `CODEX_TRUST_PROXY=1`, au-delà de `CODEX_RATE_REGISTRY` requêtes par adresse, **429**
 `{"error":"rate_limited","retryAfter"}` avec `Retry-After` ; sans proxy de confiance, pas de limite (voir « Limites de
 débit »).
@@ -161,7 +185,7 @@ Réponse **200** (extrait) :
 | `family` | Clé de la famille (`families[].key`). |
 | `origins` | Origines admises : `interne`, `externe`. |
 | `attachments` | Rattachements admis : `none`, `project`, `research`. |
-| `subtypes` | Sous-types proposés (`{fr, en}`), saisie libre possible. |
+| `subtypes` | Sous-types proposés (`{fr, en}`, 40 au plus), saisie libre possible. |
 | `circuit` | Étapes d'approbation après l'auteur, dans l'ordre, par fonction (`scope` : `global`, `department`, `project`, `research`). Liste vide : approbation immédiate. |
 | `retention` | Règle de conservation : durée en années (`null` : sans durée fixe), événement déclencheur, sort final, fondement. |
 | `reviewMonths` | Périodicité de revue en mois (1 à 240), `null` sans périodicité (valeur par défaut de tous les types, en attendant les arbitrages du registre). Un document qui entre en vigueur sans date de révision la reçoit, comptée depuis sa mise en vigueur ; « Revue effectuée » sans date saisie la compte depuis le jour de la revue. |
@@ -169,7 +193,7 @@ Réponse **200** (extrait) :
 | `iso` | Clause ISO 9001 (ou `null`). |
 | `clientDeliverable` | Livrable client. |
 | `active` | Type proposé à la création. Un type inactif reste listé pour afficher les documents existants. |
-| `source` | Origine de l'entrée du registre : `deck`, `keystone` ou `both`. |
+| `source` | Origine de l'entrée du registre : `deck`, `keystone` ou `both` (registre initial), `codex` (type créé dans l'administration de Codex). |
 
 ---
 
@@ -226,14 +250,14 @@ Dans tous ces cas, rien n'est importé et la `legacyRef` reste libre : l'outil p
 | `legacyRef` | oui | Référence dans l'ancien système, unique (≤ 200 caractères). |
 | `title` | oui | Titre du document. |
 | `typeCode` | oui | Code d'un type **actif** du registre (`/api/registry`). |
-| `department` | oui | Code du département propriétaire (3 lettres, ex. `QUA`). |
+| `department` | oui | Code du département propriétaire (3 lettres, ex. `QUA`). Un département désactivé est accepté, comme un programme clos : la reprise porte aussi sur les documents des services fermés. |
 | `ownerId` | oui | Identifiant de l'utilisateur propriétaire. |
 | `origin` | non | `interne` / `externe`. Défaut : première origine admise par le type. |
 | `attachment` | non | `none` / `project` / `research`. Défaut : `project` si `projectCode` est fourni, `research` si `programCode` l'est, sinon `none` (ou le premier rattachement admis par le type). |
 | `projectCode` | si projet | Code projet Keystone connu de Codex (ex. `HLT-026`). |
-| `programCode` | si recherche | Code du programme de recherche (ex. `R2601`). |
+| `programCode` | si recherche | Code du programme de recherche (ex. `R2601`). Un programme désactivé (clos) est accepté : la reprise porte aussi sur les documents des programmes terminés, alors que l'écran ne le propose plus à un nouveau document. |
 | `subtype` | non | Sous-type (texte). |
-| `site` | non | Clé d'un site connu. |
+| `site` | non | Clé d'un site connu, désactivé ou non. |
 | `author` | non | Identifiant d'un utilisateur, sinon texte libre (auteur externe, ancien salarié…). |
 | `conf` | non | `public`, `restreint`, `interne`, `confidentiel`, `tres_confidentiel`. Défaut : niveau par défaut du type ; doit être admis par le type. |
 | `readers` | non | Identifiants des lecteurs désignés : documents confidentiels ou très confidentiels seulement (sinon `readers_conf`). |
@@ -300,6 +324,10 @@ respecter.
 L'import ne crée pas de liens entre documents (« remplace », « voir aussi ») : le corps n'a pas de champ pour eux, et
 en ajouter un serait un contrat à définir avec l'outil de migration (O-11). Les liens entre documents repris
 s'ajoutent depuis leurs fiches (section « Documents liés »).
+
+Un export complet de Codex (`docs/export.md`) donne, dans `import/documents.json`, le `meta` de chaque document et le
+fichier à envoyer avec lui : un autre Codex peut ainsi reprendre ses documents par ce point d'entrée, une révision par
+document, en gardant leurs identifiants quand ils sont libres.
 
 ### Réponses
 

@@ -36,7 +36,8 @@ CREATE TABLE "departments" (
 	"label_fr" text NOT NULL,
 	"label_en" text NOT NULL,
 	"sort" integer DEFAULT 0 NOT NULL,
-	"featured" jsonb
+	"featured" jsonb,
+	"active" boolean DEFAULT true NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "doc_types" (
@@ -195,7 +196,8 @@ CREATE TABLE "projects" (
 CREATE TABLE "research_programs" (
 	"code" text PRIMARY KEY NOT NULL,
 	"name" text NOT NULL,
-	"manager_id" text NOT NULL
+	"manager_id" text NOT NULL,
+	"active" boolean DEFAULT true NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "revisions" (
@@ -237,8 +239,10 @@ CREATE TABLE "saved_searches" (
 --> statement-breakpoint
 CREATE TABLE "sites" (
 	"key" text PRIMARY KEY NOT NULL,
-	"label" text NOT NULL,
-	"sort" integer DEFAULT 0 NOT NULL
+	"label_fr" text NOT NULL,
+	"label_en" text NOT NULL,
+	"sort" integer DEFAULT 0 NOT NULL,
+	"active" boolean DEFAULT true NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "users" (

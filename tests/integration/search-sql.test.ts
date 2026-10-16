@@ -29,7 +29,7 @@ fixClock();
 
 /** Varied documents and what the search reads of them; type labels and people's names with accents. */
 async function varied(seed: number, n: number) {
-  await db().insert(s.sites).values([{ key: 'lyon', label: 'Lyon' }, { key: 'le_havre', label: 'Le Havre' }]);
+  await db().insert(s.sites).values([{ key: 'lyon', labelFr: 'Lyon', labelEn: 'Lyon' }, { key: 'le_havre', labelFr: 'Le Havre', labelEn: 'Le Havre' }]);
   await db().insert(s.functionHolders).values({ functionKey: 'chef_projet', scopeValue: 'HLT-026', userId: 'engineer' });
   await db().execute(sql`update doc_types set label_fr = case code when 'PRO' then 'Procédure' when 'COR' then 'Correspondance' when 'FRM' then 'Formulaire' else label_fr end,
     label_en = case code when 'PRO' then 'Procedure' when 'COR' then 'Letter' else label_en end`);

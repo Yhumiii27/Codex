@@ -191,6 +191,15 @@ export function mayBackUp(ctx: Pick<Ctx, 'seesAll' | 'screens'>): boolean {
 }
 
 /**
+ * Who may download the full export (lib/full-export.ts, GET /api/export/full): a records manager with access to
+ * Administration, as for a backup. The archive holds every document, drafts and confidential ones included, every
+ * file and the whole journal, without any filter (D-14): it is an administration export, journaled at its start and end.
+ */
+export function mayExportAll(ctx: Pick<Ctx, 'seesAll' | 'screens'>): boolean {
+  return ctx.seesAll && ctx.screens.admin;
+}
+
+/**
  * Revisions every reader of the document sees: the one in force and those it replaced. A draft, a revision under review
  * or waiting for its effective date, and a cancelled one belong to the drafting circle (D-14): outside it, they do not
  * exist, nor do their workflows, comments, designated author or change order.

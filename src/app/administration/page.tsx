@@ -4,7 +4,7 @@ import { Forbidden } from '@/components/ui/Forbidden';
 import { Icon } from '@/components/ui/Icon';
 import { Seg } from '@/components/ui/Seg';
 import { ActionButton, DialogButton } from '@/components/ui/client';
-import { mayBackUp, mayCleanStorage } from '@/lib/access';
+import { mayBackUp, mayCleanStorage, mayExportAll } from '@/lib/access';
 import { backUpData, purgeOrphanFiles, removeFunctionHolder, togglePermission } from '@/lib/actions';
 import { antivirusStatus } from '@/lib/antivirus';
 import { backupList, backupSettings } from '@/lib/backup';
@@ -12,9 +12,11 @@ import { getCtx, type Ctx } from '@/lib/context';
 import { featuredOf } from '@/lib/departments';
 import { fileRules, fmtMax } from '@/lib/filetypes';
 import { ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLE_LABEL, MATRIX_ROLES, PERMS, SIMULATED_MATRIX_ROLES, type TKey } from '@/lib/i18n';
-import { AUDIT_ID_MAX, auditPage, getMatrix, listDocs, listFunctionHolders, listTemplates, typeView, type AuditFilter } from '@/lib/queries';
+import { AUDIT_ID_MAX, auditPage, getMatrix, listFunctionHolders, listTemplates, orgUsage, registryUsage, typeView, type AuditFilter, type RegistryUsage } from '@/lib/queries';
 import { fmtDateTime, fmtSize, parisStamp, parseIsoDay } from '@/lib/format';
 import { MAX_PER_RUN, orphanReport, type OrphanScan } from '@/lib/orphans';
+import { inUse } from '@/lib/org-rules';
+import { DEPARTMENT_HEAD_FUNCTION } from '@/lib/registry-rules';
 import { FACET_LABEL, oneEach } from '@/lib/search';
 import { AddValue } from './AddValue';
 import { FamilyFilter } from './FamilyFilter';
@@ -49,7 +51,8 @@ export default async function AdminPage({ searchParams }: PageProps<'/administra
         />
         <span style={{ flex: 1 }} />
         {tab === 'registry' && (
-          <>
+          // One group, so that once the line wraps the filter and the buttons stay together on the right.
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', justifyContent: 'flex-end', marginLeft: 'auto' }}>
             <span className="text-muted" style={{ fontSize: 12 }}>{family ? typesByFamily.get(family) ?? 0 : ctx.types.length} {t.types_count}</span>
             <FamilyFilter
               value={family}
@@ -57,8 +60,11 @@ export default async function AdminPage({ searchParams }: PageProps<'/administra
               allLabel={t.all_families}
               options={ctx.families.filter((f) => typesByFamily.has(f.key)).map((f) => ({ key: f.key, label: lang === 'fr' ? f.labelFr : f.labelEn, count: typesByFamily.get(f.key)! }))}
             />
-          </>
+            <DialogButton spec={{ kind: 'family' }} className="btn btn-secondary" icon="plus" iconSw={1.8}>{t.new_family}</DialogButton>
+            <DialogButton spec={{ kind: 'type', family: family || undefined }} className="btn btn-primary" icon="plus" iconSw={1.8}>{t.new_type}</DialogButton>
+          </div>
         )}
+        {tab === 'functions' && <DialogButton spec={{ kind: 'function' }} className="btn btn-primary" icon="plus" iconSw={1.8}>{t.new_function}</DialogButton>}
         {tab === 'org' && (
           <>
             <AddValue what="site" label={t.new_site} />
@@ -80,52 +86,89 @@ export default async function AdminPage({ searchParams }: PageProps<'/administra
   );
 }
 
-/** Register of document types (owned by Codex, read by Keystone): one row per type, edited in the 'type' dialog. */
+/**
+ * Register of document types (owned by Codex, read by Keystone): one row per type, edited in the 'type' dialog, then
+ * the families. An entry something refers to keeps its code and cannot be deleted (lib/queries.ts registryUsage).
+ */
 async function Registry({ ctx, family }: { ctx: Ctx; family: string }) {
   const { t, lang } = ctx;
   // Counts cover every document, drafts and confidential ones included (administration only).
-  const counts = countBy(await listDocs(ctx, { includeHidden: true }), (d) => d.typeCode);
+  const usage = await registryUsage();
+  const counts = usage.docs.types;
   const types = ctx.types.filter((x) => !family || x.family === family).map((x) => typeView(ctx, x));
+  const typesByFamily = countBy(ctx.types, (x) => x.family);
+  const docsByFamily = new Map<string, number>();
+  for (const x of ctx.types) docsByFamily.set(x.family, (docsByFamily.get(x.family) ?? 0) + (counts.get(x.code) ?? 0));
+  const families = ctx.families.filter((f) => !family || f.key === family);
   return (
-    <table className="table" style={{ fontSize: 13 }}>
-      <thead>
-        <tr>
-          <th>{t.rule_id}</th><th>{t.type}</th><th>{t.family}</th><th>{t.origin}</th><th>{t.attachment}</th><th>{t.circuit}</th>
-          <th>{t.conf}</th><th>{t.retention}</th><th title={t.review_months}>{t.review_short}</th><th>ISO</th><th style={{ textAlign: 'right' }}>{t.count}</th><th />
-        </tr>
-      </thead>
-      <tbody>
-        {types.map((x) => (
-          <tr key={x.code} style={x.active ? undefined : { opacity: 0.55 }}>
-            <td className="nowrap" style={{ verticalAlign: 'top' }}>{x.code}</td>
-            <td style={{ minWidth: 180 }}>
-              <div>{x.label}</div>
-              {x.subtypesL.length > 0 && <div className="text-muted" style={sub}>{x.subtypesL.join(' · ')}</div>}
-              {(x.clientDeliverable || !x.active) && <div className="text-muted" style={sub}>{[x.clientDeliverable && t.client_deliverable, !x.active && t.inactive].filter(Boolean).join(' · ')}</div>}
-            </td>
-            <td className="text-muted">{x.familyLabel}</td>
-            <td className="text-muted">{x.origins.map((o) => t[`or_${o}`]).join(', ')}</td>
-            <td className="text-muted">{x.attachments.map((a) => t[`att_${a}`]).join(', ')}</td>
-            <td className="text-muted" style={{ minWidth: 160 }}>{x.circuitL}</td>
-            <td><div>{x.confDefaultL}</div><div className="text-muted" style={sub}>{x.confL}</div></td>
-            <td className="text-muted" style={{ minWidth: 150 }} title={x.retentionBasis || undefined}>{x.retentionL}</td>
-            <td className="text-muted nowrap">{x.reviewL}</td>
-            <td className="text-muted">{x.iso ?? '—'}</td>
-            <td className="tabnum" style={{ textAlign: 'right' }}>{counts.get(x.code) ?? 0}</td>
-            <td style={{ textAlign: 'right', width: 44 }}>
-              <DialogButton spec={typeSpec(x, lang)} className="btn btn-ghost btn-icon" icon="pen" ariaLabel={`${t.perm_edit} · ${x.code}`} style={{ width: 30, height: 30 }} />
-            </td>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+      <table className="table" style={{ fontSize: 13 }}>
+        <thead>
+          <tr>
+            <th>{t.rule_id}</th><th>{t.type}</th><th>{t.family}</th><th>{t.origin}</th><th>{t.attachment}</th><th>{t.circuit}</th>
+            <th>{t.conf}</th><th>{t.retention}</th><th title={t.review_months}>{t.review_short}</th><th>ISO</th><th style={{ textAlign: 'right' }}>{t.count}</th><th />
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {types.map((x) => (
+            <tr key={x.code} style={x.active ? undefined : { opacity: 0.55 }}>
+              <td className="nowrap" style={{ verticalAlign: 'top' }}>{x.code}</td>
+              <td style={{ minWidth: 180 }}>
+                <div>{x.label}</div>
+                {x.subtypesL.length > 0 && <div className="text-muted" style={sub}>{x.subtypesL.join(' · ')}</div>}
+                {(x.clientDeliverable || !x.active) && <div className="text-muted" style={sub}>{[x.clientDeliverable && t.client_deliverable, !x.active && t.inactive].filter(Boolean).join(' · ')}</div>}
+              </td>
+              <td className="text-muted">{x.familyLabel}</td>
+              <td className="text-muted">{x.origins.map((o) => t[`or_${o}`]).join(', ')}</td>
+              <td className="text-muted">{x.attachments.map((a) => t[`att_${a}`]).join(', ')}</td>
+              <td className="text-muted" style={{ minWidth: 160 }}>{x.circuitL}</td>
+              <td><div>{x.confDefaultL}</div><div className="text-muted" style={sub}>{x.confL}</div></td>
+              <td className="text-muted" style={{ minWidth: 150 }} title={x.retentionBasis || undefined}>{x.retentionL}</td>
+              <td className="text-muted nowrap">{x.reviewL}</td>
+              <td className="text-muted">{x.iso ?? '—'}</td>
+              <td className="tabnum" style={{ textAlign: 'right' }}>{counts.get(x.code) ?? 0}</td>
+              <td style={{ textAlign: 'right', width: 44 }}>
+                <DialogButton spec={typeSpec(x, usage.types.has(x.code))} className="btn btn-ghost btn-icon" icon="pen" ariaLabel={`${t.perm_edit} · ${x.code}`} style={{ width: 30, height: 30 }} />
+              </td>
+            </tr>
+          ))}
+          {types.length === 0 && <tr><td colSpan={12} className="text-muted" style={{ padding: '16px 8px' }}>{t.no_results}</td></tr>}
+        </tbody>
+      </table>
+      <section aria-label={t.families_title}>
+        <h6 className="sec-title" style={{ marginBottom: 10 }}>{t.families_title}</h6>
+        <table className="table" style={{ fontSize: 13 }}>
+          <thead><tr><th>{t.family}</th><th>{t.key_label}</th><th>{t.family_group}</th><th style={{ textAlign: 'right' }}>{t.types_count}</th><th style={{ textAlign: 'right' }}>{t.count}</th><th /></tr></thead>
+          <tbody>
+            {families.map((f) => {
+              const label = lang === 'fr' ? f.labelFr : f.labelEn;
+              return (
+                <tr key={f.key}>
+                  <td><div>{label}</div>{lang === 'fr' ? <div className="text-muted" style={sub}>{f.labelEn}</div> : <div className="text-muted" style={sub}>{f.labelFr}</div>}</td>
+                  <td className="text-muted tabnum">{f.key}</td>
+                  <td className="text-muted nowrap">{t[`grp_${f.grp}` as TKey] ?? f.grp}</td>
+                  <td className="tabnum" style={{ textAlign: 'right' }}>{typesByFamily.get(f.key) ?? 0}</td>
+                  <td className="tabnum" style={{ textAlign: 'right' }}>{docsByFamily.get(f.key) ?? 0}</td>
+                  <td style={{ textAlign: 'right', width: 44 }}>
+                    <DialogButton
+                      spec={{ kind: 'family', family: { key: f.key, labelFr: f.labelFr, labelEn: f.labelEn, grp: f.grp, used: usage.families.has(f.key) } }}
+                      className="btn btn-ghost btn-icon" icon="pen" ariaLabel={`${t.perm_edit} · ${label}`} style={{ width: 30, height: 30 }}
+                    />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </section>
+    </div>
   );
 }
 
 /** Functions that approval circuits are made of, their holders, and the circuits of the register. */
 async function Functions({ ctx }: { ctx: Ctx }) {
   const { t } = ctx;
-  const fns = await listFunctionHolders(ctx);
+  const [fns, usage] = await Promise.all([listFunctionHolders(ctx), registryUsage()]);
   const scopeTitle = (scope: string, v: string) => (scope === 'department' ? ctx.label('department', v) : scope === 'project' ? ctx.label('project', v) : scope === 'research' ? ctx.label('program', v) : v);
   // Distinct circuits of the register, with the types that follow each one.
   const circuits = new Map<string, { circuitL: string; codes: string[] }>();
@@ -159,14 +202,21 @@ async function Functions({ ctx }: { ctx: Ctx }) {
               </td>
               <td className="tabnum" style={{ textAlign: 'right', verticalAlign: 'top' }}>{ctx.types.filter((x) => x.circuit.includes(f.key)).length}</td>
               <td style={{ textAlign: 'right', verticalAlign: 'top' }}>
-                <DialogButton spec={{ kind: 'holder', functionKey: f.key, functionLabel: f.label, scope: f.scope }} className="btn btn-ghost nowrap" icon="plus" iconSw={1.8} style={{ fontSize: 12 }}>
-                  {t.add_holder}
-                </DialogButton>
+                <div style={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
+                  <DialogButton spec={{ kind: 'holder', functionKey: f.key, functionLabel: f.label, scope: f.scope }} className="btn btn-ghost nowrap" icon="plus" iconSw={1.8} style={{ fontSize: 12 }}>
+                    {t.add_holder}
+                  </DialogButton>
+                  <DialogButton
+                    spec={{ kind: 'function', fn: { key: f.key, labelFr: f.labelFr, labelEn: f.labelEn, scope: f.scope, used: usage.functions.has(f.key), held: f.holders.length > 0 } }}
+                    className="btn btn-ghost btn-icon" icon="pen" ariaLabel={`${t.perm_edit} · ${f.label}`} style={{ width: 30, height: 30 }}
+                  />
+                </div>
               </td>
             </tr>
           ))}
         </tbody>
       </table>
+      <Programs ctx={ctx} usage={usage} />
       <section>
         <h6 className="sec-title" style={{ marginBottom: 10 }}>{t.circuit}</h6>
         <table className="table" style={{ fontSize: 13 }}>
@@ -183,6 +233,43 @@ async function Functions({ ctx }: { ctx: Ctx }) {
         </table>
       </section>
     </div>
+  );
+}
+
+/**
+ * Research programmes (D-08, D-10): the context of their documents' IDs, and the scope of the functions « par
+ * programme », whose holders are named above. A closed programme in use is made inactive rather than deleted.
+ */
+function Programs({ ctx, usage }: { ctx: Ctx; usage: RegistryUsage }) {
+  const { t } = ctx;
+  return (
+    <section aria-label={t.programs_title}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <h6 className="sec-title" style={{ margin: 0 }}>{t.programs_title}</h6>
+        <span style={{ flex: 1 }} />
+        <DialogButton spec={{ kind: 'program' }} className="btn btn-secondary" icon="plus" iconSw={1.8} style={{ fontSize: 12 }}>{t.new_program}</DialogButton>
+      </div>
+      <table className="table" style={{ fontSize: 13 }}>
+        <thead><tr><th>{t.rule_id}</th><th>{t.program_name}</th><th>{t.manager}</th><th style={{ textAlign: 'right' }}>{t.count}</th><th /></tr></thead>
+        <tbody>
+          {ctx.programs.map((p) => (
+            <tr key={p.code} style={p.active ? undefined : { opacity: 0.55 }}>
+              <td className="nowrap tabnum">{p.code}</td>
+              <td><div>{p.name}</div>{!p.active && <div className="text-muted" style={sub}>{t.inactive}</div>}</td>
+              <td className="text-muted">{ctx.userName(p.managerId)}</td>
+              <td className="tabnum" style={{ textAlign: 'right' }}>{usage.docs.programs.get(p.code) ?? 0}</td>
+              <td style={{ textAlign: 'right', width: 44 }}>
+                <DialogButton
+                  spec={{ kind: 'program', program: { code: p.code, name: p.name, managerId: p.managerId, active: p.active, used: usage.programs.has(p.code) } }}
+                  className="btn btn-ghost btn-icon" icon="pen" ariaLabel={`${t.perm_edit} · ${p.code}`} style={{ width: 30, height: 30 }}
+                />
+              </td>
+            </tr>
+          ))}
+          {ctx.programs.length === 0 && <tr><td colSpan={5} className="text-muted" style={{ padding: '16px 8px' }}>{t.no_results}</td></tr>}
+        </tbody>
+      </table>
+    </section>
   );
 }
 
@@ -226,18 +313,17 @@ async function Roles({ ctx }: { ctx: Ctx }) {
 }
 
 /**
- * Departments (3-letter code used in document IDs) and sites — provisional until the organisation chart. Each department
- * has the facets its page puts forward (/departements/[code]): the default ones until it has its own.
+ * Departments (3-letter code used in document IDs) and sites — provisional until the organisation chart (O-04). Each one
+ * is renamed, made inactive or active again, or deleted while nothing refers to it (lib/queries.ts orgUsage), in the
+ * 'org' dialog. Each department has the facets its page puts forward (/departements/[code]): the default ones until it
+ * has its own.
  */
 async function Organisation({ ctx }: { ctx: Ctx }) {
-  const { t } = ctx;
-  const [docs, fns] = await Promise.all([listDocs(ctx, { includeHidden: true }), listFunctionHolders(ctx)]);
-  const byDept = countBy(docs, (d) => d.department);
-  const bySite = countBy(docs, (d) => d.site);
-  const people = [...ctx.users.values()].filter((u) => !u.isSystem);
-  const peopleByDept = countBy(people, (u) => u.department);
-  const peopleBySite = countBy(people, (u) => u.site);
-  const heads = fns.find((f) => f.key === 'resp_departement')?.holders ?? [];
+  const { t, lang } = ctx;
+  // Counts cover every document, drafts and confidential ones included (administration only).
+  const [usage, fns] = await Promise.all([orgUsage(), listFunctionHolders(ctx)]);
+  const heads = fns.find((f) => f.key === DEPARTMENT_HEAD_FUNCTION)?.holders ?? [];
+  const inactive = { opacity: 0.55 };
   return (
     <>
       <p className="text-muted" style={{ fontSize: 12, margin: '0 0 14px', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
@@ -249,19 +335,20 @@ async function Organisation({ ctx }: { ctx: Ctx }) {
           {/* The table scrolls within its column rather than spilling over the sites beside it. */}
           <div className={styles.tableScroll}>
             <table className="table" style={{ fontSize: 13 }}>
-              <thead><tr><th>{t.rule_id}</th><th>{t.label_fr}</th><th>{t.label_en}</th><th>{t.manager}</th><th style={{ textAlign: 'right' }}>{t.people}</th><th style={{ textAlign: 'right' }}>{t.count}</th><th>{t.featured_filters}</th></tr></thead>
+              <thead><tr><th>{t.rule_id}</th><th>{t.label_fr}</th><th>{t.label_en}</th><th>{t.manager}</th><th style={{ textAlign: 'right' }}>{t.people}</th><th style={{ textAlign: 'right' }}>{t.count}</th><th>{t.featured_filters}</th><th /></tr></thead>
               <tbody>
                 {ctx.departments.map((d) => {
                   const featured = featuredOf(d);
                   const label = ctx.label('department', d.code);
+                  const used = usage.departments.get(d.code);
                   return (
-                    <tr key={d.code}>
+                    <tr key={d.code} style={d.active ? undefined : inactive}>
                       <td className="nowrap tabnum"><Link href={`/departements/${encodeURIComponent(d.code)}`} className="link-plain">{d.code}</Link></td>
-                      <td>{d.labelFr}</td>
+                      <td><div>{d.labelFr}</div>{!d.active && <div className="text-muted" style={sub}>{t.inactive}</div>}</td>
                       <td className="text-muted">{d.labelEn}</td>
                       <td className="text-muted">{heads.filter((h) => h.scopeValue === d.code).map((h) => h.user).join(', ') || '—'}</td>
-                      <td className="tabnum" style={{ textAlign: 'right' }}>{peopleByDept.get(d.code) ?? 0}</td>
-                      <td className="tabnum" style={{ textAlign: 'right' }}>{byDept.get(d.code) ?? 0}</td>
+                      <td className="tabnum" style={{ textAlign: 'right' }}>{used?.people ?? 0}</td>
+                      <td className="tabnum" style={{ textAlign: 'right' }}>{used?.documents ?? 0}</td>
                       {/* The default facets are named on hover only: every department follows them until it has its own. */}
                       <td style={{ paddingTop: 0, paddingBottom: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -274,6 +361,12 @@ async function Organisation({ ctx }: { ctx: Ctx }) {
                           />
                         </div>
                       </td>
+                      <td style={{ textAlign: 'right', width: 44 }}>
+                        <DialogButton
+                          spec={{ kind: 'org', what: 'department', value: { id: d.code, labelFr: d.labelFr, labelEn: d.labelEn, active: d.active, used: inUse(used) } }}
+                          className="btn btn-ghost btn-icon" icon="pen" ariaLabel={`${t.perm_edit} · ${d.code}`} style={{ width: 30, height: 30 }}
+                        />
+                      </td>
                     </tr>
                   );
                 })}
@@ -284,15 +377,29 @@ async function Organisation({ ctx }: { ctx: Ctx }) {
         <section>
           <h6 className="sec-title" style={{ marginBottom: 10 }}>{t.site_label}</h6>
           <table className="table" style={{ fontSize: 13 }}>
-            <thead><tr><th>{t.site_label}</th><th style={{ textAlign: 'right' }}>{t.people}</th><th style={{ textAlign: 'right' }}>{t.count}</th></tr></thead>
+            <thead><tr><th>{t.site_label}</th><th style={{ textAlign: 'right' }}>{t.people}</th><th style={{ textAlign: 'right' }}>{t.count}</th><th /></tr></thead>
             <tbody>
-              {ctx.sites.map((s) => (
-                <tr key={s.key}>
-                  <td><div>{s.label}</div><div className="text-muted" style={sub}>{s.key}</div></td>
-                  <td className="tabnum" style={{ textAlign: 'right' }}>{peopleBySite.get(s.key) ?? 0}</td>
-                  <td className="tabnum" style={{ textAlign: 'right' }}>{bySite.get(s.key) ?? 0}</td>
-                </tr>
-              ))}
+              {ctx.sites.map((x) => {
+                const label = ctx.label('site', x.key);
+                const other = lang === 'fr' ? x.labelEn : x.labelFr;
+                const used = usage.sites.get(x.key);
+                return (
+                  <tr key={x.key} style={x.active ? undefined : inactive}>
+                    <td>
+                      <div>{label}</div>
+                      <div className="text-muted" style={sub}>{[other !== label && other, x.key, !x.active && t.inactive].filter(Boolean).join(' · ')}</div>
+                    </td>
+                    <td className="tabnum" style={{ textAlign: 'right' }}>{used?.people ?? 0}</td>
+                    <td className="tabnum" style={{ textAlign: 'right' }}>{used?.documents ?? 0}</td>
+                    <td style={{ textAlign: 'right', width: 44 }}>
+                      <DialogButton
+                        spec={{ kind: 'org', what: 'site', value: { id: x.key, labelFr: x.labelFr, labelEn: x.labelEn, active: x.active, used: inUse(used) } }}
+                        className="btn btn-ghost btn-icon" icon="pen" ariaLabel={`${t.perm_edit} · ${label}`} style={{ width: 30, height: 30 }}
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </section>
@@ -479,6 +586,21 @@ async function Backups({ ctx, open }: { ctx: Ctx; open: boolean }) {
 }
 
 /**
+ * Full export (lib/full-export.ts), for a records manager: a plain link, so that the browser downloads the archive as it
+ * is written (GET /api/export/full, journaled at its start and end).
+ */
+function FullExport({ ctx }: { ctx: Ctx }) {
+  const { t } = ctx;
+  return (
+    <p className={`${styles.filesPolicy} text-muted`}>
+      <strong>{t.export_all_title}</strong>
+      <a href="/api/export/full" className="link-plain" download>{t.export_all_download}</a>
+      <span>{t.export_all_hint}</span>
+    </p>
+  );
+}
+
+/**
  * Journal tab: the entries the user may read, newest first, filtered and paged by the database (lib/queries.ts
  * auditPage), the filters and the page in the URL; the CSV export above it gives the whole journal.
  */
@@ -503,6 +625,7 @@ async function Audit({ ctx, sp }: { ctx: Ctx; sp: Record<string, string | undefi
       <FilesPolicy ctx={ctx} />
       {mayCleanStorage(ctx) && <Orphans ctx={ctx} open={sp.orphans === '1'} />}
       {mayBackUp(ctx) && <Backups ctx={ctx} open={sp.backups === '1'} />}
+      {mayExportAll(ctx) && <FullExport ctx={ctx} />}
       {/* Mounted again when the URL changes its filters (Effacer, a link), so that the fields show them. */}
       <div key={JSON.stringify(f)}>
         <Form action="/administration" scroll={false} className={styles.auditFilters}>

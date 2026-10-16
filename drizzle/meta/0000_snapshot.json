@@ -1,5 +1,5 @@
 {
-  "id": "97dcac22-76d5-4d58-a8d2-81641476fe00",
+  "id": "366f154f-1b7f-4191-98dc-95c779f5fdea",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -361,6 +361,13 @@
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
         }
       },
       "indexes": {},
@@ -1625,6 +1632,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
         }
       },
       "indexes": {},
@@ -1958,8 +1972,14 @@
           "primaryKey": true,
           "notNull": true
         },
-        "label": {
-          "name": "label",
+        "label_fr": {
+          "name": "label_fr",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "label_en": {
+          "name": "label_en",
           "type": "text",
           "primaryKey": false,
           "notNull": true
@@ -1970,6 +1990,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": 0
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
         }
       },
       "indexes": {},

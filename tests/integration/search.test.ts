@@ -36,7 +36,7 @@ const ids = (r: { results: { id: string }[] }) => r.results.map((d) => d.id);
 
 describe('facets and counts (D-14)', () => {
   it('never count nor find a draft outside its drafting circle', async () => {
-    await db().insert(s.sites).values([{ key: 'lyon', label: 'Lyon' }]);
+    await db().insert(s.sites).values([{ key: 'lyon', labelFr: 'Lyon', labelEn: 'Lyon' }]);
     await doc('PRO-QUA-0001', { keywords: ['ATEX', 'levage'], site: 'lyon', lang: 'fr' });
     // Never in force: only its owner (and records managers) see it.
     await doc('PRO-QUA-0002', { keywords: ['ATEX', 'secret'], site: 'lyon', lang: 'en', sourceOrg: 'INERIS' }, { ownerId: 'writer', revisions: [{ letter: 'A', status: 'draft' }] });
@@ -58,7 +58,7 @@ describe('facets and counts (D-14)', () => {
   });
 
   it('combine two new facets: site and owner', async () => {
-    await db().insert(s.sites).values([{ key: 'lyon', label: 'Lyon' }, { key: 'le_havre', label: 'Le Havre' }]);
+    await db().insert(s.sites).values([{ key: 'lyon', labelFr: 'Lyon', labelEn: 'Lyon' }, { key: 'le_havre', labelFr: 'Le Havre', labelEn: 'Le Havre' }]);
     await doc('PRO-QUA-0001', { site: 'lyon' }, { ownerId: 'owner' });
     await doc('PRO-QUA-0002', { site: 'le_havre' }, { ownerId: 'owner' });
     await doc('PRO-QUA-0003', { site: 'lyon' }, { ownerId: 'writer' });

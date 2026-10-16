@@ -40,7 +40,7 @@ const BLOCK = 512;
 const CHUNK = 1 << 20;
 const MAX_OCTAL = 0o77777777777;
 const MAX_MANIFEST = 256 * 1024 * 1024;
-/** A backup or restore command refreshes its lock this often while it runs... */
+/** A backup, restore or export command refreshes its lock this often while it runs... */
 const BEAT_MS = 30_000;
 /** ...and its lock lapses, whatever its process number, when not refreshed for this long (killed, number reused). */
 const COMMAND_STALE_MS = 10 * 60_000;
@@ -143,7 +143,7 @@ function inside(child, parent) {
 // writes codex.lock when it opens the database; the commands refuse to run while that process lives, and write their
 // own lock, which the server respects and which they refresh while they run.
 
-/** @typedef {{ pid: number, kind: 'server' | 'backup' | 'restore', since: string, beat?: string }} DataDirLock */
+/** @typedef {{ pid: number, kind: 'server' | 'backup' | 'restore' | 'export', since: string, beat?: string }} DataDirLock */
 
 /**
  * @param {string} dataDir
@@ -152,7 +152,7 @@ function inside(child, parent) {
 export async function readLock(dataDir) {
   try {
     const v = JSON.parse(await readFile(path.join(dataDir, LOCK_FILE), 'utf8'));
-    return v && Number.isInteger(v.pid) && v.pid > 0 && ['server', 'backup', 'restore'].includes(v.kind) ? v : null;
+    return v && Number.isInteger(v.pid) && v.pid > 0 && ['server', 'backup', 'restore', 'export'].includes(v.kind) ? v : null;
   } catch {
     return null;
   }
@@ -204,15 +204,15 @@ async function writeLock(dataDir, kind, since) {
 const beats = new Map();
 
 /**
- * The server, opening the database: refuses while a backup or restore command works on the directory, then writes its
- * own lock, removed when the process exits. A lock it cannot write never stops it (a warning).
+ * The server, opening the database: refuses while a backup, restore or export command works on the directory, then
+ * writes its own lock, removed when the process exits. A lock it cannot write never stops it (a warning).
  * @param {string} dataDir
  */
 export async function lockForServer(dataDir) {
   const held = await readLock(dataDir);
   if (held && held.kind !== 'server' && lockHeld(held)) {
     const file = path.join(dataDir, LOCK_FILE);
-    throw new BackupError('busy', `a ${held.kind} command (pid ${held.pid}) holds ${file}; if no backup or restore command is running, delete that file`);
+    throw new BackupError('busy', `a ${held.kind} command (pid ${held.pid}) holds ${file}; if no backup, restore or export command is running, delete that file`);
   }
   try {
     await writeLock(dataDir, 'server', new Date().toISOString());
@@ -223,10 +223,10 @@ export async function lockForServer(dataDir) {
 }
 
 /**
- * A command (backup, restore): refuses while another live process holds the directory (BackupError 'busy', with the
- * lock), then holds it, refreshing the lock every 30 s until unlock().
+ * A command (backup, restore, export: scripts/codex-export.mjs): refuses while another live process holds the
+ * directory (BackupError 'busy', with the lock), then holds it, refreshing the lock every 30 s until unlock().
  * @param {string} dataDir
- * @param {'backup' | 'restore'} kind
+ * @param {'backup' | 'restore' | 'export'} kind
  */
 export async function lockForCommand(dataDir, kind) {
   const held = await readLock(dataDir);

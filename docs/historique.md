@@ -1460,6 +1460,9 @@ en dépend prend l'option la plus prudente et est consigné dans [decisions.md](
 | 3. Fichiers en flux et orphelins (§16.3) | commit « Lot 7, étape 3 », qui suit `ab6711e` | 46, 36 | Route fichier en flux, plages d'octets (206, 416), ETag, Last-Modified et 304, HEAD cohérent ; simulation puis suppression journalisée des seuls fichiers orphelins listés, stockage local | Copie gardée par le navigateur seulement pour le fichier en vigueur sous Confidentiel, revalidée à chaque usage ; téléchargement journalisé à partir du premier octet ; nettoyage réservé aux gestionnaires, délai de grâce de 24 h, SharePoint listé sans suppression (O-01) ; aperçu paginé des brouillons et confidentiels encore retéléchargé à chaque page |
 | 4. Sauvegarde et restauration (§16.4) | commit « Lot 7, étape 4 », qui suit `42e2d34` | 48 | Archive de la base et des fichiers référencés avec manifeste et empreintes, commandes `npm run backup`, `backup:list`, `backup:check`, `restore`, rotation, verrou du dossier de données, sauvegarde journalisée depuis Administration, procédure `docs/sauvegarde.md` | Rien de programmé ; archives à côté du dossier de données, non chiffrées, 7 plus récentes et une par jour sur 7 jours gardées ; une sauvegarde par quart d'heure au plus depuis l'application ; restauration en ligne de commande seulement, serveur arrêté, l'existant mis de côté et non supprimé ; action et nombres du journal réservés aux gestionnaires (D-14) ; fichiers SharePoint non copiés (O-01) |
 | 5. Journal technique, santé, configuration (§16.5) | commit « Lot 7, étape 5 », qui suit `55c0df4` | 49, 37 | Journal technique structuré (JSON en production) avec identifiant de requête, une ligne par requête d'API et par action d'écriture, jetons refusés et erreurs serveur journalisés sans secret ; `GET`/`HEAD /api/health` ; contrôle de la configuration au démarrage (`src/instrumentation.ts`), procédure `docs/exploitation.md` | Refus de démarrer en production pour une configuration dangereuse seulement (défaut sans erreur, `CODEX_CONFIG_CHECK=warn` pour passer outre) ; jeton de 32 caractères au moins ; santé sans authentification, sans raison d'échec ; aucune métrique ni rotation (hébergement non décidé) ; authentification simulée rappelée en production (O-02) |
+| 6. Administration du registre et des programmes (§16.6) | commit « Lot 7, étape 6 », qui suit `6823294` | 61, 58 | Création, modification et suppression des types (tous leurs réglages), familles, fonctions et programmes de recherche dans Administration, journalisées avant → après ; codes contrôlés ; `GET /api/registry` suit | Droit « Administrer » (A05 non tranché) ; aucun nouveau code ne reprend celui d'un autre segment d'identifiant ni `QMS` (point 1 du registre, FIN/HSE/COM gardés) ; entrée utilisée : code figé, pas de suppression, désactivation ; restriction des admissions d'un type confirmée, identifiants des documents aux seuls gestionnaires (D-14) ; contenu du registre inchangé (O-05) ; programme sans date de fin (point 3 du registre) |
+| 7. Administration de l'organisation (§16.7) | commit « Lot 7, étape 7 », qui suit `8171aa2` | 62 | Renommage (libellés FR/EN), désactivation, réactivation et suppression des départements et des sites dans Administration › Organisation, journalisés avant → après ; une valeur inactive n'est plus proposée et reste là où elle figure ; pages par département marquées | Droit « Administrer » (A05) ; code d'un département jamais modifié, même inutilisé ; « utilisé » compte aussi les recherches partagées et les identifiants déjà attribués sous le code ; un département actif au moins ; département inactif de l'utilisateur refusé plutôt que remplacé ; un département inactif prend encore des titulaires ; import accepté (D-21) ; pas de fusion (O-09) ; valeurs provisoires (O-04) |
+| 8. Export complet (§16.8) | commit « Lot 7, étape 8 », qui suit `6063aed` | 17 | Archive ZIP écrite en flux de toutes les tables (JSON, journal compris), des documents en CSV, de tous les fichiers sous `files/{ID}/{ID}_{lettre}.{n}.{ext}` et de chaque document au format de `POST /api/import`, avec manifeste et SHA-256 ; téléchargement depuis Administration, commandes `npm run export` et `export:check` ; format dans `docs/export.md` | Réservé aux gestionnaires documentaires ayant l'accès Administration ; pas de filtre D-14 mais journalisé au début et à la fin (taille et SHA-256), nombres montrés aux seuls gestionnaires ; ni chiffrement ni export programmé (hébergement, M22) ; fichiers SharePoint non configuré listés comme non inclus (O-01) ; une révision par document à la réimportation (O-11) |
 
 ### 16.1 En-têtes de sécurité HTTP et limitation de débit
 
@@ -1936,3 +1939,228 @@ qu'au premier appel à Graph.
 - **Reste**, selon l'hébergement (question 3 de l'audit) : métriques et alertes, conservation, rotation et
   centralisation du journal ; joignabilité de clamd non sondée (premier dépôt) ; sonde SharePoint non essayée sur un
   vrai tenant (O-01) ; lignes « ⨯ » de Next.js pour une erreur de requête pendant le rendu d'une page.
+
+### 16.6 Administration du registre et des programmes de recherche
+
+Points 61 et 58 de [reste-a-faire.md](reste-a-faire.md), vérifiés au commit `6823294` : `updateType` ne modifiait que
+le circuit, la confidentialité, la conservation (sans son fondement), la périodicité de revue et l'état actif ; aucune
+action ne créait de type, de famille, de fonction ni de programme (insertions dans `src/db/seed.ts` seulement) ;
+l'onglet Registre n'avait pas de bouton « Nouveau type », et `TypeEditor` n'exposait ni les libellés, ni la famille,
+ni les origines et rattachements, ni les sous-types, ni la clause ISO, ni le livrable client ; `research_programs`
+n'était rempli que par le seed, sans état ni écran. Le constat sur le journal ne tenait plus : `audit_log.doc_id` est
+facultatif depuis l'étape 6 du lot 2 (cibles sans document).
+
+- **Règles** (`src/lib/registry-rules.ts`, sans dépendance au serveur, testées seules) : formats des codes (type de 2
+  ou 3 lettres, programme d'une lettre puis 2 à 9 lettres ou chiffres, clés en minuscules et `_`) ; un code ne
+  désigne qu'une chose dans `TYPE-CONTEXTE-SEQ` : type, département, projet, programme et `QMS` ne se reprennent pas
+  (point 1 de `docs/registre-points-ouverts.md` : FIN, HSE et COM gardés, aucun nouveau cas ; l'ajout d'un département
+  le vérifie aussi) ; lecture des formulaires de type (sous-types FR/EN appariés, 40 au plus), famille, fonction et
+  programme ; documents qu'un réglage de type n'admettrait plus.
+- **Usage** (`registryUsage`, `src/lib/queries.ts`) : ce qui fait référence à chaque entrée, tous documents
+  confondus ; s'y ajoutent les entrées que les règles de Codex nomment (type FRM des modèles, fonctions chef de projet,
+  validation client et responsable du département), qui gardent leur code même inutilisées.
+- **Actions** (`src/lib/actions.ts`, droit « Administrer », limite d'écriture, `traceAction`) : `createType`,
+  `updateType`, `deleteType`, et de même pour les familles, les fonctions et les programmes. Une entrée utilisée garde
+  son code et ne se supprime pas ; la famille d'un type entraîne celle de ses documents ; restreindre les admissions
+  d'un type demande une confirmation avec le nombre de documents concernés (leurs identifiants aux gestionnaires) ; la
+  portée d'une fonction qui a des titulaires ne change pas ; un programme désactivé n'est plus proposé à un nouveau
+  document (ni à un nouveau titulaire), ceux qui l'ont le gardent. Chaque écriture est journalisée comme entrée sans
+  document (cibles `type`, `family`, `function`, `program`), champ par champ, affichée dans la langue du lecteur.
+- **Écrans** : Registre des types (« Nouvelle famille », « Nouveau type » préréglé sur la famille filtrée, section
+  « Familles »), Fonctions & circuits (« Nouvelle fonction », crayon par fonction, section « Programmes de
+  recherche ») ; dialogue de type complet, aussi ouvert depuis Archivage › Règles ; code en lecture seule et
+  « Supprimer » désactivé (avec la raison) pour une entrée utilisée. Colonne `research_programs.active`, migration
+  unique régénérée.
+- **Keystone** : `GET /api/registry` suit chaque changement (nouvel `ETag`), `source: codex` pour un type créé dans
+  Codex ; règles de stabilité dans `docs/api.md`.
+- *Vérifié* : `npm test` (60 fichiers, 999 tests dont un sauté), `npm run typecheck`, `npm run lint`. Retirer les
+  entrées nommées par Codex de `registryUsage` fait échouer deux tests. `npm run dev` sur une base neuve, dans
+  Chromium (cbardet) : type refusé pour un code de département puis créé (NTC, sous-type FR/EN, étape « Responsable de
+  chantier », clause ISO), renommé NTD tant qu'inutilisé ; PRO (utilisé) en lecture seule, « Supprimer » désactivé ;
+  « Interne » retiré de ses niveaux → 4 documents nommés et enregistrement bloqué jusqu'à la confirmation ;
+  rattachement « Projet » retiré de MIN → `MIN-HLT-026-001` nommé, confirmé, enregistré ; famille créée puis supprimée
+  (confirmation) ; fonction créée, portée de « Responsable qualité » verrouillée ; programme refusé pour le code QUA,
+  R2603 créé, R2602 désactivé et absent du dialogue de création d'un document de recherche ; journal lisible ;
+  `/api/registry` donne NTD (`source: codex`), plus NTC, et MIN avec `["none"]` ; dialogue « New type » en anglais ;
+  aucune erreur de page ni de serveur. `npm run build` puis `next start` sur un autre port : Registre, Fonctions &
+  circuits et Archivage › Règles en 200, avec leurs boutons et la section des programmes.
+- **Relecture** (six constats, dont deux en double, tous retenus) :
+  - la confirmation d'une restriction de type ne valait pas pour ce qu'elle annonçait : le dialogue gardait l'ancien
+    avertissement après un nouveau changement d'admission, et le serveur acceptait `confirmOut=1` quel que soit le
+    réglage. Le refus porte désormais un jeton (HMAC du type, du réglage et des identifiants exclus, clé tirée au
+    démarrage, qui ne révèle aucun brouillon) que la confirmation doit renvoyer ; le serveur recalcule et redemande si
+    le réglage ou les documents diffèrent. Le dialogue efface le refus à chaque changement d'admission (`clear` de
+    `useSubmit`) ;
+  - les entrées nommées par Codex gardaient leur code mais pas les réglages dont le code dépend : FRM admet désormais
+    seulement « sans rattachement » (sinon un modèle rattaché à un projet recevait l'ID `FRM-HLT-026-001`), chef de
+    projet et validation client restent « par projet », responsable du département « par département »
+    (`builtInTypeIssue`, `builtInScopeIssue`), cases et liste grisées dans les dialogues ;
+  - `addFunctionHolder` acceptait un programme désactivé ou inconnu : la valeur de portée est vérifiée dans la
+    transaction (département ou projet existant, programme existant et actif) ;
+  - `parseSubtypes` lisait toutes les lignes reçues et dédoublonnait en temps quadratique : au-delà de 80 lignes, refus
+    sans lecture, dédoublonnage par ensemble ;
+  - le droit « Administrer » des douze actions du registre et des programmes est testé une à une (collaborateur,
+    validateur, auditeur), sans changement ni journal, puis l'appel passe en gestionnaire ; retirer le contrôle des
+    douze fait échouer les douze cas.
+  *Vérifié* : `npm test` (60 fichiers, 1 019 tests dont un sauté), `npm run typecheck`, `npm run lint`, `npm run
+  build`. Dans Chromium sur une base neuve (cbardet) : CTR sans « Projet » nomme CTR-HLT-026-001 et CTR-HLT-026-002 ;
+  décocher ensuite « Confidentiel » efface l'avertissement, et « Enregistrer » redemande avec trois documents, dont
+  CTR-JUR-0001 ; annuler les deux retraits enregistre sans question ; CTR sans « Aucun » nomme CTR-JUR-0001, confirmé
+  puis enregistré, `/api/registry` donne `["project"]`. Rattachements de FRM et portée de « Chef de projet » grisés,
+  avec leur raison. Dialogue « Ajouter un titulaire » ouvert sur R2602 pendant qu'un autre onglet désactive R2602 :
+  l'ajout est refusé. `next start` sur un autre port : Administration (registre, fonctions) en 200.
+- **Reste** : la date de fin des programmes (déclencheur de conservation « fin de programme », point 3 du registre,
+  O-05) ; la gouvernance des termes (A05) ; l'application des évolutions du registre à une base existante par script
+  (point 60) ; les vocabulaires contrôlés des sous-types (point 59).
+
+### 16.7 Administration de l'organisation : renommer ou retirer un département ou un site
+
+Point 62 de [reste-a-faire.md](reste-a-faire.md), vérifié au commit `8171aa2` : l'onglet Organisation n'offrait que
+« Nouveau département » et « Nouveau site » (et le réglage des filtres mis en avant) ; `departments` et `sites`
+n'avaient pas de colonne `active`, les sites un seul libellé ; aucune action ne renommait ni ne retirait une valeur.
+Deux éléments du constat ne tenaient plus : `addOrgValue` journalisait déjà ses ajouts, et `audit_log.doc_id` est
+facultatif depuis le 10 octobre. `saved_searches.department` est aussi une clé étrangère vers `departments` depuis le
+11 octobre.
+
+- **Schéma** : `departments.active`, `sites.active`, libellés FR et EN des sites (`label_fr`, `label_en` au lieu de
+  `label` ; seed : « Lyon — siège et atelier » / « Lyon — head office and workshop »…). Migration unique régénérée :
+  une base existante repart de zéro (`npm run db:reset`).
+- **Règles** (`src/lib/org-rules.ts`, sans dépendance au serveur, testées seules) : libellé FR obligatoire, EN repris
+  du FR, 160 caractères au plus ; valeurs proposées à une nouvelle saisie (`offered` : les actives, plus celle que
+  l'entrée a déjà) ; département d'un nouveau document (celui de l'utilisateur s'il est actif, sinon le premier
+  actif) ; un département actif au moins (`lastActiveIssue`). `defaultDepartment` (`/departements`) ouvre toujours le
+  département de l'utilisateur, même inactif, sinon le premier actif.
+- **Usage** (`orgUsage`, `src/lib/queries.ts`) : par département, documents (tous états), personnes (acteurs système
+  exclus), titulaires d'une fonction « par département », recherches partagées avec lui et identifiants attribués sous
+  son code (compteurs `doc:TYPE-CONTEXTE` de `id_counters`, qui demeurent après un reclassement) ; par site, documents
+  et personnes. Les nombres de personnes et de documents de l'onglet en viennent (au lieu de la liste de tous les
+  documents).
+- **Actions** (`src/lib/actions.ts`, droit « Administrer », limite d'écriture, `traceAction`) : `updateOrgValue`
+  (libellés et état ; le code ou la clé, nommés par `original`, ne sont jamais lus du formulaire), `deleteOrgValue`
+  (refus avec la raison pour une valeur utilisée ; un département actif au moins) ; `addOrgValue` donne aux sites leurs
+  deux libellés et journalise désormais champ par champ. Journal : `org_add`, `org_edit` (« Valeur d'organisation
+  modifiée »), `org_remove`, cibles département et site, code ou clé, libellés et état avant → après.
+- **Valeur inactive** : `validateFields` refuse un département ou un site inactif sauf pour le document qui l'a déjà
+  (message sous le champ) ; un document créé sans département explicite prend celui de l'utilisateur, et la création
+  est refusée s'il est inactif plutôt que d'en choisir un autre ; `saveSearch` refuse de partager avec un département
+  inactif. `addFunctionHolder` accepte en revanche un département inactif : ses documents passent encore par des
+  circuits (contrairement à un programme clos, dont le responsable répond). Les dialogues (nouveau document,
+  métadonnées, recherche enregistrée) ne proposent que les valeurs actives, plus la valeur actuelle du document ; celui
+  du titulaire liste tous les départements, l'inactif marqué « (inactif) » (`markInactive`, comme le sélecteur de la
+  page du département) ; le nouveau document part du département de l'utilisateur s'il est actif, sinon du premier
+  actif. L'import accepte un département ou un site inactif (D-21).
+- **Ordre** : un département ou un site ajouté prend le rang qui suit le plus grand (`nextSort`, comme les types,
+  familles et fonctions) et non le nombre de valeurs, qui après une suppression pouvait redonner un rang déjà pris ;
+  à rang égal, `getCtx` les range par code ou par clé, pour qu'un renommage ou une désactivation ne change plus
+  l'ordre des listes.
+- **Écrans** : un crayon par département et par site ouvre le dialogue de la valeur (code ou clé en lecture seule avec
+  sa raison, libellés FR/EN, « Département actif (proposé à la création) », « Supprimer » désactivé avec la raison
+  quand la valeur est utilisée, confirmation sinon) ; lignes inactives grisées et marquées « Inactif » ; libellé EN
+  du site sous le libellé ; texte d'en-tête de l'onglet complété. Page d'un département inactif : étiquette
+  « Inactif » et phrase d'explication, « (inactif) » dans le sélecteur ; ses documents et ses filtres mis en avant
+  restent. Le libellé renommé suit partout (`ctx.label`), filtres mis en avant compris.
+- *Vérifié* : `npm test` (62 fichiers, 1 047 tests dont un sauté), `npm run typecheck`, `npm run lint`. Retirer le
+  refus d'une valeur inactive dans `validateFields`, le contrôle du dernier département actif ou les identifiants de
+  `orgUsage` fait échouer cinq tests. `npm run dev` sur une base neuve, dans Chromium : en cbardet, CMN renommé
+  « Communication & marque » / « Communication & brand » (code en lecture seule, « Supprimer » désactivé avec la
+  raison), le nouveau libellé dans le dialogue de création et sur la page `/departements/CMN` ; ACH désactivé (ligne
+  grisée « Inactif ») : absent du dialogue de création, toujours proposé et enregistrable dans les
+  métadonnées de COC-HLT-026-001 (ACH), page `/departements/ACH` marquée « Inactif » ; LGO créé puis supprimé après
+  confirmation ; site Marseille renommé et désactivé (Fabien Bertrand y est : non supprimable), absent du dialogue de
+  création ; journal : « Valeur d'organisation modifiée / ajoutée / supprimée » avec chaque champ avant → après ;
+  écran et dialogue en anglais. En jwagner : Administration refusée ; ING désactivé par cbardet → le dialogue de
+  création part de DIR et `/departements` ouvre toujours ING ; ING réactivé → de nouveau proposé par défaut. Aucune
+  erreur de page ni de serveur (seul `/favicon.ico` répond 404, comme avant).
+- **Relecture** (trois points, tous retenus) :
+  - la suppression du dernier département actif, même inutilisé, n'était testée que par la règle pure : un test
+    d'intégration passe désormais par `deleteOrgValue` (LGO seul actif, refusé, rien au journal) ;
+  - un département inactif refusait tout nouveau titulaire : le départ de son responsable bloquait les demandes de
+    validation de ses documents, sauf à le réactiver. Il en prend désormais (ci-dessus), testé jusqu'au circuit
+    lancé. Un programme clos garde la règle de l'étape 6 ; le cas restant est consigné dans `docs/decisions.md` ;
+  - le rang d'un département ou d'un site ajouté était le nombre de valeurs, repris après une suppression, et l'ordre
+    des listes changeait alors à chaque renommage : `nextSort` et clé secondaire (ci-dessus), testés.
+  - *Vérifié* : `npm test` (62 fichiers, 1 051 tests dont un sauté), `npm run typecheck`, `npm run lint`. Retirer le
+    contrôle du dernier département dans `deleteOrgValue`, accepter de nouveau seulement les départements actifs pour
+    un titulaire, revenir au rang « nombre de valeurs » ou retirer la clé secondaire fait chacun échouer un test.
+    `npm run dev` sur une base neuve, dans Chromium, en cbardet : ACH désactivé (le dialogue l'explique) puis proposé
+    « ACH · Achats & stock (inactif) » dans le dialogue du titulaire, Gabriel Comte nommé (« Titulaire ajouté » au
+    journal), ACH resté inactif et toujours absent du dialogue de création ; LGO et XYZ ajoutés, LGO supprimé, ABC
+    ajouté : ABC suit XYZ, et l'ordre ne bouge plus quand XYZ est renommé ou ABC désactivé ; en anglais, dialogue du
+    titulaire (« (inactive) ») et explication du dialogue du département. Aucune erreur de page ni de serveur.
+- **Reste** : fusionner deux départements (le sort des brouillons jamais approuvés, qu'un reclassement renumérote,
+  attend O-09) ; l'organigramme réel (O-04) ; qui peut renommer ou retirer une valeur (A05) ; le titulaire d'un
+  programme clos dont le responsable est l'auteur de la révision (étape 6).
+
+### 16.8 Export complet pour la réversibilité
+
+Point 17 de [reste-a-faire.md](reste-a-faire.md), vérifié au commit `6063aed` : seuls deux exports existaient, le CSV
+des résultats de recherche visibles et le CSV du journal (`src/app/api/export/search` et `audit`), sans fichiers,
+révisions ni historique, et aucune dépendance ZIP. M22 de l'audit restait « Ouvert ». Le constat tenait entièrement.
+Un premier essai, interrompu presque terminé (limite d'usage), a été relu et repris tel quel ; il restait la
+documentation et la vérification réelle.
+
+- **Archive** (`src/lib/export-core.mjs`, JavaScript sans dépendance, comme `backup-core.mjs`) : ZIP aux éléments
+  stockés, écrit en flux (taille et CRC-32 après les octets, Zip64 au-delà de 4 Go ou de 65 534 éléments), relu et
+  vérifié par le même module. Contenu : `LISEZMOI.txt`, chaque table en JSON sous `data/` (champs nommés comme dans
+  `src/db/schema.ts`), dont le journal d'audit, `data/documents.csv`, le fichier de chaque version de travail sous
+  `files/{ID}/{ID}_{lettre}.{n}.{ext}`, `import/documents.json` (chaque document au format de `POST /api/import`, avec
+  son identifiant actuel comme `legacyRef` et le fichier à envoyer), `SHA256SUMS` et `manifest.json` (date, version de
+  Codex, dernière migration, nombre de lignes de chaque table, fichiers manquants ou non inclus, taille et SHA-256 de
+  chaque élément). L'index de recherche (`document_terms`) n'est pas exporté : la base le recalcule.
+- **Instantané** : tables copiées en une transaction dans des tables temporaires, puis lues par lots ; journal lu
+  jusqu'à la dernière entrée de cette transaction ; fichier renommé entre-temps par un reclassement retrouvé sous sa
+  nouvelle clé. Tables temporaires supprimées à la fin, à l'interruption ou à l'échec.
+- **Téléchargement** `GET /api/export/full` (`src/lib/full-export.ts`), lien « Télécharger l'archive (ZIP) » dans
+  Administration › Journal d'audit : réservé aux gestionnaires documentaires ayant l'accès Administration
+  (`mayExportAll`, `src/lib/access.ts`), 403 pour tout autre utilisateur, `HEAD` compris, et lien absent ; compté dans
+  `CODEX_RATE_EXPORTS`. Journal : « Export complet » au début, écrit dans la transaction de la copie (l'archive le
+  contient), « Export complet envoyé » quand le serveur a fini de l'envoyer, avec la taille et le SHA-256 de l'archive, ou « interrompu » / « échec » ;
+  nombres et empreinte montrés aux seuls gestionnaires (`archiveL`, `src/lib/queries.ts`), aucun document nommé.
+- **Commandes** (`scripts/codex-export.mjs`) : `npm run export`, serveur arrêté, sous le verrou du dossier de données
+  (`codex.lock`, type `export` ajouté à `backup-core.mjs`), archive écrite sous un nom provisoire, relue puis nommée,
+  dans `.data-exports/` par défaut (ignoré par git, dossier `0700`, archive `0600`) ou `--out` ; journalisée sous
+  l'acteur Codex. `npm run export:check -- <archive>` relit une archive. Fichiers SharePoint jamais lus par la commande,
+  signalés.
+- **Docs** : format, champs, correspondance avec `POST /api/import` et boucle de réimport dans `docs/export.md` ;
+  README (section « Export complet »), `docs/api.md`, `docs/sauvegarde.md` (export ≠ sauvegarde), `.env.example`
+  (aucune variable nouvelle), M22 de l'audit, point 17 de `reste-a-faire.md`, choix non validés dans `decisions.md`.
+- *Vérifié* : `npm test` (65 fichiers, 1 071 tests dont un sauté), `npm run typecheck`, `npm run lint`, `npm run
+  build`. Tests : `tests/unit/export-core.test.ts` (ZIP écrit et relu, Zip64 par seuils abaissés, archive altérée,
+  noms des champs et des fichiers, vue d'import), `tests/integration/full-export.test.ts` (archive relue, comptes et
+  empreintes comparés à la base, instantané, droits, limite de débit, interruption, réimport d'un document dans une
+  base vide par l'import : même identifiant, même révision, même fichier), `tests/integration/export-command.test.ts`
+  (commande, vérification, refus serveur en marche, dossier par défaut). Ouvrir l'export aux administrateurs non
+  gestionnaires, retirer l'entrée de début du journal ou fausser l'empreinte des éléments fait échouer chacun trois ou
+  quatre tests. Exécution réelle, `npm run dev` sur une base neuve, deux documents importés avec fichier (dont un
+  confidentiel en brouillon) : gcomte, jwagner et jholt reçoivent 403 (`GET` et `HEAD`) et ne voient pas le lien ; en
+  cbardet, dans Chromium, lien visible (FR et EN), archive téléchargée (`codex-export-….zip`, 296 Ko) ; `unzip -t`,
+  `zipfile` de Python, `sha256sum -c SHA256SUMS` après extraction et `npm run export:check` la trouvent intacte ; deux
+  fichiers sous `files/PID-HLT-026-002/PID-HLT-026-002_C.1.pdf` et `files/PRO-ACH-0001/PRO-ACH-0001_A.1.pdf`, le
+  brouillon confidentiel compris ; le SHA-256 inscrit au journal est celui du fichier téléchargé. `npm run export`
+  refusé tant que le serveur tourne, puis, serveur arrêté, archive écrite et vérifiée dans `.data-exports/`. Base
+  remise à zéro, la boucle de `docs/export.md` réimporte les deux documents sous leurs identifiants (même révision,
+  même statut, fichier identique octet pour octet), puis répond 409 `duplicate` au second passage. `npm run start` :
+  même téléchargement (200, `application/zip`), 403 pour jholt. Aucune erreur de serveur.
+- **Relecture** : (1) la fin d'export est inscrite quand le serveur a fini d'envoyer l'archive, pas quand le client l'a
+  reçue : une petite archive coupée après l'envoi était présentée comme « terminée ». L'entrée s'appelle désormais
+  « Export complet envoyé », et `docs/export.md`, `decisions.md` et le README disent qu'un fichier téléchargé se
+  vérifie par `npm run export:check` ou par son SHA-256. (2) `docs/exploitation.md` cite le `scope` `export`, la
+  commande `npm run export` parmi les causes d'un `database` en échec et ses messages en texte ; les deux
+  avertissements de `export-core.mjs` (fin non journalisée, tables temporaires non supprimées) passent, depuis
+  l'application, par le journal technique structuré (option `warn`), testé.
+- **Reste** (à l'utilisateur, M22) : délai de reprise, perte de données tolérée, hébergement, chiffrement et lieu de
+  conservation des exports, export programmé ; contrat de reprise par l'import des révisions antérieures, des liens et
+  des états (O-11) ; fichiers SharePoint (O-01).
+
+### Bilan du lot 7
+
+Huit étapes, huit points ou groupes de points de [reste-a-faire.md](reste-a-faire.md) (24, 25, 32, 64, 46, 36, 48, 49,
+37, 61, 58, 62, 17), tous développables sans décision de l'utilisateur. Ensemble, ils rendent Codex exploitable par
+une équipe informatique : en-têtes de sécurité et limites de débit (étape 1), contrôle des fichiers déposés et
+antivirus (2), fichiers servis en flux et nettoyage des orphelins (3), sauvegarde et restauration (4), journal
+technique, santé et contrôle de la configuration (5), administration complète du registre et de l'organisation (6,
+7), export complet pour la réversibilité (8). Aucune question ouverte n'a été tranchée : chaque protection a une
+configuration par défaut qui fonctionne en local (`npm run dev`, app Mac), décrite dans `.env.example` et le README, et
+chaque choix qui dépend d'une question ouverte (O-01 SharePoint, O-02 authentification, hébergement et M22, A05 droits,
+O-04 organigramme, O-09, O-11) prend l'option la plus prudente et figure dans « Choix de l'assistant non validés
+explicitement » de [decisions.md](decisions.md).

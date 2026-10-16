@@ -338,7 +338,9 @@ Règles de lecture :
 - **Mise en œuvre** :
   - `src/db/seed-org.ts` : `DEPARTMENTS` (15 codes, de DIR à RDI), `SITES` (Lyon, Le Havre, Marseille) et personnes
     alignées sur le jeu de données de Keystone.
-  - Ces valeurs sont modifiables dans Administration › Organisation.
+  - Ces valeurs sont modifiables dans Administration › Organisation : ajout, renommage (libellés FR/EN), désactivation
+    et réactivation, suppression d'une valeur inutilisée (15 octobre ; règles non confirmées, voir « Choix de
+    l'assistant non validés explicitement »).
   - En attente (O-04).
 
 ### D-20 — Conservation par type de document
@@ -951,6 +953,130 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     exiger `CODEX_TRUST_PROXY` (il ne sert qu'à relier des journaux), sinon un UUID ; renvoyé sur les réponses d'API.
     Une Server Action reçoit un UUID, non renvoyé au navigateur. Next.js signalant parfois deux fois l'échec d'un même
     rendu, une erreur de même `digest` sur le même chemin n'est écrite qu'une fois par 2 secondes.
+- **Administration du registre et des programmes de recherche** (points 61 et 58 de `docs/reste-a-faire.md`,
+  15 octobre ; D-07, D-08, D-10, D-15. Gouvernance des termes (A05 de l'audit), arbitrages du registre (O-05), date de
+  fin des programmes (point 3 de `docs/registre-points-ouverts.md`) non tranchés) :
+  - créer, modifier et supprimer types, familles, fonctions et programmes est réservé au droit « Administrer », comme
+    le reste de l'administration : qui peut créer, renommer ou retirer un terme (A05) reste à décider ;
+  - le contenu du registre ne change pas : aucun type n'est ajouté ni retiré, les 69 types restent provisoires (O-05) ;
+  - formats : code de type de 2 ou 3 lettres majuscules (comme tous les codes du registre, GA et PO compris) ; code de
+    programme fait d'une lettre majuscule puis de 2 à 9 lettres majuscules ou chiffres, sans tiret (R2601) ; clé de
+    famille ou de fonction en minuscules, chiffres et `_` (`resp_qualite`). Libellé FR obligatoire, libellé EN repris
+    du FR s'il est vide ;
+  - **un code ne désigne qu'une chose dans un identifiant** `TYPE-CONTEXTE-SEQ` : un nouveau code de type, de
+    département ou de programme ne peut reprendre ni un autre code de type, ni un code de département, de projet ou de
+    programme, ni `QMS`. C'est l'option prudente du point 1 de `docs/registre-points-ouverts.md` (« FIN-FIN-0001 :
+    garder ou renommer ? », O-05) : les codes déjà partagés (FIN, HSE, COM, types et départements) sont gardés, aucun
+    nouveau n'est créé. Pour deux contextes (un département et un programme du même code), le compteur serait de plus
+    commun ;
+  - **une entrée utilisée garde son code et ne se supprime pas** : un type qu'un document (quel que soit son état) ou une
+    pièce attendue sur un projet utilise ; une famille qui contient un type ou un document ; une fonction qui figure
+    dans un circuit, a des titulaires ou a servi dans un circuit lancé (ses étapes gardent sa clé) ; un programme qu'un
+    document ou un titulaire de fonction « par programme » utilise. Les entrées que les règles de Codex nomment comptent
+    comme utilisées, même sans document : le type des modèles FRM (contexte `QMS`, D-10) et les fonctions chef de
+    projet, validation client (le chef du projet y répond à défaut de titulaire) et responsable du département. Elles
+    gardent aussi les réglages dont le code dépend : FRM n'admet que « sans rattachement » (rattaché à un projet ou à un
+    programme, un modèle prendrait ce contexte au lieu de `QMS`) ; chef de projet et validation client restent « par
+    projet », responsable du département « par département ». Un type ou un programme utilisé se désactive : il
+    n'est plus proposé à un nouveau document, et ceux qui l'ont le gardent. Une entrée que rien n'utilise peut changer de
+    code ou être supprimée (créée par erreur, par exemple), ce qui est journalisé ;
+  - changer la famille d'un type change celle de ses documents (la famille d'un document est celle de son type) ;
+  - restreindre les origines, rattachements ou niveaux de confidentialité admis par un type est refusé tant qu'on ne
+    confirme pas, avec le nombre de documents de ce type qui ne seraient plus admis ; leurs identifiants ne sont donnés
+    qu'aux gestionnaires documentaires, la liste nommant des brouillons (D-14). La confirmation ne vaut que pour les
+    documents annoncés : si le réglage change ou qu'un autre document serait exclu entre-temps, la question est reposée
+    avec le nouveau nombre. Ces documents gardent leurs valeurs ; leur prochaine modification de métadonnées demande de
+    les reclasser ;
+  - la portée d'une fonction ne change pas tant qu'elle a des titulaires (chacun est nommé pour une valeur de la
+    portée) ; ses libellés changent pour les circuits à venir, les circuits lancés gardent ceux de leur lancement ;
+  - un titulaire de fonction est nommé pour un département ou un projet connu, pour un programme connu et actif, ou
+    pour tout le groupe : un programme désactivé garde ses titulaires mais n'en reçoit plus de nouveau ;
+  - un programme a un code, un libellé, un responsable (une personne, pas un acteur système), qui valide les étapes
+    « par programme » sans titulaire désigné, et un état actif. Pas de date de fin : elle servirait au déclencheur de
+    conservation « fin de programme » (point 3 de `docs/registre-points-ouverts.md`, O-05). Un programme désactivé reste
+    accepté par l'import (`POST /api/import`) : la migration reprend aussi les documents des programmes terminés (O-11) ;
+  - un type créé dans Codex porte `source: codex` dans `GET /api/registry` ; les programmes n'y figurent pas
+    (`docs/api.md`) ;
+  - chaque création, modification et suppression est journalisée comme une entrée sans document (cibles type, famille,
+    fonction, programme), avec chaque champ avant → après, lisible dans l'administration seulement.
+- **Administration de l'organisation** (point 62 de `docs/reste-a-faire.md`, 15 octobre ; D-10, D-19. Organigramme
+  (O-04), gouvernance des termes (A05 de l'audit) et sort des brouillons reclassés (O-09) non tranchés) :
+  - renommer, désactiver, réactiver ou supprimer un département ou un site est réservé au droit « Administrer », comme
+    le reste de l'administration ; les valeurs restent les valeurs provisoires du seed tant que l'organigramme n'est
+    pas fourni ;
+  - **le code d'un département ne change jamais**, même tant que rien ne l'utilise : il entre dans les identifiants des
+    documents sans rattachement (`PRO-QUA-0003`). Un département créé par erreur se supprime et se recrée. La clé d'un
+    site (tirée de son libellé à la création, enregistrée sur les documents et les personnes) ne change pas non plus ;
+  - les sites ont désormais un libellé FR et un libellé EN, comme les départements (« Lyon — siège et atelier » /
+    « Lyon — head office and workshop ») ;
+  - **une valeur utilisée ne se supprime pas, elle se désactive**. Un département est utilisé par des documents (quel
+    que soit leur état), des personnes, des titulaires d'une fonction « par département », des recherches partagées
+    avec lui, ou des identifiants déjà attribués sous son code, même si le document a été reclassé depuis (son ancien
+    identifiant reste en alias et son compteur demeure) : c'est l'option prudente, qui évite qu'un code ayant servi
+    dans des identifiants soit repris par un type ou un programme. Un site est utilisé par des documents ou des
+    personnes ;
+  - **une valeur inactive n'est plus proposée** pour un nouveau document ni le partage d'une recherche (le serveur le
+    refuse aussi), mais reste affichée et acceptée là où elle figure déjà : un document qui l'a la garde, y compris à
+    sa prochaine modification ; les titulaires et recherches existants restent ; la page du département reste
+    ouverte, marquée « Inactif », avec ses documents ; elle reste dans les facettes de la recherche et l'explorateur
+    tant que des documents l'ont. La réactivation la propose de nouveau ;
+  - **un département inactif prend encore des titulaires de fonction** « par département », proposé marqué
+    « (inactif) » dans le dialogue du titulaire : ses documents restent et passent encore par des circuits, qui
+    cherchent le responsable de leur département. Sans cela, le départ de son responsable bloquait toute demande de
+    validation sur ses documents, sauf à le réactiver le temps de nommer un successeur (relecture du 15 octobre) ;
+  - un programme clos (étape 6) ne prend toujours pas de nouveau titulaire ; son responsable, modifiable même
+    programme clos, répond pour lui des fonctions « par programme ». Reste bloqué le cas où ce responsable est l'auteur
+    de la révision et où personne ne tient la fonction pour tout le groupe : à arbitrer avec le reste des programmes ;
+  - un document créé sans département explicite prend celui de l'utilisateur : s'il est inactif, la création est
+    refusée avec le message, plutôt que de prendre un autre département à son insu ; le dialogue propose alors le
+    premier département actif. `/departements` ouvre toujours la page du département de l'utilisateur, même inactif ;
+  - **un département au moins reste actif** : un nouveau document sans rattachement prend le code de son département ;
+  - l'import (`POST /api/import`) accepte un département ou un site inactif : la migration reprend aussi les documents
+    des services fermés (D-21), comme pour les programmes ;
+  - chaque ajout, modification et suppression est journalisé comme une entrée sans document (cibles département et
+    site), avec chaque champ avant → après (code ou clé, libellés, état), lisible dans l'administration seulement ;
+  - la fusion de deux départements n'est pas faite : elle réaffecterait documents, personnes et titulaires, mais un
+    brouillon jamais approuvé changerait d'identifiant (D-10, O-09).
+- **Export complet pour la réversibilité** (point 17 de `docs/reste-a-faire.md`, 15 octobre ; format dans
+  `docs/export.md`. Délai de reprise, perte de données tolérée et hébergement (M22 de l'audit), SharePoint (O-01) et
+  contrat de migration (O-11) non décidés) :
+  - **réservé aux gestionnaires documentaires ayant l'accès Administration**, comme la sauvegarde : l'archive contient
+    tout, brouillons et documents confidentiels compris, sans le filtre de D-14, et seuls les gestionnaires
+    documentaires voient déjà tous les brouillons. Un administrateur qui n'est pas gestionnaire documentaire n'y a pas
+    accès (403), ni la ligne qui le propose ;
+  - **journalisé deux fois** : « Export complet » au début, écrit dans la transaction de la copie (l'archive contient
+    donc sa propre entrée, et un téléchargement coupé ou un serveur arrêté laisse une trace), puis « Export
+    complet envoyé » avec la taille et le SHA-256 de l'archive quand le serveur a fini de l'envoyer (ils permettent
+    de reconnaître plus tard une archive comme celle que le serveur a envoyée), ou « interrompu » (coupure pendant
+    l'envoi), ou « échec ». Le serveur ne sait pas si le client a tout reçu : une petite archive coupée après l'envoi
+    est inscrite comme envoyée, et un fichier téléchargé se vérifie par `npm run export:check` ou par son SHA-256. Nombres, tailles et empreinte montrés aux seuls
+    gestionnaires documentaires, aucun document nommé, comme pour la sauvegarde ;
+  - **instantané** : toutes les tables sauf le journal sont copiées en une transaction dans des tables temporaires
+    (les écritures attendent quelques secondes, comme pour une sauvegarde), puis lues par lots ; le journal, en ajout
+    seul, est lu jusqu'à la dernière entrée de cette transaction. Ce qui change pendant le téléchargement n'entre pas
+    dans l'archive ;
+  - **format** : ZIP sans compression ni chiffrement, écrit en flux (descripteurs de données, Zip64 au-delà de 4 Go),
+    sans dépendance (`src/lib/export-core.mjs`) ; une table par fichier JSON, champs nommés comme dans
+    `src/db/schema.ts` (ceux de l'API d'import), dates telles que la base les garde (heure de Paris pour les
+    horodatages sans fuseau, UTC pour le journal) ; CSV des seuls documents, au format des autres exports (point-virgule,
+    BOM, formules neutralisées) ; fichiers sous `files/{ID}/{ID}_{lettre}.{n}.{ext}` (toutes les versions de travail,
+    pas seulement le fichier final) ; `SHA256SUMS` pour vérifier sans Codex. L'index de recherche (`document_terms`)
+    n'est pas exporté : la base le recalcule ;
+  - **vue d'import** (`import/documents.json`) : pour chaque document, le `meta` de `POST /api/import` et le fichier à
+    envoyer, avec son identifiant actuel comme `legacyRef` (gardé comme identifiant par le Codex qui importe quand il
+    est libre et au format de son type et de son contexte) ; la révision prise est celle en vigueur, sinon une révision
+    approuvée avec sa date d'effet, sinon la dernière, en brouillon ; état, gel juridique, révisions antérieures,
+    circuits, demandes, liens et journal restent dans `data/` sans équivalent dans l'import (O-11) ;
+  - **fichiers SharePoint** : depuis l'application, lus par Graph quand SharePoint est configuré ; sinon (O-01 non
+    tranché) listés comme non inclus dans le manifeste et le journal plutôt que de faire échouer tout l'export. La
+    commande ne les lit jamais (comme la sauvegarde) et le dit. Un stockage local illisible ou un SharePoint configuré
+    mais injoignable fait échouer l'export ;
+  - **commande** `npm run export`, serveur arrêté, sous le verrou du dossier de données ; archive par défaut à côté du
+    dossier de données (`.data-exports/`, ignoré par git), dossier `0700` et archive `0600`, écrite sous un nom
+    provisoire et relue avant d'être nommée ; aucune variable nouvelle (`--out` pour un autre endroit). Pas
+    d'export programmé, pas de chiffrement : à décider avec l'hébergement ;
+  - le téléchargement compte dans le budget des exports (`CODEX_RATE_EXPORTS`), sans autre limite : deux exports
+    simultanés sont possibles (chacun sa copie temporaire).
 - **Git** (D-23) : premier commit sur une branche `codex-ged-v2` plutôt que sur `main`.
 
 ## Ce qui est explicitement hors périmètre

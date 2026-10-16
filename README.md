@@ -18,7 +18,7 @@ déposés sont stockés dans `.data/files/` (ou dans SharePoint, voir `src/lib/s
 
 - Repartir de zéro : arrêter le serveur, `npm run db:reset`, relancer. **Obligatoire après le passage au modèle v2** :
   une base créée avec l'ancien modèle ne peut pas recevoir la nouvelle migration. `db:reset` n'efface pas les
-  sauvegardes (`.data-backups/`, voir « Sauvegarde et restauration »).
+  sauvegardes (`.data-backups/`, voir « Sauvegarde et restauration ») ni les exports complets (`.data-exports/`).
 - Après une modification de `src/db/schema.ts` : tant qu'il n'y a pas de base de production, régénérer la migration
   unique (`rm -rf drizzle && npx drizzle-kit generate --name init`) puis `npm run db:reset`.
 - Contrôles : `npm test`, `npm run typecheck`, `npm run lint`, `npm run build`.
@@ -30,7 +30,8 @@ déposés sont stockés dans `.data/files/` (ou dans SharePoint, voir `src/lib/s
     contenu (ZIP, fichiers composés OLE2, macros) et taille admis, analyse antivirus contre un faux clamd local,
     limites de débit, en-têtes de sécurité et `src/proxy.ts`, plages d'octets et requêtes conditionnelles, tri des
     fichiers orphelins, noms et rotation des sauvegardes, lecture d'une archive altérée, verrou du dossier de données,
-    journal technique sans secret, contrôle de la configuration au démarrage).
+    journal technique sans secret, contrôle de la configuration au démarrage, archive ZIP de l'export complet écrite
+    en flux et relue, Zip64 compris, noms des colonnes et des fichiers, métadonnées d'import d'un document).
   - `tests/integration/` : règles métier sur une base PGlite en mémoire, migrée depuis `drizzle/` avec les
     déclencheurs du journal, de la version et des termes de recherche des documents (`openDb` dans `src/db/index.ts`)
     et remplie de données minimales (`tests/support/fixtures.ts`), pas de la base de démo. Identifiants et compteurs,
@@ -39,7 +40,8 @@ déposés sont stockés dans `.data/files/` (ou dans SharePoint, voir `src/lib/s
     par département, modifications simultanées et limites de débit des routes et des actions (429), fichiers servis
     en flux (206, 416, 304, HEAD), nettoyage des fichiers orphelins, sauvegarde et restauration (archive écrite,
     relue, altérée, restaurée sur disque puis rouverte, retour arrière, commandes npm lancées comme par l'exploitant),
-    route de santé et journal technique des routes et des actions. La visibilité en SQL, la recherche et l'explorateur lus par la base
+    export complet (archive relue, empreintes et comptes comparés à la base, instantané, droits, interruption, réimport
+    d'un document par l'import, commande npm), route de santé et journal technique des routes et des actions. La visibilité en SQL, la recherche et l'explorateur lus par la base
     sont comparés à leur version en mémoire, qui reste la référence (`access-sql`, `search-sql`, `tests/support/`).
     `tests/integration/dates.test.ts` et `seed-sql.test.ts` chargent aussi les données de démo (`src/db/seed.ts`), en
     mémoire, pour en vérifier toutes les dates et y refaire ces comparaisons.
@@ -97,11 +99,12 @@ quitter l'app et supprimer `~/Library/Application Support/Codex/data`.
 | `/departements/[code]` | Page d'un département (`/departements` ouvre celui de l'utilisateur, un sélecteur passe aux autres) : documents en vigueur, échéances, circuits en cours qu'il suit, recherches partagées avec le département et le groupe, filtres mis en avant (valeurs les plus fréquentes, chacune un lien vers la recherche filtrée), le tout limité à ce que l'utilisateur peut lire. Départements provisoires (organigramme attendu) ; filtres par défaut (type, statut, projet), réglables par département dans Administration › Organisation, en attendant le recueil des besoins de chaque métier |
 | `/validations` | Circuits de validation : à valider, mes demandes, en cours, terminées ; approuver / rejeter (motif obligatoire) / déléguer, rappeler sa demande avant la dernière approbation, commentaires. Vue « Mes demandes Vigie » : demandes de modification et de retrait envoyées par l'utilisateur, avec leur statut |
 | `/archivage` | Échéances (archivage, gel juridique, revue effectuée ; filtres « Expirés » et « Revues en retard »), règles de conservation du registre, archives |
-| `/administration` | Registre des types (dont la périodicité de revue), fonctions & circuits, rôles & droits, organisation (départements et leurs filtres mis en avant, sites), modèles (QMS), journal d'audit (filtres par document ou cible, personne, action et période ; 100 entrées par page ; export CSV complet) |
+| `/administration` | Registre des types (création et modification complète des types et des familles, dont la périodicité de revue), fonctions & circuits (fonctions, titulaires, programmes de recherche), rôles & droits, organisation (départements et sites : ajout, renommage FR/EN, désactivation ou suppression d'une valeur inutilisée ; filtres mis en avant des départements), modèles (QMS), journal d'audit (filtres par document ou cible, personne, action et période ; 100 entrées par page ; export CSV complet), sauvegardes, export complet de toutes les données et de tous les fichiers (archive ZIP, gestionnaires documentaires) |
 
 API : `/api/registry` (lu par Keystone), `/api/import` (outil de migration), `/api/integrations/vigie` (décisions
 Vigie), `/api/documents/[id]/file` (fichier d'une version de travail), `/api/documents/[id]/approval?rev=B` (fiche de
-visa d'une révision approuvée, PDF tiré du journal), `/api/export/*` (CSV).
+visa d'une révision approuvée, PDF tiré du journal), `/api/export/search` et `/api/export/audit` (CSV),
+`/api/export/full` (export complet, archive ZIP : `docs/export.md`).
 
 Tout l'état d'écran est dans l'URL (onglets, filtres, sélection) : les liens sont partageables.
 
@@ -113,8 +116,13 @@ Tout l'état d'écran est dans l'URL (onglets, filtres, sélection) : les liens 
   lecteurs désignés, demandes de validation et décisions (mise en vigueur à l'approbation ou à la date d'effet),
   délégation, commentaires, demandes de modification et de retrait, revue périodique (« Revue effectuée », qui fixe la
   prochaine date de revue sans créer de révision), archivage, gel juridique, matrice des droits, registre des types
-  (circuit, confidentialité, conservation, périodicité de revue), titulaires des fonctions, départements (et filtres mis
-  en avant sur leur page) et sites. L'expiration et la revue en retard sont des indicateurs, sans nouveau statut : le
+  (création, modification et suppression des types, familles et fonctions : code, libellés FR/EN, famille, origines et
+  rattachements admis, sous-types, circuit, confidentialité, conservation et son fondement, périodicité de revue, clause
+  ISO, livrable client, actif), programmes de recherche (code, libellé, responsable, actif), titulaires des fonctions,
+  départements (et filtres mis en avant sur leur page) et sites (libellés FR/EN, actif). Une entrée du registre utilisée
+  garde son code et ne se supprime pas : un type ou un programme utilisé se désactive (`docs/api.md`, `GET
+  /api/registry`) ; de même un département ou un site utilisé, qui n'est plus proposé à un nouveau document mais reste
+  sur ceux qui l'ont. Le code d'un département ne change jamais. L'expiration et la revue en retard sont des indicateurs, sans nouveau statut : le
   retrait reste une demande à Vigie. Métadonnées, lecteurs désignés, versions de travail et demandes de validation
   refusent une action faite depuis une fiche périmée (« modifié entre-temps par … ; rechargez la fiche »), sans
   réserver le brouillon.
@@ -172,7 +180,7 @@ secondes), sans rien exécuter (ni import, ni lecture de fichier, ni export jour
 | Jetons refusés sur ces deux routes | `CODEX_RATE_TOKEN_FAILURES` | 20 par 15 minutes | adresse du client |
 | `GET /api/registry` | `CODEX_RATE_REGISTRY` | 300 par minute | adresse du client, derrière un proxy de confiance seulement |
 | Fichiers et fiches de visa (`/api/documents/[id]/file`, `/approval`) | `CODEX_RATE_FILES` | 600 par minute | utilisateur résolu ; et adresse derrière un proxy de confiance |
-| Exports CSV (`/api/export/*`, GET et HEAD) | `CODEX_RATE_EXPORTS` | 30 par minute | utilisateur résolu ; et adresse derrière un proxy de confiance |
+| Exports CSV et export complet (`/api/export/*`, GET et HEAD) | `CODEX_RATE_EXPORTS` | 30 par minute | utilisateur résolu ; et adresse derrière un proxy de confiance |
 | Server Actions qui écrivent (`src/lib/actions.ts`) | `CODEX_RATE_WRITES` | 120 par minute | utilisateur résolu |
 
 - Valeur `N` (par minute) ou `N/<durée>` (`30s`, `1m`, `15m`, `1h`) ; `0` ou `off` lève une limite,
@@ -356,6 +364,34 @@ npm run restore -- <archive> --replace  # remplace la base et les fichiers, mis 
   affichent d'abord le dossier de données et celui des sauvegardes. App Mac :
   `CODEX_DATA_DIR="$HOME/Library/Application Support/Codex/data" npm run backup`, app quittée.
 
+## Export complet (réversibilité)
+
+Point 17 de `docs/reste-a-faire.md` ; format et réimport dans **`docs/export.md`**.
+
+```bash
+npm run export                          # serveur arrêté : archive ZIP dans .data-exports/ (ou --out <fichier|dossier>)
+npm run export:check -- <archive>       # relit une archive : CRC-32 et SHA-256 de chaque élément, manifeste
+```
+
+- **Archive** (`src/lib/export-core.mjs`) : chaque table de la base en JSON (champs nommés comme dans
+  `src/db/schema.ts`), dont le journal d'audit ; les métadonnées des documents en CSV ; le fichier de chaque version de
+  travail sous `files/{ID}/{ID}_{lettre}.{n}.{ext}` ; chaque document au format de `POST /api/import` avec le fichier
+  à envoyer ; `SHA256SUMS` et un `manifest.json` (date, migration du schéma, nombre de lignes de chaque table, taille et
+  SHA-256 de chaque élément). ZIP sans compression, écrit en flux (rien n'est chargé en entier), Zip64 au-delà de 4 Go.
+- **Instantané** : les tables sont copiées en une transaction (quelques secondes, les écritures attendent), puis lues
+  par lots ; ce qui change pendant le téléchargement n'y entre pas.
+- **Serveur en marche** : Administration › Journal d'audit › Export complet, réservé aux gestionnaires documentaires
+  ayant l'accès Administration. L'archive contient tout, brouillons et confidentiels compris (pas de filtre D-14), et
+  n'est pas chiffrée. Journal : « Export complet » au début (dans l'archive), « Export complet envoyé » à la fin de
+  l'envoi (envoyé ne veut pas dire reçu : vérifier le fichier par `npm run export:check`), avec la taille et le SHA-256
+  de l'archive, ou « interrompu » ; nombres montrés aux seuls gestionnaires, aucun document
+  nommé. Compté dans `CODEX_RATE_EXPORTS`.
+- **Commande** : même archive, écrite sous un nom provisoire, relue entièrement, puis nommée ; même verrou que
+  `npm run backup` (refusée tant que le serveur tourne) ; journalisée sous l'acteur Codex. Elle ne lit pas les fichiers
+  SharePoint, qu'elle signale (l'export depuis l'application les inclut quand SharePoint est configuré).
+- Ce n'est pas une sauvegarde : pour revenir à un état de Codex, on restaure une sauvegarde. Le réimport passe par
+  `POST /api/import`, une révision par document.
+
 ## Exploitation : journal technique, santé, configuration
 
 Points 37 et 49 de `docs/reste-a-faire.md` ; procédure complète dans **`docs/exploitation.md`** (champs du journal,
@@ -394,7 +430,7 @@ src/
   app/                 routes (pages serveur) + styles par écran (*.module.css)
     nocturne.css       design system Nocturne (copie de design/_ds/…/styles.css)
     globals.css        règles d'application communes
-    api/               fichiers, fiches de visa, exports CSV, registre, import, webhook Vigie, santé (health)
+    api/               fichiers, fiches de visa, exports CSV et complet, registre, import, webhook Vigie, santé (health)
   components/
     shell/             barre latérale, en-tête, contexte client (dialogues, toasts)
     dialogs/           toutes les boîtes de dialogue
@@ -410,6 +446,9 @@ src/
     approval.ts        fiche de visa d'une révision : étapes, délégations, mise en page
     pdf.ts             écriture de PDF sans dépendance (retour à la ligne, accents, plusieurs pages)
     codes.ts           identifiants TYPE-CONTEXTE-SEQ et lettres de révision
+    registry-rules.ts  administration du registre : formats des codes, collisions entre segments d'un identifiant,
+                       lecture des formulaires de type, famille, fonction et programme
+    org-rules.ts       administration de l'organisation : libellés, valeurs proposées (actives), un département actif
     retention.ts       fin de conservation
     review.ts          expiration et revue périodique : indicateurs, prochaine date de revue
     concurrency.ts     modifications simultanées : version vue par un dialogue, version de travail de base
@@ -422,6 +461,9 @@ src/
     backup-core.mjs    sauvegarde et restauration : archive tar, manifeste, empreintes, rotation, verrou du dossier de
                        données (JavaScript, lancé aussi par scripts/codex-backup.mjs sans compilation)
     backup.ts          sauvegarde depuis Administration (serveur en marche), journalisée
+    export-core.mjs    export complet : archive ZIP en flux (écriture, relecture), instantané des tables, manifeste,
+                       vue d'import (JavaScript, lancé aussi par scripts/codex-export.mjs sans compilation)
+    full-export.ts     export complet depuis Administration (serveur en marche), journalisé
     filetypes.ts       formats, contenu (signatures, ZIP, OLE2, macros) et taille admis au dépôt ; types servis en
                        ligne et affichés en aperçu
     antivirus.ts       analyse antivirus des fichiers déposés (clamd, commande INSTREAM)
@@ -435,6 +477,7 @@ src/
     i18n.ts            textes FR / EN
 scripts/
   codex-backup.mjs     commandes npm run backup, backup:list, backup:check, restore (docs/sauvegarde.md)
+  codex-export.mjs     commandes npm run export, export:check (docs/export.md)
 tests/
   unit/                tests unitaires des règles pures de src/lib (Vitest, vitest.config.ts)
   integration/         tests d'intégration sur PGlite en mémoire (règles métier de src/lib, Server Actions, webhook)

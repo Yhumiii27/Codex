@@ -1,10 +1,11 @@
 'use server';
 
+import { createHmac, randomBytes } from 'node:crypto';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { cookies } from 'next/headers';
 import { refresh } from 'next/cache';
 import { getDb, schema as s } from '@/db';
-import type { Attachment, AuditChange, AuditValue, Conf, Disposition, Origin, RetentionTrigger, SearchScope } from '@/db/schema';
+import type { Attachment, AuditChange, AuditValue, Conf, Origin, SearchScope } from '@/db/schema';
 import { buildAccessIndex, canRead, followsCircuit, getAccessIndex, inDraftingCircle, isUsableTemplate, mayBackUp, mayCleanStorage, mayDeleteSearch, mayEditLinks, mayRecall, mayRecordReview, maySaveSearch, mayWorkOnDraft, readerMaySeeRevision, readersApply, seesSavedSearch } from './access';
 import { idMatches, nextDocId, nextWorkflowId } from './codification';
 import { changeAuthor, seenVersion, seenWorkingBase, staleText, workingIssue, workingStaleText, type WorkingBase } from './concurrency';
@@ -16,21 +17,27 @@ import { addLink, applyChangeDecision, applyPendingDecision, approveRevision, au
 import { isLinkRel, linkIssue, otherEnd, replacementIssue, storedLink } from './links';
 import { logger, traceAction } from './log';
 import { limitWrite } from './ratelimit';
-import { decisionWaitL } from './queries';
+import { decisionWaitL, orgUsage, registryUsage } from './queries';
 import { dateIssues, dateIssueText, effectIssue, issueFrom, latestEffect, type DateIssue } from './dates';
 import { cleanFeatured } from './departments';
+import { inUse, isOrgKind, lastActiveIssue, orgLabels, parseOrgForm, type OrgKind } from './org-rules';
 import { fileIssueReason, fileIssueText, fileRules } from './filetypes';
 import { MAX_PER_RUN, purgeOrphans } from './orphans';
-import { nextReviewDate, parseReviewMonths } from './review';
+import {
+  builtInScopeIssue, builtInTypeIssue, departmentCodeIssue, keyIssue, outsideType, parseFamilyForm, parseFunctionForm, parseProgramForm, parseTypeForm, programCodeIssue, PROJECT_MANAGER_FUNCTIONS,
+  subtypesJournal, typeCodeIssue, type CodeSpace, type FamilyValues, type FormIssue, type FunctionValues, type ProgramValues, type TypeValues,
+} from './registry-rules';
+import { nextReviewDate } from './review';
 import { beyondBounds, cleanCriteria, hasCriteria, type SearchInput } from './search';
 import { discardFile, FileRejectedError, fileColumns, nameStoredFile, readStored, renameDocFiles, stageFile, stageUpload, type StagedFile } from './storage';
 import { submitChange, vigieSimulated } from './vigie';
 
 /**
  * `field`: the form field the error is about, when the dialog can show it there. `stale`: the view the request came
- * from is out of date (lib/concurrency.ts): the dialog offers to reload the record.
+ * from is out of date (lib/concurrency.ts): the dialog offers to reload the record. `confirm`: what to send back to
+ * confirm what the error announced, and only that (updateType).
  */
-export type ActionResult = { ok: true; href?: string; message?: string } | { ok: false; error: string; field?: string; stale?: true };
+export type ActionResult = { ok: true; href?: string; message?: string } | { ok: false; error: string; field?: string; stale?: true; confirm?: string };
 
 type DocRow = typeof s.documents.$inferSelect;
 
@@ -188,7 +195,8 @@ function readFields(ctx: Ctx, fd: FormData, base?: DocRow): Fields {
     typeCode, subtype: opt(fd, 'subtype'), origin, attachment,
     projectCode: attachment === 'project' ? opt(fd, 'projectCode') : null,
     programCode: attachment === 'research' ? opt(fd, 'programCode') : null,
-    department: str(fd, 'department') || base?.department || ctx.user.department || ctx.departments[0]?.code || '',
+    // Not sent: the user's department, refused by validateFields when inactive; without one, the first active department.
+    department: str(fd, 'department') || base?.department || ctx.user.department || ctx.departments.find((d) => d.active)?.code || '',
     site: opt(fd, 'site'),
     ownerId: str(fd, 'ownerId') || base?.ownerId || ctx.user.id,
     authorText: opt(fd, 'authorText'),
@@ -219,18 +227,24 @@ function metaChanges(d: DocRow, f: Fields, retention: Partial<Pick<DocRow, 'rete
 
 /**
  * Business rules of the register: type admits origin, attachment and confidentiality; contextual fields are filled.
- * An inactive type is refused, except for a document that already has it (`currentType`).
+ * An inactive type, programme, department or site is refused, except for a document that already has it (`current`).
  */
-function validateFields(ctx: Ctx, f: Fields, currentType?: string): ActionResult | null {
+function validateFields(ctx: Ctx, f: Fields, current?: Pick<DocRow, 'typeCode' | 'programCode' | 'department' | 'site'>): ActionResult | null {
   const type = ctx.typeByCode.get(f.typeCode);
-  if (!f.title || !type || !(type.active || type.code === currentType)) return fail(ctx);
+  if (!f.title || !type || !(type.active || type.code === current?.typeCode)) return fail(ctx);
   if (!type.origins.includes(f.origin) || !type.attachments.includes(f.attachment)) return fail(ctx, 'type_mismatch');
   if (!type.confAllowed.includes(f.conf)) return fail(ctx, 'conf_not_allowed');
   if (f.attachment === 'project' && !ctx.projects.some((p) => p.code === f.projectCode)) return fail(ctx, 'project_required');
-  if (f.attachment === 'research' && !ctx.programs.some((p) => p.code === f.programCode)) return fail(ctx, 'program_required');
+  // An inactive programme (closed) is no longer offered, except to a document that already has it.
+  if (f.attachment === 'research' && !ctx.programs.some((p) => p.code === f.programCode && (p.active || p.code === current?.programCode))) return fail(ctx, 'program_required');
   if (f.origin === 'externe' && !f.sourceOrg) return fail(ctx, 'source_required');
-  if (!ctx.departments.some((d) => d.code === f.department)) return fail(ctx);
-  if (f.site && !ctx.sites.some((x) => x.key === f.site)) return fail(ctx);
+  // A department or a site made inactive (Administration › Organisation) is no longer offered, except where it is set.
+  const dept = ctx.departments.find((d) => d.code === f.department);
+  if (!dept) return fail(ctx);
+  if (!dept.active && dept.code !== current?.department) return { ok: false, error: ctx.t.department_inactive, field: 'department' };
+  const site = f.site ? ctx.sites.find((x) => x.key === f.site) : null;
+  if (site === undefined) return fail(ctx);
+  if (site && !site.active && site.key !== current?.site) return { ok: false, error: ctx.t.site_inactive, field: 'site' };
   if (!ctx.users.has(f.ownerId) || ctx.users.get(f.ownerId)!.isSystem) return fail(ctx);
   if (f.processOwnerId && !ctx.users.has(f.processOwnerId)) return fail(ctx);
   // Dates: real calendar days, sent by the form as YYYY-MM-DD (a Server Action can be called with anything).
@@ -461,7 +475,7 @@ async function updateMetaNow(fd: FormData): Promise<ActionResult> {
   if (lock) return fail(ctx, lock);
   if (d.version !== seen) return stale(ctx, seen === null ? null : await lastChangedBy(db, ctx, docId));
   const f = readFields(ctx, fd, d);
-  const invalid = validateFields(ctx, f, d.typeCode);
+  const invalid = validateFields(ctx, f, d);
   if (invalid) return invalid;
   const type = ctx.typeByCode.get(f.typeCode)!;
   const reclassified = f.typeCode !== d.typeCode || f.attachment !== d.attachment || f.projectCode !== d.projectCode || f.programCode !== d.programCode || f.department !== d.department;
@@ -645,7 +659,7 @@ async function resolveFunction(tx: Tx, ctx: Ctx, key: string, d: DocRow, exclude
   const scoped = fn.scope === 'department' ? d.department : fn.scope === 'project' ? d.projectCode : fn.scope === 'research' ? d.programCode : null;
   const candidates = [
     ...holders.filter((h) => scoped && h.scopeValue === scoped).map((h) => h.userId),
-    ...(fn.scope === 'project' && d.projectCode && (key === 'chef_projet' || key === 'validation_client') ? [ctx.projects.find((p) => p.code === d.projectCode)?.managerId] : []),
+    ...(fn.scope === 'project' && d.projectCode && PROJECT_MANAGER_FUNCTIONS.includes(key) ? [ctx.projects.find((p) => p.code === d.projectCode)?.managerId] : []),
     ...(fn.scope === 'research' && d.programCode ? [ctx.programs.find((p) => p.code === d.programCode)?.managerId] : []),
     ...holders.filter((h) => !h.scopeValue).map((h) => h.userId),
   ].filter((u): u is string => !!u && !excluded.has(u) && mayApprove(u));
@@ -1270,7 +1284,10 @@ async function saveSearchNow(label: string, search: SearchInput, scope: string, 
   const criteria = cleanCriteria(search);
   if (!hasCriteria(criteria)) return fail(ctx, 'search_no_criteria');
   const dept = scope === 'department' ? department ?? '' : null;
-  if (dept !== null && !ctx.departments.some((d) => d.code === dept)) return fail(ctx);
+  // Shared with an existing department, still active: an inactive one takes no new search (lib/org-rules.ts).
+  const shared = dept === null ? null : ctx.departments.find((d) => d.code === dept);
+  if (shared === undefined) return fail(ctx);
+  if (shared && !shared.active) return fail(ctx, 'department_inactive');
   const db = await getDb();
   const [{ last }] = await db.select({ last: sql<number>`coalesce(max(${s.savedSearches.sort}), -1)` }).from(s.savedSearches);
   await db.insert(s.savedSearches).values({
@@ -1403,6 +1420,26 @@ async function togglePermissionNow(role: string, perm: string): Promise<ActionRe
   return { ok: true };
 }
 
+// ── Organisation: departments and sites (provisional until the organisation chart, D-19, O-04) ──────────
+
+type OrgRow = { labelFr: string; labelEn: string; active: boolean };
+
+/** A department or a site as the journal stores it: its code or key, labels and state. */
+const orgJournal = (kind: OrgKind, id: string, x: OrgRow): [string, AuditValue][] =>
+  [[kind === 'department' ? 'code' : 'key', id], ['labelFr', x.labelFr], ['labelEn', x.labelEn], ['active', x.active]];
+
+async function orgRow(tx: Tx, kind: OrgKind, id: string): Promise<OrgRow | undefined> {
+  const [row] = kind === 'department'
+    ? await tx.select().from(s.departments).where(eq(s.departments.code, id)).for('update')
+    : await tx.select().from(s.sites).where(eq(s.sites.key, id)).for('update');
+  return row;
+}
+
+/** Why this department may not become inactive or be deleted (`next`: its state after, null when deleted), or null. */
+async function departmentsIssue(tx: Tx, code: string, next: boolean | null): Promise<TKey | null> {
+  return lastActiveIssue(await tx.select({ code: s.departments.code, active: s.departments.active }).from(s.departments), code, next);
+}
+
 /** Department (3-letter code used in IDs) or site. Provisional values until the org chart is provided. */
 export async function addOrgValue(...args: Parameters<typeof addOrgValueNow>): Promise<ActionResult> {
   return traceAction('addOrgValue', () => addOrgValueNow(...args));
@@ -1413,27 +1450,99 @@ async function addOrgValueNow(kind: 'department' | 'site', code: string, labelFr
   if (busy) return busy;
   const no = adminOnly(ctx);
   if (no) return no;
-  const fr = labelFr.trim();
-  if (!fr) return fail(ctx);
+  if (!isOrgKind(kind)) return fail(ctx);
+  const names = orgLabels(labelFr, labelEn);
+  if (!names.ok) return formIssue(ctx, names);
+  const { labelFr: fr, labelEn: en } = names.value;
   const db = await getDb();
   if (kind === 'department') {
-    const key = code.trim().toUpperCase();
-    if (!/^[A-Z]{3}$/.test(key) || ctx.departments.some((d) => d.code === key) || key === 'QMS') return fail(ctx, 'error', key);
-    const en = labelEn.trim() || fr;
+    const key = String(code ?? '').trim().toUpperCase();
+    // The context of IDs without attachment: no other code of an ID may read the same (lib/registry-rules.ts).
+    const bad = departmentCodeIssue(key, codeSpace(ctx));
+    if (bad) return { ok: false, error: ctx.t[bad], field: 'code' };
     await db.transaction(async (tx) => {
-      await tx.insert(s.departments).values({ code: key, labelFr: fr, labelEn: en, sort: ctx.departments.length });
-      await audit(tx, ctx.user.id, 'org_add', { kind: 'department', id: key }, `— → ${key} · ${fr} / ${en}`);
+      await tx.insert(s.departments).values({ code: key, labelFr: fr, labelEn: en, sort: await nextSort(tx, s.departments.sort) });
+      await audit(tx, ctx.user.id, 'org_add', { kind: 'department', id: key }, '', null, { changes: entryChanges(null, orgJournal(kind, key, { labelFr: fr, labelEn: en, active: true })) });
     });
   } else {
     const key = fr.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 32) || 'site';
     if (ctx.sites.some((x) => x.key === key)) return fail(ctx, 'error', key);
     await db.transaction(async (tx) => {
-      await tx.insert(s.sites).values({ key, label: fr, sort: ctx.sites.length });
-      await audit(tx, ctx.user.id, 'org_add', { kind: 'site', id: key }, `— → ${fr}`);
+      await tx.insert(s.sites).values({ key, labelFr: fr, labelEn: en, sort: await nextSort(tx, s.sites.sort) });
+      await audit(tx, ctx.user.id, 'org_add', { kind: 'site', id: key }, '', null, { changes: entryChanges(null, orgJournal(kind, key, { labelFr: fr, labelEn: en, active: true })) });
     });
   }
   refresh();
   return { ok: true };
+}
+
+/**
+ * Renames a department or a site (French and English labels), makes it inactive or active again. A department's code
+ * never changes: it stands in the IDs of documents without attachment (D-10). An inactive value is no longer offered
+ * to a new document or a shared search, and stays wherever it is set (validateFields); an inactive department still
+ * takes function holders, for the circuits of its documents (scopeValueOk). One department at least stays active.
+ * Journaled before → after.
+ */
+export async function updateOrgValue(...args: Parameters<typeof updateOrgValueNow>): Promise<ActionResult> {
+  return traceAction('updateOrgValue', () => updateOrgValueNow(...args));
+}
+async function updateOrgValueNow(kind: OrgKind, fd: FormData): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  const no = adminOnly(ctx);
+  if (no) return no;
+  if (!isOrgKind(kind) || !(fd instanceof FormData)) return fail(ctx);
+  const id = str(fd, 'original');
+  const p = parseOrgForm(fd);
+  if (!p.ok) return formIssue(ctx, p);
+  const next = p.value;
+  const db = await getDb();
+  const res = await db.transaction(async (tx): Promise<ActionResult> => {
+    const cur = await orgRow(tx, kind, id);
+    if (!cur) return fail(ctx, 'org_not_found');
+    const last = kind === 'department' && cur.active && !next.active ? await departmentsIssue(tx, id, false) : null;
+    if (last) return fail(ctx, last);
+    if (kind === 'department') await tx.update(s.departments).set(next).where(eq(s.departments.code, id));
+    else await tx.update(s.sites).set(next).where(eq(s.sites.key, id));
+    const changed = entryChanges(orgJournal(kind, id, cur), orgJournal(kind, id, next));
+    // Saving without a change leaves no entry.
+    if (changed.length) await audit(tx, ctx.user.id, 'org_edit', { kind, id }, '', null, { changes: changed });
+    return { ok: true, message: ctx.t.saved_ok };
+  });
+  if (res.ok) refresh();
+  return res;
+}
+
+/**
+ * Deletes a department or a site nothing refers to (lib/queries.ts orgUsage), created by mistake for instance; one in
+ * use is made inactive instead. Journaled with the values it had.
+ */
+export async function deleteOrgValue(...args: Parameters<typeof deleteOrgValueNow>): Promise<ActionResult> {
+  return traceAction('deleteOrgValue', () => deleteOrgValueNow(...args));
+}
+async function deleteOrgValueNow(kind: OrgKind, id: string): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  const no = adminOnly(ctx);
+  if (no) return no;
+  if (!isOrgKind(kind) || typeof id !== 'string') return fail(ctx);
+  const db = await getDb();
+  const res = await db.transaction(async (tx): Promise<ActionResult> => {
+    const cur = await orgRow(tx, kind, id);
+    if (!cur) return fail(ctx, 'org_not_found');
+    const usage = await orgUsage(tx);
+    if (inUse((kind === 'department' ? usage.departments : usage.sites).get(id))) return fail(ctx, kind === 'department' ? 'org_department_in_use' : 'org_site_in_use');
+    const last = kind === 'department' ? await departmentsIssue(tx, id, null) : null;
+    if (last) return fail(ctx, last);
+    if (kind === 'department') await tx.delete(s.departments).where(eq(s.departments.code, id));
+    else await tx.delete(s.sites).where(eq(s.sites.key, id));
+    await audit(tx, ctx.user.id, 'org_remove', { kind, id }, '', null, { changes: entryChanges(orgJournal(kind, id, cur), null) });
+    return { ok: true, message: ctx.t.reg_deleted };
+  });
+  if (res.ok) refresh();
+  return res;
 }
 
 /**
@@ -1468,6 +1577,20 @@ async function setDepartmentFeaturedNow(code: string, featured: string[] | null)
   return { ok: true, message: ctx.t.saved_ok };
 }
 
+/**
+ * Whether a holder may be named for this value of a function's scope: a known project; a known department, even
+ * inactive (its documents still go through circuits, resolveFunction looks up their department's holders); a programme
+ * known and still active (a closed one keeps its holders but takes no new one; its manager answers for it).
+ */
+async function scopeValueOk(tx: Tx, scope: string, value: string): Promise<boolean> {
+  const rows = scope === 'department' ? await tx.select({ code: s.departments.code }).from(s.departments).where(eq(s.departments.code, value))
+    : scope === 'project' ? await tx.select({ code: s.projects.code }).from(s.projects).where(eq(s.projects.code, value))
+    : scope === 'research' ? await tx.select({ code: s.researchPrograms.code }).from(s.researchPrograms).where(and(eq(s.researchPrograms.code, value), eq(s.researchPrograms.active, true)))
+    : [];
+  return rows.length > 0;
+}
+
+/** Names a holder of a function, for a value of its scope or, with none, for the whole group. */
 export async function addFunctionHolder(...args: Parameters<typeof addFunctionHolderNow>): Promise<ActionResult> {
   return traceAction('addFunctionHolder', () => addFunctionHolderNow(...args));
 }
@@ -1480,16 +1603,19 @@ async function addFunctionHolderNow(functionKey: string, scopeValue: string | nu
   const fn = ctx.functions.find((f) => f.key === functionKey);
   const u = ctx.users.get(userId);
   if (!fn || !u || u.isSystem) return fail(ctx);
+  if (scopeValue != null && typeof scopeValue !== 'string') return fail(ctx);
   const scope = fn.scope === 'global' ? null : scopeValue || null;
   const db = await getDb();
   // A holder decides approval steps: their default role must be able to approve.
   if (!(await approverCheck(db, ctx))(u.id)) return fail(ctx, 'delegate_no_approve');
-  await db.transaction(async (tx) => {
+  const res = await db.transaction(async (tx): Promise<ActionResult> => {
+    if (scope !== null && !(await scopeValueOk(tx, fn.scope, scope))) return fail(ctx, 'holder_scope_invalid');
     await tx.insert(s.functionHolders).values({ functionKey, scopeValue: scope, userId });
     await audit(tx, ctx.user.id, 'holder_add', { kind: 'function', id: functionKey }, '', null, { changes: [{ field: 'holder', scope, before: null, after: u.id }] });
+    return { ok: true };
   });
-  refresh();
-  return { ok: true };
+  if (res.ok) refresh();
+  return res;
 }
 
 export async function removeFunctionHolder(...args: Parameters<typeof removeFunctionHolderNow>): Promise<ActionResult> {
@@ -1510,7 +1636,109 @@ async function removeFunctionHolderNow(id: number): Promise<ActionResult> {
   return { ok: true };
 }
 
-/** Circuit, confidentiality, retention and periodic review of a type in the register. */
+// ── Register of types, families, functions; research programmes ──────────
+
+/**
+ * Codes an ID may carry (TYPE-CONTEXTE-SEQ), for the collision checks of lib/registry-rules.ts: types, and the
+ * departments, projects and programmes that stand as its context.
+ */
+function codeSpace(ctx: Ctx): CodeSpace {
+  return { types: ctx.types.map((x) => x.code), departments: ctx.departments.map((d) => d.code), projects: ctx.projects.map((p) => p.code), programs: ctx.programs.map((p) => p.code) };
+}
+
+function formIssue(ctx: Ctx, p: FormIssue): ActionResult {
+  return { ok: false, error: ctx.t[p.key], ...(p.field ? { field: p.field } : {}) };
+}
+
+/** Changes from `before` to `after`, each a list of [field, value] in the same order; null for an entry added or removed. */
+function entryChanges(before: [string, AuditValue][] | null, after: [string, AuditValue][] | null): AuditChange[] {
+  const fields = (before ?? after ?? []).map(([k]) => k);
+  const value = (xs: [string, AuditValue][] | null, k: string) => xs?.find(([f]) => f === k)?.[1] ?? null;
+  return changes(fields.map((k): [string, AuditValue, AuditValue] => [k, value(before, k), value(after, k)]));
+}
+
+/** Months as the journal stores them: text (an AuditValue), rendered with their unit (lib/queries.ts). */
+const monthsValue = (n: number | null): AuditValue => (n == null ? null : String(n));
+
+type TypeRow = typeof s.docTypes.$inferSelect;
+
+/** A type as the journal stores it, field by field. */
+function typeJournal(x: TypeValues | TypeRow): [string, AuditValue][] {
+  return [
+    ['code', x.code], ['labelFr', x.labelFr], ['labelEn', x.labelEn], ['family', x.family], ['origins', x.origins], ['attachments', x.attachments],
+    ['subtypes', subtypesJournal(x.subtypes)], ['circuit', x.circuit], ['confAllowed', x.confAllowed], ['confDefault', x.confDefault],
+    ['retention', retentionValue(x)], ['retentionBasis', x.retentionBasis], ['reviewMonths', monthsValue(x.reviewMonths)], ['iso', x.iso],
+    ['clientDeliverable', x.clientDeliverable], ['active', x.active],
+  ];
+}
+
+const typeRefs = (ctx: Ctx) => ({ families: ctx.families.map((f) => f.key), functions: ctx.functions.map((f) => f.key) });
+
+/**
+ * Next display order of a register or organisation table: after the last one, so never one a value already holds, even
+ * after a deletion (the count of values would be).
+ */
+async function nextSort(tx: Tx, column: typeof s.docTypes.sort | typeof s.families.sort | typeof s.functions.sort | typeof s.departments.sort | typeof s.sites.sort) {
+  const [{ last }] = await tx.select({ last: sql<number>`coalesce(max(${column}), -1)::int` }).from(column.table);
+  return Number(last) + 1;
+}
+
+/**
+ * The refusal of a type setting that its documents would no longer meet (origin, attachment or confidentiality left
+ * out): how many, and which ones to records managers only, since the list names drafts (D-14).
+ */
+function outsideTypeText(ctx: Ctx, ids: string[]): string {
+  const shown = ctx.seesAll ? ` ${ids.slice(0, 10).join(', ')}${ids.length > 10 ? ` (+${ids.length - 10})` : ''}` : '';
+  return `${ctx.t.reg_out_of_type.replace('{n}', String(ids.length))}${shown}`;
+}
+
+/** Key of the tokens below, drawn at start: a token tells nothing of the documents it stands for (D-14). */
+const OUTSIDE_KEY = randomBytes(32);
+
+/**
+ * What confirms leaving documents out of their type: the type, the setting asked about and the documents it left out,
+ * sealed. Any other setting, or another document left out since, makes another token, and the question is asked again.
+ */
+function outsideToken(code: string, next: Pick<TypeValues, 'origins' | 'attachments' | 'confAllowed'>, ids: string[]): string {
+  return createHmac('sha256', OUTSIDE_KEY).update(JSON.stringify([code, next.origins, next.attachments, next.confAllowed, [...ids].sort()])).digest('base64url');
+}
+
+/**
+ * Adds a type to the register (Administration › Registre des types): every setting of lib/registry-rules.ts
+ * parseTypeForm, a code no other type, department, project, programme or QMS has. Journaled with its values.
+ */
+export async function createType(...args: Parameters<typeof createTypeNow>): Promise<ActionResult> {
+  return traceAction('createType', () => createTypeNow(...args));
+}
+async function createTypeNow(fd: FormData): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  const no = adminOnly(ctx);
+  if (no) return no;
+  const p = parseTypeForm(fd, typeRefs(ctx));
+  if (!p.ok) return formIssue(ctx, p);
+  const next = p.value;
+  const bad = typeCodeIssue(next.code, codeSpace(ctx));
+  if (bad) return { ok: false, error: ctx.t[bad], field: 'code' };
+  const fixed = builtInTypeIssue(next.code, next);
+  if (fixed) return fail(ctx, fixed);
+  const db = await getDb();
+  await db.transaction(async (tx) => {
+    await tx.insert(s.docTypes).values({ ...next, source: 'codex', sort: await nextSort(tx, s.docTypes.sort) });
+    await audit(tx, ctx.user.id, 'type_add', { kind: 'type', id: next.code }, '', null, { changes: entryChanges(null, typeJournal(next)) });
+  });
+  refresh();
+  return { ok: true, message: ctx.t.reg_created };
+}
+
+/**
+ * Every setting of a type. A type in use (documents, pieces a project expects: lib/queries.ts registryUsage) keeps its
+ * code; its documents follow a change of family. A setting that leaves out an origin, attachment or confidentiality some
+ * of its documents have is refused with their number until confirmed: `confirmOut` must carry the token of that refusal
+ * (outsideToken), so a confirmation covers the documents it was shown and no other. They keep their values, and their
+ * next metadata edit asks to reclassify them (validateFields).
+ */
 export async function updateType(...args: Parameters<typeof updateTypeNow>): Promise<ActionResult> {
   return traceAction('updateType', () => updateTypeNow(...args));
 }
@@ -1520,41 +1748,319 @@ async function updateTypeNow(fd: FormData): Promise<ActionResult> {
   if (busy) return busy;
   const no = adminOnly(ctx);
   if (no) return no;
-  const code = str(fd, 'code');
-  const type = ctx.typeByCode.get(code);
-  if (!type) return fail(ctx, 'not_found');
-  const circuit = fd.getAll('circuit').map(String).filter((k) => ctx.functions.some((f) => f.key === k));
-  const confAllowed = CONF_LEVELS.filter((c) => fd.getAll('confAllowed').map(String).includes(c));
-  const confDefault = str(fd, 'confDefault') as Conf;
-  if (!confAllowed.length || !confAllowed.includes(confDefault)) return fail(ctx, 'conf_not_allowed');
-  // Empty: no periodicity. Otherwise a whole number of months, refused rather than corrected.
-  const reviewMonths = parseReviewMonths(str(fd, 'reviewMonths'));
-  if (reviewMonths === undefined) return { ok: false, error: ctx.t.review_months_invalid, field: 'reviewMonths' };
-  const yearsRaw = str(fd, 'retentionYears');
-  const years = yearsRaw === '' ? null : Math.max(0, Math.min(200, Number(yearsRaw) || 0));
-  const triggers: RetentionTrigger[] = ['creation', 'in_force', 'superseded', 'project_end', 'contract_end', 'fiscal_year_end', 'expiry', 'asset_life', 'employee_departure', 'permanent'];
-  const dispositions: Disposition[] = ['destroy', 'review', 'archive', 'permanent'];
-  const trigger = triggers.find((x) => x === str(fd, 'retentionTrigger')) ?? type.retentionTrigger;
-  const disposition = dispositions.find((x) => x === str(fd, 'retentionDisposition')) ?? type.retentionDisposition;
-  const next = { circuit, confAllowed, confDefault, retentionYears: years, retentionTrigger: trigger, retentionDisposition: disposition, reviewMonths, active: fd.get('active') !== 'off' };
-  // Months as the journal stores them: text (an AuditValue), rendered with their unit (lib/queries.ts).
-  const months = (n: number | null): AuditValue => (n == null ? null : String(n));
+  const original = str(fd, 'original');
+  if (!ctx.typeByCode.has(original)) return fail(ctx, 'reg_not_found');
+  const p = parseTypeForm(fd, typeRefs(ctx));
+  if (!p.ok) return formIssue(ctx, p);
+  const next = p.value;
+  const bad = typeCodeIssue(next.code, codeSpace(ctx), original);
+  if (bad) return { ok: false, error: ctx.t[bad], field: 'code' };
+  // The type of templates stays without attachment, under its code as under the one it would take.
+  const fixed = builtInTypeIssue(original, next) ?? builtInTypeIssue(next.code, next);
+  if (fixed) return fail(ctx, fixed);
+  const db = await getDb();
+  const res = await db.transaction(async (tx): Promise<ActionResult> => {
+    const [cur] = await tx.select().from(s.docTypes).where(eq(s.docTypes.code, original));
+    if (!cur) return fail(ctx, 'reg_not_found');
+    if (next.code !== original && (await registryUsage(tx)).types.has(original)) return { ok: false, error: ctx.t.reg_type_in_use, field: 'code' };
+    const narrower = cur.origins.some((o) => !next.origins.includes(o)) || cur.attachments.some((a) => !next.attachments.includes(a)) || cur.confAllowed.some((c) => !next.confAllowed.includes(c));
+    if (narrower) {
+      const docs = await tx.select({ id: s.documents.id, origin: s.documents.origin, attachment: s.documents.attachment, conf: s.documents.conf })
+        .from(s.documents).where(eq(s.documents.typeCode, original)).orderBy(asc(s.documents.id));
+      const out = docs.filter((d) => outsideType(d, next) && !outsideType(d, cur)).map((d) => d.id);
+      const token = out.length ? outsideToken(original, next, out) : null;
+      if (token && fd.get('confirmOut') !== token) return { ok: false, error: outsideTypeText(ctx, out), field: 'confirmOut', confirm: token };
+    }
+    await tx.update(s.docTypes).set(next).where(eq(s.docTypes.code, original));
+    // A document's family is its type's (lists, facets, classification plan).
+    if (next.family !== cur.family) await tx.update(s.documents).set({ family: next.family }).where(eq(s.documents.typeCode, next.code));
+    const changed = entryChanges(typeJournal(cur), typeJournal(next));
+    // Saving without a change leaves no entry.
+    if (changed.length) await audit(tx, ctx.user.id, 'type', { kind: 'type', id: next.code }, '', null, { changes: changed });
+    return { ok: true, message: ctx.t.saved_ok };
+  });
+  if (res.ok) refresh();
+  return res;
+}
+
+/** Deletes a type nothing uses (lib/queries.ts registryUsage); one in use can only be made inactive. Journaled with its values. */
+export async function deleteType(...args: Parameters<typeof deleteTypeNow>): Promise<ActionResult> {
+  return traceAction('deleteType', () => deleteTypeNow(...args));
+}
+async function deleteTypeNow(code: string): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  const no = adminOnly(ctx);
+  if (no) return no;
+  const db = await getDb();
+  const res = await db.transaction(async (tx): Promise<ActionResult> => {
+    const [cur] = await tx.select().from(s.docTypes).where(eq(s.docTypes.code, String(code)));
+    if (!cur) return fail(ctx, 'reg_not_found');
+    if ((await registryUsage(tx)).types.has(cur.code)) return fail(ctx, 'reg_type_in_use');
+    await tx.delete(s.docTypes).where(eq(s.docTypes.code, cur.code));
+    await audit(tx, ctx.user.id, 'type_remove', { kind: 'type', id: cur.code }, '', null, { changes: entryChanges(typeJournal(cur), null) });
+    return { ok: true, message: ctx.t.reg_deleted };
+  });
+  if (res.ok) refresh();
+  return res;
+}
+
+const familyJournal = (x: FamilyValues | typeof s.families.$inferSelect): [string, AuditValue][] => [['key', x.key], ['labelFr', x.labelFr], ['labelEn', x.labelEn], ['grp', x.grp]];
+
+/** Adds a family of types: key, labels, deck group (D-08). */
+export async function createFamily(...args: Parameters<typeof createFamilyNow>): Promise<ActionResult> {
+  return traceAction('createFamily', () => createFamilyNow(...args));
+}
+async function createFamilyNow(fd: FormData): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  const no = adminOnly(ctx);
+  if (no) return no;
+  const p = parseFamilyForm(fd);
+  if (!p.ok) return formIssue(ctx, p);
+  const bad = keyIssue(p.value.key, ctx.families.map((f) => f.key));
+  if (bad) return { ok: false, error: ctx.t[bad], field: 'key' };
   const db = await getDb();
   await db.transaction(async (tx) => {
-    const [cur] = await tx.select().from(s.docTypes).where(eq(s.docTypes.code, code));
-    if (!cur) return;
-    await tx.update(s.docTypes).set(next).where(eq(s.docTypes.code, code));
-    const changed = changes([
-      ['circuit', cur.circuit, next.circuit],
-      ['confAllowed', cur.confAllowed, next.confAllowed],
-      ['confDefault', cur.confDefault, next.confDefault],
-      ['retention', retentionValue(cur), retentionValue(next)],
-      ['reviewMonths', months(cur.reviewMonths), months(next.reviewMonths)],
-      ['active', cur.active, next.active],
-    ]);
-    // Saving without a change leaves no entry.
-    if (changed.length) await audit(tx, ctx.user.id, 'type', { kind: 'type', id: code }, '', null, { changes: changed });
+    await tx.insert(s.families).values({ ...p.value, sort: await nextSort(tx, s.families.sort) });
+    await audit(tx, ctx.user.id, 'family_add', { kind: 'family', id: p.value.key }, '', null, { changes: entryChanges(null, familyJournal(p.value)) });
   });
   refresh();
-  return { ok: true, message: ctx.t.saved_ok };
+  return { ok: true, message: ctx.t.reg_created };
+}
+
+/** Labels and deck group of a family; its key only while no type or document has it. */
+export async function updateFamily(...args: Parameters<typeof updateFamilyNow>): Promise<ActionResult> {
+  return traceAction('updateFamily', () => updateFamilyNow(...args));
+}
+async function updateFamilyNow(fd: FormData): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  const no = adminOnly(ctx);
+  if (no) return no;
+  const original = str(fd, 'original');
+  const p = parseFamilyForm(fd);
+  if (!p.ok) return formIssue(ctx, p);
+  const next = p.value;
+  const bad = keyIssue(next.key, ctx.families.map((f) => f.key), original);
+  if (bad) return { ok: false, error: ctx.t[bad], field: 'key' };
+  const db = await getDb();
+  const res = await db.transaction(async (tx): Promise<ActionResult> => {
+    const [cur] = await tx.select().from(s.families).where(eq(s.families.key, original));
+    if (!cur) return fail(ctx, 'reg_not_found');
+    if (next.key !== original && (await registryUsage(tx)).families.has(original)) return { ok: false, error: ctx.t.reg_family_in_use, field: 'key' };
+    await tx.update(s.families).set(next).where(eq(s.families.key, original));
+    const changed = entryChanges(familyJournal(cur), familyJournal(next));
+    if (changed.length) await audit(tx, ctx.user.id, 'family', { kind: 'family', id: next.key }, '', null, { changes: changed });
+    return { ok: true, message: ctx.t.saved_ok };
+  });
+  if (res.ok) refresh();
+  return res;
+}
+
+/** Deletes a family without types or documents. */
+export async function deleteFamily(...args: Parameters<typeof deleteFamilyNow>): Promise<ActionResult> {
+  return traceAction('deleteFamily', () => deleteFamilyNow(...args));
+}
+async function deleteFamilyNow(key: string): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  const no = adminOnly(ctx);
+  if (no) return no;
+  const db = await getDb();
+  const res = await db.transaction(async (tx): Promise<ActionResult> => {
+    const [cur] = await tx.select().from(s.families).where(eq(s.families.key, String(key)));
+    if (!cur) return fail(ctx, 'reg_not_found');
+    if ((await registryUsage(tx)).families.has(cur.key)) return fail(ctx, 'reg_family_in_use');
+    await tx.delete(s.families).where(eq(s.families.key, cur.key));
+    await audit(tx, ctx.user.id, 'family_remove', { kind: 'family', id: cur.key }, '', null, { changes: entryChanges(familyJournal(cur), null) });
+    return { ok: true, message: ctx.t.reg_deleted };
+  });
+  if (res.ok) refresh();
+  return res;
+}
+
+const functionJournal = (x: FunctionValues | typeof s.functions.$inferSelect): [string, AuditValue][] => [['key', x.key], ['labelFr', x.labelFr], ['labelEn', x.labelEn], ['scope', x.scope]];
+
+/** Adds a function that circuits may be made of: key, labels, scope its holders are looked up in. */
+export async function createFunction(...args: Parameters<typeof createFunctionNow>): Promise<ActionResult> {
+  return traceAction('createFunction', () => createFunctionNow(...args));
+}
+async function createFunctionNow(fd: FormData): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  const no = adminOnly(ctx);
+  if (no) return no;
+  const p = parseFunctionForm(fd);
+  if (!p.ok) return formIssue(ctx, p);
+  const bad = keyIssue(p.value.key, ctx.functions.map((f) => f.key));
+  if (bad) return { ok: false, error: ctx.t[bad], field: 'key' };
+  const fixed = builtInScopeIssue(p.value.key, p.value.scope);
+  if (fixed) return { ok: false, error: ctx.t[fixed], field: 'scope' };
+  const db = await getDb();
+  await db.transaction(async (tx) => {
+    await tx.insert(s.functions).values({ ...p.value, sort: await nextSort(tx, s.functions.sort) });
+    await audit(tx, ctx.user.id, 'function_add', { kind: 'function', id: p.value.key }, '', null, { changes: entryChanges(null, functionJournal(p.value)) });
+  });
+  refresh();
+  return { ok: true, message: ctx.t.reg_created };
+}
+
+/**
+ * Labels of a function; its key only while no circuit, holder or started circuit refers to it; its scope only while it
+ * has no holder (each is named for a value of the scope), and never for a function the rules of Codex name
+ * (lib/registry-rules.ts BUILT_IN_SCOPES). Circuits already started keep the labels they were started with.
+ */
+export async function updateFunction(...args: Parameters<typeof updateFunctionNow>): Promise<ActionResult> {
+  return traceAction('updateFunction', () => updateFunctionNow(...args));
+}
+async function updateFunctionNow(fd: FormData): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  const no = adminOnly(ctx);
+  if (no) return no;
+  const original = str(fd, 'original');
+  const p = parseFunctionForm(fd);
+  if (!p.ok) return formIssue(ctx, p);
+  const next = p.value;
+  const bad = keyIssue(next.key, ctx.functions.map((f) => f.key), original);
+  if (bad) return { ok: false, error: ctx.t[bad], field: 'key' };
+  // A function the rules of Codex name keeps its scope, under its key as under the one it would take.
+  const fixed = builtInScopeIssue(original, next.scope) ?? builtInScopeIssue(next.key, next.scope);
+  if (fixed) return { ok: false, error: ctx.t[fixed], field: 'scope' };
+  const db = await getDb();
+  const res = await db.transaction(async (tx): Promise<ActionResult> => {
+    const [cur] = await tx.select().from(s.functions).where(eq(s.functions.key, original));
+    if (!cur) return fail(ctx, 'reg_not_found');
+    if (next.key !== original && (await registryUsage(tx)).functions.has(original)) return { ok: false, error: ctx.t.reg_function_in_use, field: 'key' };
+    if (next.scope !== cur.scope) {
+      const [held] = await tx.select({ id: s.functionHolders.id }).from(s.functionHolders).where(eq(s.functionHolders.functionKey, original)).limit(1);
+      if (held) return { ok: false, error: ctx.t.reg_function_scope_locked, field: 'scope' };
+    }
+    await tx.update(s.functions).set(next).where(eq(s.functions.key, original));
+    const changed = entryChanges(functionJournal(cur), functionJournal(next));
+    if (changed.length) await audit(tx, ctx.user.id, 'function', { kind: 'function', id: next.key }, '', null, { changes: changed });
+    return { ok: true, message: ctx.t.saved_ok };
+  });
+  if (res.ok) refresh();
+  return res;
+}
+
+/** Deletes a function no circuit, holder or started circuit refers to. */
+export async function deleteFunction(...args: Parameters<typeof deleteFunctionNow>): Promise<ActionResult> {
+  return traceAction('deleteFunction', () => deleteFunctionNow(...args));
+}
+async function deleteFunctionNow(key: string): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  const no = adminOnly(ctx);
+  if (no) return no;
+  const db = await getDb();
+  const res = await db.transaction(async (tx): Promise<ActionResult> => {
+    const [cur] = await tx.select().from(s.functions).where(eq(s.functions.key, String(key)));
+    if (!cur) return fail(ctx, 'reg_not_found');
+    if ((await registryUsage(tx)).functions.has(cur.key)) return fail(ctx, 'reg_function_in_use');
+    await tx.delete(s.functions).where(eq(s.functions.key, cur.key));
+    await audit(tx, ctx.user.id, 'function_remove', { kind: 'function', id: cur.key }, '', null, { changes: entryChanges(functionJournal(cur), null) });
+    return { ok: true, message: ctx.t.reg_deleted };
+  });
+  if (res.ok) refresh();
+  return res;
+}
+
+const programJournal = (x: ProgramValues | typeof s.researchPrograms.$inferSelect): [string, AuditValue][] => [['code', x.code], ['name', x.name], ['managerId', x.managerId], ['active', x.active]];
+
+/** The manager of a programme: a person of the group, never a system actor. */
+const programManagerOk = (ctx: Ctx, id: string) => !!ctx.users.get(id) && !ctx.users.get(id)!.isSystem;
+
+/**
+ * Adds a research programme (D-08, D-10): its code is the context of its documents' IDs, so no type, department,
+ * project, other programme or QMS may have it.
+ */
+export async function createProgram(...args: Parameters<typeof createProgramNow>): Promise<ActionResult> {
+  return traceAction('createProgram', () => createProgramNow(...args));
+}
+async function createProgramNow(fd: FormData): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  const no = adminOnly(ctx);
+  if (no) return no;
+  const p = parseProgramForm(fd);
+  if (!p.ok) return formIssue(ctx, p);
+  const next = p.value;
+  const bad = programCodeIssue(next.code, codeSpace(ctx));
+  if (bad) return { ok: false, error: ctx.t[bad], field: 'code' };
+  if (!programManagerOk(ctx, next.managerId)) return { ok: false, error: ctx.t.reg_manager_invalid, field: 'managerId' };
+  const db = await getDb();
+  await db.transaction(async (tx) => {
+    await tx.insert(s.researchPrograms).values(next);
+    await audit(tx, ctx.user.id, 'program_add', { kind: 'program', id: next.code }, '', null, { changes: entryChanges(null, programJournal(next)) });
+  });
+  refresh();
+  return { ok: true, message: ctx.t.reg_created };
+}
+
+/**
+ * Name, manager and state of a programme; its code only while no document or holder has it. An inactive programme is no
+ * longer offered to a new document; those that have it keep it.
+ */
+export async function updateProgram(...args: Parameters<typeof updateProgramNow>): Promise<ActionResult> {
+  return traceAction('updateProgram', () => updateProgramNow(...args));
+}
+async function updateProgramNow(fd: FormData): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  const no = adminOnly(ctx);
+  if (no) return no;
+  const original = str(fd, 'original');
+  const p = parseProgramForm(fd);
+  if (!p.ok) return formIssue(ctx, p);
+  const next = p.value;
+  const bad = programCodeIssue(next.code, codeSpace(ctx), original);
+  if (bad) return { ok: false, error: ctx.t[bad], field: 'code' };
+  if (!programManagerOk(ctx, next.managerId)) return { ok: false, error: ctx.t.reg_manager_invalid, field: 'managerId' };
+  const db = await getDb();
+  const res = await db.transaction(async (tx): Promise<ActionResult> => {
+    const [cur] = await tx.select().from(s.researchPrograms).where(eq(s.researchPrograms.code, original));
+    if (!cur) return fail(ctx, 'reg_not_found');
+    if (next.code !== original && (await registryUsage(tx)).programs.has(original)) return { ok: false, error: ctx.t.reg_program_in_use, field: 'code' };
+    await tx.update(s.researchPrograms).set(next).where(eq(s.researchPrograms.code, original));
+    const changed = entryChanges(programJournal(cur), programJournal(next));
+    if (changed.length) await audit(tx, ctx.user.id, 'program', { kind: 'program', id: next.code }, '', null, { changes: changed });
+    return { ok: true, message: ctx.t.saved_ok };
+  });
+  if (res.ok) refresh();
+  return res;
+}
+
+/** Deletes a programme no document or holder has; a closed one in use is made inactive instead. */
+export async function deleteProgram(...args: Parameters<typeof deleteProgramNow>): Promise<ActionResult> {
+  return traceAction('deleteProgram', () => deleteProgramNow(...args));
+}
+async function deleteProgramNow(code: string): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  const no = adminOnly(ctx);
+  if (no) return no;
+  const db = await getDb();
+  const res = await db.transaction(async (tx): Promise<ActionResult> => {
+    const [cur] = await tx.select().from(s.researchPrograms).where(eq(s.researchPrograms.code, String(code)));
+    if (!cur) return fail(ctx, 'reg_not_found');
+    if ((await registryUsage(tx)).programs.has(cur.code)) return fail(ctx, 'reg_program_in_use');
+    await tx.delete(s.researchPrograms).where(eq(s.researchPrograms.code, cur.code));
+    await audit(tx, ctx.user.id, 'program_remove', { kind: 'program', id: cur.code }, '', null, { changes: entryChanges(programJournal(cur), null) });
+    return { ok: true, message: ctx.t.reg_deleted };
+  });
+  if (res.ok) refresh();
+  return res;
 }

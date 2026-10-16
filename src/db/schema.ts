@@ -24,6 +24,12 @@ export type SearchOrder = 'relevance' | 'modified' | 'issued' | 'due' | 'id' | '
 
 // ── Organisation (provisional until the org chart is provided) ─────────────
 
+/**
+ * Departments and sites are renamed and retired in Administration › Organisation (lib/org-rules.ts). A department's code
+ * is the context of the IDs without attachment (PRO-QUA-0003): it never changes. One that something uses is made
+ * inactive rather than deleted: no longer offered to a new document or a shared search, still shown wherever it is
+ * already set; an inactive department still takes function holders, for the circuits of its documents.
+ */
 export const departments = pgTable('departments', {
   code: text('code').primaryKey(), // 3 letters, used in document IDs without attachment
   labelFr: text('label_fr').notNull(),
@@ -34,12 +40,16 @@ export const departments = pgTable('departments', {
    * Administration › Organisation; the choice per department awaits the survey of each department's needs.
    */
   featured: jsonb('featured').$type<string[]>(),
+  active: boolean('active').notNull().default(true),
 });
 
 export const sites = pgTable('sites', {
+  /** Made from the French label when the site is added; stored on documents and people, never shown, never changed. */
   key: text('key').primaryKey(),
-  label: text('label').notNull(),
+  labelFr: text('label_fr').notNull(),
+  labelEn: text('label_en').notNull(),
   sort: integer('sort').notNull().default(0),
+  active: boolean('active').notNull().default(true),
 });
 
 /** People of the group. `role` is the default simulated application role; system actors (Codex, Keystone, Vigie) are flagged. */
@@ -88,6 +98,7 @@ export const docTypes = pgTable('doc_types', {
   reviewMonths: integer('review_months'),
   iso: text('iso'),
   clientDeliverable: boolean('client_deliverable').notNull().default(false),
+  /** Where the entry comes from: the deck, the Keystone register, both (seed), or Administration (`codex`). */
   source: text('source').notNull().default('deck'),
   active: boolean('active').notNull().default(true),
   sort: integer('sort').notNull().default(0),
@@ -125,10 +136,17 @@ export const projects = pgTable('projects', {
   syncedAt: timestamp('synced_at', { mode: 'string' }).notNull(),
 });
 
+/**
+ * Research programmes, the context of a research document's ID (PRT-R2601-004). Managed in Administration › Fonctions &
+ * circuits; a closed programme is made inactive rather than removed once used: it is no longer offered to a new
+ * document, and the documents that have it keep it.
+ */
 export const researchPrograms = pgTable('research_programs', {
   code: text('code').primaryKey(),
   name: text('name').notNull(),
+  /** Answers for the programme's research-scoped steps when no holder is named for it (lib/actions.ts resolveFunction). */
   managerId: text('manager_id').notNull().references(() => users.id),
+  active: boolean('active').notNull().default(true),
 });
 
 // ── Documents ───────────────────────────────────────────────────────────
@@ -430,11 +448,15 @@ export const idCounters = pgTable('id_counters', {
 
 // ── Audit, rights, saved searches ───────────────────────────────────────
 
-/** What an entry without document is about: a cell of the rights matrix, an organisation value, a function, a register type, a CSV export. */
+/**
+ * What an entry without document is about: a cell of the rights matrix, an organisation value, a function, a family or
+ * a type of the register, a research programme, an export (target id: 'search' or 'audit' for a CSV, 'full' for the
+ * full export of lib/export-core.mjs).
+ */
 /** 'file': a file refused on its way in (target id: where it came from, lib/storage.ts UploadOrigin). */
 /** 'storage': a file store (target id: 'local' or 'sharepoint'), cleaned of its orphan files (lib/orphans.ts). */
 /** 'backup': an archive of the database and files (target id: its file name, lib/backup-core.mjs). */
-export type AuditTargetKind = 'permission' | 'department' | 'site' | 'function' | 'type' | 'export' | 'file' | 'storage' | 'backup';
+export type AuditTargetKind = 'permission' | 'department' | 'site' | 'function' | 'family' | 'type' | 'program' | 'export' | 'file' | 'storage' | 'backup';
 
 /** A value in a journal change, as stored: keys and codes, rendered in the reader's language (lib/queries.ts). */
 export type AuditValue = string | string[] | boolean | null | { years: number | null; trigger: string; disposition: string };
@@ -483,6 +505,17 @@ export type AuditData = {
   backup?: {
     archive: string; size: number; sha256?: string; documents: number; files: number; bytes: number; missing: number; sharepoint: number;
     createdAt?: string; replaced?: boolean;
+  };
+  /**
+   * Full export (lib/export-core.mjs, target 'export' 'full'). At its start ('export_full', written in the snapshot the
+   * archive is made from): documents, files and their recorded size. At its end ('export_full_end'): the archive's size
+   * and SHA-256, the files written, missing from the store, or kept by a store the command line cannot reach; or that
+   * it was interrupted (stopped while being sent: sent is not received) or failed, after `size` bytes. Counts only, no document named; shown to
+   * records managers only (lib/queries.ts archiveL, D-14).
+   */
+  archive?: {
+    documents?: number; files?: number; bytes?: number; size?: number; sha256?: string; missing?: number; skipped?: number;
+    interrupted?: boolean; failed?: boolean;
   };
 };
 

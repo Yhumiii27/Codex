@@ -98,7 +98,9 @@ export function useSubmit() {
     });
   /** After a refusal from an outdated view (ActionResult `stale`): closes the dialog and reloads the record; else undefined. */
   const reload = outdated ? () => { close(); router.refresh(); } : undefined;
-  return { pending, error, field, run, reload };
+  /** Forgets the last refusal: the entries it was about have changed. */
+  const clear = () => { setError(null); setField(null); setOutdated(false); };
+  return { pending, error, field, run, reload, clear };
 }
 
 export type SelectOption = { key: string; label: string; group?: string };
