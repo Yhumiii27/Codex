@@ -3,15 +3,16 @@ import Link from 'next/link';
 import { Forbidden } from '@/components/ui/Forbidden';
 import { Seg } from '@/components/ui/Seg';
 import { ActionButton, DialogButton } from '@/components/ui/client';
-import { mayRecordReview } from '@/lib/access';
+import { mayRecordReview, maySetRetentionEvent } from '@/lib/access';
 import { restoreArchived } from '@/lib/actions';
 import { getCtx } from '@/lib/context';
 import { addDays, fmtDate, todayIso } from '@/lib/format';
-import { deadlines, listDocs, registryUsage } from '@/lib/queries';
+import { deadlines, listDocs, registryUsage, retentionByType } from '@/lib/queries';
 import { countBy, typeSpec } from '../administration/shared';
 import { DueTable, type DueRow } from './DueTable';
 
-const TABS = ['due', 'rules', 'archives'] as const;
+/** Deadlines; documents whose retention waits for the date of an event (lib/retention.ts EVENT_TRIGGERS); rules; archives. */
+const TABS = ['due', 'events', 'rules', 'archives'] as const;
 /** Deadlines shown: all of them, or those past due as the record's indicators say (lib/review.ts): expired, review overdue. */
 const DUE_FILTERS = ['all', 'expired', 'review_late'] as const;
 
@@ -71,7 +72,12 @@ export default async function RetentionPage({ searchParams }: PageProps<'/archiv
   // The register's retention rules are edited in the 'type' dialog (records managers / administrators).
   const canEditRules = ctx.screens.admin;
   // What refers to each type: one in use keeps its code in the type dialog (lib/actions.ts updateType).
-  const usage = canEditRules ? await registryUsage() : null;
+  const [usage, retention] = canEditRules ? await Promise.all([registryUsage(), retentionByType()]) : [null, null];
+  // Derogations among the documents the user reads (D-14), per type.
+  const overrides = countBy(docs.filter((d) => d.retentionOverride), (d) => d.typeCode);
+  // Documents whose retention counts from an event entered on the record: those still without a date first.
+  const events = docs.filter((d) => d.eventTrigger).sort((a, b) => Number(!!a.retentionEventAt) - Number(!!b.retentionEventAt) || a.id.localeCompare(b.id));
+  const today = todayIso();
   const archives = docs.filter((d) => d.state === 'archived');
   return (
     <div className="screen" style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }} data-screen-label="Archivage">
@@ -79,6 +85,7 @@ export default async function RetentionPage({ searchParams }: PageProps<'/archiv
         {tabs}
         <span style={{ flex: 1 }} />
         {tab === 'rules' && <span className="text-muted" style={{ fontSize: 12 }}>{ctx.types.length} {t.types_count}</span>}
+        {tab === 'events' && <span className="text-muted" style={{ fontSize: 12 }}>{events.filter((d) => !d.retentionEventAt).length} {t.ret_events_missing}</span>}
       </div>
       <div style={{ flex: 1, overflow: 'auto', padding: '0 24px 24px' }}>
         {tab === 'rules' && (
@@ -107,10 +114,13 @@ export default async function RetentionPage({ searchParams }: PageProps<'/archiv
                         <td className="nowrap">{x.retentionYears != null ? `${x.retentionYears} ${t.years_short}` : '—'}</td>
                         <td className="text-muted">{t[`trig_${x.retentionTrigger}`]}</td>
                         <td className="text-muted">{t[`disp_${x.retentionDisposition}`]}</td>
-                        <td className="tabnum" style={{ textAlign: 'right' }}>{counts.get(x.code) ?? 0}</td>
+                        <td className="tabnum" style={{ textAlign: 'right' }}>
+                          <div>{counts.get(x.code) ?? 0}</div>
+                          {!!overrides.get(x.code) && <div className="text-muted" style={{ fontSize: 11 }}>{t.retention_overrides_n.replace('{n}', String(overrides.get(x.code)))}</div>}
+                        </td>
                         {canEditRules && (
                           <td style={{ textAlign: 'right', width: 44 }}>
-                            <DialogButton spec={typeSpec(x, !!usage?.types.has(x.code))} className="btn btn-ghost btn-icon" icon="pen" ariaLabel={`${t.perm_edit} · ${x.code}`} style={{ width: 30, height: 30 }} />
+                            <DialogButton spec={typeSpec(x, !!usage?.types.has(x.code), retention?.get(x.code))} className="btn btn-ghost btn-icon" icon="pen" ariaLabel={`${t.perm_edit} · ${x.code}`} style={{ width: 30, height: 30 }} />
                           </td>
                         )}
                       </tr>
@@ -120,6 +130,40 @@ export default async function RetentionPage({ searchParams }: PageProps<'/archiv
               })}
             </tbody>
           </table>
+        )}
+        {tab === 'events' && (
+          <>
+            <p className="text-muted" style={{ margin: '0 0 10px', fontSize: 12.5, maxWidth: 760 }}>{t.ret_events_hint}</p>
+            <table className="table" style={{ fontSize: 13 }}>
+              <thead><tr><th>{t.title_label}</th><th>{t.type}</th><th>{t.trigger}</th><th>{t.owner}</th><th>{t.retention_event_at}</th><th>{t.until}</th><th /></tr></thead>
+              <tbody>
+                {events.map((d) => {
+                  const may = maySetRetentionEvent(ctx, d);
+                  return (
+                    <tr key={d.id}>
+                      <td><div>{d.title}</div><div className="text-muted" style={{ fontSize: 11 }}>{d.id} · {d.contextL}</div></td>
+                      <td className="text-muted">{d.typeLabel}</td>
+                      <td className="text-muted">{t[`trig_${d.retentionTrigger}`]}</td>
+                      <td className="text-muted">{d.owner}</td>
+                      <td>{d.retentionEventAt ? d.retentionEventF : <span className="tag tag-outline">{t.until_event_missing}</span>}</td>
+                      <td className="text-muted">{d.untilF}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                          <DialogButton
+                            spec={{ kind: 'retentionEvent', docId: d.id, title: d.title, triggerL: t[`trig_${d.retentionTrigger}`], eventAt: d.retentionEventAt, maxDate: today, version: d.version }}
+                            className="btn btn-ghost nowrap" style={{ fontSize: 12 }}
+                            deniedTitle={d.legalHold ? t.locked_hold : may ? undefined : t.retention_event_reserved}
+                          >{t.retention_event_set}</DialogButton>
+                          <Link href={d.href} className="btn btn-ghost" style={{ fontSize: 12 }}>{t.open}</Link>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {events.length === 0 && <tr><td colSpan={7} className="text-muted" style={{ padding: '16px 8px' }}>{t.no_results}</td></tr>}
+              </tbody>
+            </table>
+          </>
         )}
         {tab === 'archives' && (
           <table className="table" style={{ fontSize: 13 }}>

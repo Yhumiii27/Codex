@@ -139,6 +139,7 @@ src/lib/access.ts:89-91 : `isUsableTemplate` ne retient que `typeCode === 'FRM'`
 </details>
 
 #### 7. Conservation « durée de vie de l'actif » et « départ du salarié » : date d'événement à saisir (15 types)
+- **Fait le 17 octobre 2026** : colonne `documents.retention_event_at` (date de l'événement déclencheur), saisie sur la fiche ou depuis Archivage › « Dates d'événement » (action `setRetentionEvent`) par le propriétaire tant que la fiche est modifiable ou par un gestionnaire (droit Archiver), y compris sur un document archivé ou obsolète, refusée sous gel juridique, journalisée (avant → après). La date doit avoir eu lieu (pas de date future). `triggerDate` la lit pour `asset_life` et `employee_departure` ; la fin de conservation, les échéances à 90 jours et Archivage en tiennent compte. Rien n'est archivé ni détruit automatiquement. La fin de projet reste non calculée (Keystone, O-03). Reste, sur décision : la durée des 14 types « durée de vie de l'actif » (O-07 ; la fiche affiche « Durée à fixer », un gestionnaire peut en fixer une par dérogation), l'étendue de RHF (point 6 du registre) et une alimentation automatique par un SI de maintenance ou RH.
 
 - **Effort** : faible · **Références** : G39, O-07
 
@@ -332,6 +333,7 @@ Seuls deux exports existent. src/app/api/export/search/route.ts:7-23 produit un 
 </details>
 
 #### 18. Conservation : classe modifiable document par document et répercussion des règles du type
+- **Fait le 17 octobre 2026** : action `setRetentionClass` (droit Archiver et écran Archivage, refusée sous gel juridique), bouton « Classe de conservation » sur la fiche ; colonne `documents.retention_override` (dérogation), migration régénérée. Le journal garde la classe et la dérogation avant → après, avec la règle du type ; « Revenir à la règle du type » lève la dérogation, un changement de type aussi. Dans le dialogue d'un type, une case (décochée par défaut) applique la règle aux documents qui la suivent, avec l'aperçu du nombre de documents à mettre à jour, des dérogations et des documents gelés laissés tels quels ; une entrée de journal par document et une sur le type. Archivage › Règles compte les dérogations par type. Conservation toujours comptée par document (O-09). Seules les durées attendent O-07 ; le sort final à échéance attend O-07/M03.
 
 - **Effort** : moyen · **Références** : G39, D-20, ACC-06
 

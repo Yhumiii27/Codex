@@ -304,3 +304,9 @@ documentaire peut le lever (journalisé), le circuit en cours reprend alors.
 
 La conservation se compte **par document** : l'événement « remplacement » part du retrait du document (Vigie), à
 défaut de son archivage ; les révisions remplacées suivent la conservation du document.
+
+Pour « fin de vie de l'actif » et « départ du salarié », que Codex ne peut pas connaître, la date de l'événement se
+saisit sur la fiche (propriétaire ou gestionnaire) ; la fin de projet attend Keystone (O-03). Une classe modifiée sur un
+document est une dérogation : une règle du type modifiée ne s'applique qu'aux documents qui la suivent, et seulement si
+on le demande. Rien n'est archivé ni détruit automatiquement à l'échéance (O-07). Détail et choix non confirmés :
+`docs/decisions.md`, « Choix de l'assistant non validés explicitement ».

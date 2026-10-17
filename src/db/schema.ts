@@ -186,10 +186,20 @@ export const documents = pgTable('documents', {
   issuedAt: date('issued_at', { mode: 'string' }),
   reviewDueAt: date('review_due_at', { mode: 'string' }),
   expiresAt: date('expires_at', { mode: 'string' }),
-  // Retention class: copied from the type at creation, adjustable by a records manager.
+  // Retention class: copied from the type at creation, adjustable by a records manager (lib/actions.ts setRetentionClass).
   retentionYears: integer('retention_years'),
   retentionTrigger: text('retention_trigger').$type<RetentionTrigger>().notNull(),
   retentionDisposition: text('retention_disposition').$type<Disposition>().notNull(),
+  /**
+   * The class was set on this document by a records manager and no longer follows its type: a change of the type's rule
+   * applied to its documents leaves it as it is (lib/actions.ts updateType). False: it follows the type's rule.
+   */
+  retentionOverride: boolean('retention_override').notNull().default(false),
+  /**
+   * Date of a trigger event Codex cannot know (end of life of the asset, departure of the employee: lib/retention.ts
+   * EVENT_TRIGGERS), entered on the record by its owner or a records manager; null until then.
+   */
+  retentionEventAt: date('retention_event_at', { mode: 'string' }),
   // External documents
   sourceOrg: text('source_org'),
   externalRef: text('external_ref'),

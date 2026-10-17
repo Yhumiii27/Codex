@@ -15,7 +15,7 @@ import { decisionWait, lockOf, type DecisionWait, type Tx } from './lifecycle';
 import { LINK_RELS, otherEnd, relOf } from './links';
 import { NO_USAGE, type OrgUsage } from './org-rules';
 import { BUILT_IN_FUNCTIONS, BUILT_IN_TYPES } from './registry-rules';
-import { retainUntil } from './retention';
+import { isEventTrigger, retainUntil, retentionGap } from './retention';
 import { isExpired, isReviewOverdue } from './review';
 import { featuredFilters, featuredOf } from './departments';
 import { DATE_LABEL, FACET_KEYS, FACET_LABEL, fold, hit, SCORE_WEIGHT, searchHref, SORT_LABEL, sortOf, wordStartPrefix, type DateField, type FacetKey, type Facets, type Period, type SearchDoc, type SearchInput, type SortKey } from './search';
@@ -75,13 +75,21 @@ export function docView(ctx: Ctx, d: DocRow, workingL: string | null | undefined
     expired: isExpired(d, today),
     reviewOverdue: isReviewOverdue(d, today),
     retainUntil: until,
-    untilF: until ? fmtDate(until, lang) : d.retentionTrigger === 'permanent' || d.retentionDisposition === 'permanent' ? t.disp_permanent : '—',
+    untilF: until ? fmtDate(until, lang) : d.retentionTrigger === 'permanent' || d.retentionDisposition === 'permanent' ? t.disp_permanent : untilGapL(t, retentionGap(d)),
+    /** The trigger waits for a date entered on the record (end of life of the asset, departure of the employee). */
+    eventTrigger: isEventTrigger(d.retentionTrigger),
+    retentionEventF: fmtDate(d.retentionEventAt, lang),
     retentionL: `${years}${t[`trig_${d.retentionTrigger}` as TKey]} · ${t[`disp_${d.retentionDisposition}` as TKey]}`,
     path: `${contextL} › ${familyLabel} › ${typeLabel}`,
     href: `/documents/${encodeURIComponent(d.id)}`,
   };
 }
 export type DocView = ReturnType<typeof docView>;
+
+/** « Fin de conservation » of a document without one: what it waits for. */
+function untilGapL(t: Ctx['t'], gap: ReturnType<typeof retentionGap>): string {
+  return gap === 'event_missing' ? t.until_event_missing : gap === 'no_duration' ? t.until_no_duration : '—';
+}
 
 /**
  * Label ("B.2", or "B" before any working version) of the revision being drafted or reviewed, per document: of every
@@ -100,8 +108,11 @@ async function workingLabels(docIds?: string[]): Promise<Map<string, string>> {
   return new Map(revs.map((r) => [r.docId, maxN.has(r.id) ? revLabel(r.letter, r.status, maxN.get(r.id)) : r.letter]));
 }
 
+/** Changes to a document's retention (lib/actions.ts setRetentionClass, setRetentionEvent, updateType). */
+export const RETENTION_ACTIONS = ['retention', 'retention_type', 'retention_event'] as const;
+
 /** Journal actions on the record itself (no revision) that move documents.modified_at (a recorded review sets the next date). */
-const RECORD_ACTIONS = ['edit', 'reviewed', 'archive', 'restore'];
+const RECORD_ACTIONS = ['edit', 'reviewed', 'archive', 'restore', ...RETENTION_ACTIONS];
 
 /**
  * documents.modified_at also moves with drafting work (working versions, validation requests). Outside the drafting
@@ -1065,7 +1076,8 @@ const CHANGE_LABEL: Record<string, TKey> = {
   reviewDueAt: 'review_due_at', expiresAt: 'expires_at', sourceOrg: 'source_org', externalRef: 'external_ref', receivedAt: 'received_at',
   projectPhase: 'project_phase', workPackage: 'work_package', discipline: 'discipline', researchTheme: 'research_theme', studyId: 'study_id',
   ipStatus: 'ip_status', processOwnerId: 'process_owner', retention: 'retention', circuit: 'circuit', confAllowed: 'conf_allowed', confDefault: 'conf_default',
-  featured: 'featured_filters', reviewMonths: 'review_months',
+  featured: 'featured_filters', reviewMonths: 'review_months', retentionOverride: 'retention_override_label', retentionEventAt: 'retention_event_at',
+  typeRetention: 'retention_type_rule', retentionDocs: 'retention_docs',
   // Register and research programmes (Administration).
   code: 'rule_id', key: 'key_label', labelFr: 'label_fr', labelEn: 'label_en', family: 'family', origins: 'origin', attachments: 'attachment',
   subtypes: 'subtypes_label', retentionBasis: 'retention_basis', iso: 'iso_clause', clientDeliverable: 'client_deliverable', grp: 'family_group',
@@ -1076,7 +1088,7 @@ const CHANGE_LABEL: Record<string, TKey> = {
 function changeValueL(ctx: Ctx, field: string, v: AuditValue | undefined): string {
   const { t } = ctx;
   if (v == null || (Array.isArray(v) && !v.length)) return field === 'circuit' ? t.no_approval : field === 'featured' ? t.featured_none : field === 'reviewMonths' ? t.review_months_none : '—';
-  if (typeof v === 'boolean') return field === 'granted' ? (v ? '✓' : '✕') : field === 'clientDeliverable' ? (v ? t.yes : t.no) : v ? t.active_label : t.inactive;
+  if (typeof v === 'boolean') return field === 'granted' ? (v ? '✓' : '✕') : field === 'clientDeliverable' ? (v ? t.yes : t.no) : field === 'retentionOverride' ? (v ? t.retention_override : t.retention_follows_type) : v ? t.active_label : t.inactive;
   if (Array.isArray(v)) return v.map((x) => changeValueL(ctx, field, x)).join(field === 'circuit' ? ' → ' : ', ');
   if (typeof v === 'object') {
     return `${v.years != null ? `${v.years} ${t.years_short} · ` : ''}${t[`trig_${v.trigger}` as TKey] ?? v.trigger} · ${t[`disp_${v.disposition}` as TKey] ?? v.disposition}`;
@@ -1105,6 +1117,8 @@ function changeValueL(ctx: Ctx, field: string, v: AuditValue | undefined): strin
 function changeL(ctx: Ctx, c: AuditChange): string {
   const label = c.field === 'holder' ? c.scope ?? ctx.t.scope_global : CHANGE_LABEL[c.field] ? ctx.t[CHANGE_LABEL[c.field]] : '';
   if (!('before' in c) && !('after' in c)) return label || c.field;
+  // A value recorded alongside a change (the type's rule next to a document's class), not changed itself.
+  if (!('before' in c)) return `${label ? `${label} : ` : ''}${changeValueL(ctx, c.field, c.after)}`;
   return `${label ? `${label} : ` : ''}${changeValueL(ctx, c.field, c.before)} → ${changeValueL(ctx, c.field, c.after)}`;
 }
 
@@ -1283,9 +1297,9 @@ function auditTargetHref(ctx: Ctx, kind: AuditTargetKind | null, id: string | nu
 
 /**
  * Actions that change a record's metadata (the record's "Métadonnées" history): its fields, values before → after
- * (lib/actions.ts updateMeta, setReaders), and the new ID a reclassification gives it.
+ * (lib/actions.ts updateMeta, setReaders), the new ID a reclassification gives it, and its retention.
  */
-export const METADATA_ACTIONS = ['edit', 'reclass'] as const;
+export const METADATA_ACTIONS = ['edit', 'reclass', ...RETENTION_ACTIONS] as const;
 
 /**
  * Journal entries, newest first, as auditForReader lets the user read them. For a document, its entries under its
@@ -1414,6 +1428,28 @@ export function typeView(ctx: Ctx, x: typeof s.docTypes.$inferSelect) {
   };
 }
 export type TypeView = ReturnType<typeof typeView>;
+
+/**
+ * Retention classes of each type's documents (all of them: the rule applies to every one, whoever reads it), for the
+ * type dialog to say how many a change of the type's rule would reach (lib/actions.ts updateType, applyTypeRetention):
+ * `following`, the classes of those that follow the type's rule, by value, frozen ones apart; `overrides`, the number of
+ * derogations, never changed by it. Counts only, to whoever edits the register.
+ */
+export async function retentionByType(tx?: Tx) {
+  const db = tx ?? (await getDb());
+  const D = s.documents;
+  const rows = await db.select({ code: D.typeCode, years: D.retentionYears, trigger: D.retentionTrigger, disposition: D.retentionDisposition, override: D.retentionOverride, held: D.legalHold, n: sql<number>`count(*)::int` })
+    .from(D).groupBy(D.typeCode, D.retentionYears, D.retentionTrigger, D.retentionDisposition, D.retentionOverride, D.legalHold);
+  const out = new Map<string, RetentionByType>();
+  for (const r of rows) {
+    const x = out.get(r.code) ?? { following: [], overrides: 0 };
+    if (r.override) x.overrides += Number(r.n);
+    else x.following.push({ retentionYears: r.years, retentionTrigger: r.trigger, retentionDisposition: r.disposition, held: r.held, n: Number(r.n) });
+    out.set(r.code, x);
+  }
+  return out;
+}
+export type RetentionByType = { following: { retentionYears: number | null; retentionTrigger: string; retentionDisposition: string; held: boolean; n: number }[]; overrides: number };
 
 /**
  * What refers to each entry of the register, counted over every document whatever its state or confidentiality (shown

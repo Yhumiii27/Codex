@@ -1,5 +1,5 @@
 {
-  "id": "ce1938c5-bdbb-4699-9ba9-6ccb0b6972be",
+  "id": "eed565db-8e11-4395-a84f-9c2c4f14e92a",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -989,6 +989,19 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "retention_override": {
+          "name": "retention_override",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "retention_event_at": {
+          "name": "retention_event_at",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
         },
         "source_org": {
           "name": "source_org",

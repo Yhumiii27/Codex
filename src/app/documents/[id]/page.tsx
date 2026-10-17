@@ -8,7 +8,7 @@ import { Seg } from '@/components/ui/Seg';
 import { VStepper } from '@/components/ui/Stepper';
 import { getDb } from '@/db';
 import { ActionButton, DialogButton, ShareButton } from '@/components/ui/client';
-import { canRead, mayEditLinks, mayGetApprovalRecord, mayLinkTemplate, mayRecordReview, mayWorkOnDraft, openRevisionView, readerMaySeeRevision, readerMaySeeVersion, readersApply } from '@/lib/access';
+import { canRead, mayEditLinks, mayGetApprovalRecord, mayLinkTemplate, mayManageRetention, mayRecordReview, maySetRetentionEvent, mayWorkOnDraft, openRevisionView, readerMaySeeRevision, readerMaySeeVersion, readersApply } from '@/lib/access';
 import { releaseHold, removeDocLink } from '@/lib/actions';
 import { isFinalStatus, TEMPLATE_TYPE } from '@/lib/codes';
 import { getCtx } from '@/lib/context';
@@ -16,7 +16,8 @@ import { addDays, fmtDate, todayIso } from '@/lib/format';
 import { ECR_TAGCLS } from '@/lib/i18n';
 import { getProject } from '@/lib/keystone';
 import { CONSULT_WINDOW_MINUTES, decisionWait, defaultModifier, draftersOf } from '@/lib/lifecycle';
-import { decisionWaitL, getDoc, listAudit, templateTypesOf, METADATA_ACTIONS, listChangeRequests, listDocLinks, listDocs, listRevisions, listWorkflows, stateNotice, typeView, type RevisionView } from '@/lib/queries';
+import { decisionWaitL, getDoc, listAudit, templateTypesOf, METADATA_ACTIONS, RETENTION_ACTIONS, listChangeRequests, listDocLinks, listDocs, listRevisions, listWorkflows, stateNotice, typeView, type RevisionView } from '@/lib/queries';
+import { sameRule } from '@/lib/retention';
 import { normalizeMime } from '@/lib/storage';
 import { vigieSimulated, vigieUrl } from '@/lib/vigie';
 import { Preview, RecordConsultation, RevisionsTab, type RevItem } from './DocClient';
@@ -31,7 +32,7 @@ const METADATA = new Set<string>(METADATA_ACTIONS);
 /** Revision statuses of the revision being drafted, reviewed or waiting for its effective date. */
 const WORKING = new Set(['draft', 'in_review', 'approved']);
 /** Audit actions that change the document's content or record ("Modifié … par …"). */
-const MODIFYING = new Set(['upload', 'working', 'edit', 'reviewed', 'reclass', 'restore']);
+const MODIFYING = new Set(['upload', 'working', 'edit', 'reviewed', 'reclass', 'restore', ...RETENTION_ACTIONS]);
 
 type Version = RevisionView['versions'][number];
 const lite = (v: Version): VersionLite => ({ id: v.id, label: v.label, author: v.author, dateF: v.dateF, commentL: v.commentL, sizeF: v.sizeF, pages: v.pages, fileName: v.fileName, sha256: v.fileName ? v.sha256 : null });
@@ -151,6 +152,18 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
   const draftReserved = mayWorkOnDraft(ctx, doc, ix) ? undefined : t.draft_reserved;
   const isOwner = ctx.seesAll || doc.ownerId === ctx.user.id;
   const type = ctx.typeByCode.get(doc.typeCode);
+  // Retention (D-20): the type's rule next to the document's class when they differ, a derogation or a rule changed
+  // since and not applied (frozen document); the date of an event Codex cannot know, entered on the record.
+  const typeRuleL = type && !sameRule(doc, type)
+    ? `${type.retentionYears != null ? `${type.retentionYears} ${t.years_short} · ` : ''}${t[`trig_${type.retentionTrigger}`]} · ${t[`disp_${type.retentionDisposition}`]}`
+    : null;
+  const retentionRows: [string, ReactNode][] = [
+    [t.retention_class, doc.retentionOverride ? <>{doc.retentionL} <span className="tag tag-outline" style={{ fontSize: 10.5, padding: '1px 7px', marginLeft: 4 }}>{t.retention_override}</span></> : doc.retentionL],
+    ...(typeRuleL ? [[t.retention_type_rule, doc.retentionOverride ? typeRuleL : `${typeRuleL} (${t.retention_type_not_applied})`] as [string, ReactNode]] : []),
+    ...(doc.eventTrigger || doc.retentionEventAt ? [[t.retention_event_at, doc.retentionEventAt ? doc.retentionEventF : t.until_event_missing] as [string, ReactNode]] : []),
+    [t.until, doc.untilF],
+  ];
+  const eventDenied = doc.legalHold ? t.locked_hold : maySetRetentionEvent(ctx, doc) ? undefined : lock && doc.ownerId === ctx.user.id ? lock : t.retention_event_reserved;
   const circuitL = type ? typeView(ctx, type).circuitL : '';
   // Outside the drafting circle, the date (docView) and the person both come from what the user sees (D-14).
   const modifiedBy = history.find((h) => MODIFYING.has(h.action))?.user ?? doc.owner;
@@ -452,8 +465,7 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
                   [t.review_due_at, doc.reviewDueF],
                   [t.expires_at, doc.expiresF],
                   [t.language, doc.lang === 'en' ? t.lang_en : doc.lang === 'fr' ? t.lang_fr : doc.lang ?? '—'],
-                  [t.retention_class, doc.retentionL],
-                  [t.until, doc.untilF],
+                  ...retentionRows,
                   [t.hold, doc.legalHold ? `${t.hold_on} ${fmtDate(doc.legalHoldAt, lang)}` : t.hold_off],
                   [t.created, doc.createdF],
                   [t.modified, doc.modifiedF],
@@ -541,6 +553,22 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
                     spec={{ kind: 'link', docId: doc.id, title: doc.title, withdrawn: !!doc.obsoleteAt, active: doc.state === 'active', candidates: linkable }} icon="plus"
                     deniedTitle={deny('edit') ?? (linksEditable ? undefined : t.link_reserved) ?? linkHold}
                   >{t.link_add}</DialogButton>
+                  {doc.eventTrigger && (
+                    <DialogButton
+                      spec={{ kind: 'retentionEvent', docId: doc.id, title: doc.title, triggerL: t[`trig_${doc.retentionTrigger}`], eventAt: doc.retentionEventAt, maxDate: todayIso(), version: doc.version }}
+                      icon="pen" deniedTitle={eventDenied}
+                    >{t.retention_event_set}</DialogButton>
+                  )}
+                  {ctx.screens.retention && type && (
+                    <DialogButton
+                      spec={{
+                        kind: 'retentionClass', docId: doc.id, title: doc.title, version: doc.version, override: doc.retentionOverride,
+                        current: { retentionYears: doc.retentionYears, retentionTrigger: doc.retentionTrigger, retentionDisposition: doc.retentionDisposition },
+                        type: { code: type.code, retentionYears: type.retentionYears, retentionTrigger: type.retentionTrigger, retentionDisposition: type.retentionDisposition },
+                      }}
+                      icon="archive" deniedTitle={mayManageRetention(ctx) ? (doc.legalHold ? t.locked_hold : undefined) : `${t.not_allowed} : ${t.perm_archive}`}
+                    >{t.retention_class_edit}</DialogButton>
+                  )}
                   {canRelease && <ActionButton action={releaseHold.bind(null, doc.id)} confirm={`${t.release_hold}${lang === 'fr' ? ' ' : ''}?`}><Icon name="lock" size={14} />{t.release_hold}</ActionButton>}
                 </div>
               </>

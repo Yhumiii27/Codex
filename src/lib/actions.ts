@@ -6,7 +6,7 @@ import { cookies } from 'next/headers';
 import { refresh } from 'next/cache';
 import { getDb, schema as s } from '@/db';
 import type { Attachment, AuditChange, AuditValue, Conf, Origin, SearchScope } from '@/db/schema';
-import { buildAccessIndex, canRead, followsCircuit, getAccessIndex, inDraftingCircle, isUsableTemplate, mayBackUp, mayCheckIntegrity, mayCleanStorage, mayDeleteSearch, mayEditLinks, mayLinkTemplate, mayRecall, mayRecordReview, maySaveSearch, mayWorkOnDraft, readerMaySeeRevision, readersApply, seesSavedSearch } from './access';
+import { buildAccessIndex, canRead, followsCircuit, getAccessIndex, inDraftingCircle, isUsableTemplate, mayBackUp, mayCheckIntegrity, mayCleanStorage, mayDeleteSearch, mayEditLinks, mayLinkTemplate, mayManageRetention, mayRecall, mayRecordReview, maySaveSearch, maySetRetentionEvent, mayWorkOnDraft, readerMaySeeRevision, readersApply, seesSavedSearch } from './access';
 import { idMatches, nextDocId, nextWorkflowId, TEMPLATE_TYPE } from './codification';
 import { changeAuthor, seenVersion, seenWorkingBase, staleText, workingIssue, workingStaleText, type WorkingBase } from './concurrency';
 import { backUpNow } from './backup';
@@ -25,9 +25,10 @@ import { inUse, isOrgKind, lastActiveIssue, orgLabels, parseOrgForm, type OrgKin
 import { fileIssueReason, fileIssueText, fileRules } from './filetypes';
 import { MAX_PER_RUN, purgeOrphans } from './orphans';
 import {
-  builtInScopeIssue, builtInTypeIssue, departmentCodeIssue, keyIssue, outsideType, parseFamilyForm, parseFunctionForm, parseProgramForm, parseTypeForm, programCodeIssue, PROJECT_MANAGER_FUNCTIONS,
+  builtInScopeIssue, builtInTypeIssue, departmentCodeIssue, keyIssue, outsideType, parseFamilyForm, parseFunctionForm, parseProgramForm, parseRetentionRule, parseTypeForm, programCodeIssue, PROJECT_MANAGER_FUNCTIONS,
   subtypesJournal, typeCodeIssue, type CodeSpace, type FamilyValues, type FormIssue, type FunctionValues, type ProgramValues, type TypeValues,
 } from './registry-rules';
+import { isEventTrigger, parseEventDate, sameRule } from './retention';
 import { nextReviewDate } from './review';
 import { beyondBounds, cleanCriteria, hasCriteria, type SearchInput } from './search';
 import { discardFile, FileRejectedError, fileColumns, nameStoredFile, readStored, renameDocFiles, sha256Of, stageFile, stageUpload, type StagedFile } from './storage';
@@ -264,10 +265,11 @@ function authorMissing(ctx: Ctx, fd: FormData): ActionResult | null {
 }
 
 /** Metadata fields an edit changes, with their values before and after (retention follows a change of type). */
-function metaChanges(d: DocRow, f: Fields, retention: Partial<Pick<DocRow, 'retentionYears' | 'retentionTrigger' | 'retentionDisposition'>>): AuditChange[] {
+function metaChanges(d: DocRow, f: Fields, retention: Partial<Pick<DocRow, 'retentionYears' | 'retentionTrigger' | 'retentionDisposition' | 'retentionOverride'>>): AuditChange[] {
   return changes([
     ...(Object.keys(f) as (keyof Fields)[]).map((k): [string, AuditValue, AuditValue] => [k, d[k], f[k]]),
     ['retention', retentionValue(d), retentionValue({ ...d, ...retention })],
+    ['retentionOverride', d.retentionOverride, retention.retentionOverride ?? d.retentionOverride],
   ]);
 }
 
@@ -565,7 +567,8 @@ async function updateMetaNow(fd: FormData): Promise<ActionResult> {
       // Before any approval, the reclassification belongs to the revision being drafted.
       await audit(tx, ctx.user.id, 'reclass', id, `${docId} → ${id}`, revs.find((r) => r.status === 'draft' || r.status === 'in_review')?.id ?? null);
     }
-    const retention = f.typeCode !== d.typeCode ? { retentionYears: type.retentionYears, retentionTrigger: type.retentionTrigger, retentionDisposition: type.retentionDisposition } : {};
+    // A new type brings its own rule: a derogation granted under the former type does not carry over (D-20).
+    const retention = f.typeCode !== d.typeCode ? { retentionYears: type.retentionYears, retentionTrigger: type.retentionTrigger, retentionDisposition: type.retentionDisposition, retentionOverride: false } : {};
     await tx.update(s.documents).set({ ...f, family: type.family, ...retention, modifiedAt: todayIso() }).where(eq(s.documents.id, id));
     // A document that is no longer a template is offered for no type any more.
     const unlinked = d.typeCode === TEMPLATE_TYPE && f.typeCode !== TEMPLATE_TYPE
@@ -1370,6 +1373,108 @@ async function restoreArchivedNow(docId: string): Promise<ActionResult> {
   return pendingApplied(ctx, d, swap);
 }
 
+// ── Retention of a document (D-20) ───────────────────────────────────────
+
+/** Journal data of a change to a document's retention: what decides who reads its values, as for a metadata edit (D-14). */
+const retentionDoc = (d: DocRow) => ({ conf: d.conf, inForce: !!d.revInForce });
+
+/**
+ * Date of the event a document's retention counts from, for the triggers Codex cannot know (end of life of the asset,
+ * departure of the employee: lib/retention.ts EVENT_TRIGGERS); null clears it. By the owner of an editable record or
+ * whoever manages retention (access.ts maySetRetentionEvent), never on a frozen one. A real day, no later than today.
+ * Nothing is archived or destroyed when it makes the retention end: the end only shows in Archivage (O-07). Journaled
+ * (action 'retention_event'), before → after. `version`: of the record shown (lib/concurrency.ts).
+ */
+export async function setRetentionEvent(...args: Parameters<typeof setRetentionEventNow>): Promise<ActionResult> {
+  return traceAction('setRetentionEvent', () => setRetentionEventNow(...args));
+}
+async function setRetentionEventNow(docId: string, date: string | null, version: number): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  const seen = seenVersion(version);
+  const db = await getDb();
+  const ix = await getAccessIndex();
+  const [d] = await db.select().from(s.documents).where(eq(s.documents.id, String(docId)));
+  if (!d) return movedSince(db, ctx, String(docId), (x) => canRead(ctx, x, ix) && maySetRetentionEvent(ctx, x));
+  if (!canRead(ctx, d, ix)) return fail(ctx, 'not_found');
+  if (d.legalHold) return fail(ctx, 'locked_hold');
+  if (!maySetRetentionEvent(ctx, d)) {
+    const lock = d.ownerId === ctx.user.id ? lockOf(d) : null;
+    return lock ? fail(ctx, lock) : ctx.can('edit') || ctx.can('archive') ? fail(ctx, 'not_allowed') : denied(ctx, 'edit');
+  }
+  if (d.version !== seen) return stale(ctx, seen === null ? null : await lastChangedBy(db, ctx, d.id));
+  const parsed = parseEventDate(typeof date === 'string' ? date : null, todayIso());
+  if (!parsed.ok) return { ok: false, error: ctx.t[parsed.key], field: 'eventAt' };
+  const res = await db.transaction(async (tx): Promise<{ stale: string | null } | { err: TKey } | null> => {
+    const [cur] = await tx.select().from(s.documents).where(eq(s.documents.id, d.id)).for('update');
+    if (cur?.version !== seen) return { stale: cur ? await lastChangedBy(tx, ctx, d.id) : null };
+    // A date only means something for a trigger that waits for one; one left from another trigger may still be cleared.
+    if (parsed.value && !isEventTrigger(cur.retentionTrigger)) return { err: 'retention_event_not_needed' };
+    const changed = changes([['retentionEventAt', cur.retentionEventAt, parsed.value]]);
+    if (!changed.length) return null;
+    await tx.update(s.documents).set({ retentionEventAt: parsed.value, modifiedAt: todayIso() }).where(eq(s.documents.id, d.id));
+    await audit(tx, ctx.user.id, 'retention_event', d.id, cur.revInForce ?? cur.revWorking ?? '', null, { changes: changed, doc: retentionDoc(cur) });
+    return null;
+  });
+  if (res && 'stale' in res) return stale(ctx, res.stale);
+  if (res) return fail(ctx, res.err);
+  refresh();
+  return { ok: true, message: ctx.t.saved_ok };
+}
+
+/**
+ * Retention class of one document (D-20, docs/modele-cible.md §8), by whoever manages retention (access.ts
+ * mayManageRetention), on any document they read but a frozen one. `mode` 'type' puts back its type's rule; otherwise
+ * the duration, trigger and final disposition sent (lib/registry-rules.ts parseRetentionRule) become a derogation, which
+ * a later change of the type's rule leaves as it is (updateType), unless they are the type's rule itself. Journaled
+ * (action 'retention'): the class and the derogation, before → after, with the type's rule as detail. Counted per
+ * document: its revisions follow it (O-09). Nothing is archived or destroyed here. `version`: of the record shown.
+ */
+export async function setRetentionClass(...args: Parameters<typeof setRetentionClassNow>): Promise<ActionResult> {
+  return traceAction('setRetentionClass', () => setRetentionClassNow(...args));
+}
+async function setRetentionClassNow(fd: FormData): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  if (!mayManageRetention(ctx)) return denied(ctx, 'archive');
+  const docId = str(fd, 'docId');
+  const seen = seenVersion(fd.get('version'));
+  const db = await getDb();
+  const ix = await getAccessIndex();
+  const [d] = await db.select().from(s.documents).where(eq(s.documents.id, docId));
+  if (!d) return movedSince(db, ctx, docId, (x) => canRead(ctx, x, ix));
+  if (!canRead(ctx, d, ix)) return fail(ctx, 'not_found');
+  if (d.legalHold) return fail(ctx, 'locked_hold');
+  if (d.version !== seen) return stale(ctx, seen === null ? null : await lastChangedBy(db, ctx, d.id));
+  const toType = str(fd, 'mode') === 'type';
+  let rule: Pick<DocRow, 'retentionYears' | 'retentionTrigger' | 'retentionDisposition'> | null = null;
+  if (!toType) {
+    const p = parseRetentionRule(fd);
+    if (!p.ok) return formIssue(ctx, p);
+    rule = p.value;
+  }
+  const res = await db.transaction(async (tx): Promise<{ stale: string | null } | { err: TKey } | null> => {
+    const [cur] = await tx.select().from(s.documents).where(eq(s.documents.id, d.id)).for('update');
+    if (cur?.version !== seen) return { stale: cur ? await lastChangedBy(tx, ctx, d.id) : null };
+    const [type] = await tx.select().from(s.docTypes).where(eq(s.docTypes.code, cur.typeCode));
+    if (!type) return { err: 'reg_not_found' };
+    const next = rule ?? { retentionYears: type.retentionYears, retentionTrigger: type.retentionTrigger, retentionDisposition: type.retentionDisposition };
+    // The type's own rule is no derogation.
+    const override = !sameRule(next, type);
+    const changed = changes([['retention', retentionValue(cur), retentionValue(next)], ['retentionOverride', cur.retentionOverride, override]]);
+    if (!changed.length) return null;
+    await tx.update(s.documents).set({ ...next, retentionOverride: override, modifiedAt: todayIso() }).where(eq(s.documents.id, d.id));
+    await audit(tx, ctx.user.id, 'retention', d.id, cur.typeCode, null, { changes: [...changed, { field: 'typeRetention', after: retentionValue(type) }], doc: retentionDoc(cur) });
+    return null;
+  });
+  if (res && 'stale' in res) return stale(ctx, res.stale);
+  if (res) return fail(ctx, res.err);
+  refresh();
+  return { ok: true, message: ctx.t.saved_ok };
+}
+
 // ── Consultations ────────────────────────────────────────────────────────
 
 /**
@@ -1951,10 +2056,43 @@ async function updateTypeNow(fd: FormData): Promise<ActionResult> {
     const changed = entryChanges(typeJournal(cur), typeJournal(next));
     // Saving without a change leaves no entry.
     if (changed.length) await audit(tx, ctx.user.id, 'type', { kind: 'type', id: next.code }, '', null, { changes: changed });
-    return { ok: true, message: ctx.t.saved_ok };
+    if (fd.get('applyRetention') !== 'on') return { ok: true, message: ctx.t.saved_ok };
+    const applied = await applyTypeRetention(tx, ctx, next);
+    return { ok: true, message: `${ctx.t.saved_ok} · ${retentionAppliedText(ctx, applied)}` };
   });
   if (res.ok) refresh();
   return res;
+}
+
+/**
+ * Applies the retention rule of a type to its documents that follow it (retention_override false) and differ from it,
+ * each journaled (action 'retention_type', before → after, as a metadata edit, D-14), then the whole in one entry on the
+ * type. Derogations are left as they are, and so are frozen documents (they keep their class until a records manager
+ * puts the type's rule back on them, setRetentionClass). Nothing is archived or destroyed (O-07).
+ */
+async function applyTypeRetention(tx: Tx, ctx: Ctx, type: Pick<TypeValues, 'code' | 'retentionYears' | 'retentionTrigger' | 'retentionDisposition'>) {
+  const docs = await tx.select().from(s.documents).where(eq(s.documents.typeCode, type.code)).orderBy(asc(s.documents.id));
+  const rule = { retentionYears: type.retentionYears, retentionTrigger: type.retentionTrigger, retentionDisposition: type.retentionDisposition };
+  const following = docs.filter((d) => !d.retentionOverride && !sameRule(d, rule));
+  const held = following.filter((d) => d.legalHold).length;
+  const today = todayIso();
+  let applied = 0;
+  for (const d of following.filter((x) => !x.legalHold)) {
+    await tx.update(s.documents).set({ ...rule, modifiedAt: today }).where(eq(s.documents.id, d.id));
+    await audit(tx, ctx.user.id, 'retention_type', d.id, type.code, null, { changes: changes([['retention', retentionValue(d), retentionValue(rule)]]), doc: retentionDoc(d) });
+    applied++;
+  }
+  const overrides = docs.filter((d) => d.retentionOverride).length;
+  if (applied) await audit(tx, ctx.user.id, 'retention_applied', { kind: 'type', id: type.code }, '', null, { changes: [{ field: 'retention', after: retentionValue(rule) }, { field: 'retentionDocs', after: String(applied) }] });
+  return { applied, overrides, held };
+}
+
+function retentionAppliedText(ctx: Ctx, x: { applied: number; overrides: number; held: number }): string {
+  return [
+    ctx.t.retention_applied.replace('{n}', String(x.applied)),
+    x.overrides ? ctx.t.retention_overrides_kept.replace('{n}', String(x.overrides)) : '',
+    x.held ? ctx.t.retention_held_kept.replace('{n}', String(x.held)) : '',
+  ].filter(Boolean).join(' · ');
 }
 
 /** Deletes a type nothing uses (lib/queries.ts registryUsage); one in use can only be made inactive. Journaled with its values. */

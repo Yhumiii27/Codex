@@ -117,6 +117,8 @@ CREATE TABLE "documents" (
 	"retention_years" integer,
 	"retention_trigger" text NOT NULL,
 	"retention_disposition" text NOT NULL,
+	"retention_override" boolean DEFAULT false NOT NULL,
+	"retention_event_at" date,
 	"source_org" text,
 	"external_ref" text,
 	"received_at" date,

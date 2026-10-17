@@ -158,6 +158,21 @@ export function parseSubtypes(frs: string[], ens: string[]): { fr: string; en: s
   return out;
 }
 
+export type RetentionRuleValues = { retentionYears: number | null; retentionTrigger: RetentionTrigger; retentionDisposition: Disposition };
+
+/**
+ * A retention rule as the type dialog and the record's retention dialog send it: a duration in whole years (empty: none,
+ * awaiting O-07), a trigger, a final disposition.
+ */
+export function parseRetentionRule(fd: FormData): Parsed<RetentionRuleValues> {
+  const yearsRaw = text(fd, 'retentionYears');
+  if (yearsRaw && !(/^\d{1,3}$/.test(yearsRaw) && Number(yearsRaw) <= RETENTION_YEARS_MAX)) return issue('reg_years_invalid', 'retentionYears');
+  const retentionTrigger = RETENTION_TRIGGERS.find((x) => x === text(fd, 'retentionTrigger'));
+  const retentionDisposition = DISPOSITIONS.find((x) => x === text(fd, 'retentionDisposition'));
+  if (!retentionTrigger || !retentionDisposition) return issue('error');
+  return { ok: true, value: { retentionYears: yearsRaw ? Number(yearsRaw) : null, retentionTrigger, retentionDisposition } };
+}
+
 /**
  * The type dialog (createType, updateType): every setting of a type, checked against the families and functions of
  * the register. The code is only read here: whether it may be given is typeCodeIssue's, whether it may change the
@@ -184,11 +199,8 @@ export function parseTypeForm(fd: FormData, refs: { families: readonly string[];
   // Empty: no periodicity. Otherwise a whole number of months, refused rather than corrected.
   const reviewMonths = parseReviewMonths(text(fd, 'reviewMonths'));
   if (reviewMonths === undefined) return issue('review_months_invalid', 'reviewMonths');
-  const yearsRaw = text(fd, 'retentionYears');
-  if (yearsRaw && !(/^\d{1,3}$/.test(yearsRaw) && Number(yearsRaw) <= RETENTION_YEARS_MAX)) return issue('reg_years_invalid', 'retentionYears');
-  const retentionTrigger = RETENTION_TRIGGERS.find((x) => x === text(fd, 'retentionTrigger'));
-  const retentionDisposition = DISPOSITIONS.find((x) => x === text(fd, 'retentionDisposition'));
-  if (!retentionTrigger || !retentionDisposition) return issue('error');
+  const rule = parseRetentionRule(fd);
+  if (!rule.ok) return rule;
   const retentionBasis = text(fd, 'retentionBasis');
   if (retentionBasis.length > BASIS_MAX) return issue('reg_text_too_long', 'retentionBasis');
   const iso = text(fd, 'iso');
@@ -197,7 +209,7 @@ export function parseTypeForm(fd: FormData, refs: { families: readonly string[];
     ok: true,
     value: {
       code, ...names.value, family, origins, attachments, subtypes, circuit, confAllowed, confDefault,
-      retentionYears: yearsRaw ? Number(yearsRaw) : null, retentionTrigger, retentionDisposition, retentionBasis, reviewMonths,
+      ...rule.value, retentionBasis, reviewMonths,
       iso: iso || null, clientDeliverable: fd.get('clientDeliverable') === 'on', active: fd.get('active') !== 'off',
     },
   };

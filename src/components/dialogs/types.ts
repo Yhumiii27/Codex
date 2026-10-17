@@ -9,7 +9,14 @@ export type TypeSettings = {
   code: string; labelFr: string; labelEn: string; family: string; origins: Origin[]; attachments: Attachment[]; subtypes: { fr: string; en: string }[];
   circuit: string[]; confAllowed: Conf[]; confDefault: Conf; retentionYears: number | null; retentionTrigger: string; retentionDisposition: string;
   retentionBasis: string; reviewMonths: number | null; iso: string | null; clientDeliverable: boolean; active: boolean; used: boolean;
+  /**
+   * Retention classes of its documents (lib/queries.ts retentionByType): how many a change of its rule would reach when
+   * applied to those that follow it, and how many derogations it leaves as they are.
+   */
+  retention?: RetentionByType;
 };
+
+export type RetentionByType = { following: { retentionYears: number | null; retentionTrigger: string; retentionDisposition: string; held: boolean; n: number }[]; overrides: number };
 
 /** Reference data the dialogs need, loaded once by the root layout (src/app/layout.tsx). */
 export type DialogData = {
@@ -140,6 +147,21 @@ export type DialogSpec =
    * (tomorrow, Paris time).
    */
   | { kind: 'review'; docId: string; title: string; letter: string; reviewDueAt: string | null; months: number | null; minDate: string }
+  /**
+   * Date of the event a document's retention counts from (end of life of the asset, departure of the employee: lib/actions.ts
+   * setRetentionEvent): `eventAt`, the one entered; `triggerL`, the trigger; `maxDate`, today (Paris time); `version`, of
+   * the record shown.
+   */
+  | { kind: 'retentionEvent'; docId: string; title: string; triggerL: string; eventAt: string | null; maxDate: string; version: number }
+  /**
+   * Retention class of one document (lib/actions.ts setRetentionClass): its class, whether it is a derogation, and its
+   * type's rule, which « Revenir à la règle du type » puts back. `version`: of the record shown.
+   */
+  | {
+    kind: 'retentionClass'; docId: string; title: string; version: number; override: boolean;
+    current: { retentionYears: number | null; retentionTrigger: string; retentionDisposition: string };
+    type: { code: string; retentionYears: number | null; retentionTrigger: string; retentionDisposition: string };
+  }
   /**
    * Administration › Registre des types: a new type (`family`: the family the register is filtered on, preset), or every
    * setting of one (lib/actions.ts createType, updateType). `used`: documents or projects refer to it, so its code no

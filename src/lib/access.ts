@@ -352,6 +352,24 @@ export function mayRecordReview(ctx: Viewer, d: { ownerId: string; processOwnerI
 }
 
 /**
+ * May the user manage retention (D-20): set a document's retention class, enter the date of its trigger event on any
+ * document it reads, archive, freeze. The archive permission with the Archivage screen, as archiveDocuments.
+ */
+export function mayManageRetention(ctx: Pick<Ctx, 'can' | 'screens'>): boolean {
+  return ctx.can('archive') && ctx.screens.retention;
+}
+
+/**
+ * May the user enter the date of the event a document's retention counts from (lib/actions.ts setRetentionEvent)? Its
+ * owner with the edit permission, while the record is editable (neither archived, obsolete nor frozen), or whoever
+ * manages retention, on any record but a frozen one. Access to the document and the legal hold are checked apart.
+ */
+export function maySetRetentionEvent(ctx: Viewer & Pick<Ctx, 'screens'>, d: { ownerId: string; state: string; legalHold: boolean }): boolean {
+  if (mayManageRetention(ctx)) return true;
+  return ctx.can('edit') && d.ownerId === ctx.user.id && d.state === 'active' && !d.legalHold;
+}
+
+/**
  * May the user set the types a template is meant for (lib/actions.ts setTemplateTypes)? Only on a template (type FRM),
  * by its owner or a records manager, with the edit permission. Access to the document and its lock are checked apart.
  */

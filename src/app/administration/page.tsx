@@ -13,7 +13,7 @@ import { featuredOf } from '@/lib/departments';
 import { fileRules, fmtMax } from '@/lib/filetypes';
 import { lockOf } from '@/lib/lifecycle';
 import { ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLE_LABEL, MATRIX_ROLES, PERMS, SIMULATED_MATRIX_ROLES, type TKey } from '@/lib/i18n';
-import { AUDIT_ID_MAX, auditPage, getMatrix, integrityL, latestIntegrityCheck, listFunctionHolders, listTemplates, orgUsage, registryUsage, typeView, type AuditFilter, type RegistryUsage } from '@/lib/queries';
+import { AUDIT_ID_MAX, auditPage, getMatrix, integrityL, latestIntegrityCheck, listFunctionHolders, listTemplates, orgUsage, registryUsage, retentionByType, typeView, type AuditFilter, type RegistryUsage } from '@/lib/queries';
 import { fmtDateTime, fmtSize, parisStamp, parseIsoDay } from '@/lib/format';
 import { MAX_PER_RUN, orphanReport, type OrphanScan } from '@/lib/orphans';
 import { inUse } from '@/lib/org-rules';
@@ -94,7 +94,7 @@ export default async function AdminPage({ searchParams }: PageProps<'/administra
 async function Registry({ ctx, family }: { ctx: Ctx; family: string }) {
   const { t, lang } = ctx;
   // Counts cover every document, drafts and confidential ones included (administration only).
-  const usage = await registryUsage();
+  const [usage, retention] = await Promise.all([registryUsage(), retentionByType()]);
   const counts = usage.docs.types;
   const types = ctx.types.filter((x) => !family || x.family === family).map((x) => typeView(ctx, x));
   const typesByFamily = countBy(ctx.types, (x) => x.family);
@@ -129,7 +129,7 @@ async function Registry({ ctx, family }: { ctx: Ctx; family: string }) {
               <td className="text-muted">{x.iso ?? '—'}</td>
               <td className="tabnum" style={{ textAlign: 'right' }}>{counts.get(x.code) ?? 0}</td>
               <td style={{ textAlign: 'right', width: 44 }}>
-                <DialogButton spec={typeSpec(x, usage.types.has(x.code))} className="btn btn-ghost btn-icon" icon="pen" ariaLabel={`${t.perm_edit} · ${x.code}`} style={{ width: 30, height: 30 }} />
+                <DialogButton spec={typeSpec(x, usage.types.has(x.code), retention.get(x.code))} className="btn btn-ghost btn-icon" icon="pen" ariaLabel={`${t.perm_edit} · ${x.code}`} style={{ width: 30, height: 30 }} />
               </td>
             </tr>
           ))}

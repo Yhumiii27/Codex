@@ -8,13 +8,14 @@ import type { Attachment, Conf, LinkRel, Origin } from '@/db/schema';
 import {
   addDocLink, addFunctionHolder, addOrgValue, addWorkingVersion, createDocument, createFamily, createFunction, createProgram, createType, decideStep,
   delegateStep, deleteFamily, deleteFunction, deleteOrgValue, deleteProgram, deleteType, graftChange, recallValidation, recordReview, requestChange, requestValidation,
-  saveSearch, setDepartmentFeatured, setReaders, setTemplateTypes, simulateUser, simulateVigieDecision, updateFamily, updateFunction, updateMeta, updateOrgValue, updateProgram, updateType,
+  saveSearch, setDepartmentFeatured, setReaders, setRetentionClass, setRetentionEvent, setTemplateTypes, simulateUser, simulateVigieDecision, updateFamily, updateFunction, updateMeta, updateOrgValue, updateProgram, updateType,
 } from '@/lib/actions';
 import { contextOf, idMatches, seqWidth, TEMPLATE_TYPE } from '@/lib/codes';
 import { DEFAULT_FEATURED, FEATURABLE, MAX_FEATURED } from '@/lib/departments';
 import { fmtDate } from '@/lib/format';
 import { ATTACHMENTS, CONF_LEVELS, ORIGINS, PROJECT_PHASES, SEARCH_SCOPES, SIM_ROLES, type T, type TKey } from '@/lib/i18n';
 import { markInactive, newDocDepartment, offered, type OrgKind } from '@/lib/org-rules';
+import { sameRule } from '@/lib/retention';
 import { reviewDueHint } from '@/lib/review';
 import { BUILT_IN_SCOPES, DISPOSITIONS, FAMILY_GROUPS, FUNCTION_SCOPES, RETENTION_TRIGGERS } from '@/lib/registry-rules';
 import { FACET_LABEL, type FacetKey } from '@/lib/search';
@@ -39,6 +40,8 @@ export function Dialogs({ spec }: { spec: DialogSpec }) {
     case 'vigie': return <VigieDecision requestId={spec.requestId} docTitle={spec.docTitle} change={spec.change} modifierId={spec.modifierId} drafters={spec.drafters} deferred={spec.deferred} />;
     case 'graft': return <Graft spec={spec} />;
     case 'review': return <RecordReview spec={spec} />;
+    case 'retentionEvent': return <RetentionEvent spec={spec} />;
+    case 'retentionClass': return <RetentionClass spec={spec} />;
     case 'type': return <TypeEditor type={spec.type} family={spec.family} />;
     case 'family': return <FamilyEditor family={spec.family} />;
     case 'function': return <FunctionEditor fn={spec.fn} />;
@@ -931,6 +934,100 @@ function RecordReview({ spec }: { spec: Extract<DialogSpec, { kind: 'review' }> 
   );
 }
 
+/**
+ * Date of the event a document's retention counts from (lib/actions.ts setRetentionEvent): a day no later than today,
+ * or none (cleared). The end of retention follows; nothing is archived or destroyed.
+ */
+function RetentionEvent({ spec }: { spec: Extract<DialogSpec, { kind: 'retentionEvent' }> }) {
+  const { t, close } = useApp();
+  const { pending, error, field, run, reload } = useSubmit();
+  const errorOf = (name: string) => (field === name ? error : null);
+  const send = (form: HTMLFormElement, value: string | null) => run(() => setRetentionEvent(spec.docId, value, spec.version), { form });
+  return (
+    <Modal
+      title={t.retention_event_title}
+      actions={<>
+        {spec.eventAt && <button type="button" className="btn btn-ghost" style={{ marginRight: 'auto' }} disabled={pending} onClick={() => { const form = document.getElementById('retention-event-form'); if (form instanceof HTMLFormElement) send(form, null); }}>{t.retention_event_clear}</button>}
+        <Actions pending={pending} label={t.save} onCancel={close} form="retention-event-form" />
+      </>}
+    >
+      <form
+        id="retention-event-form"
+        onSubmit={(e) => { e.preventDefault(); const form = e.currentTarget; send(form, String(new FormData(form).get('eventAt') ?? '') || null); }}
+        style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
+      >
+        <div>
+          <div style={{ fontSize: 13 }}>{spec.title}</div>
+          <div className="text-muted sub tabnum">{spec.docId} · {spec.triggerL}</div>
+        </div>
+        <p className="text-muted" style={{ margin: 0, fontSize: 12.5 }}>{t.retention_event_hint}</p>
+        <Field label={t.retention_event_at} error={errorOf('eventAt')}>
+          {(id) => (
+            <input
+              id={id} className="input" type="date" name="eventAt" defaultValue={spec.eventAt ?? ''} min="1900-01-01" max={spec.maxDate} required
+              aria-invalid={errorOf('eventAt') ? true : undefined} aria-describedby={errorOf('eventAt') ? `${id}-error` : undefined}
+            />
+          )}
+        </Field>
+        <ErrorLine error={field ? null : error} onReload={reload} />
+      </form>
+    </Modal>
+  );
+}
+
+/**
+ * Retention class of one document (lib/actions.ts setRetentionClass): a derogation to its type's rule, or the type's
+ * rule put back. Records managers only; never archives nor destroys.
+ */
+function RetentionClass({ spec }: { spec: Extract<DialogSpec, { kind: 'retentionClass' }> }) {
+  const { t, close } = useApp();
+  const { pending, error, field, run, reload } = useSubmit();
+  const errorOf = (name: string) => (field === name ? error : null);
+  const ruleL = (x: { retentionYears: number | null; retentionTrigger: string; retentionDisposition: string }) =>
+    `${x.retentionYears != null ? `${x.retentionYears} ${t.years_short} · ` : ''}${t[`trig_${x.retentionTrigger}` as TKey]} · ${t[`disp_${x.retentionDisposition}` as TKey]}`;
+  const send = (form: HTMLFormElement, mode: 'override' | 'type') => {
+    const fd = new FormData(form);
+    fd.set('mode', mode);
+    run(() => setRetentionClass(fd), { form });
+  };
+  return (
+    <Modal
+      title={t.retention_class_edit}
+      width={560}
+      actions={<>
+        {(spec.override || !sameRule(spec.current, spec.type)) && (
+          <button type="button" className="btn btn-ghost" style={{ marginRight: 'auto' }} disabled={pending} onClick={() => { const form = document.getElementById('retention-class-form'); if (form instanceof HTMLFormElement) send(form, 'type'); }}>
+            {t.retention_back_to_type}
+          </button>
+        )}
+        <Actions pending={pending} label={t.save} onCancel={close} form="retention-class-form" />
+      </>}
+    >
+      <form id="retention-class-form" onSubmit={(e) => { e.preventDefault(); send(e.currentTarget, 'override'); }} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <input type="hidden" name="docId" value={spec.docId} />
+        <input type="hidden" name="version" value={spec.version} />
+        <div>
+          <div style={{ fontSize: 13 }}>{spec.title}</div>
+          <div className="text-muted sub tabnum">{spec.docId} · {t.retention_type_rule} ({spec.type.code}) : {ruleL(spec.type)}</div>
+        </div>
+        <p className="text-muted" style={{ margin: 0, fontSize: 12.5 }}>{t.retention_class_hint}</p>
+        <div className="form-grid">
+          <Field label={t.years} error={errorOf('retentionYears')}>
+            {(id) => <input id={id} className="input" type="number" name="retentionYears" min={0} max={200} step={1} defaultValue={spec.current.retentionYears ?? ''} aria-invalid={field === 'retentionYears' ? true : undefined} />}
+          </Field>
+          <Field label={t.trigger}>
+            {(id) => <Select id={id} name="retentionTrigger" defaultValue={spec.current.retentionTrigger} options={RETENTION_TRIGGERS.map((k) => ({ key: k, label: t[`trig_${k}`] }))} />}
+          </Field>
+          <Field label={t.disposition}>
+            {(id) => <Select id={id} name="retentionDisposition" defaultValue={spec.current.retentionDisposition} options={DISPOSITIONS.map((k) => ({ key: k, label: t[`disp_${k}`] }))} />}
+          </Field>
+        </div>
+        <ErrorLine error={field ? null : error} onReload={reload} />
+      </form>
+    </Modal>
+  );
+}
+
 // ── Notes and session simulation ─────────────────────────────────────────
 
 const NOTES: Record<'fr' | 'en', [string, string][]> = {
@@ -1114,6 +1211,12 @@ function TypeEditor({ type, family }: { type?: TypeSettings; family?: string }) 
   const [confDefault, setConfDefault] = useState<Conf>(x.confDefault);
   const [active, setActive] = useState(x.active);
   const [rows, setRows] = useState(() => x.subtypes.map((st, i) => ({ ...st, id: i })));
+  // The retention rule as entered, to preview how many documents applying it would change (applyTypeRetention).
+  const [rule, setRule] = useState({ years: x.retentionYears == null ? '' : String(x.retentionYears), trigger: x.retentionTrigger, disposition: x.retentionDisposition });
+  const [applyRule, setApplyRule] = useState(false);
+  const entered = { retentionYears: /^\d{1,3}$/.test(rule.years) ? Number(rule.years) : null, retentionTrigger: rule.trigger, retentionDisposition: rule.disposition };
+  const reach = (held: boolean) => (x.retention?.following ?? []).filter((g) => g.held === held && !sameRule(g, entered)).reduce((n, g) => n + g.n, 0);
+  const following = (x.retention?.following ?? []).reduce((n, g) => n + g.n, 0);
   const [nextRow, setNextRow] = useState(x.subtypes.length);
   // The server named documents this setting would leave out: shown with the box that confirms, which sends back the
   // token of that answer, good for those documents only (lib/actions.ts updateType).
@@ -1224,17 +1327,29 @@ function TypeEditor({ type, family }: { type?: TypeSettings; family?: string }) 
           </Field>
           <GridSection>{t.retention_rule}</GridSection>
           <Field label={t.years} error={errorOf('retentionYears')}>
-            {(id) => <input id={id} className="input" type="number" name="retentionYears" min={0} max={200} step={1} defaultValue={x.retentionYears ?? ''} aria-invalid={field === 'retentionYears' ? true : undefined} />}
+            {(id) => <input id={id} className="input" type="number" name="retentionYears" min={0} max={200} step={1} value={rule.years} onChange={(e) => setRule({ ...rule, years: e.target.value })} aria-invalid={field === 'retentionYears' ? true : undefined} />}
           </Field>
           <Field label={t.trigger}>
-            {(id) => <Select id={id} name="retentionTrigger" defaultValue={x.retentionTrigger} options={RETENTION_TRIGGERS.map((k) => ({ key: k, label: t[`trig_${k}`] }))} />}
+            {(id) => <Select id={id} name="retentionTrigger" value={rule.trigger} onChange={(v) => setRule({ ...rule, trigger: v })} options={RETENTION_TRIGGERS.map((k) => ({ key: k, label: t[`trig_${k}`] }))} />}
           </Field>
           <Field label={t.disposition}>
-            {(id) => <Select id={id} name="retentionDisposition" defaultValue={x.retentionDisposition} options={DISPOSITIONS.map((k) => ({ key: k, label: t[`disp_${k}`] }))} />}
+            {(id) => <Select id={id} name="retentionDisposition" value={rule.disposition} onChange={(v) => setRule({ ...rule, disposition: v })} options={DISPOSITIONS.map((k) => ({ key: k, label: t[`disp_${k}`] }))} />}
           </Field>
           <Field label={t.retention_basis} span error={errorOf('retentionBasis')}>
             {(id) => <textarea id={id} className="input" name="retentionBasis" defaultValue={x.retentionBasis} rows={2} maxLength={500} style={{ resize: 'vertical' }} />}
           </Field>
+          {/* Applying the rule to the documents that follow it is asked, never implied (lib/actions.ts applyTypeRetention). */}
+          {!creating && (following > 0 || !!x.retention?.overrides) && (
+            <Field label={t.retention_apply} span hint={[
+              x.retention?.overrides ? t.retention_overrides_kept.replace('{n}', String(x.retention.overrides)) : '',
+              reach(true) ? t.retention_held_kept.replace('{n}', String(reach(true))) : '',
+            ].filter(Boolean).join(' · ') || undefined}>
+              <label style={{ ...checkRow, minHeight: 34 }}>
+                <input type="checkbox" name="applyRetention" checked={applyRule} onChange={(e) => setApplyRule(e.target.checked)} style={{ margin: 0 }} />
+                {t.retention_apply_n.replace('{n}', String(reach(false)))}
+              </label>
+            </Field>
+          )}
           {/* Periodic review: sets the review date of a document entering into force without one (lib/review.ts). */}
           <GridSection>{t.review_months}</GridSection>
           <Field label={t.duration} hint={t.review_months_hint} error={errorOf('reviewMonths')}>

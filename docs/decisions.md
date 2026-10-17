@@ -351,7 +351,9 @@ Règles de lecture :
 - **Décision retenue** : chaque type porte dans le registre une règle de conservation (durée, événement déclencheur,
   sort final, justification), que le document reçoit de son type et qu'un gestionnaire peut modifier.
 - **Mise en œuvre** : `retention` de chaque type dans `src/db/registry.ts`, `src/lib/retention.ts`, écran Archivage,
-  `docs/modele-cible.md` §8.
+  `docs/modele-cible.md` §8. Classe modifiable par document, date d'événement et répercussion de la règle du type
+  (17 octobre) : `setRetentionClass`, `setRetentionEvent` et `updateType` dans `src/lib/actions.ts` ; choix non
+  confirmés dans « Choix de l'assistant non validés explicitement ».
 - **Provisoire** : les durées sont des propositions issues de la fusion deck + Keystone. L'utilisateur ne les a pas
   validées une à une (O-07).
 
@@ -1167,6 +1169,41 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
   - **non fait** : exclure le sous-type « Formulaire » de la liste des modèles (FRM couvre formulaires vierges et
     modèles), modèle par défaut par type dans le registre ; les vrais modèles EPC2I restent à fournir (G06). Démo :
     PV, procédure (PRO, MOP), rapport d'incident (RSQ) et compte rendu (MIN) rattachés.
+- **Conservation par document : date d'événement, dérogation, répercussion de la règle du type** (points 7 et 18 de
+  `docs/reste-a-faire.md`, D-20, 17 octobre ; durées (O-07) et sort final à échéance (M03) non décidés) :
+  - **date d'événement** : colonne `documents.retention_event_at`, pour les seuls déclencheurs que Codex ne peut pas
+    connaître, « fin de vie de l'actif » et « départ du salarié » (`EVENT_TRIGGERS`, `src/lib/retention.ts`). La fin
+    de projet n'est **pas** saisissable : elle attend Keystone (O-03). Saisie (action `setRetentionEvent`) par le
+    propriétaire avec le droit Modifier tant que la fiche est modifiable (ni archivée, ni obsolète, ni gelée), ou par
+    un gestionnaire (droit Archiver et écran Archivage) sur toute fiche qu'il lit, archivée ou obsolète comprise ;
+    refusée sous gel juridique. Un jour réel entre le 1er janvier 1900 et aujourd'hui (l'événement doit avoir eu lieu :
+    une fin de vie ou un départ prévus ne se saisissent pas) ; on peut l'effacer. La date est gardée si le déclencheur
+    change, mais n'est lue que pour ces deux déclencheurs ; la fiche l'affiche dès qu'elle existe. Journalisée
+    (« Date d'événement de conservation », avant → après) ;
+  - **durée nulle** : les 14 types « durée de vie de l'actif » n'ont pas de durée (`years: null`). Codex ne choisit pas
+    entre « 0 an après l'événement » et une durée à fixer (O-07) : la fin de conservation reste « Durée à fixer »
+    tant que le registre ou une dérogation n'en donne pas. Un gestionnaire peut fixer une durée document par document ;
+  - **dérogation** : action `setRetentionClass`, réservée au droit Archiver avec l'écran Archivage, refusée sous gel
+    juridique, possible sur un document archivé ou obsolète. Elle fixe durée, déclencheur et sort final ; une valeur
+    égale à la règle du type n'est pas une dérogation. Colonne booléenne `documents.retention_override`. Journal
+    (« Classe de conservation modifiée ») : la classe avant → après, la dérogation avant → après et la règle du type à
+    ce moment. « Revenir à la règle du type » remet la règle du type et lève la dérogation. Un changement de type
+    (métadonnées) applique la règle du nouveau type et lève la dérogation (journalisé). Pas de motif saisi (il serait
+    lu hors du cercle de rédaction comme le détail du journal) ;
+  - **répercussion** : dans le dialogue d'un type (Administration › Registre ou Archivage › Règles), une case
+    « Appliquer cette règle aux documents qui suivent la règle du type », **décochée par défaut** : sans elle, rien ne
+    change sur les documents. L'aperçu compte, d'après la règle saisie, les documents qui seraient mis à jour, les
+    dérogations et les documents gelés laissés tels quels. Cochée, elle met à jour tous les documents du type sans
+    dérogation dont la classe diffère, y compris archivés et obsolètes ; **les documents sous gel juridique ne sont pas
+    modifiés** (la fiche montre alors la règle du type « non appliquée à ce document », et un gestionnaire peut la
+    remettre). Une entrée par document (« Règle du type appliquée ») et une entrée sur le type (« Règle de conservation
+    appliquée aux documents », avec leur nombre) ;
+  - **affichage** : la fiche montre la classe (étiquette « Dérogation »), la règle du type quand elle diffère, la date
+    de l'événement et la fin de conservation (« Date de l'événement à saisir », « Durée à fixer ») ; Archivage a un
+    onglet « Dates d'événement » (documents lus par l'utilisateur, ceux sans date d'abord) et compte les dérogations
+    par type dans « Règles de conservation ». La fin calculée entre dans les échéances (90 jours) comme les autres ;
+  - **rien n'est archivé ni détruit automatiquement** : l'échéance reste une proposition (O-07, M03). La conservation
+    reste comptée par document (`docs/modele-cible.md` §8, O-09).
 - **Git** (D-23) : premier commit sur une branche `codex-ged-v2` plutôt que sur `main`.
 
 ## Ce qui est explicitement hors périmètre

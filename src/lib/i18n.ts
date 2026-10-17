@@ -358,6 +358,16 @@ const fr = {
   department_inactive:'Ce département est désactivé : il n’est plus proposé, sauf là où il figure déjà.',
   site_inactive:'Ce site est désactivé : il n’est plus proposé, sauf là où il figure déjà.',
   dept_inactive_hint:'Ce département est désactivé : il n’est plus proposé pour un nouveau document ; ses documents restent consultables ici.',
+  act_retention:'Classe de conservation modifiée', act_retention_type:'Règle du type appliquée', act_retention_event:'Date d’événement de conservation', act_retention_applied:'Règle de conservation appliquée aux documents',
+  retention_override:'Dérogation', retention_follows_type:'Règle du type', retention_override_label:'Dérogation à la règle du type', retention_type_rule:'Règle du type', retention_docs:'Documents mis à jour',
+  retention_event_at:'Date de l’événement déclencheur', until_event_missing:'Date de l’événement à saisir', until_no_duration:'Durée à fixer',
+  retention_event_invalid:'Date de l’événement invalide.', retention_event_future:'L’événement doit avoir eu lieu : la date ne peut pas être postérieure à aujourd’hui.', retention_event_not_needed:'La conservation de ce document ne part pas d’un événement à saisir.',
+  retention_applied:'règle appliquée à {n} document(s)', retention_overrides_kept:'{n} dérogation(s) inchangée(s)', retention_held_kept:'{n} document(s) sous gel juridique inchangé(s)', retention_overrides_n:'dont {n} dérogation(s)',
+  ret_events:'Dates d’événement', ret_events_missing:'date(s) à saisir', ret_events_hint:'Documents dont la conservation part d’un événement que Codex ne connaît pas (fin de vie de l’actif, départ du salarié). Le propriétaire ou un gestionnaire documentaire saisit sa date sur la fiche ; la fin de conservation s’affiche alors dans les échéances. Rien n’est archivé ni détruit automatiquement.',
+  retention_event_reserved:'Réservé au propriétaire du document et aux gestionnaires documentaires', retention_event_set:'Date de l’événement', retention_type_not_applied:'non appliquée à ce document',
+  retention_event_title:'Date de l’événement déclencheur', retention_event_hint:'La conservation de ce document se compte à partir de cet événement. La date est journalisée ; elle ne fait ni archiver ni détruire le document.', retention_event_clear:'Effacer la date',
+  retention_class_edit:'Classe de conservation', retention_class_hint:'Une classe différente de la règle du type est une dérogation : elle est journalisée, et une modification ultérieure de la règle du type ne la change pas. Rien n’est archivé ni détruit.', retention_back_to_type:'Revenir à la règle du type',
+  retention_apply:'Documents de ce type', retention_apply_n:'Appliquer cette règle aux documents qui suivent la règle du type ({n} à mettre à jour)',
 };
 
 type Dict = Record<keyof typeof fr, string>;
@@ -717,6 +727,16 @@ const en: Dict = {
   department_inactive:'This department is inactive: it is no longer offered, except where it is already set.',
   site_inactive:'This site is inactive: it is no longer offered, except where it is already set.',
   dept_inactive_hint:'This department is inactive: it is no longer offered for a new document; its documents can still be read here.',
+  act_retention:'Retention class changed', act_retention_type:'Type rule applied', act_retention_event:'Retention event date', act_retention_applied:'Retention rule applied to documents',
+  retention_override:'Derogation', retention_follows_type:'Type rule', retention_override_label:'Derogation from the type rule', retention_type_rule:'Type rule', retention_docs:'Documents updated',
+  retention_event_at:'Date of the trigger event', until_event_missing:'Event date to enter', until_no_duration:'Duration to set',
+  retention_event_invalid:'Invalid event date.', retention_event_future:'The event must have happened: the date cannot be later than today.', retention_event_not_needed:'The retention of this document does not start from an event to enter.',
+  retention_applied:'rule applied to {n} document(s)', retention_overrides_kept:'{n} derogation(s) unchanged', retention_held_kept:'{n} document(s) under legal hold unchanged', retention_overrides_n:'incl. {n} derogation(s)',
+  ret_events:'Event dates', ret_events_missing:'date(s) to enter', ret_events_hint:'Documents whose retention starts from an event Codex does not know (end of life of the asset, departure of the employee). The owner or a records manager enters its date on the record; the end of retention then shows in the deadlines. Nothing is archived or destroyed automatically.',
+  retention_event_reserved:'Reserved to the document owner and records managers', retention_event_set:'Event date', retention_type_not_applied:'not applied to this document',
+  retention_event_title:'Date of the trigger event', retention_event_hint:'The retention of this document counts from this event. The date is journaled; it neither archives nor destroys the document.', retention_event_clear:'Clear the date',
+  retention_class_edit:'Retention class', retention_class_hint:'A class other than the type rule is a derogation: it is journaled, and a later change of the type rule leaves it unchanged. Nothing is archived or destroyed.', retention_back_to_type:'Back to the type rule',
+  retention_apply:'Documents of this type', retention_apply_n:'Apply this rule to the documents that follow the type rule ({n} to update)',
 };
 
 export const DICT: Record<Lang, Dict> = { fr, en };
