@@ -274,7 +274,7 @@ describe('Server Actions that write (CODEX_RATE_WRITES), per simulated user', ()
     // The exports of lib/actions.ts that write: all of them but the language and the simulated user, which only set
     // cookies. A new action must be added here, and so must its call to throttled().
     const WRITES = [
-      'createDocument', 'addWorkingVersion', 'updateMeta', 'setReaders', 'recordReview', 'requestValidation', 'decideStep',
+      'createDocument', 'addWorkingVersion', 'updateMeta', 'setReaders', 'setTemplateTypes', 'recordReview', 'requestValidation', 'decideStep',
       'recallValidation', 'delegateStep', 'addComment', 'requestChange', 'simulateVigieDecision', 'graftChange', 'addDocLink',
       'removeDocLink', 'archiveDocuments', 'holdDocuments', 'releaseHold', 'restoreArchived', 'saveSearch', 'deleteSavedSearch',
       'togglePermission', 'addOrgValue', 'updateOrgValue', 'deleteOrgValue', 'setDepartmentFeatured', 'addFunctionHolder', 'removeFunctionHolder', 'createType', 'updateType',

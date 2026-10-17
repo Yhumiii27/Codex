@@ -249,6 +249,19 @@ export const documentReaders = pgTable(
   (t) => [primaryKey({ columns: [t.docId, t.userId] })],
 );
 
+/**
+ * Types a template (type FRM, context QMS) is meant for: « Nouveau depuis un modèle » offers it first to a document of
+ * one of these types (lib/actions.ts setTemplateTypes). A type a template is linked to counts as in use in the register.
+ */
+export const templateTypes = pgTable(
+  'template_types',
+  {
+    docId: text('doc_id').notNull().references(docRef, { onUpdate: 'cascade', onDelete: 'cascade' }),
+    typeCode: text('type_code').notNull().references(() => docTypes.code, { onUpdate: 'cascade' }),
+  },
+  (t) => [primaryKey({ columns: [t.docId, t.typeCode] })],
+);
+
 /** Group of score() a searched value of the record weighs in (lib/search.ts SCORE_WEIGHT). */
 export type TermField = 'id' | 'title' | 'keyword' | 'ref' | 'other';
 

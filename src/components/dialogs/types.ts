@@ -13,8 +13,8 @@ export type TypeSettings = {
 
 /** Reference data the dialogs need, loaded once by the root layout (src/app/layout.tsx). */
 export type DialogData = {
-  /** Template documents in force (type FRM, context QMS). */
-  templates: { id: string; label: string; rev: string; owner: string }[];
+  /** Template documents in force (type FRM, context QMS); `types`: those it is meant for, offered first for them. */
+  templates: { id: string; label: string; rev: string; owner: string; types: string[] }[];
   /** Register of document types. Inactive ones are only offered to documents that already have them. */
   types: {
     code: string; label: string; family: string; familyLabel: string; origins: Origin[]; attachments: Attachment[];
@@ -50,7 +50,8 @@ export type DialogData = {
 export type MetaDoc = {
   id: string; title: string; typeCode: string; subtype: string | null; origin: Origin; attachment: Attachment;
   projectCode: string | null; programCode: string | null; department: string; site: string | null; ownerId: string;
-  authorText: string | null; conf: Conf; keywords: string[]; lang: string | null; reviewDueAt: string | null; expiresAt: string | null;
+  /** The author: a person, or a free text (external author); both null for a record migrated without one (shows the owner). */
+  authorId: string | null; authorText: string | null; conf: Conf; keywords: string[]; lang: string | null; reviewDueAt: string | null; expiresAt: string | null;
   sourceOrg: string | null; externalRef: string | null; receivedAt: string | null;
   projectPhase: string | null; workPackage: string | null; discipline: string | null;
   researchTheme: string | null; studyId: string | null; ipStatus: string | null; processOwnerId: string | null;
@@ -117,6 +118,8 @@ export type DialogSpec =
   | { kind: 'compare'; current: VersionLite; other: VersionLite }
   /** Named readers of a confidential or "très confidentiel" document; `version`: of the record shown (lib/concurrency.ts). */
   | { kind: 'readers'; docId: string; readers: string[]; version: number }
+  /** Types a template is meant for (lib/actions.ts setTemplateTypes); `version`: of the record shown. */
+  | { kind: 'templateTypes'; docId: string; title: string; types: string[]; version: number }
   /**
    * Records manager simulating Vigie's decision on a change request. `modifierId`: the author proposed by default;
    * `drafters`: the people who may draft the document, the only ones offered as author; `deferred`: that an acceptance

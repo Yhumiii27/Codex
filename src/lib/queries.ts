@@ -1061,7 +1061,7 @@ export function auditTargetL(ctx: Ctx, kind: AuditTargetKind | null, id: string 
 /** Labels of the fields a journal change names; `granted` and `active` have none (the target, or the value, says it). */
 const CHANGE_LABEL: Record<string, TKey> = {
   title: 'title_label', typeCode: 'type', subtype: 'subtype', origin: 'origin', attachment: 'attachment', projectCode: 'project', programCode: 'program',
-  department: 'department', site: 'site', ownerId: 'owner', authorText: 'author_text', conf: 'conf', keywords: 'keywords', lang: 'language',
+  department: 'department', site: 'site', ownerId: 'owner', authorId: 'author_label', authorText: 'author_text', templateTypes: 'template_types', conf: 'conf', keywords: 'keywords', lang: 'language',
   reviewDueAt: 'review_due_at', expiresAt: 'expires_at', sourceOrg: 'source_org', externalRef: 'external_ref', receivedAt: 'received_at',
   projectPhase: 'project_phase', workPackage: 'work_package', discipline: 'discipline', researchTheme: 'research_theme', studyId: 'study_id',
   ipStatus: 'ip_status', processOwnerId: 'process_owner', retention: 'retention', circuit: 'circuit', confAllowed: 'conf_allowed', confDefault: 'conf_default',
@@ -1084,7 +1084,7 @@ function changeValueL(ctx: Ctx, field: string, v: AuditValue | undefined): strin
   const key = (prefix: string) => t[`${prefix}${v}` as TKey] ?? v;
   switch (field) {
     case 'title': return ctx.lang === 'fr' ? `« ${v} »` : `“${v}”`;
-    case 'ownerId': case 'processOwnerId': case 'holder': case 'managerId': return ctx.userName(v);
+    case 'ownerId': case 'authorId': case 'processOwnerId': case 'holder': case 'managerId': return ctx.userName(v);
     case 'conf': case 'confAllowed': case 'confDefault': return key('conf_');
     case 'origin': case 'origins': return key('or_');
     case 'attachment': case 'attachments': return key('att_');
@@ -1428,9 +1428,10 @@ export type TypeView = ReturnType<typeof typeView>;
 export async function registryUsage(tx?: Tx) {
   const db = tx ?? (await getDb());
   const count = sql<number>`count(*)::int`;
-  const [byType, expected, byFamily, typesByFamily, holders, steps, byProgram, programHolders, circuits] = await Promise.all([
+  const [byType, expected, templated, byFamily, typesByFamily, holders, steps, byProgram, programHolders, circuits] = await Promise.all([
     db.select({ k: s.documents.typeCode, n: count }).from(s.documents).groupBy(s.documents.typeCode),
     db.select({ k: s.projectExpected.typeCode, n: count }).from(s.projectExpected).where(isNotNull(s.projectExpected.typeCode)).groupBy(s.projectExpected.typeCode),
+    db.select({ k: s.templateTypes.typeCode, n: count }).from(s.templateTypes).groupBy(s.templateTypes.typeCode),
     db.select({ k: s.documents.family, n: count }).from(s.documents).groupBy(s.documents.family),
     db.select({ k: s.docTypes.family, n: count }).from(s.docTypes).groupBy(s.docTypes.family),
     db.select({ k: s.functionHolders.functionKey, n: count }).from(s.functionHolders).groupBy(s.functionHolders.functionKey),
@@ -1448,7 +1449,7 @@ export async function registryUsage(tx?: Tx) {
   const inCircuits = circuits.flatMap((c) => [...new Set(c.circuit)].map((k) => ({ k, n: 1 })));
   const builtIn = (keys: readonly string[]) => keys.map((k) => ({ k, n: 1 }));
   return {
-    types: tally(byType, expected, builtIn(BUILT_IN_TYPES)),
+    types: tally(byType, expected, templated, builtIn(BUILT_IN_TYPES)),
     families: tally(byFamily, typesByFamily),
     functions: tally(inCircuits, holders, steps, builtIn(BUILT_IN_FUNCTIONS)),
     programs: tally(byProgram, programHolders),
@@ -1569,9 +1570,25 @@ export async function departmentPage(ctx: Ctx, code: string) {
   };
 }
 
-/** Templates available to "Nouveau depuis un modèle": template-type documents in force, with their file (same rule as createDocument). */
+/** Types each of these templates is meant for (lib/actions.ts setTemplateTypes), in register order. */
+export async function templateTypesOf(ctx: Ctx, docIds: string[]): Promise<Map<string, string[]>> {
+  const m = new Map<string, string[]>();
+  if (!docIds.length) return m;
+  const db = await getDb();
+  const rows = await db.select().from(s.templateTypes).where(anyOf(s.templateTypes.docId, docIds));
+  const order = new Map(ctx.types.map((x, i) => [x.code, i]));
+  for (const r of rows) m.set(r.docId, [...(m.get(r.docId) ?? []), r.typeCode]);
+  for (const codes of m.values()) codes.sort((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0));
+  return m;
+}
+
+/**
+ * Templates available to "Nouveau depuis un modèle": template-type documents in force, with their file (same rule as
+ * createDocument), and the types each is meant for (`types`, empty when none is set).
+ */
 export async function listTemplates(ctx: Ctx) {
   const ix = await getAccessIndex();
   const docs = (await listDocs(ctx)).filter((d) => isUsableTemplate(ctx, d, ix));
-  return docs.map((d) => ({ id: d.id, label: d.title, rev: d.revInForce!, owner: d.owner, department: d.department }));
+  const types = await templateTypesOf(ctx, docs.map((d) => d.id));
+  return docs.map((d) => ({ id: d.id, label: d.title, rev: d.revInForce!, owner: d.owner, ownerId: d.ownerId, typeCode: d.typeCode, department: d.department, state: d.state, legalHold: d.legalHold, version: d.version, types: types.get(d.id) ?? [] }));
 }

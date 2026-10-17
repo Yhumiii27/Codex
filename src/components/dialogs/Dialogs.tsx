@@ -8,7 +8,7 @@ import type { Attachment, Conf, LinkRel, Origin } from '@/db/schema';
 import {
   addDocLink, addFunctionHolder, addOrgValue, addWorkingVersion, createDocument, createFamily, createFunction, createProgram, createType, decideStep,
   delegateStep, deleteFamily, deleteFunction, deleteOrgValue, deleteProgram, deleteType, graftChange, recallValidation, recordReview, requestChange, requestValidation,
-  saveSearch, setDepartmentFeatured, setReaders, simulateUser, simulateVigieDecision, updateFamily, updateFunction, updateMeta, updateOrgValue, updateProgram, updateType,
+  saveSearch, setDepartmentFeatured, setReaders, setTemplateTypes, simulateUser, simulateVigieDecision, updateFamily, updateFunction, updateMeta, updateOrgValue, updateProgram, updateType,
 } from '@/lib/actions';
 import { contextOf, idMatches, seqWidth, TEMPLATE_TYPE } from '@/lib/codes';
 import { DEFAULT_FEATURED, FEATURABLE, MAX_FEATURED } from '@/lib/departments';
@@ -35,6 +35,7 @@ export function Dialogs({ spec }: { spec: DialogSpec }) {
     case 'reject': case 'recall': return <CloseWorkflow spec={spec} />;
     case 'compare': return <Compare current={spec.current} other={spec.other} />;
     case 'readers': return <Readers docId={spec.docId} readers={spec.readers} version={spec.version} />;
+    case 'templateTypes': return <TemplateTypes spec={spec} />;
     case 'vigie': return <VigieDecision requestId={spec.requestId} docTitle={spec.docTitle} change={spec.change} modifierId={spec.modifierId} drafters={spec.drafters} deferred={spec.deferred} />;
     case 'graft': return <Graft spec={spec} />;
     case 'review': return <RecordReview spec={spec} />;
@@ -175,7 +176,7 @@ function DocFields({ types, st, set, doc, preset, withOwner, locked, lockType, f
   set: (patch: Partial<Classif>) => void;
   doc?: MetaDoc;
   preset?: { projectCode?: string; title?: string };
-  /** Edit dialog: owner and free-text author are editable there. */
+  /** Edit dialog: the owner is editable there. */
   withOwner?: boolean;
   /** Type and context are frozen (an approval workflow resolved its approvers from them); `locked` says why. */
   locked?: string;
@@ -271,15 +272,11 @@ function DocFields({ types, st, set, doc, preset, withOwner, locked, lockType, f
       </Field>
 
       {withOwner && (
-        <>
-          <Field label={t.owner}>
-            {(id) => <Select id={id} name="ownerId" defaultValue={doc?.ownerId ?? data.currentUserId} options={users} required />}
-          </Field>
-          <Field label={t.author_text} hint={t.author_text_hint}>
-            {(id) => <input id={id} className="input" name="authorText" defaultValue={doc?.authorText ?? ''} />}
-          </Field>
-        </>
+        <Field label={t.owner}>
+          {(id) => <Select id={id} name="ownerId" defaultValue={doc?.ownerId ?? data.currentUserId} options={users} required />}
+        </Field>
       )}
+      <AuthorFields doc={doc} errorOf={errorOf} />
 
       {st.origin === 'externe' && (
         <>
@@ -293,11 +290,6 @@ function DocFields({ types, st, set, doc, preset, withOwner, locked, lockType, f
           <Field label={t.received_at} error={errorOf('receivedAt')}>
             {(id) => <DateInput id={id} name="receivedAt" value={doc?.receivedAt} error={errorOf('receivedAt')} />}
           </Field>
-          {!withOwner && (
-            <Field label={t.author_text} hint={t.author_text_hint}>
-              {(id) => <input id={id} className="input" name="authorText" />}
-            </Field>
-          )}
         </>
       )}
       {st.attachment === 'project' && (
@@ -341,6 +333,39 @@ function DocFields({ types, st, set, doc, preset, withOwner, locked, lockType, f
   );
 }
 
+/** Value of the author list that stands for an external author, written as free text. */
+const EXTERNAL_AUTHOR = '__external';
+
+/**
+ * The author of the document (MET-10, lib/actions.ts readAuthor): a person of the group, by default the person creating
+ * it, or an external author written as free text. A record migrated without author shows its owner: that person is
+ * proposed.
+ */
+function AuthorFields({ doc, errorOf }: { doc?: MetaDoc; errorOf: (name: string) => string | null }) {
+  const { t, data } = useApp();
+  const [kind, setKind] = useState<'person' | 'text'>(doc?.authorText ? 'text' : 'person');
+  const [person, setPerson] = useState(doc ? doc.authorId ?? (doc.authorText ? '' : doc.ownerId) : data.currentUserId);
+  const options = [...userOptions(data), { key: EXTERNAL_AUTHOR, label: t.author_external }];
+  return (
+    <>
+      <input type="hidden" name="authorKind" value={kind} />
+      <Field label={t.author_label} hint={doc ? undefined : t.author_hint} error={errorOf('authorId')}>
+        {(id) => (
+          <Select
+            id={id} name="authorId" value={kind === 'text' ? EXTERNAL_AUTHOR : person} required empty={kind === 'person' && !person ? '—' : undefined}
+            onChange={(v) => { if (v === EXTERNAL_AUTHOR) setKind('text'); else { setKind('person'); setPerson(v); } }} options={options}
+          />
+        )}
+      </Field>
+      {kind === 'text' && (
+        <Field label={t.author_text} hint={t.author_text_hint} error={errorOf('authorText')}>
+          {(id) => <input id={id} className="input" name="authorText" defaultValue={doc?.authorText ?? ''} maxLength={200} required />}
+        </Field>
+      )}
+    </>
+  );
+}
+
 // ── New document ────────────────────────────────────────────────────────
 
 type NewPreset = Extract<DialogSpec, { kind: 'new' }>['preset'];
@@ -353,7 +378,6 @@ function NewDocument({ preset }: { preset: NewPreset }) {
   const types = data.types.filter((x) => x.active);
   // Explicit mode first; otherwise a preset (piece expected by Keystone, new template…) usually comes with its own file.
   const [mode, setMode] = useState<Mode>(preset?.mode ?? (preset?.templateId || (!preset?.projectCode && !preset?.typeCode && data.templates.length) ? 'template' : 'file'));
-  const [tplId, setTplId] = useState(preset?.templateId ?? data.templates[0]?.id ?? '');
   const [st, setSt] = useState<Classif>(() => {
     const presetType = types.find((x) => x.code === preset?.typeCode);
     const s = normalize(types, {
@@ -367,10 +391,43 @@ function NewDocument({ preset }: { preset: NewPreset }) {
     const type = types.find((x) => x.code === s.typeCode);
     return type ? { ...s, conf: type.confDefault } : s;
   });
-  const set = (patch: Partial<Classif>) => setSt((prev) => applyPatch(types, prev, patch, lockProject));
+  // Whether the user chose the type, or the template, themselves: until then, each follows the other (below).
+  const [typeTouched, setTypeTouched] = useState(!!preset?.typeCode);
+  const [tplTouched, setTplTouched] = useState(!!preset?.templateId);
+  const [tplChosen, setTplChosen] = useState(preset?.templateId ?? data.templates[0]?.id ?? '');
+  const set = (patch: Partial<Classif>) => {
+    if (['origin', 'attachment', 'family', 'typeCode'].some((k) => k in patch)) setTypeTouched(true);
+    setSt((prev) => applyPatch(types, prev, patch, lockProject));
+  };
   const { prefix, width } = idParts(st);
   // A piece Keystone expects is filled by a document of its type only (createDocument refuses any other).
   const lockType = preset?.expectedId != null && !!preset.typeCode && st.typeCode === preset.typeCode;
+  // Templates meant for the type chosen come first; the others stay offered below them (lib/actions.ts setTemplateTypes).
+  const forType = data.templates.filter((x) => x.types.includes(st.typeCode));
+  const others = data.templates.filter((x) => !x.types.includes(st.typeCode));
+  // Until the user picks a template, the first one meant for the type is proposed.
+  const tplId = tplTouched ? tplChosen : forType[0]?.id ?? tplChosen;
+  const pickTemplate = (x: DialogData['templates'][number]) => {
+    setTplChosen(x.id);
+    setTplTouched(true);
+    // Until the user picks a type, a template meant for other types brings the first of them it may take here.
+    if (typeTouched || lockType || x.types.includes(st.typeCode)) return;
+    const target = x.types.map((c) => types.find((y) => y.code === c)).find((y) => y && (!lockProject || y.attachments.includes('project')));
+    if (!target) return;
+    setSt((prev) => applyPatch(types, prev, {
+      origin: target.origins.includes(prev.origin) ? prev.origin : target.origins[0],
+      attachment: target.attachments.includes(prev.attachment) ? prev.attachment : target.attachments[0],
+      family: target.family, typeCode: target.code,
+    }, lockProject));
+  };
+  const tplRow = (x: DialogData['templates'][number], other: boolean) => (
+    <label key={x.id} className="radio hover-tint" style={{ padding: '7px 8px', borderRadius: 'var(--radius-md)', gap: 10 }}>
+      <input type="radio" name="tpl" checked={tplId === x.id} onChange={() => pickTemplate(x)} /><span className="dot" />
+      <span className="ellipsis" style={{ flex: 1, fontSize: 13 }}>{x.label}</span>
+      <span className="text-muted nowrap" style={{ fontSize: 11 }}>{x.id} · {t.revision} {x.rev} · {x.owner}{other && x.types.length > 0 ? ` · ${t.tpl_other_types} ${x.types.join(', ')}` : ''}</span>
+    </label>
+  );
+  const tplHead = (label: string) => <div className="text-muted" style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '.06em', padding: '6px 8px 2px' }}>{label}</div>;
 
   return (
     <Modal title={t.new_doc} width={680} actions={<Actions pending={pending} label={t.create_doc} onCancel={close} form="new-form" disabled={!st.typeCode || (mode === 'template' && !tplId)} />}>
@@ -401,14 +458,11 @@ function NewDocument({ preset }: { preset: NewPreset }) {
           <Field label={t.choose_tpl} radio>
             <input type="hidden" name="templateId" value={tplId} />
             {data.templates.length === 0 && <div className="text-muted" style={{ fontSize: 12.5 }}>{t.tpl_none}</div>}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 186, overflow: 'auto' }}>
-              {data.templates.map((x) => (
-                <label key={x.id} className="radio hover-tint" style={{ padding: '7px 8px', borderRadius: 'var(--radius-md)', gap: 10 }}>
-                  <input type="radio" name="tpl" checked={tplId === x.id} onChange={() => setTplId(x.id)} /><span className="dot" />
-                  <span className="ellipsis" style={{ flex: 1, fontSize: 13 }}>{x.label}</span>
-                  <span className="text-muted nowrap" style={{ fontSize: 11 }}>{x.id} · {t.revision} {x.rev} · {x.owner}</span>
-                </label>
-              ))}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 220, overflow: 'auto' }}>
+              {forType.length > 0 && tplHead(`${t.tpl_for_type} ${st.typeCode}`)}
+              {forType.map((x) => tplRow(x, false))}
+              {forType.length > 0 && others.length > 0 && tplHead(t.tpl_others)}
+              {others.map((x) => tplRow(x, true))}
             </div>
           </Field>
         )}
@@ -715,6 +769,50 @@ function Readers({ docId, readers, version }: { docId: string; readers: string[]
             <span className="ellipsis" style={{ flex: 1 }}>{u.name}</span>
             {u.department && <span className="text-muted sub">{u.department}</span>}
           </label>
+        ))}
+      </div>
+      <ErrorLine error={error} onReload={reload} />
+    </Modal>
+  );
+}
+
+/**
+ * Types a template is meant for (lib/actions.ts setTemplateTypes), by family: active types, and an inactive one only
+ * where the template already has it.
+ */
+function TemplateTypes({ spec }: { spec: Extract<DialogSpec, { kind: 'templateTypes' }> }) {
+  const { t, data, close } = useApp();
+  const { pending, error, run, reload } = useSubmit();
+  const [sel, setSel] = useState(() => new Set(spec.types));
+  const toggle = (code: string) => setSel((prev) => { const next = new Set(prev); if (next.has(code)) next.delete(code); else next.add(code); return next; });
+  const offeredTypes = data.types.filter((x) => x.active || spec.types.includes(x.code));
+  const families = data.families.filter((f) => offeredTypes.some((x) => x.family === f.key));
+  return (
+    <Modal
+      title={`${t.template_types_edit} · ${spec.docId}`}
+      width={640}
+      actions={<>
+        <span className="text-muted" style={{ fontSize: 12, marginRight: 'auto', alignSelf: 'center' }}>{sel.size} {t.selected}</span>
+        <button type="button" className="btn btn-secondary" onClick={close}>{t.cancel}</button>
+        <button type="button" className="btn btn-primary" disabled={pending} onClick={() => run(() => setTemplateTypes(spec.docId, [...sel], spec.version))}>{t.save}</button>
+      </>}
+    >
+      <p className="text-muted" style={{ margin: 0, fontSize: 12.5 }}>{spec.title} — {t.template_types_hint}</p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 380, overflow: 'auto' }}>
+        {families.map((f) => (
+          <div key={f.key} role="group" aria-label={f.label}>
+            <div className="text-muted" style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '.06em', padding: '4px 6px' }}>{f.label}</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '2px 12px' }}>
+              {offeredTypes.filter((x) => x.family === f.key).map((x) => (
+                <label key={x.code} className="hover-tint" style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12.5, padding: '5px 6px', borderRadius: 'var(--radius-md)', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={sel.has(x.code)} onChange={() => toggle(x.code)} style={{ margin: 0 }} />
+                  <span className="tabnum" style={{ flex: 'none' }}>{x.code}</span>
+                  <span className="ellipsis" style={{ flex: 1 }}>{x.label}</span>
+                  {!x.active && <span className="text-muted sub">{t.inactive}</span>}
+                </label>
+              ))}
+            </div>
+          </div>
         ))}
       </div>
       <ErrorLine error={error} onReload={reload} />

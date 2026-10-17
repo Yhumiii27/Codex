@@ -352,6 +352,15 @@ export function mayRecordReview(ctx: Viewer, d: { ownerId: string; processOwnerI
 }
 
 /**
+ * May the user set the types a template is meant for (lib/actions.ts setTemplateTypes)? Only on a template (type FRM),
+ * by its owner or a records manager, with the edit permission. Access to the document and its lock are checked apart.
+ */
+export function mayLinkTemplate(ctx: Viewer, d: { ownerId: string; typeCode: string }): boolean {
+  if (d.typeCode !== TEMPLATE_TYPE || !ctx.can('edit')) return false;
+  return ctx.seesAll || d.ownerId === ctx.user.id;
+}
+
+/**
  * May the user add or remove the links of this document (lib/actions.ts addDocLink, removeDocLink)? Its owner and
  * records managers, with the edit permission; a link needs it on both its documents, since it shows on both records.
  * Access to both and their legal hold are checked apart; an obsolete or archived document keeps receiving links, which

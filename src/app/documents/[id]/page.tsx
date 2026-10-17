@@ -8,15 +8,15 @@ import { Seg } from '@/components/ui/Seg';
 import { VStepper } from '@/components/ui/Stepper';
 import { getDb } from '@/db';
 import { ActionButton, DialogButton, ShareButton } from '@/components/ui/client';
-import { canRead, mayEditLinks, mayGetApprovalRecord, mayRecordReview, mayWorkOnDraft, openRevisionView, readerMaySeeRevision, readerMaySeeVersion, readersApply } from '@/lib/access';
+import { canRead, mayEditLinks, mayGetApprovalRecord, mayLinkTemplate, mayRecordReview, mayWorkOnDraft, openRevisionView, readerMaySeeRevision, readerMaySeeVersion, readersApply } from '@/lib/access';
 import { releaseHold, removeDocLink } from '@/lib/actions';
-import { isFinalStatus } from '@/lib/codes';
+import { isFinalStatus, TEMPLATE_TYPE } from '@/lib/codes';
 import { getCtx } from '@/lib/context';
 import { addDays, fmtDate, todayIso } from '@/lib/format';
 import { ECR_TAGCLS } from '@/lib/i18n';
 import { getProject } from '@/lib/keystone';
 import { CONSULT_WINDOW_MINUTES, decisionWait, defaultModifier, draftersOf } from '@/lib/lifecycle';
-import { decisionWaitL, getDoc, listAudit, METADATA_ACTIONS, listChangeRequests, listDocLinks, listDocs, listRevisions, listWorkflows, stateNotice, typeView, type RevisionView } from '@/lib/queries';
+import { decisionWaitL, getDoc, listAudit, templateTypesOf, METADATA_ACTIONS, listChangeRequests, listDocLinks, listDocs, listRevisions, listWorkflows, stateNotice, typeView, type RevisionView } from '@/lib/queries';
 import { normalizeMime } from '@/lib/storage';
 import { vigieSimulated, vigieUrl } from '@/lib/vigie';
 import { Preview, RecordConsultation, RevisionsTab, type RevItem } from './DocClient';
@@ -92,6 +92,8 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
     listDocLinks(ctx, doc.id),
     listDocs(ctx),
   ]);
+  // Types a template is meant for (« Nouveau depuis un modèle »).
+  const tplTypes = doc.typeCode === TEMPLATE_TYPE ? (await templateTypesOf(ctx, [doc.id])).get(doc.id) ?? [] : null;
 
   const tabs = TABS.filter((k) => k !== 'project' || project);
   const asked = sp.tab === 'affaire' ? 'project' : sp.tab;
@@ -242,7 +244,7 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
   const meta: MetaDoc = {
     id: doc.id, title: doc.title, typeCode: doc.typeCode, subtype: doc.subtype, origin: doc.origin, attachment: doc.attachment,
     projectCode: doc.projectCode, programCode: doc.programCode, department: doc.department, site: doc.site, ownerId: doc.ownerId,
-    authorText: doc.authorText, conf: doc.conf, keywords: doc.keywords, lang: doc.lang, reviewDueAt: doc.reviewDueAt, expiresAt: doc.expiresAt,
+    authorId: doc.authorId, authorText: doc.authorText, conf: doc.conf, keywords: doc.keywords, lang: doc.lang, reviewDueAt: doc.reviewDueAt, expiresAt: doc.expiresAt,
     sourceOrg: doc.sourceOrg, externalRef: doc.externalRef, receivedAt: doc.receivedAt,
     projectPhase: doc.projectPhase, workPackage: doc.workPackage, discipline: doc.discipline,
     researchTheme: doc.researchTheme, studyId: doc.studyId, ipStatus: doc.ipStatus, processOwnerId: doc.processOwnerId,
@@ -485,6 +487,16 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
                     <Dl rows={[[t.program, doc.contextL], [t.research_theme, doc.researchTheme ?? '—'], [t.study_id, doc.studyId ?? '—'], [t.ip_status, doc.ipStatus ?? '—']]} />
                   </section>
                 )}
+                {tplTypes && (
+                  <section style={{ marginTop: 18 }} aria-labelledby="doc-template-types">
+                    <div className="sec-head" style={{ marginBottom: 8 }}><h6 className="sec-title" id="doc-template-types">{t.template_types}</h6><span className="text-muted tabnum" style={{ fontSize: 11 }}>{tplTypes.length}</span></div>
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', fontSize: 12.5 }}>
+                      {tplTypes.length
+                        ? tplTypes.map((c) => <span key={c} className="tag tag-neutral" style={{ fontSize: 10.5, padding: '2px 8px' }} title={ctx.label('type', c)}>{c} · {ctx.label('type', c)}</span>)
+                        : <span className="text-muted">{t.template_types_none}</span>}
+                    </div>
+                  </section>
+                )}
                 {showReaders && (
                   <section style={{ marginTop: 18 }}>
                     <div className="sec-head" style={{ marginBottom: 8 }}><h6 className="sec-title">{t.readers}</h6><span className="text-muted tabnum" style={{ fontSize: 11 }}>{readerIds.length}</span></div>
@@ -522,6 +534,9 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
                   <DialogButton spec={{ kind: 'meta', doc: meta }} icon="pen" deniedTitle={lock ?? deny('edit') ?? (isOwner ? undefined : `${t.not_allowed} : ${t.owner}`)}>{t.edit_meta}</DialogButton>
                   {reviewBtn('btn btn-secondary')}
                   {showReaders && isOwner && <DialogButton spec={{ kind: 'readers', docId: doc.id, readers: readerIds, version: doc.version }} icon="lock" deniedTitle={lock ?? deny('edit')}>{t.readers}</DialogButton>}
+                  {tplTypes && isOwner && (
+                    <DialogButton spec={{ kind: 'templateTypes', docId: doc.id, title: doc.title, types: tplTypes, version: doc.version }} icon="pen" deniedTitle={lock ?? (mayLinkTemplate(ctx, doc) ? undefined : deny('edit'))}>{t.template_types}</DialogButton>
+                  )}
                   <DialogButton
                     spec={{ kind: 'link', docId: doc.id, title: doc.title, withdrawn: !!doc.obsoleteAt, active: doc.state === 'active', candidates: linkable }} icon="plus"
                     deniedTitle={deny('edit') ?? (linksEditable ? undefined : t.link_reserved) ?? linkHold}

@@ -4,13 +4,14 @@ import { Forbidden } from '@/components/ui/Forbidden';
 import { Icon } from '@/components/ui/Icon';
 import { Seg } from '@/components/ui/Seg';
 import { ActionButton, DialogButton } from '@/components/ui/client';
-import { mayBackUp, mayCheckIntegrity, mayCleanStorage, mayExportAll } from '@/lib/access';
+import { mayBackUp, mayCheckIntegrity, mayCleanStorage, mayExportAll, mayLinkTemplate } from '@/lib/access';
 import { backUpData, checkFileIntegrity, purgeOrphanFiles, removeFunctionHolder, togglePermission } from '@/lib/actions';
 import { antivirusStatus } from '@/lib/antivirus';
 import { backupList, backupSettings } from '@/lib/backup';
 import { getCtx, type Ctx } from '@/lib/context';
 import { featuredOf } from '@/lib/departments';
 import { fileRules, fmtMax } from '@/lib/filetypes';
+import { lockOf } from '@/lib/lifecycle';
 import { ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLE_LABEL, MATRIX_ROLES, PERMS, SIMULATED_MATRIX_ROLES, type TKey } from '@/lib/i18n';
 import { AUDIT_ID_MAX, auditPage, getMatrix, integrityL, latestIntegrityCheck, listFunctionHolders, listTemplates, orgUsage, registryUsage, typeView, type AuditFilter, type RegistryUsage } from '@/lib/queries';
 import { fmtDateTime, fmtSize, parisStamp, parseIsoDay } from '@/lib/format';
@@ -408,16 +409,20 @@ async function Organisation({ ctx }: { ctx: Ctx }) {
   );
 }
 
-/** Templates (FRM-QMS-…) in force: the source of "Nouveau depuis un modèle". */
+/**
+ * Templates (FRM-QMS-…) in force: the source of "Nouveau depuis un modèle", with the types each is meant for, which
+ * its owner or a records manager sets here or on its record (lib/actions.ts setTemplateTypes).
+ */
 async function Templates({ ctx }: { ctx: Ctx }) {
   const { t } = ctx;
   const tpls = await listTemplates(ctx);
   return (
     <table className="table" style={{ fontSize: 13 }}>
-      <thead><tr><th>{t.ref}</th><th>{t.title_label}</th><th>{t.revision}</th><th>{t.owner}</th><th>{t.department}</th><th /></tr></thead>
+      <thead><tr><th>{t.ref}</th><th>{t.title_label}</th><th>{t.revision}</th><th>{t.owner}</th><th>{t.department}</th><th>{t.template_types}</th><th /></tr></thead>
       <tbody>
         {tpls.map((x) => {
           const href = `/documents/${encodeURIComponent(x.id)}`;
+          const lock = lockOf(x);
           return (
             <tr key={x.id}>
               <td className="nowrap"><Link href={href} className="link-plain">{x.id}</Link></td>
@@ -425,11 +430,17 @@ async function Templates({ ctx }: { ctx: Ctx }) {
               <td className="text-muted">{x.rev}</td>
               <td>{x.owner}</td>
               <td className="text-muted">{ctx.label('department', x.department)}</td>
-              <td style={{ textAlign: 'right' }}><Link href={href} className="btn btn-ghost" style={{ fontSize: 12 }}>{t.open_record}</Link></td>
+              <td>{x.types.length ? <span title={x.types.map((c) => `${c} · ${ctx.label('type', c)}`).join('\n')}>{x.types.join(', ')}</span> : <span className="text-muted">—</span>}</td>
+              <td className="nowrap" style={{ textAlign: 'right' }}>
+                {mayLinkTemplate(ctx, x) && (
+                  <DialogButton spec={{ kind: 'templateTypes', docId: x.id, title: x.label, types: x.types, version: x.version }} className="btn btn-ghost" style={{ fontSize: 12 }} deniedTitle={lock ? t[lock] : undefined}>{t.template_types}</DialogButton>
+                )}
+                <Link href={href} className="btn btn-ghost" style={{ fontSize: 12 }}>{t.open_record}</Link>
+              </td>
             </tr>
           );
         })}
-        {tpls.length === 0 && <tr><td colSpan={6} className="text-muted" style={{ padding: '16px 8px' }}>{t.no_results}</td></tr>}
+        {tpls.length === 0 && <tr><td colSpan={7} className="text-muted" style={{ padding: '16px 8px' }}>{t.no_results}</td></tr>}
       </tbody>
     </table>
   );

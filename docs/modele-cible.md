@@ -10,7 +10,7 @@ d'un document obsolète ou archivé, liens « remplace » / « remplacé par » 
 désactivation des départements et des sites (§2), partage des recherches enregistrées et pages par département (§5), longueur du
 motif de rejet, droit de rappeler une demande de validation et fiche de visa (§6), lecture stricte de la cohérence des dates,
 indicateurs d'expiration et de revue, « Revue effectuée » et périodicité de revue par type, détection des
-modifications simultanées (§4, §7).
+modifications simultanées, auteur désigné et types cibles des modèles (§4, §7).
 Elles sont listées dans `docs/decisions.md` (« Choix de l'assistant non validés explicitement », question O-09), qui
 prévaut en cas de doute.
 
@@ -230,6 +230,16 @@ confirmé* (`docs/decisions.md`).
 Tronc commun : ID, Titre, Origine, Rattachement, Famille, Type, Sous-type, Propriétaire, Auteur (personne ou texte),
 Statut, Département, Site, Confidentialité, Mots-clés, Révision, dates d'émission / d'effet / de révision /
 d'expiration, Langue, Classe de conservation.
+
+**Auteur.** Une personne du groupe (par défaut celle qui crée le document) ou un texte libre pour un auteur externe,
+jamais les deux, choisi à la création et dans « Modifier les métadonnées » ; un changement est journalisé. C'est une
+métadonnée : elle ne fait pas entrer la personne dans le cercle de rédaction (§5). Un document repris sans auteur
+affiche son propriétaire. *Proposé, non confirmé.*
+
+**Types cibles d'un modèle.** Un modèle (FRM, contexte QMS) peut être rattaché à un ou plusieurs types de document, par
+son propriétaire ou un gestionnaire documentaire (fiche du modèle ou Administration › Modèles (QMS)), avec
+journalisation. « Nouveau depuis un modèle » propose d'abord les modèles du type choisi, puis les autres, qui restent
+utilisables pour tout type. Un type cible d'un modèle compte comme utilisé dans le registre. *Proposé, non confirmé.*
 
 Champs selon le contexte :
 - Externe : organisme source, référence externe, date de réception.

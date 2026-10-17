@@ -14,6 +14,8 @@ export type DemoDoc = {
   modified: string; expires?: string; reviewDue?: string;
   phase?: string; wp?: string; discipline?: string; theme?: string; study?: string; ip?: string;
   state?: 'obsolete' | 'archived'; stateAt?: string; hold?: boolean; readers?: string[];
+  /** For a template (FRM): the types it is meant for. */
+  templateFor?: string[];
 };
 
 const HLT = 'HLT-026';
@@ -64,10 +66,10 @@ export const DEMO_DOCS: DemoDoc[] = [
   { key: 'pro-levage', type: 'PRO', title: 'Levage et manutention sur chantier', dept: 'HSE', owner: 'cbardet', inForce: 'B', issued: '2024-05-06', modified: '2026-10-01', working: { status: 'draft', n: 2 }, kw: ['levage', 'grue', 'élingage'] },
   { type: 'RSQ', title: 'Analyse de risques — atelier de Lyon', dept: 'HSE', owner: 'oblanc', site: 'lyon', modified: '2026-10-05', working: { status: 'in_review', n: 1, done: 1 }, kw: ['DUERP', 'atelier'] },
   { type: 'PRO', title: 'Procédure de stockage — magasin du Havre (ancienne)', dept: 'HSE', owner: 'cbardet', site: 'le_havre', inForce: 'C', issued: '2019-04-11', modified: '2026-03-01', state: 'obsolete', stateAt: '2026-03-01' },
-  { key: 'frm-pv', type: 'FRM', title: 'Modèle — procès-verbal de réception de site', dept: 'QUA', owner: 'gcomte', inForce: 'B', issued: '2025-06-02', modified: '2026-06-02' },
-  { type: 'FRM', title: 'Modèle — procédure', dept: 'QUA', owner: 'gcomte', inForce: 'A', issued: '2025-01-10', modified: '2025-01-10' },
-  { type: 'FRM', title: 'Modèle — rapport d’incident', dept: 'HSE', owner: 'cbardet', inForce: 'C', issued: '2024-01-15', modified: '2026-01-15' },
-  { key: 'frm-min', type: 'FRM', title: 'Modèle — compte rendu de réunion', dept: 'QUA', owner: 'gcomte', inForce: 'A', issued: '2025-02-10', modified: '2025-02-10' },
+  { key: 'frm-pv', type: 'FRM', title: 'Modèle — procès-verbal de réception de site', dept: 'QUA', owner: 'gcomte', inForce: 'B', issued: '2025-06-02', modified: '2026-06-02', templateFor: ['PV'] },
+  { type: 'FRM', title: 'Modèle — procédure', dept: 'QUA', owner: 'gcomte', inForce: 'A', issued: '2025-01-10', modified: '2025-01-10', templateFor: ['PRO', 'MOP'] },
+  { type: 'FRM', title: 'Modèle — rapport d’incident', dept: 'HSE', owner: 'cbardet', inForce: 'C', issued: '2024-01-15', modified: '2026-01-15', templateFor: ['RSQ'] },
+  { key: 'frm-min', type: 'FRM', title: 'Modèle — compte rendu de réunion', dept: 'QUA', owner: 'gcomte', inForce: 'A', issued: '2025-02-10', modified: '2025-02-10', templateFor: ['MIN'] },
   { type: 'AUD', title: 'Audit interne — processus ingénierie', dept: 'QUA', owner: 'gcomte', inForce: 'A', issued: '2026-05-20', modified: '2026-05-20' },
   { type: 'AUD', title: 'Audit interne — atelier de Lyon (2015)', dept: 'QUA', owner: 'gcomte', site: 'lyon', inForce: 'A', issued: '2015-11-12', modified: '2015-11-12', state: 'archived', stateAt: '2018-01-10' },
   { type: 'POL', title: 'Politique qualité, sécurité et environnement', dept: 'DIR', owner: 'hcosta', inForce: 'C', issued: '2021-01-15', modified: '2026-01-15', kw: ['QSE', 'politique'] },

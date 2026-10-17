@@ -29,7 +29,7 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
   const seen = new Set(visible.map((d) => d.id));
   const recent = audit.filter((a) => a.currentId && seen.has(a.currentId)).slice(0, 5);
   const data: DialogData = {
-    templates: templates.map((x) => ({ id: x.id, label: x.label, rev: x.rev, owner: x.owner })),
+    templates: templates.map((x) => ({ id: x.id, label: x.label, rev: x.rev, owner: x.owner, types: x.types })),
     types: ctx.types.map((x) => {
       const v = typeView(ctx, x);
       return {

@@ -1,5 +1,5 @@
 {
-  "id": "820c01eb-c179-4b51-ac41-d4b0147ebf0f",
+  "id": "ce1938c5-bdbb-4699-9ba9-6ccb0b6972be",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -2020,6 +2020,66 @@
       "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.template_types": {
+      "name": "template_types",
+      "schema": "",
+      "columns": {
+        "doc_id": {
+          "name": "doc_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type_code": {
+          "name": "type_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "template_types_doc_id_documents_id_fk": {
+          "name": "template_types_doc_id_documents_id_fk",
+          "tableFrom": "template_types",
+          "tableTo": "documents",
+          "columnsFrom": [
+            "doc_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        },
+        "template_types_type_code_doc_types_code_fk": {
+          "name": "template_types_type_code_doc_types_code_fk",
+          "tableFrom": "template_types",
+          "tableTo": "doc_types",
+          "columnsFrom": [
+            "type_code"
+          ],
+          "columnsTo": [
+            "code"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {
+        "template_types_doc_id_type_code_pk": {
+          "name": "template_types_doc_id_type_code_pk",
+          "columns": [
+            "doc_id",
+            "type_code"
+          ]
+        }
+      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},

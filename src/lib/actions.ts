@@ -6,8 +6,8 @@ import { cookies } from 'next/headers';
 import { refresh } from 'next/cache';
 import { getDb, schema as s } from '@/db';
 import type { Attachment, AuditChange, AuditValue, Conf, Origin, SearchScope } from '@/db/schema';
-import { buildAccessIndex, canRead, followsCircuit, getAccessIndex, inDraftingCircle, isUsableTemplate, mayBackUp, mayCheckIntegrity, mayCleanStorage, mayDeleteSearch, mayEditLinks, mayRecall, mayRecordReview, maySaveSearch, mayWorkOnDraft, readerMaySeeRevision, readersApply, seesSavedSearch } from './access';
-import { idMatches, nextDocId, nextWorkflowId } from './codification';
+import { buildAccessIndex, canRead, followsCircuit, getAccessIndex, inDraftingCircle, isUsableTemplate, mayBackUp, mayCheckIntegrity, mayCleanStorage, mayDeleteSearch, mayEditLinks, mayLinkTemplate, mayRecall, mayRecordReview, maySaveSearch, mayWorkOnDraft, readerMaySeeRevision, readersApply, seesSavedSearch } from './access';
+import { idMatches, nextDocId, nextWorkflowId, TEMPLATE_TYPE } from './codification';
 import { changeAuthor, seenVersion, seenWorkingBase, staleText, workingIssue, workingStaleText, type WorkingBase } from './concurrency';
 import { backUpNow } from './backup';
 import { checkFilesNow } from './integrity';
@@ -194,7 +194,7 @@ export async function simulateUser(userId: string, role: string): Promise<Action
 
 type Fields = {
   title: string; typeCode: string; subtype: string | null; origin: Origin; attachment: Attachment; projectCode: string | null; programCode: string | null;
-  department: string; site: string | null; ownerId: string; authorText: string | null; conf: Conf; keywords: string[]; lang: string | null;
+  department: string; site: string | null; ownerId: string; authorId: string | null; authorText: string | null; conf: Conf; keywords: string[]; lang: string | null;
   reviewDueAt: string | null; expiresAt: string | null; sourceOrg: string | null; externalRef: string | null; receivedAt: string | null;
   projectPhase: string | null; workPackage: string | null; discipline: string | null; researchTheme: string | null; studyId: string | null; ipStatus: string | null; processOwnerId: string | null;
 };
@@ -217,7 +217,7 @@ function readFields(ctx: Ctx, fd: FormData, base?: DocRow): Fields {
     department: str(fd, 'department') || base?.department || ctx.user.department || ctx.departments.find((d) => d.active)?.code || '',
     site: opt(fd, 'site'),
     ownerId: str(fd, 'ownerId') || base?.ownerId || ctx.user.id,
-    authorText: opt(fd, 'authorText'),
+    ...readAuthor(ctx, fd, base),
     conf: pick('conf', CONF_LEVELS, base?.conf ?? type?.confDefault ?? 'interne'),
     keywords: dedupe(str(fd, 'keywords').split(',').map((k) => k.trim()).filter(Boolean)),
     lang: opt(fd, 'lang'),
@@ -233,6 +233,34 @@ function readFields(ctx: Ctx, fd: FormData, base?: DocRow): Fields {
     ipStatus: attachment === 'research' ? opt(fd, 'ipStatus') : null,
     processOwnerId: origin === 'interne' ? opt(fd, 'processOwnerId') : null,
   };
+}
+
+/** Longest free-text author, as the import takes it (lib/importer.ts). */
+const AUTHOR_TEXT_MAX = 200;
+
+/**
+ * The author of a document (MET-10): a person of the group or a free text (external author), never both. The dialogs
+ * send `authorKind` ('person' with `authorId`, 'text' with `authorText`); the value left empty is refused by
+ * authorMissing, an unknown person by validateFields. Without `authorKind` (partial calls): a text when one is sent,
+ * else a person when one is sent, else the document's current author, or the creator for a new document.
+ */
+function readAuthor(ctx: Ctx, fd: FormData, base?: DocRow): Pick<Fields, 'authorId' | 'authorText'> {
+  const kind = str(fd, 'authorKind');
+  const text = opt(fd, 'authorText');
+  const person = opt(fd, 'authorId');
+  if (kind === 'text') return { authorId: null, authorText: text };
+  if (kind === 'person') return { authorId: person, authorText: null };
+  if (text) return { authorId: null, authorText: text };
+  if (person) return { authorId: person, authorText: null };
+  return base ? { authorId: base.authorId, authorText: base.authorText } : { authorId: ctx.user.id, authorText: null };
+}
+
+/** The author kind a dialog chose, its value left empty: refused on the field to fill. */
+function authorMissing(ctx: Ctx, fd: FormData): ActionResult | null {
+  const kind = str(fd, 'authorKind');
+  if (kind === 'text' && !opt(fd, 'authorText')) return { ok: false, error: ctx.t.author_required, field: 'authorText' };
+  if (kind === 'person' && !opt(fd, 'authorId')) return { ok: false, error: ctx.t.author_required, field: 'authorId' };
+  return null;
 }
 
 /** Metadata fields an edit changes, with their values before and after (retention follows a change of type). */
@@ -264,6 +292,10 @@ function validateFields(ctx: Ctx, f: Fields, current?: Pick<DocRow, 'typeCode' |
   if (site === undefined) return fail(ctx);
   if (site && !site.active && site.key !== current?.site) return { ok: false, error: ctx.t.site_inactive, field: 'site' };
   if (!ctx.users.has(f.ownerId) || ctx.users.get(f.ownerId)!.isSystem) return fail(ctx);
+  // The author: a person of the group (not a system actor) or a free text (readAuthor). A record migrated without one
+  // shows its owner (docView), whom the edit dialog proposes.
+  if (f.authorId && (!ctx.users.has(f.authorId) || ctx.users.get(f.authorId)!.isSystem)) return { ok: false, error: ctx.t.author_unknown, field: 'authorId' };
+  if (f.authorText && f.authorText.length > AUTHOR_TEXT_MAX) return { ok: false, error: ctx.t.author_too_long.replace('{n}', String(AUTHOR_TEXT_MAX)), field: 'authorText' };
   if (f.processOwnerId && !ctx.users.has(f.processOwnerId)) return fail(ctx);
   // Dates: real calendar days, sent by the form as YYYY-MM-DD (a Server Action can be called with anything).
   for (const [k, label] of [['reviewDueAt', 'review_due_at'], ['expiresAt', 'expires_at'], ['receivedAt', 'received_at']] as const) {
@@ -300,7 +332,7 @@ async function createDocumentNow(fd: FormData): Promise<ActionResult> {
   if (busy) return busy;
   if (!ctx.can('upload')) return denied(ctx, 'upload');
   const f = readFields(ctx, fd);
-  const invalid = validateFields(ctx, f);
+  const invalid = authorMissing(ctx, fd) ?? validateFields(ctx, f);
   if (invalid) return invalid;
   // A new document is issued today at the earliest: its expiry and its review come after.
   const dated = dateIssues({ ...f, issuedAt: null, issueFrom: todayIso(), effective: null }, todayIso())[0];
@@ -355,7 +387,7 @@ async function createDocumentNow(fd: FormData): Promise<ActionResult> {
   const id = await withStaged(staged, () => db.transaction(async (tx) => {
     const id = await nextDocId(tx, f);
     await tx.insert(s.documents).values({
-      id, ...f, family: type.family, authorId: f.authorText ? null : ctx.user.id,
+      id, ...f, family: type.family,
       status: 'draft', revWorking: 'A', createdAt: today, modifiedAt: today,
       retentionYears: type.retentionYears, retentionTrigger: type.retentionTrigger, retentionDisposition: type.retentionDisposition,
     });
@@ -501,7 +533,7 @@ async function updateMetaNow(fd: FormData): Promise<ActionResult> {
   if (lock) return fail(ctx, lock);
   if (d.version !== seen) return stale(ctx, seen === null ? null : await lastChangedBy(db, ctx, docId));
   const f = readFields(ctx, fd, d);
-  const invalid = validateFields(ctx, f, d);
+  const invalid = authorMissing(ctx, fd) ?? validateFields(ctx, f, d);
   if (invalid) return invalid;
   const type = ctx.typeByCode.get(f.typeCode)!;
   const reclassified = f.typeCode !== d.typeCode || f.attachment !== d.attachment || f.projectCode !== d.projectCode || f.programCode !== d.programCode || f.department !== d.department;
@@ -535,9 +567,13 @@ async function updateMetaNow(fd: FormData): Promise<ActionResult> {
     }
     const retention = f.typeCode !== d.typeCode ? { retentionYears: type.retentionYears, retentionTrigger: type.retentionTrigger, retentionDisposition: type.retentionDisposition } : {};
     await tx.update(s.documents).set({ ...f, family: type.family, ...retention, modifiedAt: todayIso() }).where(eq(s.documents.id, id));
+    // A document that is no longer a template is offered for no type any more.
+    const unlinked = d.typeCode === TEMPLATE_TYPE && f.typeCode !== TEMPLATE_TYPE
+      ? (await tx.delete(s.templateTypes).where(eq(s.templateTypes.docId, id)).returning()).map((x) => x.typeCode).sort()
+      : [];
     // The values changed, with what decides who reads them: the strictest level across the change, and whether a
     // revision was in force (work on a draft stays in its drafting circle, D-14).
-    const changed = metaChanges(d, f, retention);
+    const changed = [...metaChanges(d, f, retention), ...changes([['templateTypes', unlinked, null]])];
     const strictest = CONF_LEVELS[Math.max(CONF_LEVELS.indexOf(d.conf), CONF_LEVELS.indexOf(f.conf))] ?? f.conf;
     await audit(tx, ctx.user.id, 'edit', id, d.revInForce ?? d.revWorking ?? '', null, changed.length ? { changes: changed, doc: { conf: strictest, inForce: !!d.revInForce } } : null);
     // Named readers only count for confidential levels (lib/access.ts): below, they are dropped rather than left unseen.
@@ -596,6 +632,56 @@ async function setReadersNow(docId: string, userIds: string[], version: number):
     return null;
   });
   if (res) return stale(ctx, res.stale);
+  refresh();
+  return { ok: true, message: ctx.t.saved_ok };
+}
+
+/**
+ * Types a template is meant for (« Nouveau depuis un modèle » offers it first to a document of these types): on a
+ * template (type FRM), by its owner or a records manager with the edit permission (access.ts mayLinkTemplate), not
+ * locked. Each code is a type of the register, active unless the template is already linked to it. `version`: of the
+ * record the dialog showed (lib/concurrency.ts), raised here as for the named readers. Journaled as a metadata edit,
+ * before → after, its values within the drafting circle until a revision is in force (D-14).
+ */
+export async function setTemplateTypes(...args: Parameters<typeof setTemplateTypesNow>): Promise<ActionResult> {
+  return traceAction('setTemplateTypes', () => setTemplateTypesNow(...args));
+}
+async function setTemplateTypesNow(docId: string, typeCodes: string[], version: number): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  if (!ctx.can('edit')) return denied(ctx, 'edit');
+  const seen = seenVersion(version);
+  const db = await getDb();
+  const ix = await getAccessIndex();
+  const [d] = await db.select().from(s.documents).where(eq(s.documents.id, String(docId)));
+  if (!d) return movedSince(db, ctx, String(docId), (x) => canRead(ctx, x, ix) && mayLinkTemplate(ctx, x));
+  if (!canRead(ctx, d, ix)) return fail(ctx, 'not_found');
+  if (d.typeCode !== TEMPLATE_TYPE) return fail(ctx, 'template_only');
+  if (!mayLinkTemplate(ctx, d)) return fail(ctx, 'not_allowed');
+  const lock = lockOf(d);
+  if (lock) return fail(ctx, lock);
+  if (d.version !== seen) return stale(ctx, seen === null ? null : await lastChangedBy(db, ctx, d.id));
+  const codes = dedupe((Array.isArray(typeCodes) ? typeCodes : []).map(String)).sort();
+  const res = await db.transaction(async (tx): Promise<ActionResult | { outdated: string | null } | null> => {
+    const [cur] = await tx.select({ version: s.documents.version }).from(s.documents).where(eq(s.documents.id, d.id)).for('update');
+    if (cur?.version !== seen) return { outdated: cur ? await lastChangedBy(tx, ctx, d.id) : null };
+    const before = (await tx.select().from(s.templateTypes).where(eq(s.templateTypes.docId, d.id))).map((x) => x.typeCode).sort();
+    // A type withdrawn from the register (inactive) is kept where it is set, never added.
+    const bad = codes.find((c) => { const type = ctx.typeByCode.get(c); return !type || (!type.active && !before.includes(c)); });
+    if (bad) return { ok: false, error: `${ctx.t.template_type_unknown} : ${bad}` };
+    const changed = changes([['templateTypes', before, codes]]);
+    if (!changed.length) return null;
+    await tx.delete(s.templateTypes).where(eq(s.templateTypes.docId, d.id));
+    if (codes.length) await tx.insert(s.templateTypes).values(codes.map((typeCode) => ({ docId: d.id, typeCode })));
+    // The links are kept apart from the row: the record is dated as by a metadata edit, its version raised for the
+    // dialogs open on it.
+    await tx.update(s.documents).set({ modifiedAt: todayIso(), version: sql`${s.documents.version} + 1` }).where(eq(s.documents.id, d.id));
+    await audit(tx, ctx.user.id, 'edit', d.id, d.revInForce ?? d.revWorking ?? '', null, { changes: changed, doc: { conf: d.conf, inForce: !!d.revInForce } });
+    return null;
+  });
+  if (res && 'outdated' in res) return stale(ctx, res.outdated);
+  if (res) return res;
   refresh();
   return { ok: true, message: ctx.t.saved_ok };
 }

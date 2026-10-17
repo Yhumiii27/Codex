@@ -167,6 +167,7 @@ export async function seed(db: Db) {
         createdAt, modifiedAt: demo.modified,
       });
       if (demo.readers?.length) await tx.insert(s.documentReaders).values(demo.readers.map((userId) => ({ docId: id, userId })));
+      if (demo.templateFor?.length) await tx.insert(s.templateTypes).values(demo.templateFor.map((typeCode) => ({ docId: id, typeCode })));
 
       for (const [ri, r] of revRows.entries()) {
         // A revision exists before its first working version.

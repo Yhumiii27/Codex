@@ -83,6 +83,7 @@ src/lib/actions.ts:99 et 102 : `reviewDueAt`, `expiresAt` et `receivedAt` sont p
 </details>
 
 #### 4. Auteur : pouvoir désigner une autre personne que le créateur
+- **Fait le 17 octobre 2026** : à la création comme dans « Modifier les métadonnées », l'auteur se choisit dans la liste des personnes du groupe (par défaut le créateur) ou devient « Auteur externe (texte libre) » ; personne et texte s'excluent (`authorKind`, `readAuthor` et `authorMissing` dans src/lib/actions.ts, `authorId` ajouté à `Fields`, contrôlé par `validateFields` : personne existante, non système ; texte de 200 caractères au plus). Un appel sans auteur le laisse inchangé ; un document repris sans auteur affiche toujours son propriétaire, que la boîte de dialogue propose. Le changement est journalisé (« Auteur », avant → après). La fiche, la facette « Auteur » de la recherche, l'export CSV de la recherche (nouvelle colonne « Auteur ») et l'export complet donnent le même auteur ; l'import l'acceptait déjà. Désigner un auteur ne donne aucun droit sur un brouillon (D-14). Tests : tests/integration/author-templates.test.ts.
 
 - **Effort** : faible · **Références** : MET-10, G28
 
@@ -119,6 +120,7 @@ src/lib/actions.ts:464-475 : `decideStep` exige que l'utilisateur soit le titula
 </details>
 
 #### 6. Modèles : les rattacher aux types de document
+- **Fait en partie le 17 octobre 2026** : un modèle FRM peut viser un ou plusieurs types (table `template_types`, migration régénérée) ; son propriétaire ou un gestionnaire documentaire (droit Modifier, `mayLinkTemplate` dans src/lib/access.ts) les règle par `setTemplateTypes` (src/lib/actions.ts : contrôle de version, refus sur un document gelé, journalisé comme une modification de métadonnées) depuis la section « Types cibles » de la fiche du modèle ou Administration › Modèles (QMS), qui affiche la colonne. « Nouveau depuis un modèle » range d'abord les modèles du type choisi, puis les autres (toujours proposés et acceptés) ; choisir un modèle avant d'avoir choisi un type prend son type cible. Un type visé par un modèle compte comme utilisé dans le registre ; un document reclassé hors de FRM perd ses types cibles. Reste : refuser côté serveur un modèle non prévu pour le type (choix laissé à l'utilisateur, voir docs/decisions.md), exclure le sous-type « Formulaire », fournir les vrais modèles EPC2I (G06). Tests : tests/integration/author-templates.test.ts, `mayLinkTemplate` dans tests/unit/access.test.ts.
 
 - **Effort** : faible · **Références** : FON-12, PAR-05, G06
 

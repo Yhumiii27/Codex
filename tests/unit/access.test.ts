@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canRead, changeAsSeen, deadlineActor, draftTodo, inDraftingCircle, isUsableTemplate, mayDeleteSearch, mayRecall, mayRecordReview, maySaveSearch, mayShareSearches, mayWorkOnDraft, openRevisionView, readerMaySeeChange, readerMaySeeEntry, readerMaySeeRevision, readerMaySeeVersion, readersApply, seesSavedSearch, type AccessIndex, type Viewer } from '@/lib/access';
+import { canRead, changeAsSeen, deadlineActor, draftTodo, inDraftingCircle, isUsableTemplate, mayDeleteSearch, mayLinkTemplate, mayRecall, mayRecordReview, maySaveSearch, mayShareSearches, mayWorkOnDraft, openRevisionView, readerMaySeeChange, readerMaySeeEntry, readerMaySeeRevision, readerMaySeeVersion, readersApply, seesSavedSearch, type AccessIndex, type Viewer } from '@/lib/access';
 import { CONF_LEVELS, PERMS, type Perm } from '@/lib/i18n';
 
 // Who sees what: confidentiality levels (D-13), drafting circle (D-14), docs/modele-cible.md §5.
@@ -471,6 +471,24 @@ describe('mayRecordReview (point 13, « Revue effectuée »)', () => {
   it('nobody else: an approver, a reader, a stranger, nor a process owner the document does not name', () => {
     for (const who of ['approver', 'reader', 'stranger']) expect(mayRecordReview(editor(who), d), who).toBe(false);
     expect(mayRecordReview(editor('process'), { ...d, processOwnerId: null })).toBe(false);
+  });
+});
+
+describe('mayLinkTemplate (point 6, types a template is meant for)', () => {
+  const tpl = { ownerId: 'owner', typeCode: 'FRM' };
+  const editor = (id: string, seesAll = false) => viewer(id, { perms: ['read', 'edit'], seesAll });
+
+  it('the template’s owner and records managers, with the edit permission', () => {
+    expect(mayLinkTemplate(editor('owner'), tpl)).toBe(true);
+    expect(mayLinkTemplate(editor('manager', true), tpl)).toBe(true);
+    expect(mayLinkTemplate(viewer('owner'), tpl)).toBe(false);
+    expect(mayLinkTemplate(viewer('manager', { seesAll: true }), tpl)).toBe(false);
+  });
+
+  it('nobody else, and never on a document that is not a template', () => {
+    for (const who of ['approver', 'reader', 'stranger']) expect(mayLinkTemplate(editor(who), tpl), who).toBe(false);
+    expect(mayLinkTemplate(editor('owner'), { ...tpl, typeCode: 'PRO' })).toBe(false);
+    expect(mayLinkTemplate(editor('manager', true), { ...tpl, typeCode: 'PRO' })).toBe(false);
   });
 });
 

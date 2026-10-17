@@ -114,6 +114,7 @@ dans l'ordre de la clé primaire (le journal par identifiant croissant).
 | `revisions` | Révisions A, B… : statut (`draft`, `in_review`, `approved`, `in_force`, `superseded`, `cancelled`), dates d'approbation, d'effet, de mise en vigueur et de remplacement, modificateur désigné, ordre de modification qui l'a ouverte |
 | `working_versions` | Versions de travail A.1, A.2… : révision (`revisionId`), numéro, commentaire, auteur, date, fichier (`storage`, `fileKey`, `fileName` d'origine, `mime`, `size`, `pages`, `sha256` : empreinte calculée à son entrée dans Codex, nulle pour un fichier stocké avant qu'elle soit calculée). Le fichier est dans `files/`, retrouvé par `entries[].workingVersion` du manifeste |
 | `document_readers` | Lecteurs désignés des documents confidentiels et très confidentiels |
+| `template_types` | Types cibles des modèles (FRM) : « Nouveau depuis un modèle » les propose d'abord pour ces types |
 | `document_links` | Liens entre documents : `sourceId` remplace `targetId` (`replaces`), ou renvoi mutuel (`see_also`) |
 | `workflows`, `workflow_steps`, `workflow_comments` | Circuits de validation (révision, demandeur, échéance, étape courante, issue, motif), leurs étapes (fonction, titulaire, date de décision, signature), leurs commentaires |
 | `change_requests` | Demandes de modification et de retrait suivies par Vigie : statut, ECO, modificateur désigné, révision qui les porte, remplaçant proposé, dates |

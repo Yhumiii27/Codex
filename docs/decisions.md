@@ -1139,6 +1139,34 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     l'avant et l'après déjà journalisés depuis l'étape 6) ; l'onglet Journal les filtre par action et l'export CSV
     les contient. L'index `audit_log_doc` porte désormais (document, utilisateur, action, date) pour le
     dédoublonnage.
+- **Auteur désigné** (point 4 de `docs/reste-a-faire.md`, MET-10, 17 octobre) :
+  - **choix** : à la création et dans « Modifier les métadonnées », une liste des personnes du groupe (acteurs système
+    exclus) avec une dernière option « Auteur externe (texte libre) » ; personne et texte s'excluent, une valeur
+    choisie est obligatoire, le texte tient en 200 caractères (comme à l'import). Par défaut, la personne qui crée le
+    document (comme avant), y compris pour un document externe ;
+  - **portée** : l'auteur est une métadonnée. Le désigner ne fait **pas** entrer la personne dans le cercle de rédaction
+    et ne lui donne aucun droit (pas de visibilité d'un brouillon, D-14) ; seul l'ECO de Vigie désigne un modificateur ;
+  - **reprise** : un document importé ou ancien sans auteur affiche toujours son propriétaire ; la boîte de dialogue
+    propose cette personne et l'enregistre à la première modification (journalisée). Un appel qui n'envoie pas
+    l'auteur le laisse inchangé ;
+  - **cohérence** : la fiche, la facette « Auteur » de la recherche, l'export CSV de la recherche (nouvelle colonne
+    « Auteur ») et l'export complet montrent le même auteur ; l'import l'accepte déjà (identifiant ou texte). Le
+    changement est journalisé (« Auteur », « Auteur (texte libre) », avant → après).
+- **Types cibles des modèles** (point 6 de `docs/reste-a-faire.md`, FON-12, 17 octobre) :
+  - **rattachement** : un modèle FRM peut viser un ou plusieurs types (table `template_types`), réglés par son
+    propriétaire ou un gestionnaire documentaire avec le droit Modifier, depuis la fiche du modèle ou Administration ›
+    Modèles (QMS) ; refusé sur un document gelé ; journalisé comme une modification de métadonnées (valeurs cachées
+    hors du cercle de rédaction tant que le modèle n'est pas en vigueur, D-14). Un type désactivé reste là où il est,
+    sans pouvoir être ajouté ; un type visé par un modèle compte comme utilisé (ni supprimé ni recodé) ; un document
+    reclassé hors de FRM perd ses types cibles (journalisé) ;
+  - **« Nouveau depuis un modèle »** : les modèles du type choisi viennent d'abord (« Modèles pour ce type »), les autres
+    restent proposés dessous (« Autres modèles », avec les types qu'ils visent). **Aucun refus côté serveur** d'un
+    modèle prévu pour d'autres types : c'était l'usage jusqu'ici ; le rendre obligatoire reste à décider. Tant que
+    l'utilisateur n'a pas choisi de type, choisir un modèle prend son premier type cible ; tant qu'il n'a pas choisi de
+    modèle, le premier modèle du type est proposé ;
+  - **non fait** : exclure le sous-type « Formulaire » de la liste des modèles (FRM couvre formulaires vierges et
+    modèles), modèle par défaut par type dans le registre ; les vrais modèles EPC2I restent à fournir (G06). Démo :
+    PV, procédure (PRO, MOP), rapport d'incident (RSQ) et compte rendu (MIN) rattachés.
 - **Git** (D-23) : premier commit sur une branche `codex-ged-v2` plutôt que sur `main`.
 
 ## Ce qui est explicitement hors périmètre
