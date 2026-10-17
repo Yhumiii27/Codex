@@ -31,7 +31,7 @@ const WORKING = new Set(['draft', 'in_review', 'approved']);
 const MODIFYING = new Set(['upload', 'working', 'edit', 'reviewed', 'reclass', 'restore']);
 
 type Version = RevisionView['versions'][number];
-const lite = (v: Version): VersionLite => ({ id: v.id, label: v.label, author: v.author, dateF: v.dateF, commentL: v.commentL, sizeF: v.sizeF, pages: v.pages, fileName: v.fileName });
+const lite = (v: Version): VersionLite => ({ id: v.id, label: v.label, author: v.author, dateF: v.dateF, commentL: v.commentL, sizeF: v.sizeF, pages: v.pages, fileName: v.fileName, sha256: v.fileName ? v.sha256 : null });
 
 /** Label of a file: the letter for the final version of an approved revision ("B"), otherwise the working version ("B.2"). */
 function fileLabel(r: RevisionView, v: Version) {

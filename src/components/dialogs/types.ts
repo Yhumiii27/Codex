@@ -71,7 +71,8 @@ export type MetaDoc = {
 };
 
 /** A working version or revision file, for the compare dialog. */
-export type VersionLite = { id: number; label: string; author: string; dateF: string; commentL: string; sizeF: string; pages: number | null; fileName: string | null };
+/** `sha256`: of its file, as recorded when it entered Codex (null without file, or stored before it was computed). */
+export type VersionLite = { id: number; label: string; author: string; dateF: string; commentL: string; sizeF: string; pages: number | null; fileName: string | null; sha256: string | null };
 
 export type DialogSpec =
   /**

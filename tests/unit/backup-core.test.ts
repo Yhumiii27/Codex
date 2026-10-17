@@ -201,7 +201,7 @@ describe('lock of the data directory', () => {
     const d = tmp();
     lock(d, { pid: process.ppid, kind: 'restore', since: now() });
     // The server's log names the lock and what to do if no command runs any more.
-    await expect(lockForServer(d)).rejects.toMatchObject({ code: 'busy', message: expect.stringContaining(`${path.join(d, LOCK_FILE)}; if no backup, restore or export command is running, delete that file`) });
+    await expect(lockForServer(d)).rejects.toMatchObject({ code: 'busy', message: expect.stringContaining(`${path.join(d, LOCK_FILE)}; if no backup, restore, export or integrity command is running, delete that file`) });
     // A server lock of another live process does not stop it (a second process of the same server, a stale pid).
     lock(d, { pid: process.ppid, kind: 'server', since: now() });
     await lockForServer(d);

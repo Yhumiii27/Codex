@@ -171,6 +171,7 @@ describe('GET /api/export/full', () => {
       count: 5, bytes: Object.values(expected).reduce((n, b) => n + b.length, 0),
       missing: [{ workingVersion: files.missing.id, path: path0('PRO-QUA-0002', 'A', 1) }],
       skipped: [{ workingVersion: files.sharepoint.id, path: path0('COR-QUA-0001', 'A', 1), storage: 'sharepoint' }],
+      altered: [],
     });
     expect(manifest.counts.files).toBe(5);
 
@@ -344,5 +345,23 @@ describe('GET /api/export/full', () => {
     const [v] = await db().select().from(s.workingVersions).where(eq(s.workingVersions.docId, 'PRO-QUA-0001'));
     const { readStored } = await import('@/lib/storage');
     expect((await readStored(v.storage, v.fileKey!)).equals(FILES.b2)).toBe(true);
+  });
+});
+
+describe('fingerprints recorded at upload (point 31)', () => {
+  it('lists in the manifest, and counts in the journal, the files archived whose bytes differ from their recorded SHA-256', async () => {
+    const files = await fill();
+    await db().update(s.workingVersions).set({ sha256: sha(FILES.b1) }).where(eq(s.workingVersions.id, files.b1.id));
+    await db().update(s.workingVersions).set({ sha256: sha('what was uploaded') }).where(eq(s.workingVersions.id, files.b2.id));
+    actAs('manager');
+    const { manifest, byName } = await readArchive((await download()).bytes);
+    const where = 'files/PRO-QUA-0001/PRO-QUA-0001_B.2.pdf';
+    // Archived as stored, and said.
+    expect(byName.get(where)!.equals(FILES.b2)).toBe(true);
+    expect(manifest.files.altered).toEqual([{ workingVersion: files.b2.id, path: where, recorded: sha('what was uploaded') }]);
+    const [, end] = await exportEntries();
+    expect(end.data?.archive?.altered).toBe(1);
+    const ctx = await getCtx();
+    expect(auditDetailL(ctx, end)).toContain('différents de leur empreinte : 1');
   });
 });

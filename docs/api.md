@@ -351,8 +351,11 @@ Codes de `issues[].code` : `required`, `invalid_type`, `too_long`, `invalid_date
 `unknown_type`, `unknown_department`, `unknown_site`, `unknown_user`, `type_mismatch`, `conf_not_allowed`,
 `project_required`, `program_required`, `source_required`, `readers_conf`, `effective_before_issued`,
 `expires_before_issued`, `expires_before_effective`, `expires_before_first_issue`, `review_before_issued`,
-`review_before_first_issue`, `received_in_future`, `received_after_issued`. Avertissement (`warnings[].code`) :
-`ignored`.
+`review_before_first_issue`, `received_in_future`, `received_after_issued`. Avertissements (`warnings[].code`) :
+`ignored` ; `duplicate_file` (champ `file`) : le fichier envoyé a le même SHA-256 que le fichier en vigueur d'un
+document existant, nommé dans le message, de niveau Public, Restreint ou Interne (jamais un brouillon, une version de
+travail ni un document confidentiel, D-14) ; le document est importé quand même. L'empreinte SHA-256 du fichier
+importé est gardée sur sa version de travail.
 
 Le 409 `duplicate` rend l'outil de migration rejouable : un document déjà repris renvoie son identifiant Codex sans être
 recréé. Seul ce code vaut « déjà migré ». Les imports s'enregistrent un par un, même envoyés en parallèle : deux envois

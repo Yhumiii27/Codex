@@ -6,10 +6,11 @@ import { cookies } from 'next/headers';
 import { refresh } from 'next/cache';
 import { getDb, schema as s } from '@/db';
 import type { Attachment, AuditChange, AuditValue, Conf, Origin, SearchScope } from '@/db/schema';
-import { buildAccessIndex, canRead, followsCircuit, getAccessIndex, inDraftingCircle, isUsableTemplate, mayBackUp, mayCleanStorage, mayDeleteSearch, mayEditLinks, mayRecall, mayRecordReview, maySaveSearch, mayWorkOnDraft, readerMaySeeRevision, readersApply, seesSavedSearch } from './access';
+import { buildAccessIndex, canRead, followsCircuit, getAccessIndex, inDraftingCircle, isUsableTemplate, mayBackUp, mayCheckIntegrity, mayCleanStorage, mayDeleteSearch, mayEditLinks, mayRecall, mayRecordReview, maySaveSearch, mayWorkOnDraft, readerMaySeeRevision, readersApply, seesSavedSearch } from './access';
 import { idMatches, nextDocId, nextWorkflowId } from './codification';
 import { changeAuthor, seenVersion, seenWorkingBase, staleText, workingIssue, workingStaleText, type WorkingBase } from './concurrency';
 import { backUpNow } from './backup';
+import { checkFilesNow } from './integrity';
 import { COOKIE_LANG, COOKIE_ROLE, COOKIE_USER, getCtx, type Ctx } from './context';
 import { addDays, fmtDate, fmtDateTime, fmtSize, loc, nowStamp, parisStamp, parseIsoDay, todayIso } from './format';
 import { ATTACHMENTS, CONF_LEVELS, ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLES, ORIGINS, PERMS, SEARCH_SCOPES, SIM_ROLES, SIMULATED_MATRIX_ROLES, type Perm, type SimRole, type TKey } from './i18n';
@@ -17,7 +18,7 @@ import { addLink, applyChangeDecision, applyPendingDecision, approveRevision, au
 import { isLinkRel, linkIssue, otherEnd, replacementIssue, storedLink } from './links';
 import { logger, traceAction } from './log';
 import { limitWrite } from './ratelimit';
-import { decisionWaitL, orgUsage, registryUsage } from './queries';
+import { decisionWaitL, orgUsage, registryUsage, sameFiles } from './queries';
 import { dateIssues, dateIssueText, effectIssue, issueFrom, latestEffect, type DateIssue } from './dates';
 import { cleanFeatured } from './departments';
 import { inUse, isOrgKind, lastActiveIssue, orgLabels, parseOrgForm, type OrgKind } from './org-rules';
@@ -29,15 +30,16 @@ import {
 } from './registry-rules';
 import { nextReviewDate } from './review';
 import { beyondBounds, cleanCriteria, hasCriteria, type SearchInput } from './search';
-import { discardFile, FileRejectedError, fileColumns, nameStoredFile, readStored, renameDocFiles, stageFile, stageUpload, type StagedFile } from './storage';
+import { discardFile, FileRejectedError, fileColumns, nameStoredFile, readStored, renameDocFiles, sha256Of, stageFile, stageUpload, type StagedFile } from './storage';
 import { submitChange, vigieSimulated } from './vigie';
 
 /**
  * `field`: the form field the error is about, when the dialog can show it there. `stale`: the view the request came
  * from is out of date (lib/concurrency.ts): the dialog offers to reload the record. `confirm`: what to send back to
- * confirm what the error announced, and only that (updateType).
+ * confirm what the error announced, and only that (updateType). `warning`: done, with something the user should know (a
+ * file identical to one already filed), shown longer than a message.
  */
-export type ActionResult = { ok: true; href?: string; message?: string } | { ok: false; error: string; field?: string; stale?: true; confirm?: string };
+export type ActionResult = { ok: true; href?: string; message?: string; warning?: string } | { ok: false; error: string; field?: string; stale?: true; confirm?: string };
 
 type DocRow = typeof s.documents.$inferSelect;
 
@@ -89,6 +91,22 @@ function changes(parts: [field: string, before: AuditValue, after: AuditValue][]
 /** Retention class of a type or a document, as the journal stores it. */
 function retentionValue(x: { retentionYears: number | null; retentionTrigger: string; retentionDisposition: string }): AuditValue {
   return { years: x.retentionYears, trigger: x.retentionTrigger, disposition: x.retentionDisposition };
+}
+
+/**
+ * The non-blocking warning of an upload whose file is identical (same SHA-256) to one already filed: the documents the
+ * user may have that file of (queries.ts sameFiles, D-14), else nothing. A failure of the lookup never fails the upload.
+ */
+async function duplicateWarning(ctx: Ctx, sha256: string): Promise<string | undefined> {
+  try {
+    const same = await sameFiles(ctx, sha256);
+    if (!same.length) return undefined;
+    const quote = (x: string) => (ctx.lang === 'fr' ? `« ${x} »` : `“${x}”`);
+    return ctx.t.same_file.replace('{docs}', same.map((x) => `${x.docId} ${x.label} ${quote(x.title)}`).join(', '));
+  } catch (err) {
+    log.warn('duplicate check failed', { err });
+    return undefined;
+  }
 }
 
 /**
@@ -308,6 +326,11 @@ async function createDocumentNow(fd: FormData): Promise<ActionResult> {
       } catch {
         return fail(ctx, 'error', tpl.id);
       }
+      // A template whose stored bytes no longer match the fingerprint recorded at its upload is not copied.
+      if (v.sha256 && sha256Of(template.buf) !== v.sha256) {
+        log.error('template file altered', { doc: tpl.id, version: v.id });
+        return fail(ctx, 'file_altered_template', tpl.id);
+      }
     }
   }
   if (expectedId) {
@@ -327,6 +350,8 @@ async function createDocumentNow(fd: FormData): Promise<ActionResult> {
     // A template stored before formats were checked, or in a format refused since, is checked again here.
     return refusedFile(ctx, err, file ? undefined : templateId ?? undefined);
   }
+  // A copy of a template is that template's file by design: only a file sent by the user is compared.
+  const warning = file && staged ? await duplicateWarning(ctx, staged.sha256) : undefined;
   const id = await withStaged(staged, () => db.transaction(async (tx) => {
     const id = await nextDocId(tx, f);
     await tx.insert(s.documents).values({
@@ -339,7 +364,7 @@ async function createDocumentNow(fd: FormData): Promise<ActionResult> {
       const comment = template ? { fr: `Créé depuis le modèle ${templateId} « ${template.title} »`, en: `Created from template ${templateId} “${template.title}”` } : { fr: 'Dépôt initial', en: 'Initial upload' };
       await tx.insert(s.workingVersions).values({ revisionId: rev.id, docId: id, n: 1, comment, authorId: ctx.user.id, date: today, ...(staged ? fileColumns(staged) : {}) });
     }
-    await audit(tx, ctx.user.id, 'upload', id, `A.1${staged ? ` · ${fmtSize(staged.size, 'fr')}` : ''}${templateId ? ` · ${templateId}` : ''}`, rev.id);
+    await audit(tx, ctx.user.id, 'upload', id, `A.1${staged ? ` · ${fmtSize(staged.size, 'fr')}` : ''}${templateId ? ` · ${templateId}` : ''}`, rev.id, staged ? { sha256: staged.sha256 } : null);
     if (f.attachment === 'project' && f.projectCode && expectedId) {
       // A document filed for a piece Keystone expects fills that piece (only if it is still missing).
       const [exp] = await tx.select().from(s.projectExpected).where(and(eq(s.projectExpected.id, expectedId), eq(s.projectExpected.projectCode, f.projectCode)));
@@ -354,7 +379,7 @@ async function createDocumentNow(fd: FormData): Promise<ActionResult> {
   }));
   if (staged) await nameStoredFile(staged, id, 'A.1');
   refresh();
-  return { ok: true, href: docHref(id, f.attachment === 'project' ? 'project' : 'meta'), message: `${ctx.t.id_preview} : ${id}` };
+  return { ok: true, href: docHref(id, f.attachment === 'project' ? 'project' : 'meta'), message: `${ctx.t.id_preview} : ${id}`, ...(warning ? { warning } : {}) };
 }
 
 /**
@@ -407,6 +432,7 @@ async function addWorkingVersionNow(fd: FormData): Promise<ActionResult> {
   } catch (err) {
     return refusedFile(ctx, err);
   }
+  const warning = await duplicateWarning(ctx, staged.sha256);
   const comment = str(fd, 'comment');
   const res = await withStaged(staged, () => db.transaction(async (tx): Promise<{ err: TKey } | { behind: ActionResult } | { label: string }> => {
     // Checked again inside the transaction: a validation request or another upload may have come in during the upload.
@@ -422,7 +448,7 @@ async function addWorkingVersionNow(fd: FormData): Promise<ActionResult> {
     const n = max + 1;
     await tx.insert(s.workingVersions).values({ revisionId: rev.id, docId, n, comment: comment || { fr: 'Nouvelle version de travail', en: 'New working version' }, authorId: ctx.user.id, date: todayIso(), ...fileColumns(staged) });
     await tx.update(s.documents).set({ modifiedAt: todayIso() }).where(eq(s.documents.id, docId));
-    await audit(tx, ctx.user.id, 'working', docId, `${rev.letter}.${n} · ${fmtSize(staged.size, 'fr')}`, rev.id);
+    await audit(tx, ctx.user.id, 'working', docId, `${rev.letter}.${n} · ${fmtSize(staged.size, 'fr')}`, rev.id, { sha256: staged.sha256 });
     return { label: `${rev.letter}.${n}` };
   }));
   if (!('label' in res)) {
@@ -431,7 +457,7 @@ async function addWorkingVersionNow(fd: FormData): Promise<ActionResult> {
   }
   await nameStoredFile(staged, docId, res.label);
   refresh();
-  return { ok: true, href: docHref(docId, 'versions') };
+  return { ok: true, href: docHref(docId, 'versions'), ...(warning ? { warning } : {}) };
 }
 
 /**
@@ -1392,6 +1418,42 @@ async function backUpDataNow(): Promise<ActionResult> {
       res.removed.length ? t.backup_rotated.replace('{n}', String(res.removed.length)) : '',
     ].filter(Boolean).join(' '),
   };
+}
+
+/**
+ * Reads every stored file again and compares it with the SHA-256 recorded when it entered Codex (lib/integrity.ts):
+ * altered and missing files are reported and journaled ('integrity_checked'), fingerprints of files stored before they
+ * were computed are recorded. Nothing is repaired. A records manager with access to Administration only
+ * (lib/access.ts mayCheckIntegrity). Server stopped: npm run integrity.
+ */
+export async function checkFileIntegrity(...args: Parameters<typeof checkFileIntegrityNow>): Promise<ActionResult> {
+  return traceAction('checkFileIntegrity', () => checkFileIntegrityNow(...args));
+}
+async function checkFileIntegrityNow(): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  if (!mayCheckIntegrity(ctx)) return fail(ctx, 'forbidden');
+  let res: Awaited<ReturnType<typeof checkFilesNow>>;
+  try {
+    res = await checkFilesNow(ctx.user.id);
+  } catch (err) {
+    log.error('integrity check failed', { err });
+    refresh();
+    return fail(ctx, 'integrity_failed');
+  }
+  if (res === 'busy') return fail(ctx, 'integrity_busy');
+  const { t, lang } = ctx;
+  refresh();
+  const parts = [
+    t.integrity_done.replace('{n}', String(res.checked)).replace('{size}', fmtSize(res.bytes, lang)),
+    res.alteredCount ? t.integrity_altered_n.replace('{n}', String(res.alteredCount)) : '',
+    res.missingCount ? t.integrity_missing_n.replace('{n}', String(res.missingCount)) : '',
+    res.filled ? t.integrity_filled_n.replace('{n}', String(res.filled)) : '',
+    res.skipped ? t.integrity_skipped_n.replace('{n}', String(res.skipped)) : '',
+  ].filter(Boolean).join(' · ');
+  // A discrepancy is a warning, shown longer than a message; the list is on the page and in the journal.
+  return res.alteredCount || res.missingCount ? { ok: true, warning: `${parts}. ${t.integrity_see_list}` } : { ok: true, message: `${parts}. ${t.integrity_ok}` };
 }
 
 export async function togglePermission(...args: Parameters<typeof togglePermissionNow>): Promise<ActionResult> {

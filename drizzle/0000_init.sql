@@ -302,7 +302,8 @@ CREATE TABLE "working_versions" (
 	"file_name" text,
 	"mime" text,
 	"size" integer,
-	"pages" integer
+	"pages" integer,
+	"sha256" text
 );
 --> statement-breakpoint
 ALTER TABLE "audit_log" ADD CONSTRAINT "audit_log_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -361,4 +362,5 @@ CREATE INDEX "document_terms_term" ON "document_terms" USING gin ("term" gin_trg
 CREATE UNIQUE INDEX "revisions_doc_letter" ON "revisions" USING btree ("doc_id","letter");--> statement-breakpoint
 CREATE UNIQUE INDEX "revisions_in_force" ON "revisions" USING btree ("doc_id") WHERE "revisions"."status" = 'in_force';--> statement-breakpoint
 CREATE UNIQUE INDEX "workflows_running" ON "workflows" USING btree ("revision_id") WHERE "workflows"."outcome" is null;--> statement-breakpoint
-CREATE UNIQUE INDEX "working_versions_rev_n" ON "working_versions" USING btree ("revision_id","n");
+CREATE UNIQUE INDEX "working_versions_rev_n" ON "working_versions" USING btree ("revision_id","n");--> statement-breakpoint
+CREATE INDEX "working_versions_sha256" ON "working_versions" USING btree ("sha256");

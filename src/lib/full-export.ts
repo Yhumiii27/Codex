@@ -20,9 +20,10 @@ const SHAREPOINT_VARS = ['CODEX_SP_TENANT_ID', 'CODEX_SP_CLIENT_ID', 'CODEX_SP_C
 /**
  * A stored file as a stream, from either store; null when the store has no such file. A file kept by SharePoint while
  * SharePoint is not set up (O-01) is skipped, and listed as such by the manifest and the journal, rather than failing
- * the whole export; once set up, a store out of reach fails it, as a local file that cannot be read does.
+ * the whole export; once set up, a store out of reach fails it, as a local file that cannot be read does. The integrity
+ * check reads the files the same way (lib/integrity.ts).
  */
-const openFile: FileOpener = async (f) => {
+export const openFile = async (f: Pick<Parameters<FileOpener>[0], 'storage' | 'fileKey' | 'size'>): ReturnType<FileOpener> => {
   if (f.storage === 'sharepoint' && SHAREPOINT_VARS.some((k) => !process.env[k])) return 'skipped';
   try {
     const src = await openStored(f.storage, f.fileKey, f.size);

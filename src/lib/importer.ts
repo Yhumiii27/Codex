@@ -10,6 +10,7 @@ import { fmtSize, parseIsoDay, todayIso } from './format';
 import { ATTACHMENTS, CONF_LEVELS, DICT, ORIGINS } from './i18n';
 import { audit, refreshHeadline, type Tx } from './lifecycle';
 import { currentRequest, expectedAnswer, logger } from './log';
+import { sameFiles } from './queries';
 import { clientAddress, countTokenFailure, tokenFailuresExceeded, trustProxy } from './ratelimit';
 import { discardFile, FileRejectedError, fileColumns, nameStoredFile, stageFile, type FileRejection, type StagedFile } from './storage';
 
@@ -19,6 +20,18 @@ import { discardFile, FileRejectedError, fileColumns, nameStoredFile, stageFile,
 
 /** System user that the migration is recorded under in the audit trail. */
 export const IMPORT_ACTOR = 'codex';
+
+/**
+ * Whom the duplicate warning of an import is computed for (queries.ts sameFiles): a reader with the "read" permission
+ * and no department, project or named access, outside every drafting circle. It names only a document whose file in
+ * force any reader of the group has (Public, Restreint, Interne): the migration tool is outside Codex, and D-14 keeps
+ * drafts, working versions and confidential documents from it.
+ */
+const IMPORT_VIEWER = {
+  user: { id: IMPORT_ACTOR, name: 'Codex', initials: 'CX', role: 'system', title: null, department: null, site: null, isSystem: true },
+  seesAll: false,
+  can: (p: string) => p === 'read',
+};
 
 export function json(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
   return Response.json(body, { status, headers: { 'Cache-Control': 'no-store', ...headers } });
@@ -79,6 +92,7 @@ const MESSAGES: Record<string, string> = {
   invalid_date: 'Date attendue au format AAAA-MM-JJ.',
   invalid_value: 'Valeur non admise.',
   invalid_letter: 'Lettre de révision attendue (A, B … Z, AA …).',
+  duplicate_file: 'Fichier identique au fichier en vigueur de {docs} : importé quand même.',
   unknown_type: 'Type absent du registre ou inactif.',
   unknown_department: 'Département inconnu.',
   unknown_site: 'Site inconnu.',
@@ -392,6 +406,16 @@ export async function importDocument(raw: unknown, file: ImportFile | null): Pro
       if (err instanceof FileRejectedError) return { kind: 'file_rejected', rejection: err.rejection };
       throw err;
     }
+    // Not blocking: the same file may rightly be filed twice (a form attached to two projects).
+    try {
+      const same = await sameFiles(IMPORT_VIEWER, staged.sha256);
+      if (same.length) {
+        const docs = same.map((x) => `${x.docId} ${x.label}`).join(', ');
+        warnings.push({ field: 'file', code: 'duplicate_file', message: MESSAGES.duplicate_file.replace('{docs}', docs) });
+      }
+    } catch (err) {
+      logger('import').warn('duplicate check failed', { err });
+    }
   }
   let res: ImportResult;
   try {
@@ -438,7 +462,7 @@ export async function importDocument(raw: unknown, file: ImportFile | null): Pro
     }
     if (v.readers.length) await tx.insert(s.documentReaders).values(v.readers.map((userId) => ({ docId: id, userId })));
     await refreshHeadline(tx, id);
-    await audit(tx, IMPORT_ACTOR, 'import', id, `${v.legacyRef} → ${withVersion ? label : v.letter}${stored ? ` · ${fmtSize(stored.size, 'fr')}` : ''}`, rev.id);
+    await audit(tx, IMPORT_ACTOR, 'import', id, `${v.legacyRef} → ${withVersion ? label : v.letter}${stored ? ` · ${fmtSize(stored.size, 'fr')}` : ''}`, rev.id, stored ? { sha256: stored.sha256 } : null);
     return { kind: 'created', id, revision: v.letter, version: withVersion ? `${v.letter}.1` : null, revStatus, file: !!stored, warnings };
     });
   } catch (err) {

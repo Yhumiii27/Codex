@@ -57,6 +57,8 @@ select.input option { background: var(--color-surface); color: var(--color-text)
   padding: 10px 14px; font-size: 13px; display: flex; align-items: center; gap: 10px; max-width: 380px;
 }
 .toast-error { box-shadow: 0 0 0 1px var(--color-accent-400), 0 6px 18px rgba(0,0,0,0.55); }
+/* Done, with something to know (a file identical to one already filed): the second accent, left on screen longer. */
+.toast-warn { box-shadow: 0 0 0 1px var(--color-accent-2-400), 0 6px 18px rgba(0,0,0,0.55); }
 
 /* — form helpers inside dialogs — */
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }

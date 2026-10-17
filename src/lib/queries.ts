@@ -3,8 +3,9 @@ import { cache } from 'react';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, or, sql, type SQL, type SQLWrapper } from 'drizzle-orm';
 import { getDb, schema as s } from '@/db';
 import type { AuditChange, AuditData, AuditTargetKind, AuditValue, Conf, LinkRel, TermField } from '@/db/schema';
-import { canRead, changeAsSeen, deadlineActor, draftingCircleSql, draftTodo, followsCircuit, getAccessIndex, inDraftingCircle, isUsableTemplate, mayDeleteSearch, mayEditLinks, mayGetApprovalRecord, mayRecall, mayWorkOnDraft, openRevisionView, readableSql, readerMaySeeEntry, readerMaySeeRevision, savedSearchesSeenBy, type AccessIndex } from './access';
+import { canRead, changeAsSeen, deadlineActor, draftingCircleSql, draftTodo, followsCircuit, getAccessIndex, inDraftingCircle, isUsableTemplate, mayDeleteSearch, mayEditLinks, mayGetApprovalRecord, mayRecall, mayWorkOnDraft, openRevisionView, readableSql, readerMaySeeEntry, readerMaySeeRevision, readerMaySeeVersion, savedSearchesSeenBy, type AccessIndex } from './access';
 import { visaCircuit, type VisaRecord } from './approval';
+import { isFinalStatus } from './codes';
 import { revLabel } from './codification';
 import type { Ctx } from './context';
 import { extensionOf } from './filetypes';
@@ -468,6 +469,46 @@ export async function getDoc(ctx: Ctx, id: string): Promise<{ doc: DocView; circ
   return { doc: docView(ctx, d, wl.get(d.id), circle, vm.get(d.id)), circle, ix };
 }
 
+/** A working version whose file has a given SHA-256, as sameFiles gives it: its document, label and title. */
+export type SameFile = { docId: string; label: string; title: string };
+
+/**
+ * Documents already holding a file with this SHA-256 (the duplicate warning of an upload or an import, point 31 of
+ * docs/reste-a-faire.md), among the files `viewer` may have: a document they read, and, outside its drafting circle,
+ * only the final file of the revision in force (readerMaySeeVersion, D-14): a draft, a working version or a document
+ * they cannot read is never named. One version per document (the newest they may have), at most `limit` documents.
+ * `viewer` may be another person than the user (lib/importer.ts, for the migration tool).
+ */
+export async function sameFiles(viewer: Pick<Ctx, 'user' | 'seesAll' | 'can'>, sha256: string, limit = 3): Promise<SameFile[]> {
+  const db = await getDb();
+  const rows = await db
+    .select({
+      docId: s.workingVersions.docId, n: s.workingVersions.n, letter: s.revisions.letter, status: s.revisions.status,
+      last: sql<number>`(select max(x.n) from working_versions x where x.revision_id = ${s.workingVersions.revisionId})::int`,
+    })
+    .from(s.workingVersions)
+    .innerJoin(s.revisions, eq(s.revisions.id, s.workingVersions.revisionId))
+    .where(eq(s.workingVersions.sha256, sha256))
+    .orderBy(asc(s.workingVersions.docId), desc(s.workingVersions.id));
+  if (!rows.length) return [];
+  const [docs, ix] = await Promise.all([
+    db.select().from(s.documents).where(anyOf(s.documents.id, [...new Set(rows.map((r) => r.docId))])),
+    getAccessIndex(),
+  ]);
+  const docBy = new Map(docs.map((d) => [d.id, d]));
+  const out: SameFile[] = [];
+  for (const r of rows) {
+    if (out.length >= limit) break;
+    if (out.some((x) => x.docId === r.docId)) continue;
+    const d = docBy.get(r.docId);
+    if (!d || !canRead(viewer, d, ix)) continue;
+    const isFinal = r.n === r.last;
+    if (!readerMaySeeVersion(inDraftingCircle(viewer, d, ix), r.status, isFinal)) continue;
+    out.push({ docId: d.id, label: isFinal && isFinalStatus(r.status) ? r.letter : `${r.letter}.${r.n}`, title: d.title });
+  }
+  return out;
+}
+
 /**
  * Revisions (newest first) with their working versions (newest first) and the change orders they carry: the one that
  * opened them, then those grafted onto them (D-26). Callers show a revision only to who may see it (readerMaySeeRevision).
@@ -553,6 +594,7 @@ export async function approvalRecord(ctx: Ctx, id: string, letter: string): Prom
     rev: {
       letter: rev.letter, status: rev.statusLabel, createdAt: rev.createdAt, approvedAt: rev.approvedAt, effectiveAt: rev.effectiveAt, inForceAt: rev.inForceAt,
       supersededAt: rev.supersededAt, modifier: rev.modifier, changeRefs: rev.changeRefs,
+      file: rev.file?.fileKey ? { name: rev.file.fileName ?? `${doc.id}_${rev.letter}`, size: rev.file.sizeF, sha256: rev.file.sha256 } : null,
     },
     imported: imported ? { at: imported.at, legacyRef: doc.legacyRef ?? imported.detail.split(' → ')[0], approved: !approvedInCodex } : null,
     circuits: [...wfs]
@@ -977,6 +1019,12 @@ export async function auditForReader(ctx: Ctx, all: AuditRow[]): Promise<AuditEn
     const circle = !!d && inDraftingCircle(ctx, d, ix);
     if (!readerMaySeeEntry(circle, a, a.revisionId == null ? undefined : statusBy.get(a.revisionId))) return [];
     if (!d || !canRead(ctx, d, ix)) return [{ ...a, detail: '', data: null, readable: false }];
+    // The fingerprint of a file received tells a draft's file apart: kept within the drafting circle (D-14).
+    if (!circle && a.data?.sha256) {
+      const data = { ...a.data };
+      delete data.sha256;
+      a = { ...a, data };
+    }
     // A link to a document the reader may not read is not shown on the record: nor is its trace (D-14).
     const linked = a.data?.link ? docBy.get(cur(a.data.link.other)) : undefined;
     if (a.data?.link && (!linked || !canRead(ctx, linked, ix))) return [];
@@ -987,7 +1035,7 @@ export async function auditForReader(ctx: Ctx, all: AuditRow[]): Promise<AuditEn
   });
 }
 
-const TARGET_LABEL: Record<AuditTargetKind, TKey> = { permission: 'target_permission', department: 'department', site: 'site', function: 'function_label', family: 'family', type: 'type', program: 'program', export: 'target_export', file: 'target_file', storage: 'target_storage', backup: 'target_backup' };
+const TARGET_LABEL: Record<AuditTargetKind, TKey> = { permission: 'target_permission', department: 'department', site: 'site', function: 'function_label', family: 'family', type: 'type', program: 'program', export: 'target_export', file: 'target_file', storage: 'target_storage', backup: 'target_backup', integrity: 'target_integrity' };
 
 /** What an entry without document is about, as the Journal tab and its export name it: "Fonction · Responsable qualité". */
 export function auditTargetL(ctx: Ctx, kind: AuditTargetKind | null, id: string | null): string {
@@ -1005,6 +1053,7 @@ export function auditTargetL(ctx: Ctx, kind: AuditTargetKind | null, id: string 
     : kind === 'file' ? t[`file_entry_${id}` as TKey] ?? id
     : kind === 'storage' ? t[`store_${id}` as TKey] ?? id
     : kind === 'backup' ? id
+    : kind === 'integrity' ? t.integrity_all
     : id === 'search' ? t.adv_search : id === 'full' ? t.target_export_full : t.ad_audit;
   return `${t[TARGET_LABEL[kind]]} · ${name}`;
 }
@@ -1116,7 +1165,28 @@ function exportL(ctx: Ctx, targetId: string | null, x: NonNullable<AuditData['ex
 export function auditDetailL(ctx: Ctx, a: Pick<AuditRow, 'detail' | 'data' | 'targetId'>): string {
   const x = a.data;
   const link = x?.link ? `${ctx.t[`link_${x.link.rel}`]} ${x.link.other}${x.link.skipped ? ` : ${ctx.t[`link_skip_${x.link.skipped}`]}` : ''}` : '';
-  return [a.detail, link, x?.changes?.length ? x.changes.map((c) => changeL(ctx, c)).join(' ; ') : '', x?.export ? exportL(ctx, a.targetId, x.export) : '', x?.file ? refusedFileL(ctx, a.targetId, x.file) : '', x?.purge ? purgeL(ctx, x.purge) : '', x?.backup ? backupL(ctx, x.backup) : '', x?.archive ? archiveL(ctx, x.archive) : ''].filter(Boolean).join(' · ');
+  return [a.detail, link, x?.changes?.length ? x.changes.map((c) => changeL(ctx, c)).join(' ; ') : '', x?.export ? exportL(ctx, a.targetId, x.export) : '', x?.file ? refusedFileL(ctx, a.targetId, x.file) : '', x?.purge ? purgeL(ctx, x.purge) : '', x?.backup ? backupL(ctx, x.backup) : '', x?.archive ? archiveL(ctx, x.archive) : '', x?.integrity ? integrityL(ctx, x.integrity) : '', x?.sha256 ? `SHA-256 ${x.sha256.slice(0, 16)}…` : ''].filter(Boolean).join(' · ');
+}
+
+/**
+ * An integrity check (lib/integrity-core.mjs): files read and their size, altered and missing ones, fingerprints
+ * recorded, files out of reach; the working versions concerned, by document and label. Counts and documents to records
+ * managers only: they count drafts and name them (D-14); other readers learn whether something was found.
+ */
+export function integrityL(ctx: Ctx, x: NonNullable<AuditData['integrity']>): string {
+  const { t, lang } = ctx;
+  const named = (xs: { doc: string; label: string }[], n: number) => `${xs.map((v) => `${v.doc} ${v.label}`).join(', ')}${n > xs.length ? ` ${t.integrity_more.replace('{n}', String(n - xs.length))}` : ''}`;
+  if (!ctx.seesAll) return [x.failed ? t.integrity_failed_short : '', x.alteredCount || x.missingCount ? t.integrity_found : t.integrity_none].filter(Boolean).join(' · ');
+  return [
+    x.failed ? t.integrity_failed_short : '',
+    x.by === 'cli' ? t.backup_by_cli : '',
+    t.integrity_checked_n.replace('{n}', String(x.checked)).replace('{size}', fmtSize(x.bytes, lang)),
+    x.alteredCount ? `${t.integrity_altered_n.replace('{n}', String(x.alteredCount))} : ${named(x.altered, x.alteredCount)}` : '',
+    x.missingCount ? `${t.integrity_missing_n.replace('{n}', String(x.missingCount))} : ${named(x.missing, x.missingCount)}` : '',
+    x.filled ? t.integrity_filled_n.replace('{n}', String(x.filled)) : '',
+    x.skipped ? t.integrity_skipped_n.replace('{n}', String(x.skipped)) : '',
+    !x.failed && !x.alteredCount && !x.missingCount ? t.integrity_none : '',
+  ].filter(Boolean).join(' · ');
 }
 
 /**
@@ -1154,6 +1224,7 @@ function archiveL(ctx: Ctx, x: NonNullable<AuditData['archive']>): string {
     all && x.files != null ? t.backup_files.replace('{n}', String(x.files)).replace('{size}', fmtSize(x.bytes ?? 0, lang)) : '',
     all && x.missing ? t.backup_missing_n.replace('{n}', String(x.missing)) : '',
     all && x.skipped ? t.backup_sharepoint_n.replace('{n}', String(x.skipped)) : '',
+    all && x.altered ? t.export_all_altered.replace('{n}', String(x.altered)) : '',
     all && x.sha256 ? t.backup_archive.replace('{size}', fmtSize(x.size ?? 0, lang)).replace('{sha}', x.sha256.slice(0, 16)) : '',
   ].filter(Boolean).join(' · ');
 }
@@ -1181,6 +1252,16 @@ function refusedFileL(ctx: Ctx, entry: string | null, f: NonNullable<AuditData['
   const threat = ctx.lang === 'fr' ? `« ${f.threat} »` : `“${f.threat}”`;
   const named = ctx.seesAll || entry === 'import';
   return [named ? f.name : extensionOf(f.name), fmtSize(f.size, ctx.lang), threat, f.ref ?? '', ctx.seesAll && f.doc ? f.doc : ''].filter(Boolean).join(' · ');
+}
+
+/**
+ * The latest integrity check (lib/integrity-core.mjs, Administration or npm run integrity): when, by whom, what it found;
+ * null when none was journaled. For the Journal tab, records managers only (lib/access.ts mayCheckIntegrity).
+ */
+export async function latestIntegrityCheck() {
+  const db = await getDb();
+  const [row] = await db.select().from(s.auditLog).where(eq(s.auditLog.action, 'integrity_checked')).orderBy(desc(s.auditLog.at), desc(s.auditLog.id)).limit(1);
+  return row?.data?.integrity ? { at: row.at, userId: row.userId, integrity: row.data.integrity } : null;
 }
 
 /** Screen where the target of an entry without document is managed. */

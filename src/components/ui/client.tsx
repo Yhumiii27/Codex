@@ -61,7 +61,7 @@ export function ActionButton({ action, className = 'btn btn-secondary', children
           try {
             const r = await action();
             if (!r.ok) { toast(r.error, true); router.refresh(); }
-            else { if (r.href ?? after) router.replace((r.href ?? after)!, { scroll: false }); if (r.message) toast(r.message); }
+            else { if (r.href ?? after) router.replace((r.href ?? after)!, { scroll: false }); if (r.message) toast(r.message); if (r.warning) toast(r.warning, 'warn'); }
           } catch {
             toast(t.error, true);
           }

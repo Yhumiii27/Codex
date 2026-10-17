@@ -608,7 +608,8 @@ export function filePath(docId, letter, n, ext) {
 
 /**
  * @typedef {{ workingVersion: number, docId: string, letter: string, n: number, storage: string, fileKey: string,
- *   fileName: string | null, mime: string | null, size: number | null }} StoredRef
+ *   fileName: string | null, mime: string | null, size: number | null, sha256?: string | null }} StoredRef `sha256`: the one recorded
+ *   when the file entered Codex, null when none was
  * @typedef {(f: StoredRef) => Promise<AsyncIterable<Uint8Array> | null | 'skipped'>} FileOpener the file's bytes; null when
  *   the store has no such file; 'skipped' when this process cannot reach its store (SharePoint from the command line)
  */
@@ -623,13 +624,14 @@ async function* storedFiles(q, snap) {
   const w = ident(`${snap.tag}_working_versions`);
   const r = ident(`${snap.tag}_revisions`);
   for (let after = { doc: '', id: 0 }; ;) {
-    const { rows } = await q.query(`select w.id, w.doc_id, r.letter, w.n, coalesce(w.storage, 'local') as storage, w.file_key, w.file_name, w.mime, w.size
+    const { rows } = await q.query(`select w.id, w.doc_id, r.letter, w.n, coalesce(w.storage, 'local') as storage, w.file_key, w.file_name, w.mime, w.size, w.sha256
       from ${w} w join ${r} r on r.id = w.revision_id
       where w.file_key is not null and (w.doc_id, w.id) > ($1, $2) order by w.doc_id, w.id limit ${FILE_BATCH}`, [after.doc, after.id]);
     if (!rows.length) return;
     after = { doc: rows[rows.length - 1].doc_id, id: rows[rows.length - 1].id };
     yield rows.map((x) => ({
       workingVersion: x.id, docId: x.doc_id, letter: x.letter, n: x.n, storage: x.storage, fileKey: x.file_key, fileName: x.file_name, mime: x.mime, size: x.size,
+      sha256: x.sha256 ?? null,
     }));
   }
 }
@@ -726,15 +728,17 @@ async function* importView(q, snap, docs, archived) {
  * @property {Record<string, number>} counts rows of every table exported, `files` the files in the archive
  * @property {Record<string, string>} tables entry of every table
  * @property {{ count: number, bytes: number, missing: { workingVersion: number, path: string }[],
- *   skipped: { workingVersion: number, path: string, storage: string }[] }} files the files archived and their size;
- *   those the store did not have; those kept by a store this process cannot reach, not archived
+ *   skipped: { workingVersion: number, path: string, storage: string }[],
+ *   altered?: { workingVersion: number, path: string, recorded: string }[] }} files the files archived and their size;
+ *   those the store did not have; those kept by a store this process cannot reach, not archived; those archived whose
+ *   bytes differ from the SHA-256 recorded when they entered Codex (`recorded`; the entry's own is in `entries`)
  * @property {{ name: string, size: number, sha256: string, workingVersion?: number }[]} entries every entry but the manifest
  */
 
 /**
  * What the journal keeps of an export (actions 'export_full', 'export_full_end'): counts and sizes, no document named.
  * @typedef {{ documents?: number, files?: number, bytes?: number, size?: number, sha256?: string, missing?: number,
- *   skipped?: number, interrupted?: boolean, failed?: boolean }} ArchiveJournal
+ *   skipped?: number, altered?: number, interrupted?: boolean, failed?: boolean }} ArchiveJournal
  */
 
 /**
@@ -806,7 +810,7 @@ export async function* exportArchive(o) {
   /** @type {ArchiveJournal | null} */
   let outcome = null;
   /** @type {Manifest['files']} */
-  const files = { count: 0, bytes: 0, missing: [], skipped: [] };
+  const files = { count: 0, bytes: 0, missing: [], skipped: [], altered: [] };
   try {
     snap = await takeSnapshot(o.pg, async (tx, s) => {
       if (o.actor) await journalExport(tx, o.actor, 'export_full', { documents: s.rows.documents ?? 0, files: s.files.count, bytes: s.files.bytes });
@@ -854,6 +858,8 @@ export async function* exportArchive(o) {
         archived.set(f.workingVersion, where);
         files.count++;
         files.bytes += e.size;
+        // Archived as stored, and said: the archive keeps what Codex holds, the manifest tells it differs.
+        if (f.sha256 && f.sha256 !== e.sha256) files.altered?.push({ workingVersion: f.workingVersion, path: where, recorded: f.sha256 });
       }
     }
     if (docs) entries.push(yield* zip.entry(IMPORT_ENTRY, jsonArray(importView(o.pg, s, docs, archived))));
@@ -871,7 +877,10 @@ export async function* exportArchive(o) {
     };
     yield* zip.entry(MANIFEST_ENTRY, [`${JSON.stringify(manifest, null, 2)}\n`]);
     const { size, sha256 } = yield* zip.end();
-    outcome = { size, sha256, files: files.count, bytes: files.bytes, ...(files.missing.length ? { missing: files.missing.length } : {}), ...(files.skipped.length ? { skipped: files.skipped.length } : {}) };
+    outcome = {
+      size, sha256, files: files.count, bytes: files.bytes, ...(files.missing.length ? { missing: files.missing.length } : {}), ...(files.skipped.length ? { skipped: files.skipped.length } : {}),
+      ...(files.altered?.length ? { altered: files.altered.length } : {}),
+    };
     return { manifest, size, sha256 };
   } catch (err) {
     outcome = { failed: true, size: zip.offset };

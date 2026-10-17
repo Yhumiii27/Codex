@@ -92,6 +92,7 @@ export function useSubmit() {
         if (!opts.keepOpen) close();
         if (r.href) router.push(r.href);
         if (r.message) toast(r.message);
+        if (r.warning) toast(r.warning, 'warn');
       } catch {
         setError(t.error);
       }

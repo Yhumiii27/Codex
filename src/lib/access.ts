@@ -191,6 +191,15 @@ export function mayBackUp(ctx: Pick<Ctx, 'seesAll' | 'screens'>): boolean {
 }
 
 /**
+ * Who may check the stored files against their SHA-256 from Administration (lib/integrity.ts) and read what the checks
+ * found: a records manager with access to Administration. A check names the working versions it found altered or
+ * missing, drafts included (D-14).
+ */
+export function mayCheckIntegrity(ctx: Pick<Ctx, 'seesAll' | 'screens'>): boolean {
+  return ctx.seesAll && ctx.screens.admin;
+}
+
+/**
  * Who may download the full export (lib/full-export.ts, GET /api/export/full): a records manager with access to
  * Administration, as for a backup. The archive holds every document, drafts and confidential ones included, every
  * file and the whole journal, without any filter (D-14): it is an administration export, journaled at its start and end.

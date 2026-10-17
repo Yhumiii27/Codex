@@ -340,8 +340,15 @@ export const workingVersions = pgTable(
     mime: text('mime'),
     size: integer('size'),
     pages: integer('pages'),
+    /**
+     * SHA-256 of the file's bytes (64 lowercase hex), computed as it entered Codex (lib/storage.ts stageFile): the
+     * reference the integrity check (lib/integrity-core.mjs) and full downloads compare the stored bytes with, and the
+     * key of the duplicate warning. Null for a version without file, or whose file was stored before it was computed
+     * until an integrity check establishes it.
+     */
+    sha256: text('sha256'),
   },
-  (t) => [uniqueIndex('working_versions_rev_n').on(t.revisionId, t.n)],
+  (t) => [uniqueIndex('working_versions_rev_n').on(t.revisionId, t.n), index('working_versions_sha256').on(t.sha256)],
 );
 
 // ── Approval workflows ──────────────────────────────────────────────────
@@ -456,7 +463,8 @@ export const idCounters = pgTable('id_counters', {
 /** 'file': a file refused on its way in (target id: where it came from, lib/storage.ts UploadOrigin). */
 /** 'storage': a file store (target id: 'local' or 'sharepoint'), cleaned of its orphan files (lib/orphans.ts). */
 /** 'backup': an archive of the database and files (target id: its file name, lib/backup-core.mjs). */
-export type AuditTargetKind = 'permission' | 'department' | 'site' | 'function' | 'family' | 'type' | 'program' | 'export' | 'file' | 'storage' | 'backup';
+/** 'integrity': a check of the stored files against their SHA-256 (target id: 'files', lib/integrity-core.mjs). */
+export type AuditTargetKind = 'permission' | 'department' | 'site' | 'function' | 'family' | 'type' | 'program' | 'export' | 'file' | 'storage' | 'backup' | 'integrity';
 
 /** A value in a journal change, as stored: keys and codes, rendered in the reader's language (lib/queries.ts). */
 export type AuditValue = string | string[] | boolean | null | { years: number | null; trigger: string; disposition: string };
@@ -515,9 +523,29 @@ export type AuditData = {
    */
   archive?: {
     documents?: number; files?: number; bytes?: number; size?: number; sha256?: string; missing?: number; skipped?: number;
-    interrupted?: boolean; failed?: boolean;
+    altered?: number; interrupted?: boolean; failed?: boolean;
+  };
+  /**
+   * SHA-256 of the file a working version received (actions 'upload', 'working', 'import'). Kept from readers outside the
+   * drafting circle (lib/queries.ts auditForReader, D-14): it would tell a draft's file apart.
+   */
+  sha256?: string;
+  /**
+   * Check of the stored files against their recorded SHA-256 (action 'integrity_checked', lib/integrity-core.mjs).
+   * `checked`: files read, `bytes`
+   * their size; `altered` and `missing`: the working versions concerned (document under its ID at the time, version
+   * label), at most INTEGRITY_LIST_MAX of each, `alteredCount`/`missingCount` all of them; `filled`: fingerprints
+   * recorded for files stored before they were computed; `skipped`: files kept by a store this process cannot reach.
+   * Documents and counts are shown to records managers only (lib/queries.ts integrityL, D-14).
+   */
+  integrity?: {
+    checked: number; bytes: number; altered: IntegrityItem[]; alteredCount: number; missing: IntegrityItem[]; missingCount: number;
+    filled: number; skipped: number; by?: 'app' | 'cli'; failed?: boolean;
   };
 };
+
+/** A working version an integrity check names: its row, its document under the ID of the time, its label (A.2). */
+export type IntegrityItem = { v: number; doc: string; label: string };
 
 /** Append-only: the database refuses UPDATE, DELETE and TRUNCATE on it (src/db/index.ts). */
 export const auditLog = pgTable(

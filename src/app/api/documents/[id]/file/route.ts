@@ -9,6 +9,7 @@ import { fmtDate } from '@/lib/format';
 import { audit } from '@/lib/lifecycle';
 import { logger, withRequestLog } from '@/lib/log';
 import { simplePdf } from '@/lib/pdf';
+import { verifiedStream } from '@/lib/integrity-core.mjs';
 import { getDoc, type DocView } from '@/lib/queries';
 import { fileAnswer, type FileAnswer } from '@/lib/ranges';
 import { limitReader } from '@/lib/ratelimit';
@@ -16,7 +17,9 @@ import { FileNotFoundError, normalizeMime, openStored, storedExt, type FileSourc
 
 // A stored file, streamed from its store (never read whole into memory), with byte ranges (206, 416) and validators
 // (ETag, Last-Modified, 304) after RFC 9110: lib/ranges.ts decides, once access is granted. Point 46 of
-// docs/reste-a-faire.md.
+// docs/reste-a-faire.md. A whole file is checked against its recorded SHA-256 as it is sent (point 31): an altered one
+// is cut short before its last bytes and journaled, never delivered as if whole. A range is sent unchecked: checking it
+// would mean reading the whole file; the integrity check of Administration (npm run integrity) covers every file.
 
 const WORKING = new Set(['draft', 'in_review', 'approved']);
 /** Suffix of the proposed name for a document withdrawn or archived; the file itself is served unchanged. */
@@ -182,6 +185,15 @@ async function handleGet(req: Request, { params }: RouteContext<'/api/documents/
     body = await src.read(a.status === 206 ? a.range : undefined);
   } catch (err) {
     return storeFailure(err);
+  }
+  // A whole stored file whose fingerprint is recorded: checked on the way (lib/integrity-core.mjs verifiedStream).
+  if (a.status === 200 && version.fileKey && version.sha256) {
+    const label = x.label;
+    body = verifiedStream(body, version.sha256, async () => {
+      logger('storage').error('stored file altered', { doc: doc.id, version: version.id, key: version.fileKey });
+      const db = await getDb();
+      await audit(db, ctx.user.id, 'file_altered', doc.id, label, version.revisionId);
+    });
   }
   if (x.download && (a.status === 200 || a.range.start === 0)) {
     try {

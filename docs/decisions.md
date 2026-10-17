@@ -1077,6 +1077,40 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     d'export programmé, pas de chiffrement : à décider avec l'hébergement ;
   - le téléchargement compte dans le budget des exports (`CODEX_RATE_EXPORTS`), sans autre limite : deux exports
     simultanés sont possibles (chacun sa copie temporaire).
+- **Empreinte SHA-256 des fichiers : intégrité et doublons** (point 31 de `docs/reste-a-faire.md`, 17 octobre ;
+  planification des contrôles (point 38), hébergement et alertes (M22), SharePoint (O-01) non décidés) :
+  - **calcul** sur les octets reçus, avant leur écriture au stockage, pour toute entrée (nouveau document, copie d'un
+    modèle, version de travail, import) ; gardée en hexadécimal minuscule sur la version de travail
+    (`working_versions.sha256`), jamais modifiée ensuite ;
+  - **fichiers déposés avant le calcul** : la première vérification enregistre l'empreinte des octets tels qu'ils sont
+    (rien de plus ancien n'en atteste), sauf si leur taille diffère déjà de celle enregistrée (le fichier est alors
+    signalé altéré). Le journal compte ces empreintes établies après coup ; la fiche de visa d'un fichier sans empreinte
+    dit « non calculée » ;
+  - **vérification** à la demande seulement : Administration › Journal d'audit › Intégrité des fichiers (gestionnaires
+    documentaires ayant l'accès Administration, comme la sauvegarde : le résultat nomme des brouillons) et
+    `npm run integrity`, serveur arrêté, qui sort en erreur (code 1) s'il y a un écart, pour qu'un planificateur puisse
+    alerter. Rien n'est réparé ni supprimé : revenir à une copie saine (sauvegarde) reste une décision humaine. Le
+    résultat va au journal d'audit (« Vérification d'intégrité » : nombres et documents montrés aux seuls
+    gestionnaires, les autres lecteurs du journal lisent seulement s'il y a des écarts) et au journal technique (niveau
+    `error` en cas d'écart). Aucune notification : il n'y a pas encore de messagerie ;
+  - **téléchargement** : un fichier servi en entier est vérifié au passage ; altéré, il est interrompu avant ses
+    derniers octets (le destinataire n'a jamais un fichier altéré qui semble complet) et l'entrée « Fichier altéré
+    détecté » est écrite sur le document, avec l'utilisateur et la version (visible comme les autres entrées de la
+    révision, D-14). Une plage d'octets (aperçu, reprise) n'est pas vérifiée : il faudrait relire tout le fichier ; la
+    vérification d'ensemble couvre ce cas. La copie d'un modèle dont le fichier ne correspond plus est refusée ;
+  - **doublons** : avertissement non bloquant après le dépôt (message affiché plus longtemps), qui nomme au plus trois
+    documents, chacun avec la version concernée, seulement si l'utilisateur peut avoir ce fichier-là : hors du cercle
+    de rédaction, le fichier final de la révision en vigueur d'un document qu'il lit, jamais une version de travail, un
+    brouillon, une révision remplacée ni un document qu'il ne lit pas (D-14). Dans le cercle, une version antérieure
+    identique du même document est signalée aussi. La copie d'un modèle n'avertit pas (elle est identique au modèle
+    par construction). L'import renvoie l'avertissement `duplicate_file` pour un fichier en vigueur de niveau Public,
+    Restreint ou Interne seulement : l'outil de migration est hors de Codex ;
+  - **affichage** : empreinte complète sous chaque version de l'onglet Révisions (sélectionnable d'un clic, pour la
+    comparer à `sha256sum` ou `Get-FileHash`), début de l'empreinte dans la comparaison des versions, empreinte complète
+    du fichier approuvé dans la fiche de visa ; début de l'empreinte dans le journal des dépôts, au seul cercle de
+    rédaction (elle permettrait de reconnaître le fichier d'un brouillon) ;
+  - **export complet** : la colonne `sha256` est exportée ; un fichier dont les octets ne correspondent plus est
+    archivé tel quel et listé dans le manifeste (`files.altered`), compté dans le journal de l'export.
 - **Git** (D-23) : premier commit sur une branche `codex-ged-v2` plutôt que sur `main`.
 
 ## Ce qui est explicitement hors périmètre

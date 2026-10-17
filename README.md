@@ -392,6 +392,30 @@ npm run export:check -- <archive>       # relit une archive : CRC-32 et SHA-256 
 - Ce n'est pas une sauvegarde : pour revenir à un état de Codex, on restaure une sauvegarde. Le réimport passe par
   `POST /api/import`, une révision par document.
 
+## Empreintes des fichiers : intégrité et doublons
+
+Point 31 de `docs/reste-a-faire.md`.
+
+```bash
+npm run integrity                       # serveur arrêté : relit chaque fichier et le compare à son empreinte (code 1 si écart)
+```
+
+- **Empreinte** : chaque fichier qui entre dans Codex (nouveau document, copie d'un modèle, version de travail,
+  import) reçoit son SHA-256, calculé dans `stageFile` (`src/lib/storage.ts`) et gardé sur la version de travail
+  (`working_versions.sha256`). Il est affiché dans l'onglet Révisions (et la comparaison des versions), repris dans la
+  fiche de visa (fichier approuvé), dans le journal des dépôts (cercle de rédaction seulement, D-14) et dans l'export
+  complet, dont le manifeste signale les fichiers qui ne correspondent plus (`files.altered`).
+- **Vérification** (`src/lib/integrity-core.mjs`) : Administration › Journal d'audit › Intégrité des fichiers
+  (gestionnaires documentaires ayant l'accès Administration) ou `npm run integrity` relisent tous les fichiers stockés,
+  signalent les altérés et les absents, enregistrent l'empreinte des fichiers déposés avant son calcul, et inscrivent
+  le résultat au journal (« Vérification d'intégrité »). Rien n'est réparé ni supprimé. Un téléchargement complet est
+  vérifié au passage : un fichier altéré est interrompu avant ses derniers octets et journalisé (« Fichier altéré
+  détecté ») ; une plage d'octets (aperçu) ne l'est pas. Une copie de modèle altéré est refusée.
+- **Doublons** : un dépôt dont le fichier est identique à un fichier déjà classé reste accepté, avec un avertissement
+  qui nomme le document, seulement si l'utilisateur peut avoir ce fichier-là (hors du cercle de rédaction : le fichier
+  en vigueur, jamais un brouillon ni une version de travail, D-14). L'import le signale dans `warnings`
+  (`duplicate_file`) pour un fichier en vigueur de niveau Public, Restreint ou Interne seulement.
+
 ## Exploitation : journal technique, santé, configuration
 
 Points 37 et 49 de `docs/reste-a-faire.md` ; procédure complète dans **`docs/exploitation.md`** (champs du journal,
@@ -478,6 +502,7 @@ src/
 scripts/
   codex-backup.mjs     commandes npm run backup, backup:list, backup:check, restore (docs/sauvegarde.md)
   codex-export.mjs     commandes npm run export, export:check (docs/export.md)
+  codex-integrity.mjs  commande npm run integrity (empreintes SHA-256 des fichiers)
 tests/
   unit/                tests unitaires des règles pures de src/lib (Vitest, vitest.config.ts)
   integration/         tests d'intégration sur PGlite en mémoire (règles métier de src/lib, Server Actions, webhook)

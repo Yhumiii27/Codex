@@ -1,5 +1,5 @@
 import 'server-only';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { constants as fsc } from 'node:fs';
 import { access, link, lstat, open as openFile, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -25,7 +25,8 @@ import { sliceStream, type ByteRange } from './ranges';
 
 const log = logger('storage');
 
-export type StoredFile = { storage: string; fileKey: string; fileName: string; mime: string; size: number; pages: number | null };
+/** `sha256`: of the bytes as they entered Codex (64 lowercase hex), the reference of the integrity checks. */
+export type StoredFile = { storage: string; fileKey: string; fileName: string; mime: string; size: number; pages: number | null; sha256: string };
 /** A file in the store that no record may point to yet; `ext` is kept for its final name. */
 export type StagedFile = StoredFile & { ext: string };
 
@@ -372,9 +373,16 @@ export async function stageFile(buf: Buffer, originalName: string, rawMime: stri
   // not give it one.
   const mime = normalizeMime(extensionOf(name) ? rawMime : '', name, buf);
   const ext = storedExt(name, mime);
+  // Fingerprint of the bytes as received, before they reach the store: what is stored is compared with it afterwards.
+  const sha256 = sha256Of(buf);
   const st = store();
   const fileKey = await st.put(buf, `upload${ext}`);
-  return { storage: st.name, fileKey, fileName: name, mime, size: buf.length, pages: countPdfPages(buf, mime), ext };
+  return { storage: st.name, fileKey, fileName: name, mime, size: buf.length, pages: countPdfPages(buf, mime), sha256, ext };
+}
+
+/** SHA-256 of bytes, 64 lowercase hex: the form working_versions.sha256 keeps. */
+export function sha256Of(buf: Buffer | Uint8Array): string {
+  return createHash('sha256').update(buf).digest('hex');
 }
 
 export async function stageUpload(file: File, origin: UploadOrigin): Promise<StagedFile> {
@@ -386,7 +394,7 @@ export async function stageUpload(file: File, origin: UploadOrigin): Promise<Sta
 
 /** Columns of a working version that describe its file. */
 export function fileColumns(f: StagedFile): StoredFile {
-  return { storage: f.storage, fileKey: f.fileKey, fileName: f.fileName, mime: f.mime, size: f.size, pages: f.pages };
+  return { storage: f.storage, fileKey: f.fileKey, fileName: f.fileName, mime: f.mime, size: f.size, pages: f.pages, sha256: f.sha256 };
 }
 
 /**
@@ -422,7 +430,7 @@ export async function renameDocFiles(docId: string): Promise<void> {
     // Same extension as at upload (stageFile): a SharePoint key is a driveItem id and carries none.
     const name = r.fileName ?? '';
     const ext = storedExt(name, normalizeMime(r.mime, name));
-    await nameStoredFile({ storage: r.storage ?? 'local', fileKey: r.fileKey, fileName: name, mime: r.mime ?? '', size: 0, pages: null, ext }, docId, `${r.letter}.${r.n}`);
+    await nameStoredFile({ storage: r.storage ?? 'local', fileKey: r.fileKey, fileName: name, mime: r.mime ?? '', size: 0, pages: null, sha256: '', ext }, docId, `${r.letter}.${r.n}`);
   }
 }
 

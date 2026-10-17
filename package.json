@@ -21,6 +21,7 @@
     "restore": "node scripts/codex-backup.mjs restore",
     "export": "node scripts/codex-export.mjs create",
     "export:check": "node scripts/codex-export.mjs check",
+    "integrity": "node scripts/codex-integrity.mjs check",
     "app": "bash desktop/build-app.sh"
   },
   "dependencies": {

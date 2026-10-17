@@ -1,5 +1,5 @@
 {
-  "id": "366f154f-1b7f-4191-98dc-95c779f5fdea",
+  "id": "e989d6a9-86b2-43f1-91cf-7f4835c1c423",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -2487,6 +2487,12 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": false
+        },
+        "sha256": {
+          "name": "sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -2507,6 +2513,21 @@
             }
           ],
           "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "working_versions_sha256": {
+          "name": "working_versions_sha256",
+          "columns": [
+            {
+              "expression": "sha256",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}

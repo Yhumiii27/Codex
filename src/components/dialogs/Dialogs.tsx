@@ -674,6 +674,8 @@ function Compare({ current, other }: { current: VersionLite; other: VersionLite 
   const rows: [string, (v: VersionLite) => string][] = [
     [t.working_version, (v) => v.label], [t.date, (v) => v.dateF], [t.author, (v) => v.author], [t.version_comment, (v) => v.commentL],
     [t.file, (v) => v.fileName ?? '—'], [t.size, (v) => v.sizeF], [t.pages, (v) => (v.pages ? String(v.pages) : '—')],
+    // The start of each fingerprint: enough to tell identical files apart from different ones.
+    ['SHA-256', (v) => (v.sha256 ? `${v.sha256.slice(0, 16)}…` : '—')],
   ];
   return (
     <Modal title={t.compare_title} width={620} actions={<button type="button" className="btn btn-primary" onClick={close}>{t.close}</button>}>

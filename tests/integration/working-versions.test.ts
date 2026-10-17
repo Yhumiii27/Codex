@@ -92,7 +92,8 @@ describe('addWorkingVersion (D-12)', () => {
   it('adds A.2, A.3… under the same letter and keeps every earlier version', async () => {
     actAs('owner');
     await createDocument(form({ title: 'Procédure', typeCode: 'PRO', file: pdf() }));
-    expect(await upload('owner')).toEqual({ ok: true, href: `/documents/${ID}?tab=versions` });
+    // The same file again: uploaded, with the duplicate warning (point 31).
+    expect(await upload('owner')).toMatchObject({ ok: true, href: `/documents/${ID}?tab=versions`, warning: expect.stringContaining(`${ID} A.1`) });
     expect(await upload('owner', ID, 'relecture')).toMatchObject({ ok: true });
     expect(await versions()).toEqual([
       ['A.1', 'owner', `${ID}_A.1.pdf`],

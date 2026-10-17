@@ -122,6 +122,8 @@ export function RevisionsTab({ docId, revisions, current }: { docId: string; rev
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 13 }}>{v.commentL}</div>
                       <div className="text-muted" style={{ fontSize: 11 }}>{v.author} · {v.dateF}{v.fileName ? ` · ${v.fileName}` : ''}{v.fileName && v.sizeF !== '—' ? ` · ${v.sizeF}` : ''}</div>
+                      {/* Fingerprint recorded when the file entered Codex: compare it with a copy (sha256sum, Get-FileHash). */}
+                      {v.sha256 && <div className={`text-muted ${styles.sha}`} title={t.sha256_hint}>SHA-256 <span className={styles.shaValue}>{v.sha256}</span></div>}
                       {v.current && <span className="tag tag-accent" style={{ marginTop: 6 }}>{t.current}</span>}
                     </div>
                     <a

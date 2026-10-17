@@ -4,15 +4,15 @@ import { Forbidden } from '@/components/ui/Forbidden';
 import { Icon } from '@/components/ui/Icon';
 import { Seg } from '@/components/ui/Seg';
 import { ActionButton, DialogButton } from '@/components/ui/client';
-import { mayBackUp, mayCleanStorage, mayExportAll } from '@/lib/access';
-import { backUpData, purgeOrphanFiles, removeFunctionHolder, togglePermission } from '@/lib/actions';
+import { mayBackUp, mayCheckIntegrity, mayCleanStorage, mayExportAll } from '@/lib/access';
+import { backUpData, checkFileIntegrity, purgeOrphanFiles, removeFunctionHolder, togglePermission } from '@/lib/actions';
 import { antivirusStatus } from '@/lib/antivirus';
 import { backupList, backupSettings } from '@/lib/backup';
 import { getCtx, type Ctx } from '@/lib/context';
 import { featuredOf } from '@/lib/departments';
 import { fileRules, fmtMax } from '@/lib/filetypes';
 import { ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLE_LABEL, MATRIX_ROLES, PERMS, SIMULATED_MATRIX_ROLES, type TKey } from '@/lib/i18n';
-import { AUDIT_ID_MAX, auditPage, getMatrix, listFunctionHolders, listTemplates, orgUsage, registryUsage, typeView, type AuditFilter, type RegistryUsage } from '@/lib/queries';
+import { AUDIT_ID_MAX, auditPage, getMatrix, integrityL, latestIntegrityCheck, listFunctionHolders, listTemplates, orgUsage, registryUsage, typeView, type AuditFilter, type RegistryUsage } from '@/lib/queries';
 import { fmtDateTime, fmtSize, parisStamp, parseIsoDay } from '@/lib/format';
 import { MAX_PER_RUN, orphanReport, type OrphanScan } from '@/lib/orphans';
 import { inUse } from '@/lib/org-rules';
@@ -586,6 +586,46 @@ async function Backups({ ctx, open }: { ctx: Ctx; open: boolean }) {
 }
 
 /**
+ * Integrity of the stored files (lib/integrity.ts), for a records manager: what the latest check found, the documents
+ * whose files it found altered or missing (links to their record), and the button that checks every file again.
+ */
+async function Integrity({ ctx }: { ctx: Ctx }) {
+  const { t, lang } = ctx;
+  const last = await latestIntegrityCheck();
+  const x = last?.integrity;
+  const items = x ? [...x.altered.map((v) => ({ ...v, kind: t.integrity_altered })), ...x.missing.map((v) => ({ ...v, kind: t.integrity_missing }))] : [];
+  return (
+    <section className={styles.orphans} aria-label={t.integrity_title}>
+      <div className={styles.orphansHead}>
+        <strong>{t.integrity_title}</strong>
+        <span className={x && (x.alteredCount || x.missingCount || x.failed) ? styles.filesOff : 'text-muted'}>
+          {last && x ? `${t.integrity_last.replace('{date}', fmtDateTime(parisStamp(last.at), lang))} · ${integrityL(ctx, x)}` : t.integrity_never}
+        </span>
+        <span style={{ flex: 1 }} />
+        <ActionButton action={checkFileIntegrity} className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} confirm={t.integrity_confirm} after="/administration?tab=audit">
+          {t.integrity_check}
+        </ActionButton>
+      </div>
+      <p className="text-muted">{t.integrity_hint}</p>
+      {items.length > 0 && (
+        <table className={`table ${styles.orphanTable}`}>
+          <thead><tr><th>{t.document}</th><th>{t.working_version}</th><th>{t.integrity_finding}</th></tr></thead>
+          <tbody>
+            {items.map((v) => (
+              <tr key={`${v.kind}-${v.v}`}>
+                <td className="nowrap"><Link href={`/documents/${encodeURIComponent(v.doc)}?tab=versions`} className="link-plain">{v.doc}</Link></td>
+                <td className="nowrap tabnum">{v.label}</td>
+                <td className={styles.filesOff}>{v.kind}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
+  );
+}
+
+/**
  * Full export (lib/full-export.ts), for a records manager: a plain link, so that the browser downloads the archive as it
  * is written (GET /api/export/full, journaled at its start and end).
  */
@@ -625,6 +665,7 @@ async function Audit({ ctx, sp }: { ctx: Ctx; sp: Record<string, string | undefi
       <FilesPolicy ctx={ctx} />
       {mayCleanStorage(ctx) && <Orphans ctx={ctx} open={sp.orphans === '1'} />}
       {mayBackUp(ctx) && <Backups ctx={ctx} open={sp.backups === '1'} />}
+      {mayCheckIntegrity(ctx) && <Integrity ctx={ctx} />}
       {mayExportAll(ctx) && <FullExport ctx={ctx} />}
       {/* Mounted again when the URL changes its filters (Effacer, a link), so that the fields show them. */}
       <div key={JSON.stringify(f)}>

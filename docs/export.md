@@ -99,7 +99,7 @@ fin, écrite après, n'y est pas.
 | `schema` | `migration` (dernière migration appliquée à la base, ex. `0000_init`), `hash` (son SHA-256), `postgres` (version) |
 | `counts` | Nombre de lignes de chaque table exportée (clé : nom de la table), et `files` : fichiers dans l'archive |
 | `tables` | Élément de chaque table (`"documents": "data/documents.json"`) |
-| `files` | `count` et `bytes` des fichiers archivés ; `missing` : versions de travail dont le stockage n'avait pas le fichier (`workingVersion`, `path` prévu) ; `skipped` : fichiers d'un stockage que ce processus ne peut pas lire (SharePoint depuis la commande, ou SharePoint non configuré), avec `storage` |
+| `files` | `count` et `bytes` des fichiers archivés ; `missing` : versions de travail dont le stockage n'avait pas le fichier (`workingVersion`, `path` prévu) ; `skipped` : fichiers d'un stockage que ce processus ne peut pas lire (SharePoint depuis la commande, ou SharePoint non configuré), avec `storage` ; `altered` : fichiers archivés dont le SHA-256 diffère de celui enregistré à leur dépôt (`workingVersion`, `path`, `recorded` : l'empreinte enregistrée), archivés tels qu'ils sont stockés |
 | `entries` | Chaque élément sauf le manifeste : `name`, `size`, `sha256`, et `workingVersion` (identifiant de la version de travail) pour un fichier |
 
 ## `data/<table>.json`
@@ -112,7 +112,7 @@ dans l'ordre de la clé primaire (le journal par identifiant croissant).
 |---|---|
 | `documents` | Fiche de chaque document : identifiant et anciens identifiants (`aliases`), référence d'origine d'un document importé (`legacyRef`), axes de classement, type, département, site, propriétaire, auteur, confidentialité, mots-clés, état (`active`, `obsolete`, `archived`), statut affiché, lettres de la révision en vigueur et de celle en cours, dates, classe de conservation, champs des documents externes, de projet et de recherche, propriétaire de processus, gel juridique, `version` (détection des modifications simultanées) |
 | `revisions` | Révisions A, B… : statut (`draft`, `in_review`, `approved`, `in_force`, `superseded`, `cancelled`), dates d'approbation, d'effet, de mise en vigueur et de remplacement, modificateur désigné, ordre de modification qui l'a ouverte |
-| `working_versions` | Versions de travail A.1, A.2… : révision (`revisionId`), numéro, commentaire, auteur, date, fichier (`storage`, `fileKey`, `fileName` d'origine, `mime`, `size`, `pages`). Le fichier est dans `files/`, retrouvé par `entries[].workingVersion` du manifeste |
+| `working_versions` | Versions de travail A.1, A.2… : révision (`revisionId`), numéro, commentaire, auteur, date, fichier (`storage`, `fileKey`, `fileName` d'origine, `mime`, `size`, `pages`, `sha256` : empreinte calculée à son entrée dans Codex, nulle pour un fichier stocké avant qu'elle soit calculée). Le fichier est dans `files/`, retrouvé par `entries[].workingVersion` du manifeste |
 | `document_readers` | Lecteurs désignés des documents confidentiels et très confidentiels |
 | `document_links` | Liens entre documents : `sourceId` remplace `targetId` (`replaces`), ou renvoi mutuel (`see_also`) |
 | `workflows`, `workflow_steps`, `workflow_comments` | Circuits de validation (révision, demandeur, échéance, étape courante, issue, motif), leurs étapes (fonction, titulaire, date de décision, signature), leurs commentaires |

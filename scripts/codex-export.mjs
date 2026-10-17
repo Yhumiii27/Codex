@@ -81,6 +81,7 @@ function describe(m) {
     `  ${m.files.count} fichiers (${size(m.files.bytes)}), migration ${m.schema.migration ?? m.schema.hash?.slice(0, 12) ?? '?'}, ${m.schema.postgres}`,
   ];
   if (m.files.missing.length) lines.push(`  Attention : ${m.files.missing.length} fichier(s) référencé(s) par la base manquaient au stockage : ${m.files.missing.map((x) => x.path).join(', ')}`);
+  if (m.files.altered?.length) lines.push(`  Attention : ${m.files.altered.length} fichier(s) ne correspondent plus à l'empreinte SHA-256 enregistrée à leur dépôt (archivés tels quels) : ${m.files.altered.map((x) => x.path).join(', ')}`);
   if (m.files.skipped.length) lines.push(`  Attention : ${m.files.skipped.length} fichier(s) stocké(s) sur SharePoint ne sont pas dans l'archive (exportez depuis l'application pour les inclure).`);
   return lines.join('\n');
 }

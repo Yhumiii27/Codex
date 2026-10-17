@@ -128,7 +128,7 @@ describe('one circuit as the record tells it', () => {
 
 const RECORD: VisaRecord = {
   doc: { id: 'PRO-QUA-0001', title: 'Maîtrise des documents', type: 'PRO · Procédure', context: 'Qualité', owner: 'Claire Bardet', conf: 'Interne', state: null },
-  rev: { letter: 'B', status: 'En vigueur', createdAt: '2026-10-01', approvedAt: '2026-10-09', effectiveAt: null, inForceAt: '2026-10-09', supersededAt: null, modifier: 'Julien Wagner', changeRefs: ['ECO-2026-010', 'ECO-2026-012'] },
+  rev: { letter: 'B', status: 'En vigueur', createdAt: '2026-10-01', approvedAt: '2026-10-09', effectiveAt: null, inForceAt: '2026-10-09', supersededAt: null, modifier: 'Julien Wagner', changeRefs: ['ECO-2026-010', 'ECO-2026-012'], file: null },
   imported: null,
   circuits: [],
   issued: { at: '2026-10-12 10:15:00', by: 'James Holt' },
@@ -136,6 +136,14 @@ const RECORD: VisaRecord = {
 const text = (r: VisaRecord) => visaLines(t, 'fr', r).map((l) => (l.label ? `${l.label} ${l.text}` : l.text));
 
 describe('what the sheet says', () => {
+  it('names the approved file and its SHA-256 recorded at upload, or says it was not computed (point 31)', () => {
+    const sha = 'a'.repeat(64);
+    const withFile = text({ ...RECORD, rev: { ...RECORD.rev, file: { name: 'procedure.pdf', size: '12 Ko', sha256: sha } } });
+    expect(withFile).toEqual(expect.arrayContaining(['Fichier approuvé procedure.pdf · 12 Ko', `SHA-256 ${sha}`]));
+    const before = text({ ...RECORD, rev: { ...RECORD.rev, file: { name: 'procedure.pdf', size: '12 Ko', sha256: null } } });
+    expect(before).toContain(`SHA-256 ${t.visa_no_sha}`);
+    expect(text(RECORD).some((l) => l.startsWith('SHA-256'))).toBe(false);
+  });
   it('names the document, the revision, its dates and every change order, and says it is an extract of the journal', () => {
     const lines = text({ ...RECORD, circuits: [visaCircuit(W2, STEPS, [], JOURNAL, 'fr', name, true)] });
     expect(lines).toEqual(expect.arrayContaining([
