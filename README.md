@@ -128,3 +128,17 @@ Le `Dockerfile` à la racine compile l'application et lance `next start`. Régla
 - Le build télécharge la police Inter depuis Google Fonts : le serveur de build doit avoir accès à Internet.
 - Tant que l'authentification n'est pas branchée, protéger l'accès au niveau de l'hébergeur (authentification HTTP de
   Coolify, par exemple).
+
+### Déclaration du schéma à Matrix
+
+Au démarrage, juste après les migrations, Codex lit le schéma réel de sa base (tables, colonnes, clés primaires,
+étrangères et uniques) et l'envoie à Matrix, le catalogue des bases de Keystone, Codex, Cursus et Vigie
+(`POST /api/declarations`, contrat `matrix.schema/1`, code dans `src/lib/matrix.ts`). L'envoi ne retarde jamais le
+démarrage : en cas d'échec, un avertissement `[matrix]` est écrit dans le journal et Codex continue.
+
+| Variable (Coolify) | Rôle |
+| --- | --- |
+| `MATRIX_URL` | Adresse de Matrix, par exemple `https://matrix.votre-domaine` ; derrière l'authentification HTTP de Coolify : `https://identifiant:mot-de-passe@matrix.votre-domaine`. Sans elle, rien n'est envoyé. |
+| `MATRIX_TOKEN` | Jeton partagé avec Matrix (même valeur que `MATRIX_TOKEN` du serveur Matrix), envoyé dans l'en-tête `X-Matrix-Token`. |
+
+`MATRIX_DECLARATIONS_DIR` (facultatif) écrit aussi la déclaration dans ce dossier.

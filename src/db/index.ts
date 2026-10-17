@@ -3,6 +3,7 @@ import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
+import { declarerSchemaCodex } from '@/lib/matrix';
 import { migrate } from 'drizzle-orm/pglite/migrator';
 import * as schema from './schema';
 import { seed } from './seed';
@@ -18,6 +19,8 @@ async function init(): Promise<Db> {
   const client = new PGlite(path.join(DATA_DIR, 'pglite'));
   const db = drizzle(client, { schema });
   await migrate(db, { migrationsFolder: path.join(process.cwd(), 'drizzle') });
+  // Déclare le schéma à Matrix (src/lib/matrix.ts) sans retarder le démarrage ; sans MATRIX_URL, rien n'est envoyé.
+  void declarerSchemaCodex(<T,>(sql: string) => client.query<T>(sql).then((r) => r.rows)).catch(() => {});
   const [{ n }] = (await client.query<{ n: number }>('select count(*)::int as n from users')).rows;
   if (n === 0) await seed(db);
   return db;
