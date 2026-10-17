@@ -24,7 +24,7 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
   const fr = ctx.lang === 'fr';
   // What waits for me (approval steps, revisions to draft, grafts, review and expiry dates): the badge and the bell list
   // the same items as the home's « À traiter », each linking to where to act (myTodo, AppProvider).
-  const [todo, templates, visible, audit, matrix] = await Promise.all([myTodo(ctx), listTemplates(ctx), listDocs(ctx), listAudit(ctx, { limit: 60, docsOnly: true }), getMatrix()]);
+  const [todo, templates, visible, audit, matrix] = await Promise.all([myTodo(ctx), listTemplates(ctx), listDocs(ctx), listAudit(ctx, { limit: 60, docsOnly: true, consultations: 'without' }), getMatrix()]);
   // Recent activity only on documents the simulated user may see, each under its current ID.
   const seen = new Set(visible.map((d) => d.id));
   const recent = audit.filter((a) => a.currentId && seen.has(a.currentId)).slice(0, 5);

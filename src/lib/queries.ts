@@ -1,9 +1,9 @@
 import 'server-only';
 import { cache } from 'react';
-import { and, asc, desc, eq, inArray, isNotNull, isNull, or, sql, type SQL, type SQLWrapper } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, notInArray, or, sql, type SQL, type SQLWrapper } from 'drizzle-orm';
 import { getDb, schema as s } from '@/db';
 import type { AuditChange, AuditData, AuditTargetKind, AuditValue, Conf, LinkRel, TermField } from '@/db/schema';
-import { canRead, changeAsSeen, deadlineActor, draftingCircleSql, draftTodo, followsCircuit, getAccessIndex, inDraftingCircle, isUsableTemplate, mayDeleteSearch, mayEditLinks, mayGetApprovalRecord, mayRecall, mayWorkOnDraft, openRevisionView, readableSql, readerMaySeeEntry, readerMaySeeRevision, readerMaySeeVersion, savedSearchesSeenBy, type AccessIndex } from './access';
+import { canRead, changeAsSeen, CONSULT_ACTIONS, deadlineActor, draftingCircleSql, draftTodo, followsCircuit, getAccessIndex, inDraftingCircle, isUsableTemplate, mayDeleteSearch, mayEditLinks, mayGetApprovalRecord, mayRecall, mayWorkOnDraft, openRevisionView, readableSql, readerMaySeeEntry, readerMaySeeRevision, readerMaySeeVersion, savedSearchesSeenBy, type AccessIndex } from './access';
 import { visaCircuit, type VisaRecord } from './approval';
 import { isFinalStatus } from './codes';
 import { revLabel } from './codification';
@@ -570,7 +570,7 @@ export async function approvalRecord(ctx: Ctx, id: string, letter: string): Prom
   const db = await getDb();
   const [wfs, entries] = await Promise.all([
     db.select().from(s.workflows).where(eq(s.workflows.revisionId, rev.id)),
-    db.select().from(s.auditLog).where(eq(s.auditLog.revisionId, rev.id)).orderBy(asc(s.auditLog.at), asc(s.auditLog.id)),
+    db.select().from(s.auditLog).where(and(eq(s.auditLog.revisionId, rev.id), notInArray(s.auditLog.action, [...CONSULT_ACTIONS]))).orderBy(asc(s.auditLog.at), asc(s.auditLog.id)),
   ]);
   const ids = wfs.map((w) => w.id);
   const [steps, comments] = ids.length
@@ -1282,18 +1282,27 @@ function auditTargetHref(ctx: Ctx, kind: AuditTargetKind | null, id: string | nu
 }
 
 /**
+ * Actions that change a record's metadata (the record's "Métadonnées" history): its fields, values before → after
+ * (lib/actions.ts updateMeta, setReaders), and the new ID a reclassification gives it.
+ */
+export const METADATA_ACTIONS = ['edit', 'reclass'] as const;
+
+/**
  * Journal entries, newest first, as auditForReader lets the user read them. For a document, its entries under its
  * current ID and its former ones. Each entry keeps the ID it was written under (`ref`, Journal tab and export) and
  * gives the document's current one (`currentId`, activity feeds) when the user may read it. `docsOnly` (activity
  * feeds) leaves out, in the query itself, the entries without document, which would otherwise take up the `limit`;
- * so does a user without the administration screen, who never reads them.
+ * so does a user without the administration screen, who never reads them. `consultations`: 'without' leaves out the
+ * records opened and files previewed (activity feeds, the record's activity), 'only' lists them alone.
  */
-export async function listAudit(ctx: Ctx, opts: { docId?: string; limit?: number; docsOnly?: boolean } = {}) {
+export async function listAudit(ctx: Ctx, opts: { docId?: string; limit?: number; docsOnly?: boolean; consultations?: 'without' | 'only' } = {}) {
   const db = await getDb();
   const current = await currentIds();
   const ids = opts.docId ? [opts.docId, ...[...current].filter(([, id]) => id === opts.docId).map(([former]) => former)] : [];
   const where = opts.docId ? inArray(s.auditLog.docId, ids) : opts.docsOnly || !ctx.screens.admin ? isNotNull(s.auditLog.docId) : undefined;
-  const rows = await auditForReader(ctx, await db.select().from(s.auditLog).where(where).orderBy(desc(s.auditLog.at), desc(s.auditLog.id)).limit(opts.limit ?? 500));
+  // Consultations (records opened, files previewed) left out of activity, or listed alone.
+  const kind = opts.consultations === 'without' ? notInArray(s.auditLog.action, [...CONSULT_ACTIONS]) : opts.consultations === 'only' ? inArray(s.auditLog.action, [...CONSULT_ACTIONS]) : undefined;
+  const rows = await auditForReader(ctx, await db.select().from(s.auditLog).where(and(where, kind)).orderBy(desc(s.auditLog.at), desc(s.auditLog.id)).limit(opts.limit ?? 500));
   return auditViews(ctx, rows, current);
 }
 

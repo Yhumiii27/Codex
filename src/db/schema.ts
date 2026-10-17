@@ -567,11 +567,12 @@ export const auditLog = pgTable(
     /** Revision the entry is about (working version, circuit, entry into force…); null for the document as a whole (lib/access.ts). */
     revisionId: integer('revision_id'),
   },
-  // Newest first (Journal tab, export, activity feeds), and per document (dates shown outside the drafting circle).
+  // Newest first (Journal tab, export, activity feeds); per document (dates shown outside the drafting circle), and per
+  // document, user and action (a user's latest consultation of a document, lib/lifecycle.ts journalConsultation).
   (t) => [
     check('audit_log_subject', sql`${t.docId} is not null or (${t.targetKind} is not null and ${t.targetId} is not null)`),
     index('audit_log_at').on(t.at, t.id),
-    index('audit_log_doc').on(t.docId),
+    index('audit_log_doc').on(t.docId, t.userId, t.action, t.at),
   ],
 );
 

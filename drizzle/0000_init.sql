@@ -354,7 +354,7 @@ ALTER TABLE "working_versions" ADD CONSTRAINT "working_versions_revision_id_revi
 ALTER TABLE "working_versions" ADD CONSTRAINT "working_versions_doc_id_documents_id_fk" FOREIGN KEY ("doc_id") REFERENCES "public"."documents"("id") ON DELETE no action ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE "working_versions" ADD CONSTRAINT "working_versions_author_id_users_id_fk" FOREIGN KEY ("author_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "audit_log_at" ON "audit_log" USING btree ("at","id");--> statement-breakpoint
-CREATE INDEX "audit_log_doc" ON "audit_log" USING btree ("doc_id");--> statement-breakpoint
+CREATE INDEX "audit_log_doc" ON "audit_log" USING btree ("doc_id","user_id","action","at");--> statement-breakpoint
 CREATE UNIQUE INDEX "change_requests_pending" ON "change_requests" USING btree ("doc_id") WHERE "change_requests"."status" in ('submitted', 'accepted');--> statement-breakpoint
 CREATE UNIQUE INDEX "document_links_pair" ON "document_links" USING btree (least("source_id", "target_id"),greatest("source_id", "target_id"));--> statement-breakpoint
 CREATE INDEX "document_terms_doc" ON "document_terms" USING btree ("doc_id");--> statement-breakpoint

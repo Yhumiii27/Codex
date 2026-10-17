@@ -15,15 +15,18 @@ import { getCtx } from '@/lib/context';
 import { addDays, fmtDate, todayIso } from '@/lib/format';
 import { ECR_TAGCLS } from '@/lib/i18n';
 import { getProject } from '@/lib/keystone';
-import { decisionWait, defaultModifier, draftersOf } from '@/lib/lifecycle';
-import { decisionWaitL, getDoc, listAudit, listChangeRequests, listDocLinks, listDocs, listRevisions, listWorkflows, stateNotice, typeView, type RevisionView } from '@/lib/queries';
+import { CONSULT_WINDOW_MINUTES, decisionWait, defaultModifier, draftersOf } from '@/lib/lifecycle';
+import { decisionWaitL, getDoc, listAudit, METADATA_ACTIONS, listChangeRequests, listDocLinks, listDocs, listRevisions, listWorkflows, stateNotice, typeView, type RevisionView } from '@/lib/queries';
 import { normalizeMime } from '@/lib/storage';
 import { vigieSimulated, vigieUrl } from '@/lib/vigie';
-import { Preview, RevisionsTab, type RevItem } from './DocClient';
+import { Preview, RecordConsultation, RevisionsTab, type RevItem } from './DocClient';
 import styles from './document.module.css';
 
 const TABS = ['project', 'meta', 'versions', 'approval', 'requests', 'history'] as const;
 type Tab = (typeof TABS)[number];
+/** Views of the History tab (?hist=): the activity without consultations, metadata changes only, consultations only. */
+const HIST = ['activity', 'metadata', 'consultations'] as const;
+const METADATA = new Set<string>(METADATA_ACTIONS);
 
 /** Revision statuses of the revision being drafted, reviewed or waiting for its effective date. */
 const WORKING = new Set(['draft', 'in_review', 'approved']);
@@ -75,12 +78,15 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
   // A former reference (reclassification, migration) resolves to the document under its current ID.
   if (doc.id !== id) redirect(`${doc.href}${sp.tab ? `?tab=${encodeURIComponent(sp.tab)}` : ''}`);
 
-  const [project, revs, workflows, requests, history, projectDocs, links, readable] = await Promise.all([
+  const hist = HIST.find((k) => k === sp.hist) ?? 'activity';
+  const [project, revs, workflows, requests, history, consultations, projectDocs, links, readable] = await Promise.all([
     doc.attachment === 'project' && doc.projectCode ? getProject(ctx, doc.projectCode) : null,
     listRevisions(ctx, doc.id),
     listWorkflows(ctx),
     listChangeRequests(ctx, { docId: doc.id }),
-    listAudit(ctx, { docId: doc.id }),
+    listAudit(ctx, { docId: doc.id, consultations: 'without' }),
+    // Read only when shown: a record opened often gathers many.
+    sp.tab === 'history' && hist === 'consultations' ? listAudit(ctx, { docId: doc.id, consultations: 'only', limit: 200 }) : [],
     doc.attachment === 'project' && doc.projectCode ? listDocs(ctx, { includeHidden: true }) : [],
     // Links to documents the user may read only (D-14), and the documents they may read, to link or propose as a replacement.
     listDocLinks(ctx, doc.id),
@@ -271,6 +277,7 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
 
   return (
     <div className="screen" style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }} data-screen-label="Fiche document">
+      <RecordConsultation docId={doc.id} />
       <div className={styles.head}>
         <Link href="/explorateur" className="btn btn-ghost" style={{ padding: '6px 6px', fontSize: 12, marginTop: 2 }}><Icon name="back" size={14} />{t.back}</Link>
         <div style={{ flex: 1, minWidth: 260 }}>
@@ -630,12 +637,21 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
 
             {tab === 'history' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {(history.length ? history : [{ id: 0, when: doc.createdF, user: doc.owner, actionLabel: t.act_upload, detail: 'A.1' }]).map((h) => (
+                <Seg
+                  name="docHist"
+                  value={hist}
+                  ariaLabel={t.tab_history}
+                  optStyle={{ fontSize: 11.5, padding: '4px 8px' }}
+                  options={HIST.map((k) => ({ key: k, label: t[`hist_${k}`], href: `${doc.href}?tab=history${k === 'activity' ? '' : `&hist=${k}`}` }))}
+                />
+                {hist === 'consultations' && <p className="text-muted" style={{ fontSize: 11, margin: 0 }}>{t.hist_consultations_note.replace('{n}', String(CONSULT_WINDOW_MINUTES))}</p>}
+                {(hist === 'consultations' ? consultations : hist === 'metadata' ? history.filter((h) => METADATA.has(h.action)) : history.length ? history : [{ id: 0, when: doc.createdF, user: doc.owner, actionLabel: t.act_upload, detail: 'A.1' }]).map((h) => (
                   <div key={h.id} className="feed">
                     <span className="text-muted feed-when">{h.when}</span>
                     <div style={{ minWidth: 0 }}><div style={{ fontSize: 13, minWidth: 0, overflowWrap: 'anywhere' }}>{h.actionLabel}{h.detail && <span className="text-muted"> · {h.detail}</span>}</div><div className="text-muted" style={{ fontSize: 11 }}>{h.user}</div></div>
                   </div>
                 ))}
+                {hist !== 'activity' && !(hist === 'consultations' ? consultations : history.filter((h) => METADATA.has(h.action))).length && <p className="text-muted" style={{ fontSize: 12, margin: 0 }}>{t.hist_empty}</p>}
               </div>
             )}
           </div>

@@ -18,7 +18,7 @@ function Kpi({ href, ok, children }: { href: string; ok: boolean; children: Reac
 export default async function HomePage() {
   const ctx = await getCtx();
   const { t, lang } = ctx;
-  const [docs, todo, audit] = await Promise.all([listDocs(ctx), myTodo(ctx), listAudit(ctx, { limit: 500, docsOnly: true })]);
+  const [docs, todo, audit] = await Promise.all([listDocs(ctx), myTodo(ctx), listAudit(ctx, { limit: 500, docsOnly: true, consultations: 'without' })]);
   const actions = todo.items;
   const visible = new Map(docs.map((d) => [d.id, d]));
 

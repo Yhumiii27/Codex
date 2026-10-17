@@ -129,8 +129,13 @@ Tout l'état d'écran est dans l'URL (onglets, filtres, sélection) : les liens 
   Chacune de ces actions alimente le journal d'audit, de même que les téléchargements et les deux exports CSV. Le
   journal est en ajout seul : la base refuse toute modification ou suppression (déclencheur posé au démarrage,
   `src/db/index.ts`), et un reclassement ne réécrit pas les entrées, qui gardent l'identifiant de leur époque.
-  L'horodatage est stocké en UTC et affiché à l'heure de Paris. Ne sont pas journalisés : les consultations (aperçu
-  sans téléchargement) et le changement d'utilisateur ou de langue simulé.
+  L'horodatage est stocké en UTC et affiché à l'heure de Paris. Les consultations le sont aussi : ouverture de la fiche
+  (« Consultation de la fiche ») et fichier affiché dans l'aperçu (« Consultation du fichier »), une entrée par
+  personne, document et version toutes les 30 minutes au plus ; une plage d'octets au-delà du début du fichier et une
+  requête HEAD n'en écrivent pas. Elles suivent la révision qu'elles concernent (D-14), restent hors des flux
+  d'activité et se lisent à part : onglet Historique de la fiche (« Activité », « Métadonnées » avec l'avant et
+  l'après, « Consultations ») et filtre par action de l'onglet Journal. Ne sont pas journalisés : le changement
+  d'utilisateur ou de langue simulé.
 - **Utilisateur et rôle simulés** (pas d'authentification pour l'instant) : cliquer sur le profil en bas de la
   barre latérale. La navigation suit les règles de la maquette (validations masquées pour l'auditeur, archivage
   masqué pour le collaborateur, administration réservée au gestionnaire), les actions vérifient la matrice des

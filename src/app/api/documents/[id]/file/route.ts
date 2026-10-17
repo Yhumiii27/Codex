@@ -6,7 +6,7 @@ import { isFinalStatus } from '@/lib/codes';
 import { getCtx, type Ctx } from '@/lib/context';
 import { INLINE_SAFE } from '@/lib/filetypes';
 import { fmtDate } from '@/lib/format';
-import { audit } from '@/lib/lifecycle';
+import { audit, journalConsultation } from '@/lib/lifecycle';
 import { logger, withRequestLog } from '@/lib/log';
 import { simplePdf } from '@/lib/pdf';
 import { verifiedStream } from '@/lib/integrity-core.mjs';
@@ -161,10 +161,16 @@ function storeFailure(err: unknown): Response {
   return new Response('Storage unavailable', { status: 502, headers: { 'Retry-After': '30' } });
 }
 
+/** Detail of a download or view entry: the version label and the format ("B · PDF"). */
+const fileDetail = (x: Target) => `${x.label} · ${x.mime === 'application/pdf' ? 'PDF' : x.ext.slice(1).toUpperCase() || 'Fichier'}`;
+
 /**
  * Serves the file, streamed; ?download=1 forces a download and is logged. A Range gets 206 (or 416); a copy the browser
  * may keep (Target.keep) gets 304 while current. A download is journaled once per transfer that starts at its first
- * byte: a resumed transfer (a range further on) is the same download.
+ * byte: a resumed transfer (a range further on) is the same download. A file shown in the preview is journaled as a
+ * view on its whole answer, its first range or a 304 (the browser shows the copy it kept), once per user and version
+ * every CONSULT_WINDOW_MINUTES (lib/lifecycle.ts journalConsultation): the ranges a viewer asks one after the other and
+ * the pages turned add nothing.
  */
 async function handleGet(req: Request, { params }: RouteContext<'/api/documents/[id]/file'>) {
   const x = await resolve(req, (await params).id);
@@ -178,7 +184,12 @@ async function handleGet(req: Request, { params }: RouteContext<'/api/documents/
   }
   const { src, etag } = file;
   const a = fileAnswer(req.headers, { method: 'GET', size: src.size, etag, modified: src.modified, conditional: x.keep });
-  if (a.status === 304) return new Response(null, { status: 304, headers: headers(x, file, a) });
+  const view = () => getDb().then((db) => journalConsultation(db, ctx.user.id, 'view', doc.id, fileDetail(x), version.revisionId));
+  if (a.status === 304) {
+    // Not answered unless journaled, as a download.
+    await view();
+    return new Response(null, { status: 304, headers: headers(x, file, a) });
+  }
   if (a.status === 416) return new Response('Range Not Satisfiable', { status: 416, headers: headers(x, file, a) });
   let body: ReadableStream<Uint8Array>;
   try {
@@ -195,10 +206,10 @@ async function handleGet(req: Request, { params }: RouteContext<'/api/documents/
       await audit(db, ctx.user.id, 'file_altered', doc.id, label, version.revisionId);
     });
   }
-  if (x.download && (a.status === 200 || a.range.start === 0)) {
+  if (a.status === 200 || a.range.start === 0) {
     try {
-      const db = await getDb();
-      await audit(db, ctx.user.id, 'download', doc.id, `${x.label} · ${x.mime === 'application/pdf' ? 'PDF' : x.ext.slice(1).toUpperCase() || 'Fichier'}`, version.revisionId);
+      if (x.download) await audit(await getDb(), ctx.user.id, 'download', doc.id, fileDetail(x), version.revisionId);
+      else await view();
     } catch (err) {
       // Not sent unless journaled; the file opened for it is released.
       await body.cancel().catch(() => {});

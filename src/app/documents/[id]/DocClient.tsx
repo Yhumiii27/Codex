@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useApp } from '@/components/shell/AppProvider';
+import { recordConsultation } from '@/lib/actions';
 import { Icon } from '@/components/ui/Icon';
 import type { VersionLite } from '@/components/dialogs/types';
 import { previewKind } from '@/lib/filetypes';
@@ -9,6 +10,17 @@ import styles from './document.module.css';
 
 type PreviewDoc = { id: string; title: string; revLabel: string; departmentL: string; owner: string; dateF: string };
 type PreviewFile = { url: string; mime: string; name: string; sizeF: string };
+
+/**
+ * Journals that the record was opened (lib/actions.ts recordConsultation), once it is shown in the browser: a prefetch
+ * renders the page without running this. Repeated openings are folded together on the server.
+ */
+export function RecordConsultation({ docId }: { docId: string }) {
+  useEffect(() => {
+    recordConsultation(docId).catch(() => {});
+  }, [docId]);
+  return null;
+}
 
 /**
  * Centre pane: the stored file when the file route serves it inline (PDF, PNG/JPEG/GIF/WebP image, plain text); a

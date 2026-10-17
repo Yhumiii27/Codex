@@ -14,7 +14,7 @@ import { checkFilesNow } from './integrity';
 import { COOKIE_LANG, COOKIE_ROLE, COOKIE_USER, getCtx, type Ctx } from './context';
 import { addDays, fmtDate, fmtDateTime, fmtSize, loc, nowStamp, parisStamp, parseIsoDay, todayIso } from './format';
 import { ATTACHMENTS, CONF_LEVELS, ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLES, ORIGINS, PERMS, SEARCH_SCOPES, SIM_ROLES, SIMULATED_MATRIX_ROLES, type Perm, type SimRole, type TKey } from './i18n';
-import { addLink, applyChangeDecision, applyPendingDecision, approveRevision, audit, catchUpEffectiveDates, journalLink, linkBetween, lockOf, refreshHeadline, type ModifierSwap, type Tx } from './lifecycle';
+import { addLink, applyChangeDecision, applyPendingDecision, approveRevision, audit, catchUpEffectiveDates, journalConsultation, journalLink, linkBetween, lockOf, refreshHeadline, type ModifierSwap, type Tx } from './lifecycle';
 import { isLinkRel, linkIssue, otherEnd, replacementIssue, storedLink } from './links';
 import { logger, traceAction } from './log';
 import { limitWrite } from './ratelimit';
@@ -1282,6 +1282,32 @@ async function restoreArchivedNow(docId: string): Promise<ActionResult> {
   });
   refresh();
   return pendingApplied(ctx, d, swap);
+}
+
+// ── Consultations ────────────────────────────────────────────────────────
+
+/**
+ * Journals that the user opened a document's record (action 'consult'), called by the record once shown in the browser,
+ * never while it is prefetched. Tied to the revision the record shows (the one in force, else the latest), which decides
+ * who reads the entry (lib/access.ts readerMaySeeEntry, D-14), and written once per user and document every
+ * CONSULT_WINDOW_MINUTES (lib/lifecycle.ts journalConsultation). A document the user may not read writes nothing.
+ * Refreshes nothing: the record stays as shown.
+ */
+export async function recordConsultation(...args: Parameters<typeof recordConsultationNow>): Promise<ActionResult> {
+  return traceAction('recordConsultation', () => recordConsultationNow(...args));
+}
+async function recordConsultationNow(docId: string): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  if (typeof docId !== 'string' || !docId) return fail(ctx, 'not_found');
+  const db = await getDb();
+  const [[d], ix] = await Promise.all([db.select().from(s.documents).where(eq(s.documents.id, docId)), getAccessIndex()]);
+  if (!d || !canRead(ctx, d, ix)) return fail(ctx, 'not_found');
+  const revs = await db.select({ id: s.revisions.id, letter: s.revisions.letter, status: s.revisions.status }).from(s.revisions).where(eq(s.revisions.docId, docId)).orderBy(asc(s.revisions.id));
+  const rev = revs.findLast((r) => r.status === 'in_force') ?? revs.findLast((r) => r.status === 'superseded') ?? revs.at(-1);
+  await journalConsultation(db, ctx.user.id, 'consult', docId, rev?.letter ?? '', rev?.id ?? null);
+  return { ok: true };
 }
 
 // ── Saved searches ───────────────────────────────────────────────────────

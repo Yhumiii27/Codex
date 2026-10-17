@@ -846,7 +846,8 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     eux, l'aperçu paginé retélécharge encore tout le fichier à chaque page (point 46, reste) ;
   - un téléchargement (`?download=1`) est journalisé quand sa réponse part du premier octet (200, ou 206 à partir de
     0) : la reprise d'un téléchargement interrompu n'ajoute pas d'entrée. Il ne reçoit jamais 304 : il est toujours
-    envoyé, donc toujours journalisé. La consultation dans l'aperçu n'est pas journalisée, comme avant ;
+    envoyé, donc toujours journalisé. La consultation dans l'aperçu n'était pas journalisée ; elle l'est depuis le
+    17 octobre (« Consultations », plus bas) ;
   - plusieurs plages dans une requête reçoivent le fichier entier (pas de `multipart/byteranges`) ; une plage mal
     formée reçoit 416, comme une plage au-delà du fichier ;
   - le nettoyage des fichiers orphelins est une action d'administration réservée aux gestionnaires documentaires qui
@@ -1111,6 +1112,33 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     rédaction (elle permettrait de reconnaître le fichier d'un brouillon) ;
   - **export complet** : la colonne `sha256` est exportée ; un fichier dont les octets ne correspondent plus est
     archivé tel quel et listé dans le manifeste (`files.altered`), compté dans le journal de l'export.
+- **Consultations et historique des métadonnées** (points 28 et 22 de `docs/reste-a-faire.md`, 17 octobre ; qui
+  consulte le journal et combien de temps on le garde (M05), valeur probante (O-02) non décidés) :
+  - **ce qui est journalisé** : l'ouverture d'une fiche (« Consultation de la fiche », avec la lettre de la révision
+    montrée) et un fichier affiché dans l'aperçu (« Consultation du fichier », avec la version et le format, comme un
+    téléchargement), pour tous les niveaux de confidentialité, pas seulement Confidentiel et Très confidentiel ;
+  - **dédoublonnage** : une entrée par personne, document, action, révision et version toutes les 30 minutes au plus
+    (`CONSULT_WINDOW_MINUTES`), comptées depuis la dernière entrée écrite : recharger la fiche, tourner les pages de
+    l'aperçu ou revalider la copie gardée par le navigateur n'ajoute rien dans ce délai, une lecture continue ajoute
+    une entrée par demi-heure. Pas de réglage par variable d'environnement tant que le besoin n'est pas exprimé ;
+  - **fichier** : journalisé sur la réponse entière, la première plage (à partir de l'octet 0) ou un 304 (le navigateur
+    affiche la copie qu'il a gardée) ; une plage plus loin dans le fichier et une requête HEAD n'écrivent rien. Comme
+    pour un téléchargement, le fichier n'est pas servi si l'entrée ne peut pas être écrite ;
+  - **fiche** : journalisée par le navigateur une fois la page affichée (Server Action `recordConsultation`), jamais
+    au rendu côté serveur, que le préchargement des liens déclencherait sans que personne n'ouvre la fiche. Cette
+    action compte dans le budget d'écritures de l'utilisateur (`CODEX_RATE_WRITES`) : au-delà, la consultation n'est
+    pas journalisée, rien n'est bloqué. Un document illisible n'écrit rien ;
+  - **qui les lit** : les règles existantes du journal (D-14). Chaque consultation est rattachée à une révision :
+    celle du fichier, ou pour une fiche la révision en vigueur (à défaut, la dernière remplacée, sinon la dernière) ;
+    elle est donc cachée hors du cercle de rédaction tant que cette révision est un brouillon. Les lecteurs du document
+    voient qui l'a consulté, comme ils voient déjà qui l'a téléchargé ; restreindre cette liste (gestionnaires,
+    propriétaire) est une question de M05, non tranchée ;
+  - **affichage** : les consultations sont retirées de l'activité de l'accueil, des notifications, de l'onglet
+    « Activité » de la fiche (et de son « Modifié par ») et de la fiche de visa ; l'onglet Historique de la fiche les
+    liste à part (« Consultations », 200 plus récentes), à côté de « Métadonnées » (modifications et reclassements, avec
+    l'avant et l'après déjà journalisés depuis l'étape 6) ; l'onglet Journal les filtre par action et l'export CSV
+    les contient. L'index `audit_log_doc` porte désormais (document, utilisateur, action, date) pour le
+    dédoublonnage.
 - **Git** (D-23) : premier commit sur une branche `codex-ged-v2` plutôt que sur `main`.
 
 ## Ce qui est explicitement hors périmètre

@@ -253,7 +253,7 @@ describe('readerMaySeeRevision (D-14)', () => {
 
 describe('readerMaySeeEntry (D-14, journal)', () => {
   const DOCUMENT_ACTIONS = ['edit', 'ecr', 'obsolete', 'hold', 'release', 'archive', 'restore'];
-  const REVISION_ACTIONS = ['upload', 'working', 'import', 'reclass', 'request', 'approve', 'sign', 'reject', 'recall', 'delegate', 'comment', 'in_force', 'download', 'graft'];
+  const REVISION_ACTIONS = ['upload', 'working', 'import', 'reclass', 'request', 'approve', 'sign', 'reject', 'recall', 'delegate', 'comment', 'in_force', 'download', 'graft', 'consult', 'view'];
 
   it('shows every entry to the circle', () => {
     for (const action of [...DOCUMENT_ACTIONS, ...REVISION_ACTIONS]) {

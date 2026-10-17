@@ -404,6 +404,7 @@ Constaté. src/app/api/documents/[id] ne contient que file/route.ts. Aucune rout
 ### Sécurité et conformité (12)
 
 #### 22. Historique des métadonnées (valeurs avant et après)
+- **Fait le 17 octobre 2026** : le constat n'était plus vrai depuis l'étape 6 (10 octobre, commit 5e15449) : `updateMeta` compare chaque champ (`metaChanges`, src/lib/actions.ts) et journalise l'avant et l'après dans `audit_log.data`, rendus dans la langue du lecteur et retenus hors du cercle de rédaction pour un brouillon ou un niveau plus strict. Ajouté le 17 octobre : une vue « Métadonnées » dans l'onglet Historique de la fiche (modifications et reclassements seuls) et des tests (`tests/integration/metadata-history.test.ts`).
 
 - **Effort** : faible · **Références** : G05, ACC-05
 
@@ -512,6 +513,7 @@ Constaté : src/lib/actions.ts:302, dans updateMeta, avant la première approbat
 </details>
 
 #### 28. Journaliser les consultations
+- **Fait le 17 octobre 2026** : l'ouverture d'une fiche (« Consultation de la fiche », Server Action `recordConsultation` appelée par le navigateur, jamais au préchargement) et le fichier affiché dans l'aperçu (« Consultation du fichier », route fichier sans `download=1` : réponse entière, première plage ou 304 ; ni plage plus loin, ni HEAD) sont journalisés, une fois par personne, document, révision et version toutes les 30 minutes (`journalConsultation`, src/lib/lifecycle.ts). Rattachées à leur révision, elles suivent D-14 ; hors des flux d'activité, elles se lisent dans l'onglet Historique de la fiche (« Consultations ») et se filtrent dans l'onglet Journal. Restent à l'utilisateur (M05) : qui lit ces consultations et combien de temps on les garde ; la valeur probante dépend d'O-02.
 
 - **Effort** : faible · **Références** : G48, M05
 

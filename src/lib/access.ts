@@ -362,10 +362,17 @@ export function mayEditLinks(ctx: Viewer, d: { ownerId: string }): boolean {
 }
 
 /**
- * Journal actions that only ever concern one revision (working versions, circuits, their recall and their comments,
- * entry into force, files, a change grafted onto the revision being drafted, the approval record issued for it).
+ * Consultations (lib/lifecycle.ts journalConsultation): a record opened, a file shown in the preview. Left out of the
+ * activity feeds and of the record's activity, which they would drown; the Journal tab and the record list them apart.
  */
-const REVISION_ACTIONS = new Set(['upload', 'working', 'import', 'reclass', 'request', 'approve', 'sign', 'reject', 'recall', 'delegate', 'comment', 'in_force', 'download', 'graft', 'visa']);
+export const CONSULT_ACTIONS = ['consult', 'view'] as const;
+
+/**
+ * Journal actions that only ever concern one revision (working versions, circuits, their recall and their comments,
+ * entry into force, files, a change grafted onto the revision being drafted, the approval record issued for it, and
+ * consultations: a record opened is tied to the revision in force, else the last superseded, else the latest).
+ */
+const REVISION_ACTIONS = new Set(['upload', 'working', 'import', 'reclass', 'request', 'approve', 'sign', 'reject', 'recall', 'delegate', 'comment', 'in_force', 'download', 'graft', 'visa', ...CONSULT_ACTIONS]);
 
 /**
  * Journal entries outside the drafting circle (D-14). An entry about a revision records it (audit_log.revision_id) and

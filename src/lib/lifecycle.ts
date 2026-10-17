@@ -1,5 +1,5 @@
 import 'server-only';
-import { and, asc, eq, inArray, isNull, lt, lte, ne, or } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNull, lt, lte, ne, or } from 'drizzle-orm';
 import { schema as s, type Db } from '@/db';
 import type { AuditData, AuditTargetKind, LinkKind } from '@/db/schema';
 import { buildAccessIndex, canRead, type AccessIndex } from './access';
@@ -28,6 +28,31 @@ export type AuditSubject = string | { kind: AuditTargetKind; id: string };
 export async function audit(tx: Tx, userId: string, action: string, subject: AuditSubject, detail = '', revisionId: number | null = null, data: AuditData | null = null) {
   const about = typeof subject === 'string' ? { docId: subject } : { targetKind: subject.kind, targetId: subject.id };
   await tx.insert(s.auditLog).values({ at: new Date().toISOString(), userId, action, ...about, detail, data, revisionId });
+}
+
+// ── Consultations ───────────────────────────────────────────────────────
+
+/** Minutes during which the same consultation by the same user is journaled once (journalConsultation). */
+export const CONSULT_WINDOW_MINUTES = 30;
+
+/**
+ * Journals a consultation: a record opened ('consult') or a file shown in the preview ('view'). Written once per user,
+ * document, action, revision and detail (the version and format of a file) every CONSULT_WINDOW_MINUTES, counted from
+ * the last entry written: paging through a preview, reloading the record or its revalidated file add nothing within
+ * that time. True when an entry was written. PGlite runs one transaction at a time; on a server with several
+ * connections, two requests at the same instant could each write one, which is harmless.
+ */
+export async function journalConsultation(db: Db, userId: string, action: 'consult' | 'view', docId: string, detail: string, revisionId: number | null): Promise<boolean> {
+  const A = s.auditLog;
+  const since = new Date(Date.now() - CONSULT_WINDOW_MINUTES * 60_000).toISOString();
+  return db.transaction(async (tx) => {
+    const [seen] = await tx.select({ id: A.id }).from(A)
+      .where(and(eq(A.docId, docId), eq(A.userId, userId), eq(A.action, action), gte(A.at, since), eq(A.detail, detail), revisionId == null ? isNull(A.revisionId) : eq(A.revisionId, revisionId)))
+      .limit(1);
+    if (seen) return false;
+    await audit(tx, userId, action, docId, detail, revisionId);
+    return true;
+  });
 }
 
 // ── Links between documents ─────────────────────────────────────────────

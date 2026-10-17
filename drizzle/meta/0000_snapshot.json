@@ -1,5 +1,5 @@
 {
-  "id": "e989d6a9-86b2-43f1-91cf-7f4835c1c423",
+  "id": "820c01eb-c179-4b51-ac41-d4b0147ebf0f",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -97,6 +97,24 @@
           "columns": [
             {
               "expression": "doc_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "action",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
