@@ -16,6 +16,11 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ['@electric-sql/pglite'],
   poweredByHeader: false,
   experimental: {
+    // No Turbopack cache on disk for next dev (on by default since Next.js 16, .next/dev/cache/turbopack). Restored on a
+    // start after the sources changed, it made the client runtime's HMR subscription answer every new page with a
+    // "restart" update: the page reloaded about three times a second until the cache settled (docs/historique.md §18.1).
+    // Each start compiles the screens again; next build keeps its own cache.
+    turbopackFileSystemCacheForDev: false,
     serverActions: { bodySizeLimit: ACTION_BODY_LIMIT },
     proxyClientMaxBodySize: ACTION_BODY_LIMIT,
   },

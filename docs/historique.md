@@ -2178,7 +2178,7 @@ de [decisions.md](decisions.md).
 | 2. Consultations et historique des métadonnées | `cea4652` | 28, 22 | Ouverture d'une fiche et fichier affiché dans l'aperçu journalisés, dédoublonnés par demi-heure ; onglet Historique de la fiche en trois vues (activité, métadonnées avant → après, consultations) ; consultations filtrables dans le journal, retirées des fils d'activité | Tous les niveaux de confidentialité journalisés ; fiche journalisée par le navigateur une fois affichée, jamais au préchargement ; lecteurs du journal inchangés (D-14 ; restreindre la liste des consultants relève de M05) ; pas de réglage de la fenêtre par variable |
 | 3. Auteur désigné et modèles rattachés aux types | `b13794a` | 4, 6 | Auteur choisi parmi les personnes du groupe ou saisi en texte libre (MET-10), partout le même (fiche, recherche, exports) ; types cibles d'un modèle FRM (FON-12), réglés depuis sa fiche ou Administration, proposés en tête de « Nouveau depuis un modèle » | L'auteur ne donne aucun droit et n'entre pas dans le cercle de rédaction ; créateur par défaut ; aucun refus d'un modèle prévu pour d'autres types ; type visé par un modèle compté comme utilisé |
 | 4. Conservation par document et dates d'événement | `b6e825c` | 7, 18 | Date de l'événement déclencheur (fin de vie de l'actif, départ du salarié) saisie et journalisée ; classe de conservation modifiable par document (dérogation) et retour à la règle du type ; répercussion facultative de la règle d'un type sur ses documents, avec aperçu ; onglet Archivage › Dates d'événement | Fin de projet non saisissable (attend Keystone, O-03) ; durée nulle laissée « à fixer » (O-07) ; répercussion décochée par défaut, documents gelés laissés tels quels ; rien n'est archivé ni détruit automatiquement (O-07, M03) |
-| 5. Pages d'erreur traçables et index de base | commit « Lot 8, étape 5 », qui suit `b6e825c` | 44, 39 | `global-error.tsx`, `error.tsx` (avec `retry`), `not-found.tsx` dans le style Nocturne, FR/EN, avec une référence reliée au journal technique et jamais le message ; document introuvable en 404 ; référence affichée par les dialogues et boutons d'action ; 17 index pour les requêtes ciblées et les cascades, mesurés avant et après | Référence = identifiant de requête pour une action, digest de Next.js pour un rendu ; erreur du navigateur non remontée au serveur (O-02) ; page d'erreur racine en deux langues ; document non lisible toujours « pas d'accès » en 200 ; coût des index à l'écriture accepté, aucun index pour les listes qui chargent encore toute la table |
+| 5. Pages d'erreur traçables et index de base | `c80d6ae` | 44, 39 | `global-error.tsx`, `error.tsx` (avec `retry`), `not-found.tsx` dans le style Nocturne, FR/EN, avec une référence reliée au journal technique et jamais le message ; document introuvable en 404 ; référence affichée par les dialogues et boutons d'action ; 17 index pour les requêtes ciblées et les cascades, mesurés avant et après | Référence = identifiant de requête pour une action, digest de Next.js pour un rendu ; erreur du navigateur non remontée au serveur (O-02) ; page d'erreur racine en deux langues ; document non lisible toujours « pas d'accès » en 200 ; coût des index à l'écriture accepté, aucun index pour les listes qui chargent encore toute la table |
 
 ### 17.5 Pages d'erreur traçables et index de base
 
@@ -2239,3 +2239,89 @@ métadonnées du deck encore manquantes (auteur, types cibles des modèles, 3), 
 erreurs traçables et index (5). Aucune question ouverte n'a été tranchée ; chaque choix qui en dépend (O-01, O-02, O-03,
 O-07, O-09, M03, M05, M22) prend l'option la plus prudente et figure dans « Choix de l'assistant non validés
 explicitement » de [decisions.md](decisions.md).
+
+## 18. Lot 9 (17 oct.)
+
+Suite des points « développables maintenant » de [reste-a-faire.md](reste-a-faire.md), mêmes règles que les lots 6 à
+8 : une étape par point ou groupe de points, relue avant son commit ; aucune question ouverte n'est tranchée, un choix
+qui en dépend prend l'option la plus prudente et est consigné dans « Choix de l'assistant non validés explicitement »
+de [decisions.md](decisions.md).
+
+| Étape | Commit | Points | Ce qui change | Choix prudents |
+|---|---|---|---|---|
+| 1. Rechargement en boucle en développement et lectures ciblées par navigation | commit « Lot 9, étape 1 », qui suit `c80d6ae` | bogue, 47 | Cache disque de Turbopack désactivé pour `next dev` ; chaque écran lit ce qu'il montre au lieu de tous les documents et circuits, à l'identique pour chaque utilisateur | Cache de développement désactivé plutôt que montée de version de Next.js ; « Mis en vigueur cette semaine » compté sur toute la semaine ; fenêtres de l'activité récente gardées (60 et 500 entrées) |
+
+### 18.1 Rechargement en boucle en développement et lectures ciblées
+
+**Le bogue.** Sous `npm run dev`, une page ouverte dans Chromium se rechargeait environ trois fois par seconde, sans
+qu'aucun fichier source ne change ; la build de production n'était pas touchée. Le journal du serveur alternait
+« GET / 200 » et « ✓ Compiled in 1ms ». Reproduit au commit `b6e825c` et au commit `c80d6ae`, mais pas à chaque
+démarrage : seulement au premier démarrage après un changement des sources fait serveur arrêté (passage d'un commit à
+un autre), environ un démarrage sur six, la boucle s'arrêtant d'elle-même après quelques secondes à une minute. Elle
+n'apparaît jamais sur des sources inchangées (9 écrans × 4 personnes, ouverts à la suite pendant plusieurs minutes), ni après
+`rm -rf .next`.
+
+- **Cause** (relevée en journalisant, dans une copie modifiée du client de Next.js, chaque rechargement et sa raison,
+  et les messages du WebSocket de rechargement à chaud) : à chaque nouvelle page, l'abonnement de rechargement à chaud
+  à la liste de fragments du runtime client (React, client Next.js, outils de développement) recevait d'emblée une
+  mise à jour de type `restart`, qui fait avancer la version de rechargement du serveur (« Compiled in 1ms ») ; le
+  second abonnement de la même page, envoyé avec l'ancienne version, était alors refusé par « HMR hash mismatch », et
+  le serveur demandait à la page de se recharger (`reloadPage`). La page rechargée s'abonnait de nouveau, et ainsi de
+  suite. Ce « restart » vient de l'état que Turbopack restaure de son cache disque de développement
+  (`.next/dev/cache/turbopack`, actif par défaut depuis Next.js 16) quand les sources ont changé depuis : il ne
+  survient qu'au premier démarrage qui restaure un tel cache, jamais à froid.
+- **Pistes écartées** : écritures sous le dossier surveillé (base `.data`, journal des consultations, `next typegen`
+  et `npm run build` lancés pendant que le serveur tourne : aucun « Compiled ») ; `refresh()` en boucle (aucune requête
+  RSC pendant la boucle, la consultation de fiche n'appelle pas `refresh()`) ; nonce de la CSP (aucune erreur
+  d'hydratation) ; WebSocket bloqué par la CSP (« [HMR] connected » à chaque page). Le JavaScript de Next.js 16.4.2
+  (version que le serveur annonce) ne change rien à ce mécanisme.
+- **Correction** : `experimental.turbopackFileSystemCacheForDev: false` dans `next.config.ts`. Chaque démarrage du
+  serveur de développement part d'un état neuf (environ 3 s de compilation à la première visite d'un écran) ; la build
+  garde son cache. Choix consigné dans [decisions.md](decisions.md).
+- **Vérification** (Chromium sans interface, `playwright-core`) : avant, 4 boucles relevées sur une vingtaine de
+  premiers démarrages après changement de commit (15 à 23 chargements de « / » en 4 à 6 s au lieu d'un) ; après, même
+  recette (passage entre `cea4652`, `b6e825c` et `c80d6ae` avec une modification nouvelle à chaque fois, nouvelle base),
+  9 démarrages sur 9 sans rechargement ni « Compiled ». Faute d'affichage dans le conteneur, pas d'essai dans un
+  navigateur avec interface ; le mécanisme ne dépend pas du navigateur.
+
+**Le point 47.** Revérifié au commit `c80d6ae` : `listDocs` et `listWorkflows` étaient déjà en cache par requête, mais
+le layout lisait encore tous les documents, et « À traiter » tous les documents et tous les circuits avec leurs étapes
+et commentaires ; l'accueil, Archivage, les pages département et la fiche relisaient tous les documents.
+
+- **Lectures ciblées** (`src/lib/queries.ts`) : `visibleWhere` lit, en SQL et avec les règles de `readableSql`, les
+  seuls documents qu'une condition choisit, dans l'ordre de `listDocs`, et ne lit en entier que ceux-là. Dessus :
+  `recentDocs`, `dueDeadlines` (documents qui peuvent avoir une échéance sous 90 jours : expiration, revue, fin de
+  conservation par déclencheur, avec un jour de marge ; `deadlines` tranche), `departmentDocs`, `eventDocs`,
+  `archivedDocs`, `typeCounts`, `readableBriefs` (cinq champs pour les dialogues de la fiche), `projectDocs`.
+  `workflowsWhere` donne les circuits choisis comme `listWorkflows`, qui n'en est plus que le cas « tous ».
+  `myActions` choisit les circuits en cours où l'utilisateur a une étape, les révisions en rédaction qui peuvent
+  l'attendre (auteur désigné, propriétaire, rédacteur renvoyé par un circuit) et leurs documents, puis `actionsAmong`
+  applique les règles d'avant. `recentActivity` lit l'activité par lots dans la même fenêtre qu'avant ;
+  `inForceThisWeek` compte la semaine entière du journal par un agrégat SQL. L'index d'accès ne lit plus que les
+  circuits en cours (les autres n'ouvraient déjà aucun brouillon).
+- **Équivalence** : tests/integration/targeted-reads.test.ts compare chaque lecture à l'ancien calcul sur `listDocs`
+  et `listWorkflows`, sur la démo et sur des documents variés (conservation, dates d'événement, entrées en vigueur
+  autour de minuit, circuits renvoyés à un autre rédacteur) ; chaque comparaison doit rencontrer des éléments, et les
+  mutations essayées (marge de conservation, rédacteur renvoyé, révision d'une entrée hors du cercle) le font échouer.
+  Dans Chromium, sur une base de 3 843 documents (la démo et 60 copies de chacun de ses documents, 6 100 révisions,
+  610 circuits, 10 248 entrées de journal), 16 écrans (accueil, Archivage et ses onglets, trois départements, quatre
+  fiches, Validations, Explorateur, Recherche) pour cbardet (gestionnaire), jwagner (collaborateur et auditeur),
+  gcomte et lfabre (validateurs), jholt (auditeur) : texte de la page, cloche, modèles, listes de remplacement et
+  « À traiter » identiques avant et après (96 écrans), et HTML de même taille.
+- **Mesures** (build de production, `next start`, même base ; médiane de 5 requêtes, en secondes) :
+
+| Écran | cbardet avant | après | jwagner avant | après | gcomte avant | après | jholt avant | après |
+|---|---|---|---|---|---|---|---|---|
+| Accueil | 0,85 | 0,27 | 0,78 | 0,26 | 0,81 | 0,27 | 0,75 | 0,24 |
+| Archivage | 0,79 | 0,25 | 0,75 | 0,19 | 0,73 | 0,22 | 0,78 | 0,21 |
+| Département QUA | 0,73 | 0,29 | 0,76 | 0,26 | 0,70 | 0,26 | 0,78 | 0,25 |
+| Fiche PRO-QUA-0001 | 0,83 | 0,30 | 0,74 | 0,26 | 0,74 | 0,25 | 0,75 | 0,23 |
+| Fiche BOM-HLT-026-001 (projet) | 1,10 | 0,39 | 1,08 | 0,47 | 1,10 | 0,41 | 1,16 | 0,39 |
+| Validations | 0,71 | 0,45 | 0,74 | 0,51 | 0,74 | 0,44 | 0,72 | 0,14 |
+| Explorateur | 0,81 | 0,21 | 0,71 | 0,22 | 0,79 | 0,19 | 0,80 | 0,19 |
+| Recherche | 0,87 | 0,26 | 0,86 | 0,29 | 0,82 | 0,22 | 0,83 | 0,21 |
+
+  Validations lit encore tous les circuits : il ne gagne que le layout. Restent au point 47 : l'index d'accès (lecteurs,
+  révisions ouvertes, titulaires de fonctions lus à chaque requête), /validations, la liste des documents lisibles
+  que la fiche transmet à ses dialogues.
+- **Vérifié** : `npm test`, `npm run typecheck`, `npm run lint`, `npm run build`.

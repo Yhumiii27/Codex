@@ -7,8 +7,8 @@ import { mayRecordReview, maySetRetentionEvent } from '@/lib/access';
 import { restoreArchived } from '@/lib/actions';
 import { getCtx } from '@/lib/context';
 import { addDays, fmtDate, todayIso } from '@/lib/format';
-import { deadlines, listDocs, registryUsage, retentionByType } from '@/lib/queries';
-import { countBy, typeSpec } from '../administration/shared';
+import { archivedDocs, dueDeadlines, eventDocs, registryUsage, retentionByType, typeCounts } from '@/lib/queries';
+import { typeSpec } from '../administration/shared';
 import { DueTable, type DueRow } from './DueTable';
 
 /** Deadlines; documents whose retention waits for the date of an event (lib/retention.ts EVENT_TRIGGERS); rules; archives. */
@@ -22,7 +22,6 @@ export default async function RetentionPage({ searchParams }: PageProps<'/archiv
   const { t, lang } = ctx;
   if (!ctx.screens.retention) return <Forbidden text={t.forbidden} back={t.back_home} />;
   const tab = (TABS as readonly string[]).includes(sp.tab ?? '') ? sp.tab! : 'due';
-  const docs = await listDocs(ctx);
   const canArchive = ctx.can('archive');
   const tabs = (
     <Seg
@@ -38,7 +37,7 @@ export default async function RetentionPage({ searchParams }: PageProps<'/archiv
     // End of retention, expiry (permits, certificates, contracts) and periodic review falling due within 90 days.
     const filter = (DUE_FILTERS as readonly string[]).includes(sp.f ?? '') ? (sp.f as (typeof DUE_FILTERS)[number]) : 'all';
     const tomorrow = addDays(todayIso(), 1);
-    const rows: DueRow[] = deadlines(ctx, docs)
+    const rows: DueRow[] = (await dueDeadlines(ctx))
       .filter((x) => filter === 'all' || (x.overdue && x.kind === (filter === 'expired' ? 'expiry' : 'review')))
       .map((x) => ({
         id: x.id, kind: x.kind, title: x.title, contextL: x.contextL, typeLabel: x.typeLabel,
@@ -68,17 +67,20 @@ export default async function RetentionPage({ searchParams }: PageProps<'/archiv
     );
   }
 
-  const counts = countBy(docs, (d) => d.typeCode);
+  // Each tab reads only what it lists (lib/queries.ts), among the documents the user reads (D-14).
   // The register's retention rules are edited in the 'type' dialog (records managers / administrators).
   const canEditRules = ctx.screens.admin;
-  // What refers to each type: one in use keeps its code in the type dialog (lib/actions.ts updateType).
-  const [usage, retention] = canEditRules ? await Promise.all([registryUsage(), retentionByType()]) : [null, null];
-  // Derogations among the documents the user reads (D-14), per type.
-  const overrides = countBy(docs.filter((d) => d.retentionOverride), (d) => d.typeCode);
+  // Rules: documents per type and derogations among them; what refers to each type (one in use keeps its code in the
+  // type dialog, lib/actions.ts updateType).
+  const [counts, usage, retention] = tab === 'rules'
+    ? await Promise.all([typeCounts(ctx), canEditRules ? registryUsage() : null, canEditRules ? retentionByType() : null])
+    : [new Map<string, { n: number; overrides: number }>(), null, null];
   // Documents whose retention counts from an event entered on the record: those still without a date first.
-  const events = docs.filter((d) => d.eventTrigger).sort((a, b) => Number(!!a.retentionEventAt) - Number(!!b.retentionEventAt) || a.id.localeCompare(b.id));
+  const events = tab === 'events'
+    ? (await eventDocs(ctx)).sort((a, b) => Number(!!a.retentionEventAt) - Number(!!b.retentionEventAt) || a.id.localeCompare(b.id))
+    : [];
   const today = todayIso();
-  const archives = docs.filter((d) => d.state === 'archived');
+  const archives = tab === 'archives' ? await archivedDocs(ctx) : [];
   return (
     <div className="screen" style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }} data-screen-label="Archivage">
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 24px 10px', flexWrap: 'wrap' }}>
@@ -115,8 +117,8 @@ export default async function RetentionPage({ searchParams }: PageProps<'/archiv
                         <td className="text-muted">{t[`trig_${x.retentionTrigger}`]}</td>
                         <td className="text-muted">{t[`disp_${x.retentionDisposition}`]}</td>
                         <td className="tabnum" style={{ textAlign: 'right' }}>
-                          <div>{counts.get(x.code) ?? 0}</div>
-                          {!!overrides.get(x.code) && <div className="text-muted" style={{ fontSize: 11 }}>{t.retention_overrides_n.replace('{n}', String(overrides.get(x.code)))}</div>}
+                          <div>{counts.get(x.code)?.n ?? 0}</div>
+                          {!!counts.get(x.code)?.overrides && <div className="text-muted" style={{ fontSize: 11 }}>{t.retention_overrides_n.replace('{n}', String(counts.get(x.code)?.overrides))}</div>}
                         </td>
                         {canEditRules && (
                           <td style={{ textAlign: 'right', width: 44 }}>

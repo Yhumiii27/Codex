@@ -1226,6 +1226,20 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
   documents (département, type, statut…) : ces écrans parcourent encore toute la table, et l'index se choisira avec
   les requêtes qui les remplaceront. Toujours une migration unique régénérée (point 41 : migrations incrémentales à la
   première base de production).
+- **Rechargement en boucle en développement** (lot 9, 17 octobre) : le cache disque de Turbopack pour `next dev`
+  (`experimental.turbopackFileSystemCacheForDev`, actif par défaut depuis Next.js 16) est **désactivé** dans
+  `next.config.ts`. Cause et mesures dans `docs/historique.md` (§18.1). Conséquence : chaque démarrage du serveur de
+  développement recompile les écrans à leur première visite (quelques secondes par écran). La production n'est pas
+  concernée (`turbopackFileSystemCacheForBuild` inchangé). Une montée de Next.js 16.4.0 vers 16.4.2 n'a pas été faite :
+  rien dans le JavaScript de 16.4.2 ne touche ce mécanisme, et un changement de version reste à décider.
+- **Lectures ciblées par écran** (point 47 de `docs/reste-a-faire.md`, 17 octobre) : rien ne change dans ce que voit
+  chaque utilisateur, avec deux précisions :
+  - le compteur « Mis en vigueur cette semaine » de l'accueil compte désormais **toute la semaine du journal** (agrégat
+    SQL), et non plus seulement les 500 dernières entrées : sur un journal chargé, il peut être plus élevé qu'avant ;
+    c'est la correction que demandait le point ;
+  - l'activité récente garde ses fenêtres : la cloche montre les 5 dernières entrées lisibles parmi les **60** dernières
+    entrées sur des documents, l'accueil les 6 dernières parmi les **500** dernières. Une personne qui ne lit presque
+    rien peut donc voir moins de 5 ou 6 lignes, comme avant ; élargir ces fenêtres changerait ce qu'elle voit.
 - **Git** (D-23) : premier commit sur une branche `codex-ged-v2` plutôt que sur `main`.
 
 ## Ce qui est explicitement hors périmètre

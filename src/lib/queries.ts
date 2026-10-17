@@ -2,10 +2,10 @@ import 'server-only';
 import { cache } from 'react';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, notInArray, or, sql, type SQL, type SQLWrapper } from 'drizzle-orm';
 import { getDb, schema as s } from '@/db';
-import type { AuditChange, AuditData, AuditTargetKind, AuditValue, Conf, LinkRel, TermField } from '@/db/schema';
+import type { AuditChange, AuditData, AuditTargetKind, AuditValue, Conf, LinkRel, RetentionTrigger, TermField } from '@/db/schema';
 import { canRead, changeAsSeen, CONSULT_ACTIONS, deadlineActor, draftingCircleSql, draftTodo, followsCircuit, getAccessIndex, inDraftingCircle, isUsableTemplate, mayDeleteSearch, mayEditLinks, mayGetApprovalRecord, mayRecall, mayWorkOnDraft, openRevisionView, readableSql, readerMaySeeEntry, readerMaySeeRevision, readerMaySeeVersion, savedSearchesSeenBy, type AccessIndex } from './access';
 import { visaCircuit, type VisaRecord } from './approval';
-import { isFinalStatus } from './codes';
+import { isFinalStatus, TEMPLATE_TYPE } from './codes';
 import { revLabel } from './codification';
 import type { Ctx } from './context';
 import { extensionOf } from './filetypes';
@@ -15,7 +15,7 @@ import { decisionWait, lockOf, type DecisionWait, type Tx } from './lifecycle';
 import { LINK_RELS, otherEnd, relOf } from './links';
 import { NO_USAGE, type OrgUsage } from './org-rules';
 import { BUILT_IN_FUNCTIONS, BUILT_IN_TYPES } from './registry-rules';
-import { isEventTrigger, retainUntil, retentionGap } from './retention';
+import { EVENT_TRIGGERS, isEventTrigger, retainUntil, retentionGap } from './retention';
 import { isExpired, isReviewOverdue } from './review';
 import { featuredFilters, featuredOf } from './departments';
 import { DATE_LABEL, FACET_KEYS, FACET_LABEL, fold, hit, SCORE_WEIGHT, searchHref, SORT_LABEL, sortOf, wordStartPrefix, type DateField, type FacetKey, type Facets, type Period, type SearchDoc, type SearchInput, type SortKey } from './search';
@@ -134,18 +134,20 @@ async function visibleModified(ids: string[]): Promise<Map<string, string>> {
 }
 
 /**
- * Documents the current user may see (records managers: all), most recently modified first. Without option, the list is
- * loaded once per request and shared (the layout, its templates and « À traiter », the page): never sort or change it in
- * place.
+ * Documents the current user may see (records managers: all), most recently modified first. Every document is read:
+ * the screens read only what they show (visibleWhere and the functions built on it); this list stays the reference the
+ * tests compare them with. Without option, it is loaded once per request and shared: never sort or change it in place.
  */
 export function listDocs(ctx: Ctx, opts: { includeHidden?: boolean } = {}): Promise<DocView[]> {
   return opts.includeHidden ? loadDocs(ctx, true) : visibleDocs(ctx);
 }
 const visibleDocs = cache((ctx: Ctx) => loadDocs(ctx, false));
 
-async function loadDocs(ctx: Ctx, includeHidden: boolean): Promise<DocView[]> {
+/** `where`: only the documents it selects (a condition on documents), with what they need. */
+async function loadDocs(ctx: Ctx, includeHidden: boolean, where?: SQL): Promise<DocView[]> {
   const db = await getDb();
-  const [rows, ix, wl] = await Promise.all([db.select().from(s.documents).orderBy(desc(s.documents.modifiedAt), desc(s.documents.id)), getAccessIndex(), workingLabels()]);
+  const rows = await db.select().from(s.documents).where(where).orderBy(desc(s.documents.modifiedAt), desc(s.documents.id));
+  const [ix, wl] = await Promise.all([getAccessIndex(), workingLabels(where ? rows.map((d) => d.id) : undefined)]);
   const shown = rows.filter((d) => includeHidden || canRead(ctx, d, ix)).map((d) => ({ d, circle: inDraftingCircle(ctx, d, ix) }));
   const vm = await visibleModified(shown.filter((x) => !x.circle && x.d.revWorking).map((x) => x.d.id));
   const docs = shown.map((x) => docView(ctx, x.d, wl.get(x.d.id), x.circle, vm.get(x.d.id)));
@@ -463,6 +465,122 @@ export async function explorerDocs(ctx: Ctx, f: { axis: ExplorerAxis; node?: str
   };
 }
 
+// ── Documents read for what a screen shows (the shell, home, Archivage, department pages, record) ──────
+// Each list is listDocs narrowed to the documents a condition selects, in its order, without reading the others
+// (tests/integration/targeted-reads.test.ts compares them with listDocs, person by person and role by role).
+
+/**
+ * Documents the user may see that `where` selects, in the order of listDocs, at most `limit`: listDocs filtered on the
+ * same condition. `where` is a condition on the columns of `vis0` (visibleCte): those of documents under their bare
+ * names (col), `circle`, `shown`, `expired`, `review_late`.
+ */
+async function visibleWhere(ctx: Ctx, where: SQL, limit?: number): Promise<DocView[]> {
+  const db = await getDb();
+  const { rows } = await db.execute<Listed>(sql`with ${visibleCte(ctx, todayIso())}
+    select ${col(D.id)} as id, circle, shown, null as effective from vis0 where ${where} order by ${LIST_ORDER} ${limit == null ? sql`` : sql`limit ${limit}`}`);
+  return viewsOf(ctx, rows);
+}
+
+/** The `n` documents the user may see that were modified last, as listDocs begins (home, « Récents »). */
+export function recentDocs(ctx: Ctx, n: number): Promise<DocView[]> {
+  return visibleWhere(ctx, ALL, n);
+}
+
+/**
+ * Date the retention of a document counts from, by trigger (lib/retention.ts triggerDate), as an SQL date; null where
+ * Codex does not know it (end of project, O-03) or keeps the document permanently. Typed on every trigger: a new one
+ * cannot be forgotten here.
+ */
+const TRIGGER_DATE_SQL: Record<RetentionTrigger, SQL | null> = {
+  creation: col(D.createdAt),
+  in_force: col(D.issuedAt),
+  superseded: sql`coalesce(${col(D.obsoleteAt)}, ${col(D.archivedAt)})`,
+  contract_end: col(D.expiresAt),
+  expiry: col(D.expiresAt),
+  fiscal_year_end: sql`make_date(extract(year from coalesce(${col(D.issuedAt)}, ${col(D.createdAt)}))::int, 12, 31)`,
+  asset_life: col(D.retentionEventAt),
+  employee_departure: col(D.retentionEventAt),
+  project_end: null,
+  permanent: null,
+};
+
+/**
+ * Documents that may have a date falling due by `limit` (deadlines): an expiry or a review of an active document, an
+ * end of retention. A superset (one day of margin on the retention): deadlines() decides on each.
+ */
+function mayFallDueSql(limit: string): SQL {
+  const known = Object.entries(TRIGGER_DATE_SQL).filter((e): e is [string, SQL] => e[1] != null);
+  const base = sql`(case ${col(D.retentionTrigger)} ${sql.join(known.map(([k, v]) => sql`when ${k} then ${v}`), sql` `)} end)`;
+  return sql`((${col(D.state)} = 'active' and ${col(D.expiresAt)} <= ${limit}::date)
+    or (${col(D.state)} = 'active' and coalesce(${col(D.revInForce)}, '') <> '' and ${col(D.reviewDueAt)} <= ${limit}::date)
+    or (${col(D.retentionDisposition)} <> 'permanent' and ${col(D.retentionYears)} is not null
+      and ${base} + make_interval(years => ${col(D.retentionYears)}) <= ${limit}::date + 1))`;
+}
+
+/** What falls due within DEADLINE_WINDOW_DAYS among the documents the user may see: deadlines over listDocs. */
+export async function dueDeadlines(ctx: Ctx) {
+  return deadlines(ctx, await visibleWhere(ctx, mayFallDueSql(addDays(todayIso(), DEADLINE_WINDOW_DAYS))));
+}
+
+/** Documents of a department the user may see, in the order of listDocs. */
+export function departmentDocs(ctx: Ctx, code: string): Promise<DocView[]> {
+  return visibleWhere(ctx, is(col(D.department), code));
+}
+
+/** Documents the user may see whose retention counts from a date entered on the record (Archivage, « Dates d'événement »). */
+export function eventDocs(ctx: Ctx): Promise<DocView[]> {
+  return visibleWhere(ctx, sql`${col(D.retentionTrigger)} in (${list(EVENT_TRIGGERS)})`);
+}
+
+/** Archived documents the user may see (Archivage, « Archives »). */
+export function archivedDocs(ctx: Ctx): Promise<DocView[]> {
+  return visibleWhere(ctx, sql`${col(D.state)} = 'archived'`);
+}
+
+/** Per type, the documents the user may see (`n`) and those holding a retention class of their own (`overrides`). */
+export async function typeCounts(ctx: Ctx): Promise<Map<string, { n: number; overrides: number }>> {
+  const db = await getDb();
+  const { rows } = await db.execute<{ code: string; n: number; overrides: number }>(sql`with ${visibleCte(ctx, todayIso())}
+    select ${col(D.typeCode)} as code, count(*)::int as n, (count(*) filter (where ${col(D.retentionOverride)}))::int as overrides from vis0 group by 1`);
+  return new Map(rows.map((r) => [r.code, { n: r.n, overrides: r.overrides }]));
+}
+
+/**
+ * The documents the user may see, as a record's dialogs offer them (a replacement on withdrawal, a link): ID, title,
+ * state, withdrawal date and owner only, by ID.
+ */
+export async function readableBriefs(ctx: Ctx): Promise<{ id: string; title: string; state: string; obsoleteAt: string | null; ownerId: string }[]> {
+  const db = await getDb();
+  const { rows } = await db.execute<{ id: string; title: string; state: string; obsolete_at: string | null; owner_id: string }>(sql`with ${visibleCte(ctx, todayIso())}
+    select ${col(D.id)} as id, ${col(D.title)} as title, ${col(D.state)} as state, ${col(D.obsoleteAt)}::text as obsolete_at, ${col(D.ownerId)} as owner_id from vis0`);
+  return rows.map((r) => ({ id: r.id, title: r.title, state: r.state, obsoleteAt: r.obsolete_at, ownerId: r.owner_id })).sort((a, b) => a.id.localeCompare(b.id));
+}
+
+/** Every document attached to a project, whether the user sees it or not (the record's checklist of expected pieces). */
+export function projectDocs(ctx: Ctx, code: string): Promise<DocView[]> {
+  return loadDocs(ctx, true, and(eq(s.documents.attachment, 'project'), eq(s.documents.projectCode, code)));
+}
+
+/**
+ * Documents the user may see whose revision in force entered into force in the last 7 days, Paris time (home, KPI):
+ * the journal's `in_force` entries of the week the user may read (auditForReader: outside the drafting circle, an entry
+ * whose revision is in force or superseded), each under the document's current ID, whose revision is still the one in
+ * force. Counted over the whole week, not over the last entries of the journal.
+ */
+export async function inForceThisWeek(ctx: Ctx): Promise<number> {
+  const db = await getDb();
+  const weekAgo = addDays(todayIso(), -7);
+  const { rows: [row] } = await db.execute<{ n: number }>(sql`with ${visibleCte(ctx, todayIso())},
+    entries as (
+      select coalesce((select d.id from ${D} d where d.aliases @> jsonb_build_array(a.doc_id) limit 1), a.doc_id) as cur, a.detail, a.revision_id
+      from ${s.auditLog} a where a.action = 'in_force' and a.doc_id is not null and (a.at at time zone ${TIME_ZONE})::date >= ${weekAgo}::date
+    )
+    select count(distinct e.cur)::int as n from entries e join vis0 v on v.${col(D.id)} = e.cur
+    where v.${col(D.revInForce)} = e.detail
+      and (v.circle or e.revision_id in (select r.id from ${s.revisions} r where r.status in ('in_force', 'superseded')))`);
+  return row?.n ?? 0;
+}
+
 /** One document, with what the user may do with its drafts. Returns `hidden` when it exists but is not visible. */
 export async function getDoc(ctx: Ctx, id: string): Promise<{ doc: DocView; circle: boolean; ix: AccessIndex } | 'hidden' | null> {
   const db = await getDb();
@@ -622,24 +740,50 @@ export async function approvalRecord(ctx: Ctx, id: string, letter: string): Prom
 // ── Workflows ────────────────────────────────────────────────────────────
 
 /**
- * Every workflow, with what the current user may see of it (`visible`). Loaded once per request and shared (the layout
- * through « À traiter », the page): never sort or change the list or its items in place, filter or copy it first.
+ * Every workflow, with what the current user may see of it (`visible`). Loaded once per request and shared (/validations
+ * and the pages that list them all): never sort or change the list or its items in place, filter or copy it first.
+ * Screens that need only some read them with workflowsWhere.
  */
-export const listWorkflows = cache(async (ctx: Ctx) => {
+export const listWorkflows = cache((ctx: Ctx) => workflowsWhere(ctx));
+
+/** `column` is one of the integers `values`, passed as one array. */
+const anyInt = (column: SQLWrapper, values: number[]) => sql`${column} = any(${sql.param(values)}::int[])`;
+
+/** Rows grouped by key, in their order. */
+function groupBy<T, K>(rows: T[], key: (r: T) => K): Map<K, T[]> {
+  const m = new Map<K, T[]>();
+  for (const r of rows) {
+    const k = key(r);
+    if (!m.has(k)) m.set(k, []);
+    m.get(k)!.push(r);
+  }
+  return m;
+}
+
+/**
+ * The workflows `where` selects (a condition on workflows; all of them without it), as listWorkflows gives them, in its
+ * order: only their steps, comments, documents and revisions are read.
+ */
+export async function workflowsWhere(ctx: Ctx, where?: SQL) {
   const db = await getDb();
-  const [wfs, steps, comments, docs, revs, ix] = await Promise.all([
-    db.select().from(s.workflows).orderBy(asc(s.workflows.due), asc(s.workflows.id)),
-    db.select().from(s.workflowSteps).orderBy(asc(s.workflowSteps.idx)),
-    db.select().from(s.workflowComments).orderBy(asc(s.workflowComments.id)),
-    db.select().from(s.documents),
-    db.select({ id: s.revisions.id, letter: s.revisions.letter, status: s.revisions.status }).from(s.revisions),
+  const wfs = await db.select().from(s.workflows).where(where).orderBy(asc(s.workflows.due), asc(s.workflows.id));
+  const ids = wfs.map((w) => w.id), docIds = [...new Set(wfs.map((w) => w.docId))], revIds = [...new Set(wfs.map((w) => w.revisionId))];
+  // Without a condition, the whole tables: a list of every ID would only weigh on the query.
+  const only = <C extends SQLWrapper>(column: C, values: string[]) => (where ? anyOf(column, values) : undefined);
+  const [steps, comments, docs, revs, ix] = wfs.length ? await Promise.all([
+    db.select().from(s.workflowSteps).where(only(s.workflowSteps.workflowId, ids)).orderBy(asc(s.workflowSteps.idx)),
+    db.select().from(s.workflowComments).where(only(s.workflowComments.workflowId, ids)).orderBy(asc(s.workflowComments.id)),
+    db.select().from(s.documents).where(only(s.documents.id, docIds)),
+    db.select({ id: s.revisions.id, letter: s.revisions.letter, status: s.revisions.status }).from(s.revisions).where(where ? anyInt(s.revisions.id, revIds) : undefined),
     getAccessIndex(),
-  ]);
+  ]) : [[], [], [], [], null];
+  if (!ix) return [];
+  const stepsBy = groupBy(steps, (x) => x.workflowId), commentsBy = groupBy(comments, (c) => c.workflowId);
   const docBy = new Map(docs.map((d) => [d.id, d]));
   const revBy = new Map(revs.map((r) => [r.id, r]));
   const { t, lang } = ctx;
   return wfs.map((w) => {
-    const ws = steps.filter((x) => x.workflowId === w.id).map((st) => {
+    const ws = (stepsBy.get(w.id) ?? []).map((st) => {
       const state = st.idx < w.step ? 'done' : st.idx === w.step ? 'current' : 'todo';
       return {
         ...st,
@@ -685,15 +829,20 @@ export const listWorkflows = cache(async (ctx: Ctx) => {
        */
       visible: followsCircuit(ctx, w, ws) && (ctx.seesAll || (!!doc && canRead(ctx, doc, ix) && readerMaySeeRevision(inDraftingCircle(ctx, doc, ix), rev?.status))),
       progress: `${Math.min(w.step, ws.length)}/${ws.length}`,
-      comments: comments.filter((c) => c.workflowId === w.id).map((c) => {
+      comments: (commentsBy.get(w.id) ?? []).map((c) => {
         const who = ctx.userName(c.authorId);
         return { id: c.id, who, initials: ctx.users.get(c.authorId)?.initials ?? who.slice(0, 2), whenF: fmtDate(c.at, lang), text: loc(c.text, lang) };
       }),
       href: `/validations?r=${encodeURIComponent(w.id)}`,
     };
   });
-});
-export type WorkflowView = Awaited<ReturnType<typeof listWorkflows>>[number];
+}
+export type WorkflowView = Awaited<ReturnType<typeof workflowsWhere>>[number];
+
+/** The circuits of a document, as listWorkflows gives them (the record). */
+export function docWorkflows(ctx: Ctx, docId: string): Promise<WorkflowView[]> {
+  return workflowsWhere(ctx, eq(s.workflows.docId, docId));
+}
 
 // ── Change requests (Vigie) ──────────────────────────────────────────────
 
@@ -890,23 +1039,61 @@ export type MyAction = { key: string; kind: ActionKind; docId: string; docTitle:
  *   of (deadlineActor: the process owner records a review, and only asks for a change on an expiry), with the edit
  *   permission; an overdue one is worded as the record's indicator. End of retention stays with records managers, in
  *   Archivage.
- * Ordered by kind (ACTION_ORDER), then by date. Cached per request (see myTodo).
+ * Ordered by kind (ACTION_ORDER), then by date. Only the documents and workflows an item may come from are read
+ * (actionsAmong decides). Cached per request (see myTodo).
  */
 export const myActions = cache(async (ctx: Ctx): Promise<MyAction[]> => {
   const db = await getDb();
-  const { t } = ctx;
   const me = ctx.user.id;
-  const [docs, workflows, open, pending, ix] = await Promise.all([
-    listDocs(ctx),
-    listWorkflows(ctx),
+  const { pending } = await todoSources();
+  // Revisions being drafted that may wait for the user (draftTodo): they were designated to write it, own the document,
+  // or wrote it before its last circuit sent it back (the first step of a circuit of it).
+  const drafts = await db.select({ id: s.revisions.id, docId: s.revisions.docId }).from(s.revisions).where(and(
+    eq(s.revisions.status, 'draft'),
+    or(
+      eq(s.revisions.modifierId, me),
+      sql`${s.revisions.docId} in (select d.id from ${s.documents} d where d.owner_id = ${me})`,
+      sql`${s.revisions.id} in (select w.revision_id from ${s.workflows} w join ${s.workflowSteps} x on x.workflow_id = w.id where x.idx = 0 and x.assignee_id = ${me})`,
+    ),
+  ));
+  // The workflows an item may come from: running ones holding a step of the user's, and every one of those revisions
+  // (the last one may have sent it back).
+  const workflows = await workflowsWhere(ctx, or(
+    drafts.length ? anyInt(s.workflows.revisionId, drafts.map((r) => r.id)) : undefined,
+    and(sql`coalesce(${s.workflows.outcome}, '') = ''`, sql`${s.workflows.id} in (select x.workflow_id from ${s.workflowSteps} x where x.assignee_id = ${me})`),
+  ));
+  // The documents an item may be about, among those the user may see: of these workflows and revisions, of the changes
+  // Vigie accepted, and the ones they own or own the process of that may fall due.
+  const ids = [...new Set([...workflows.map((w) => w.docId), ...drafts.map((r) => r.docId), ...pending.filter((c) => c.status === 'accepted').map((c) => c.docId)])];
+  const limit = addDays(todayIso(), DEADLINE_WINDOW_DAYS);
+  const docs = await visibleWhere(ctx, sql`(${anyOf(col(D.id), ids)} or ((${col(D.ownerId)} = ${me} or ${col(D.processOwnerId)} = ${me}) and ${mayFallDueSql(limit)}))`);
+  return actionsAmong(ctx, docs, workflows);
+});
+
+/** Open revisions and the changes Vigie has not closed yet: what « À traiter » starts from. Read once per request. */
+const todoSources = cache(async () => {
+  const db = await getDb();
+  const [open, pending] = await Promise.all([
     db.select().from(s.revisions).where(inArray(s.revisions.status, ['draft', 'in_review', 'approved'])),
     db.select().from(s.changeRequests).where(inArray(s.changeRequests.status, ['submitted', 'accepted'])),
-    getAccessIndex(),
   ]);
+  return { open, pending };
+});
+
+/**
+ * « À traiter » over `docs` (documents the user may see, in the order of listDocs) and `workflows` (as listWorkflows
+ * gives them): myActions hands it those its items may come from. Given every document and every workflow, it lists the
+ * same items (tests/integration/targeted-reads.test.ts).
+ */
+export async function actionsAmong(ctx: Ctx, docs: DocView[], workflows: WorkflowView[]): Promise<MyAction[]> {
+  const db = await getDb();
+  const { t } = ctx;
+  const me = ctx.user.id;
+  const [{ open, pending }, ix] = await Promise.all([todoSources(), getAccessIndex()]);
   const docBy = new Map(docs.map((d) => [d.id, d]));
   // Revisions being drafted that already have a working version (they may be sent for approval).
-  const draftIds = open.filter((r) => r.status === 'draft').map((r) => r.id);
-  const drafted = draftIds.length ? await db.selectDistinct({ revisionId: s.workingVersions.revisionId }).from(s.workingVersions).where(inArray(s.workingVersions.revisionId, draftIds)) : [];
+  const draftIds = open.filter((r) => r.status === 'draft' && docBy.has(r.docId)).map((r) => r.id);
+  const drafted = draftIds.length ? await db.selectDistinct({ revisionId: s.workingVersions.revisionId }).from(s.workingVersions).where(anyInt(s.workingVersions.revisionId, draftIds)) : [];
   const withVersions = new Set(drafted.map((v) => v.revisionId));
   const out: MyAction[] = [];
   const push = (kind: ActionKind, d: DocView, detail: string, href: string, due: string | null = null, key = d.id, note: string | null = null) =>
@@ -962,7 +1149,7 @@ export const myActions = cache(async (ctx: Ctx): Promise<MyAction[]> => {
 
   const rank = (a: MyAction) => ACTION_ORDER.indexOf(a.kind);
   return out.sort((a, b) => rank(a) - rank(b) || (a.due ?? '9999').localeCompare(b.due ?? '9999') || a.docId.localeCompare(b.docId));
-});
+}
 
 /** « À traiter » with the time it was computed (ms), so the shell keeps the most recent list it was given. */
 export type Todo = { at: number; items: MyAction[] };
@@ -1320,6 +1507,32 @@ export async function listAudit(ctx: Ctx, opts: { docId?: string; limit?: number
   return auditViews(ctx, rows, current);
 }
 
+/**
+ * The `n` latest entries about documents the user may see (activity feeds: the bell's `window` is 60, the home's 500),
+ * consultations left out, each under the document's current ID: listAudit over the `window` latest entries about
+ * documents, narrowed to the documents listDocs gives, read by batches until `n` are found.
+ */
+export async function recentActivity(ctx: Ctx, n: number, window: number) {
+  const db = await getDb();
+  const step = Math.min(window, Math.max(n * 10, 50));
+  const out: ReturnType<typeof auditViews> = [];
+  let current: Map<string, string> | null = null;
+  for (let offset = 0; offset < window && out.length < n; offset += step) {
+    const size = Math.min(step, window - offset);
+    const rows = await db.select().from(s.auditLog).where(and(isNotNull(s.auditLog.docId), notInArray(s.auditLog.action, [...CONSULT_ACTIONS])))
+      .orderBy(desc(s.auditLog.at), desc(s.auditLog.id)).limit(size).offset(offset);
+    current ??= await currentIds();
+    // auditViews names the document under its current ID only when the user may read it; records managers read the
+    // entries of every document, of which only those that exist are listed.
+    const views = auditViews(ctx, await auditForReader(ctx, rows), current);
+    const ids = [...new Set(views.flatMap((v) => (v.currentId ? [v.currentId] : [])))];
+    const existing = new Set(ids.length ? (await db.select({ id: s.documents.id }).from(s.documents).where(anyOf(s.documents.id, ids))).map((r) => r.id) : []);
+    out.push(...views.filter((v) => v.currentId && existing.has(v.currentId)));
+    if (rows.length < size) break;
+  }
+  return out.slice(0, n);
+}
+
 /** Entries as the journal lists show them, in the user's language; `current`: current ID of each former one (currentIds). */
 function auditViews(ctx: Ctx, rows: AuditEntry[], current: Map<string, string>) {
   return rows.map((a) => {
@@ -1571,17 +1784,21 @@ export async function listSavedSearches(ctx: Ctx) {
 /**
  * A department's page (/departements/[code], G12, FON-06): its documents in force, review, expiry and retention dates
  * falling due, running circuits, the saved searches shared with it and with the whole group, and its featured filters.
- * Everything is read from the lists the other screens use, then narrowed to the department, so that the same rules
- * hold (D-14): documents the user may read (listDocs), circuits they may follow (listWorkflows, `visible`: records
- * managers all of them, others those they take part in, never outside the drafting circle), saved searches they may see
+ * The same rules hold as on the other screens (D-14), read for the department only: documents the user may read
+ * (departmentDocs, listDocs narrowed to it), circuits they may follow (workflowsWhere, `visible`: records managers all
+ * of them, others those they take part in, never outside the drafting circle), saved searches they may see
  * (listSavedSearches). Null for an unknown department.
  */
 export async function departmentPage(ctx: Ctx, code: string) {
   const db = await getDb();
   const [row] = await db.select().from(s.departments).where(eq(s.departments.code, code));
   if (!row) return null;
-  const [docs, workflows, saved] = await Promise.all([listDocs(ctx), listWorkflows(ctx), listSavedSearches(ctx)]);
-  const own = docs.filter((d) => d.department === code);
+  const [own, workflows, saved] = await Promise.all([
+    departmentDocs(ctx, code),
+    // Running circuits on the department's documents (the list keeps those the user may follow and that are not over).
+    workflowsWhere(ctx, and(sql`coalesce(${s.workflows.outcome}, '') = ''`, sql`${s.workflows.docId} in (select d.id from ${s.documents} d where d.department = ${code})`)),
+    listSavedSearches(ctx),
+  ]);
   const ids = new Set(own.map((d) => d.id));
   const keys = featuredOf(row);
   const of = (facets: Facets) => searchHref({ facets: { department: [code], ...facets } });
@@ -1596,7 +1813,7 @@ export async function departmentPage(ctx: Ctx, code: string) {
     workflows: workflows.filter((w) => w.visible && !w.done && ids.has(w.docId)),
     /** Shared with this department first, then with the whole group; personal searches stay on /recherche. */
     saved: [...saved.filter((x) => x.scope === 'department' && x.department === code), ...saved.filter((x) => x.scope === 'group')],
-    featured: featuredFilters(docs, code, keys, (k, v) => facetValueL(ctx, k, v), ctx.lang),
+    featured: featuredFilters(own, code, keys, (k, v) => facetValueL(ctx, k, v), ctx.lang),
     /** The featured facets follow the default ones (no setting of the department's own). */
     featuredDefault: row.featured == null,
     /** The facets put forward, in order (empty: Administration set none for the department). */
@@ -1623,8 +1840,8 @@ export async function templateTypesOf(ctx: Ctx, docIds: string[]): Promise<Map<s
  * createDocument), and the types each is meant for (`types`, empty when none is set).
  */
 export async function listTemplates(ctx: Ctx) {
-  const ix = await getAccessIndex();
-  const docs = (await listDocs(ctx)).filter((d) => isUsableTemplate(ctx, d, ix));
+  const [ix, candidates] = await Promise.all([getAccessIndex(), visibleWhere(ctx, is(col(D.typeCode), TEMPLATE_TYPE))]);
+  const docs = candidates.filter((d) => isUsableTemplate(ctx, d, ix));
   const types = await templateTypesOf(ctx, docs.map((d) => d.id));
   return docs.map((d) => ({ id: d.id, label: d.title, rev: d.revInForce!, owner: d.owner, ownerId: d.ownerId, typeCode: d.typeCode, department: d.department, state: d.state, legalHold: d.legalHold, version: d.version, types: types.get(d.id) ?? [] }));
 }

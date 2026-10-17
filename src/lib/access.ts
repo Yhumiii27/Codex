@@ -33,8 +33,10 @@ export async function buildAccessIndex(q: Q, { pending = true }: { pending?: boo
     pending
       ? q.select({ docId: s.changeRequests.docId, modifierId: s.changeRequests.modifierId }).from(s.changeRequests).where(and(eq(s.changeRequests.kind, 'modification'), eq(s.changeRequests.status, 'accepted')))
       : [],
-    q.select().from(s.workflows),
-    q.select({ workflowId: s.workflowSteps.workflowId, idx: s.workflowSteps.idx, assigneeId: s.workflowSteps.assigneeId }).from(s.workflowSteps),
+    // Running workflows only (no outcome), with their steps: finished ones open no draft (below).
+    q.select().from(s.workflows).where(sql`coalesce(${s.workflows.outcome}, '') = ''`),
+    q.select({ workflowId: s.workflowSteps.workflowId, idx: s.workflowSteps.idx, assigneeId: s.workflowSteps.assigneeId }).from(s.workflowSteps)
+      .where(sql`${s.workflowSteps.workflowId} in (select w.id from ${s.workflows} w where coalesce(w.outcome, '') = '')`),
     q.select().from(s.functionHolders),
     q.select({ code: s.projects.code, managerId: s.projects.managerId }).from(s.projects),
   ]);
@@ -44,8 +46,13 @@ export async function buildAccessIndex(q: Q, { pending = true }: { pending?: boo
   readers.forEach((r) => add(readersBy, r.docId, r.userId));
   revs.forEach((r) => add(modifiersBy, r.docId, r.modifierId));
   waiting.forEach((r) => add(designatedBy, r.docId, r.modifierId));
+  const stepsBy = new Map<string, typeof steps>();
+  for (const x of steps) {
+    if (!stepsBy.has(x.workflowId)) stepsBy.set(x.workflowId, []);
+    stepsBy.get(x.workflowId)!.push(x);
+  }
   for (const w of wfs) {
-    const ws = steps.filter((x) => x.workflowId === w.id);
+    const ws = stepsBy.get(w.id) ?? [];
     if (w.outcome || w.step >= ws.length) continue; // finished or rejected workflows no longer open drafts to their approvers
     ws.forEach((x) => add(approversBy, w.docId, x.assigneeId));
   }

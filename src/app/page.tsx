@@ -5,8 +5,8 @@ import { TODO_ICON } from '@/components/shell/todo';
 import { Icon } from '@/components/ui/Icon';
 import { ClickRow, DialogButton } from '@/components/ui/client';
 import { getCtx } from '@/lib/context';
-import { addDays, todayIso, todayLong } from '@/lib/format';
-import { deadlines, listAudit, listDocs, myTodo } from '@/lib/queries';
+import { todayLong } from '@/lib/format';
+import { dueDeadlines, inForceThisWeek, myTodo, recentActivity, recentDocs } from '@/lib/queries';
 import styles from './home.module.css';
 
 /** A KPI card: a link when the role may open its screen, otherwise a plain card (never a dead end). */
@@ -18,22 +18,21 @@ function Kpi({ href, ok, children }: { href: string; ok: boolean; children: Reac
 export default async function HomePage() {
   const ctx = await getCtx();
   const { t, lang } = ctx;
-  const [docs, todo, audit] = await Promise.all([listDocs(ctx), myTodo(ctx), listAudit(ctx, { limit: 500, docsOnly: true, consultations: 'without' })]);
+  // Only what the home shows is read (lib/queries.ts): no list of every document.
+  const [recents, todo, due, inForceWeek, activity] = await Promise.all([
+    recentDocs(ctx, 5),
+    myTodo(ctx),
+    dueDeadlines(ctx),
+    // Revisions that entered into force in the last 7 days and are still the ones in force.
+    inForceThisWeek(ctx),
+    // Activity of the group, limited to documents the user may see, each under its current ID.
+    recentActivity(ctx, 6, 500),
+  ]);
   const actions = todo.items;
-  const visible = new Map(docs.map((d) => [d.id, d]));
 
   // Everything waiting for me, as the sidebar badge and the bell list it (myTodo, handed to them by TodoSync); the KPI
   // counts the approval steps.
   const toApprove = actions.filter((a) => a.kind === 'step').length;
-  const due = deadlines(ctx, docs);
-  // Revisions that entered into force in the last 7 days and are still the ones in force.
-  const weekAgo = addDays(todayIso(), -7);
-  const inForceWeek = new Set(
-    audit.filter((a) => a.action === 'in_force' && a.local.slice(0, 10) >= weekAgo && !!a.currentId && visible.get(a.currentId)?.revInForce === a.detail).map((a) => a.currentId),
-  ).size;
-  const recents = docs.slice(0, 5);
-  // Activity of the group, limited to documents the user may see, each under its current ID.
-  const activity = audit.filter((a) => a.currentId && visible.has(a.currentId)).slice(0, 6);
   const noUpload = ctx.can('upload') ? undefined : `${t.not_allowed} : ${t.perm_upload}`;
 
   return (

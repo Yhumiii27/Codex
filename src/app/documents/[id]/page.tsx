@@ -16,7 +16,7 @@ import { addDays, fmtDate, todayIso } from '@/lib/format';
 import { ECR_TAGCLS } from '@/lib/i18n';
 import { getProject } from '@/lib/keystone';
 import { CONSULT_WINDOW_MINUTES, decisionWait, defaultModifier, draftersOf } from '@/lib/lifecycle';
-import { decisionWaitL, getDoc, listAudit, templateTypesOf, METADATA_ACTIONS, RETENTION_ACTIONS, listChangeRequests, listDocLinks, listDocs, listRevisions, listWorkflows, stateNotice, typeView, type RevisionView } from '@/lib/queries';
+import { decisionWaitL, getDoc, listAudit, templateTypesOf, METADATA_ACTIONS, RETENTION_ACTIONS, listChangeRequests, listDocLinks, listRevisions, projectDocs as projectDocsOf, readableBriefs, stateNotice, typeView, docWorkflows, type RevisionView } from '@/lib/queries';
 import { sameRule } from '@/lib/retention';
 import { normalizeMime } from '@/lib/storage';
 import { vigieSimulated, vigieUrl } from '@/lib/vigie';
@@ -77,15 +77,16 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
   const [project, revs, workflows, requests, history, consultations, projectDocs, links, readable] = await Promise.all([
     doc.attachment === 'project' && doc.projectCode ? getProject(ctx, doc.projectCode) : null,
     listRevisions(ctx, doc.id),
-    listWorkflows(ctx),
+    docWorkflows(ctx, doc.id),
     listChangeRequests(ctx, { docId: doc.id }),
     listAudit(ctx, { docId: doc.id, consultations: 'without' }),
     // Read only when shown: a record opened often gathers many.
     sp.tab === 'history' && hist === 'consultations' ? listAudit(ctx, { docId: doc.id, consultations: 'only', limit: 200 }) : [],
-    doc.attachment === 'project' && doc.projectCode ? listDocs(ctx, { includeHidden: true }) : [],
-    // Links to documents the user may read only (D-14), and the documents they may read, to link or propose as a replacement.
+    doc.attachment === 'project' && doc.projectCode ? projectDocsOf(ctx, doc.projectCode) : [],
+    // Links to documents the user may read only (D-14), and the documents they may read, to link or propose as a
+    // replacement (their ID, title, state and owner only).
     listDocLinks(ctx, doc.id),
-    listDocs(ctx),
+    readableBriefs(ctx),
   ]);
   // Types a template is meant for (« Nouveau depuis un modèle »).
   const tplTypes = doc.typeCode === TEMPLATE_TYPE ? (await templateTypesOf(ctx, [doc.id])).get(doc.id) ?? [] : null;
@@ -104,7 +105,7 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
   const currentLabel = currentRev && current ? fileLabel(currentRev, current) : '';
   const fileUrl = `/api/documents/${encodeURIComponent(doc.id)}/file`;
 
-  const docWfs = workflows.filter((w) => w.docId === doc.id);
+  const docWfs = workflows;
   const runningAny = docWfs.find((w) => !w.outcome) ?? null;
   const running = circle ? runningAny : null;
   // Outside the drafting circle, only circuits of revisions every reader sees (D-14).
@@ -187,9 +188,9 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
   const changeBtn = (cls: string, style?: CSSProperties) => canChange && (
     <DialogButton spec={{ kind: 'change', docId: doc.id, title: doc.title, change: 'modification', openRev: openRev ?? undefined }} className={cls} style={style} icon="pen" deniedTitle={changeLock ?? deny('edit')}>{t.request_change}</DialogButton>
   );
-  // A withdrawal may propose the document that replaces this one: an active one the user may read (lib/links.ts).
-  const byId = (a: { id: string }, b: { id: string }) => a.id.localeCompare(b.id);
-  const others = readable.filter((d) => d.id !== doc.id).sort(byId);
+  // A withdrawal may propose the document that replaces this one: an active one the user may read (lib/links.ts). By ID
+  // (readableBriefs).
+  const others = readable.filter((d) => d.id !== doc.id);
   const replacements = others.filter((d) => d.state === 'active').map((d) => ({ key: d.id, label: `${d.id} · ${d.title}` }));
   const withdrawBtn = (cls: string, style?: CSSProperties) => canWithdraw && (
     <DialogButton spec={{ kind: 'change', docId: doc.id, title: doc.title, change: 'obsolescence', replacements }} className={cls} style={style} deniedTitle={changeLock ?? deny('edit')}>{t.request_obsolete}</DialogButton>

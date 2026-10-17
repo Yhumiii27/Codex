@@ -10,7 +10,7 @@ import { getCtx } from '@/lib/context';
 import { fileRules } from '@/lib/filetypes';
 import { CONF_LEVELS, MATRIX_ROLE, type SimRole, type TKey } from '@/lib/i18n';
 import { keystoneUrl } from '@/lib/keystone';
-import { getMatrix, listAudit, listDocs, listTemplates, myTodo, typeView } from '@/lib/queries';
+import { getMatrix, listTemplates, myTodo, recentActivity, typeView } from '@/lib/queries';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' });
 
@@ -24,10 +24,9 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
   const fr = ctx.lang === 'fr';
   // What waits for me (approval steps, revisions to draft, grafts, review and expiry dates): the badge and the bell list
   // the same items as the home's « À traiter », each linking to where to act (myTodo, AppProvider).
-  const [todo, templates, visible, audit, matrix] = await Promise.all([myTodo(ctx), listTemplates(ctx), listDocs(ctx), listAudit(ctx, { limit: 60, docsOnly: true, consultations: 'without' }), getMatrix()]);
-  // Recent activity only on documents the simulated user may see, each under its current ID.
-  const seen = new Set(visible.map((d) => d.id));
-  const recent = audit.filter((a) => a.currentId && seen.has(a.currentId)).slice(0, 5);
+  // Only what the shell shows is read (lib/queries.ts): the documents and workflows « À traiter » may come from, the
+  // templates, the five latest entries of the 60 latest about documents the user may see (each under its current ID).
+  const [todo, templates, recent, matrix] = await Promise.all([myTodo(ctx), listTemplates(ctx), recentActivity(ctx, 5, 60), getMatrix()]);
   const data: DialogData = {
     templates: templates.map((x) => ({ id: x.id, label: x.label, rev: x.rev, owner: x.owner, types: x.types })),
     types: ctx.types.map((x) => {
