@@ -468,9 +468,9 @@ export async function getDoc(ctx: Ctx, id: string): Promise<{ doc: DocView; circ
   const db = await getDb();
   let [d] = await db.select().from(s.documents).where(eq(s.documents.id, id));
   if (!d) {
-    // Former IDs (reclassification, migration) still resolve.
-    const all = await db.select().from(s.documents);
-    d = all.find((x) => x.aliases.includes(id))!;
+    // Former IDs (reclassification, migration) still resolve, through the index documents_aliases. An ID is never
+    // handed out again once kept as an alias (lib/codification.ts): one document at most holds it.
+    [d] = await db.select().from(s.documents).where(sql`${s.documents.aliases} @> ${JSON.stringify([id])}::jsonb`).limit(1);
     if (!d) return null;
   }
   const ix = await getAccessIndex();

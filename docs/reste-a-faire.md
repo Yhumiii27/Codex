@@ -715,6 +715,7 @@ Vérifié : `promoteDue` n'est appelé que dans `getCtx` (src/lib/context.ts:50 
 </details>
 
 #### 39. Index de base de données manquants
+- **Fait le 17 octobre 2026** : constat revérifié au commit `b6e825c` (les index `audit_log_at` et `audit_log_doc` existaient déjà, `working_versions_sha256` aussi ; le reste manquait). Ajout dans `src/db/schema.ts`, migration unique régénérée, de 17 index : GIN `jsonb_path_ops` sur `documents.aliases` (et `getDoc` résout un ancien ID par `aliases @>` au lieu de charger la table), `working_versions(doc_id)` et `(file_key)`, `workflows(doc_id)` et `(revision_id)`, `workflow_steps(assignee_id)`, `workflow_comments(workflow_id)`, `change_requests(doc_id)` et `(replacement_id)` partiel, `document_links(source_id)` et `(target_id)`, `document_readers(user_id)`, `project_expected(project_code)` et `(doc_id)`, `audit_log(user_id, at, id)`, `(action, at, id)` et `(revision_id)` partiel. Mesuré sur 5 000 documents et 125 000 entrées de journal (médiane de 15 exécutions, PGlite) : ancien ID 198 → 1,1 ms, journal d'une révision 27 → 0,8 ms, dernier contrôle d'intégrité 13 → 0,6 ms, journal filtré par personne 23 → 5,9 ms, versions par clé de fichier 3,1 → 0,3 ms, reclassement (cascades) 6,0 → 1,1 ms ; écriture de 1 000 entrées du journal 18 → 27 ms. Les écrans qui chargent des tables entières (point 47, « Chaque navigation recharge toutes les tables ») n'en profitent pas encore.
 
 - **Effort** : faible
 
@@ -780,6 +781,7 @@ Vérifié : package.json n'a pas de champ `engines`, et le dépôt n'a ni .nvmrc
 </details>
 
 #### 44. Erreurs : pas de global-error.tsx, messages non traçables
+- **Fait le 17 octobre 2026** : constat revérifié au commit `b6e825c` (le journal technique du lot 7 notait déjà le digest des erreurs de rendu, mais aucun écran ne le montrait). `src/app/global-error.tsx` (propre `<html>`, Nocturne et Inter importés, FR · EN côte à côte, référence, « Réessayer » par `retry()`, retour à l'accueil par rechargement complet) ; `error.tsx` passé à `retry`, dans la langue de l'utilisateur, avec la référence et un retour à l'accueil, jamais le message ; `not-found.tsx` dans le shell (page introuvable, 404) et `documents/[id]/not-found.tsx` (document introuvable : `notFound()`, 404 au lieu de 200). La référence d'une action en échec est son identifiant de requête (`traceAction` le pose comme digest, que Next garde et transmet au navigateur) ; celle d'un rendu, le digest de Next, que l'entrée « request failed » porte. `useSubmit`, `ActionButton`, `CommentBox` et `DueTable` affichent « Une erreur est survenue · Réf. … » (`src/lib/errors.ts`). Vérifié en développement et en build de production. Reste : une erreur survenue dans le navigateur n'a pas de référence et n'est pas remontée au serveur.
 
 - **Effort** : faible
 

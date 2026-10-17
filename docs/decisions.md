@@ -1204,6 +1204,28 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     par type dans « Règles de conservation ». La fin calculée entre dans les échéances (90 jours) comme les autres ;
   - **rien n'est archivé ni détruit automatiquement** : l'échéance reste une proposition (O-07, M03). La conservation
     reste comptée par document (`docs/modele-cible.md` §8, O-09).
+- **Pages d'erreur et référence d'erreur** (point 44 de `docs/reste-a-faire.md`, 17 octobre ; hébergement et collecte
+  des journaux (M22), authentification (O-02) non décidés) :
+  - **ce que voit l'utilisateur** : jamais le message d'une erreur (il peut citer une requête, un chemin, une valeur),
+    mais « Une erreur est survenue », une référence à transmettre à l'administrateur, « Réessayer » et « Retour à
+    l'accueil ». Pour une action en échec, la référence est l'identifiant de requête de l'entrée « action failed » du
+    journal technique (posé comme digest de l'erreur, que Next.js garde) ; pour un rendu en échec, le digest calculé
+    par Next.js, que l'entrée « request failed » porte (`err.digest`). Une erreur survenue dans le navigateur n'a pas de
+    référence et **n'est pas remontée au serveur** : il faudrait une route qui écrive dans le journal sans
+    authentification (O-02) ; elle reste dans la console du navigateur ;
+  - **erreur du layout racine** (`global-error.tsx`) : la langue de l'utilisateur est lue par le layout qui a échoué,
+    donc la page est en français et en anglais côte à côte ; le retour à l'accueil recharge la page entière ;
+  - **introuvable** : une adresse inconnue et un identifiant de document qui ne correspond à aucun document (ni ancien
+    identifiant) répondent 404 avec une page dans le shell. Un document qui existe mais que l'utilisateur ne lit pas
+    garde son message « pas d'accès » (HTTP 200) : répondre 404 pour cacher son existence serait un choix de
+    confidentialité qui n'a pas été pris ;
+  - rien n'est envoyé à un service de suivi d'erreurs externe.
+- **Index de base** (point 39 de `docs/reste-a-faire.md`, 17 octobre) : 17 index ajoutés pour les requêtes ciblées et
+  les cascades d'un reclassement (détail et mesures dans `docs/reste-a-faire.md`) ; leur coût à l'écriture est accepté
+  (journal : environ 9 µs de plus par entrée sur PGlite). Aucun index sur les colonnes que filtrent les listes de
+  documents (département, type, statut…) : ces écrans parcourent encore toute la table, et l'index se choisira avec
+  les requêtes qui les remplaceront. Toujours une migration unique régénérée (point 41 : migrations incrémentales à la
+  première base de production).
 - **Git** (D-23) : premier commit sur une branche `codex-ged-v2` plutôt que sur `main`.
 
 ## Ce qui est explicitement hors périmètre

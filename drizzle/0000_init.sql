@@ -365,12 +365,29 @@ ALTER TABLE "working_versions" ADD CONSTRAINT "working_versions_doc_id_documents
 ALTER TABLE "working_versions" ADD CONSTRAINT "working_versions_author_id_users_id_fk" FOREIGN KEY ("author_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "audit_log_at" ON "audit_log" USING btree ("at","id");--> statement-breakpoint
 CREATE INDEX "audit_log_doc" ON "audit_log" USING btree ("doc_id","user_id","action","at");--> statement-breakpoint
+CREATE INDEX "audit_log_user" ON "audit_log" USING btree ("user_id","at","id");--> statement-breakpoint
+CREATE INDEX "audit_log_action" ON "audit_log" USING btree ("action","at","id");--> statement-breakpoint
+CREATE INDEX "audit_log_revision" ON "audit_log" USING btree ("revision_id") WHERE "audit_log"."revision_id" is not null;--> statement-breakpoint
 CREATE UNIQUE INDEX "change_requests_pending" ON "change_requests" USING btree ("doc_id") WHERE "change_requests"."status" in ('submitted', 'accepted');--> statement-breakpoint
+CREATE INDEX "change_requests_doc" ON "change_requests" USING btree ("doc_id");--> statement-breakpoint
+CREATE INDEX "change_requests_replacement" ON "change_requests" USING btree ("replacement_id") WHERE "change_requests"."replacement_id" is not null;--> statement-breakpoint
 CREATE UNIQUE INDEX "document_links_pair" ON "document_links" USING btree (least("source_id", "target_id"),greatest("source_id", "target_id"));--> statement-breakpoint
+CREATE INDEX "document_links_source" ON "document_links" USING btree ("source_id");--> statement-breakpoint
+CREATE INDEX "document_links_target" ON "document_links" USING btree ("target_id");--> statement-breakpoint
+CREATE INDEX "document_readers_user" ON "document_readers" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "document_terms_doc" ON "document_terms" USING btree ("doc_id");--> statement-breakpoint
 CREATE INDEX "document_terms_term" ON "document_terms" USING gin ("term" gin_trgm_ops);--> statement-breakpoint
+CREATE INDEX "documents_aliases" ON "documents" USING gin ("aliases" jsonb_path_ops);--> statement-breakpoint
+CREATE INDEX "project_expected_project" ON "project_expected" USING btree ("project_code");--> statement-breakpoint
+CREATE INDEX "project_expected_doc" ON "project_expected" USING btree ("doc_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "revisions_doc_letter" ON "revisions" USING btree ("doc_id","letter");--> statement-breakpoint
 CREATE UNIQUE INDEX "revisions_in_force" ON "revisions" USING btree ("doc_id") WHERE "revisions"."status" = 'in_force';--> statement-breakpoint
+CREATE INDEX "workflow_comments_workflow" ON "workflow_comments" USING btree ("workflow_id");--> statement-breakpoint
+CREATE INDEX "workflow_steps_assignee" ON "workflow_steps" USING btree ("assignee_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "workflows_running" ON "workflows" USING btree ("revision_id") WHERE "workflows"."outcome" is null;--> statement-breakpoint
+CREATE INDEX "workflows_doc" ON "workflows" USING btree ("doc_id");--> statement-breakpoint
+CREATE INDEX "workflows_revision" ON "workflows" USING btree ("revision_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "working_versions_rev_n" ON "working_versions" USING btree ("revision_id","n");--> statement-breakpoint
+CREATE INDEX "working_versions_doc" ON "working_versions" USING btree ("doc_id");--> statement-breakpoint
+CREATE INDEX "working_versions_file_key" ON "working_versions" USING btree ("file_key");--> statement-breakpoint
 CREATE INDEX "working_versions_sha256" ON "working_versions" USING btree ("sha256");

@@ -1,5 +1,5 @@
 {
-  "id": "eed565db-8e11-4395-a84f-9c2c4f14e92a",
+  "id": "e909d74b-afec-4ae5-beea-a035cd09c9e7",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -121,6 +121,76 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "audit_log_user": {
+          "name": "audit_log_user",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "audit_log_action": {
+          "name": "audit_log_action",
+          "columns": [
+            {
+              "expression": "action",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "audit_log_revision": {
+          "name": "audit_log_revision",
+          "columns": [
+            {
+              "expression": "revision_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"audit_log\".\"revision_id\" is not null",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -262,6 +332,37 @@
           ],
           "isUnique": true,
           "where": "\"change_requests\".\"status\" in ('submitted', 'accepted')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "change_requests_doc": {
+          "name": "change_requests_doc",
+          "columns": [
+            {
+              "expression": "doc_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "change_requests_replacement": {
+          "name": "change_requests_replacement",
+          "columns": [
+            {
+              "expression": "replacement_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"change_requests\".\"replacement_id\" is not null",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -615,6 +716,36 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "document_links_source": {
+          "name": "document_links_source",
+          "columns": [
+            {
+              "expression": "source_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "document_links_target": {
+          "name": "document_links_target",
+          "columns": [
+            {
+              "expression": "target_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -690,7 +821,23 @@
           "notNull": true
         }
       },
-      "indexes": {},
+      "indexes": {
+        "document_readers_user": {
+          "name": "document_readers_user",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "document_readers_doc_id_documents_id_fk": {
           "name": "document_readers_doc_id_documents_id_fk",
@@ -1108,7 +1255,24 @@
           "default": 1
         }
       },
-      "indexes": {},
+      "indexes": {
+        "documents_aliases": {
+          "name": "documents_aliases",
+          "columns": [
+            {
+              "expression": "aliases",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "jsonb_path_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "documents_project_code_projects_code_fk": {
           "name": "documents_project_code_projects_code_fk",
@@ -1519,7 +1683,38 @@
           "default": 0
         }
       },
-      "indexes": {},
+      "indexes": {
+        "project_expected_project": {
+          "name": "project_expected_project",
+          "columns": [
+            {
+              "expression": "project_code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "project_expected_doc": {
+          "name": "project_expected_doc",
+          "columns": [
+            {
+              "expression": "doc_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "project_expected_project_code_projects_code_fk": {
           "name": "project_expected_project_code_projects_code_fk",
@@ -2222,7 +2417,23 @@
           "notNull": true
         }
       },
-      "indexes": {},
+      "indexes": {
+        "workflow_comments_workflow": {
+          "name": "workflow_comments_workflow",
+          "columns": [
+            {
+              "expression": "workflow_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "workflow_comments_workflow_id_workflows_id_fk": {
           "name": "workflow_comments_workflow_id_workflows_id_fk",
@@ -2305,7 +2516,23 @@
           "default": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "workflow_steps_assignee": {
+          "name": "workflow_steps_assignee",
+          "columns": [
+            {
+              "expression": "assignee_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "workflow_steps_workflow_id_workflows_id_fk": {
           "name": "workflow_steps_workflow_id_workflows_id_fk",
@@ -2432,6 +2659,36 @@
           ],
           "isUnique": true,
           "where": "\"workflows\".\"outcome\" is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "workflows_doc": {
+          "name": "workflows_doc",
+          "columns": [
+            {
+              "expression": "doc_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "workflows_revision": {
+          "name": "workflows_revision",
+          "columns": [
+            {
+              "expression": "revision_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -2604,6 +2861,36 @@
             }
           ],
           "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "working_versions_doc": {
+          "name": "working_versions_doc",
+          "columns": [
+            {
+              "expression": "doc_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "working_versions_file_key": {
+          "name": "working_versions_file_key",
+          "columns": [
+            {
+              "expression": "file_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}

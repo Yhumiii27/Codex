@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useApp } from '@/components/shell/AppProvider';
 import type { DialogSpec } from '@/components/dialogs/types';
 import type { ActionResult } from '@/lib/actions';
+import { failureText } from '@/lib/errors';
 import { Icon, type IconName } from './Icon';
 
 /** A button that opens one of the app dialogs. `deniedTitle` disables it (permission missing). */
@@ -62,8 +63,8 @@ export function ActionButton({ action, className = 'btn btn-secondary', children
             const r = await action();
             if (!r.ok) { toast(r.error, true); router.refresh(); }
             else { if (r.href ?? after) router.replace((r.href ?? after)!, { scroll: false }); if (r.message) toast(r.message); if (r.warning) toast(r.warning, 'warn'); }
-          } catch {
-            toast(t.error, true);
+          } catch (err) {
+            toast(failureText(t, err), true);
           }
         });
       }}

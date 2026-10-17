@@ -2164,3 +2164,78 @@ configuration par défaut qui fonctionne en local (`npm run dev`, app Mac), déc
 chaque choix qui dépend d'une question ouverte (O-01 SharePoint, O-02 authentification, hébergement et M22, A05 droits,
 O-04 organigramme, O-09, O-11) prend l'option la plus prudente et figure dans « Choix de l'assistant non validés
 explicitement » de [decisions.md](decisions.md).
+
+## 17. Lot 8 (17 oct.)
+
+Suite des points « développables maintenant » de [reste-a-faire.md](reste-a-faire.md), mêmes règles que les lots 6 et
+7 : une étape par point ou groupe de points, relue avant son commit ; aucune question ouverte n'est tranchée, un choix
+qui en dépend prend l'option la plus prudente et est consigné dans « Choix de l'assistant non validés explicitement »
+de [decisions.md](decisions.md).
+
+| Étape | Commit | Points | Ce qui change | Choix prudents |
+|---|---|---|---|---|
+| 1. Empreintes SHA-256 | `a44601a` | 31 | Empreinte calculée sur les octets reçus à chaque dépôt et import, gardée sur la version de travail ; affichée (Révisions, comparaison, fiche de visa) ; vérification d'intégrité depuis Administration et par `npm run integrity` ; téléchargement complet vérifié au passage ; avertissement de doublon ; colonne et fichiers altérés dans l'export complet | Vérification à la demande seulement (planification, point 38, et alertes, M22, non décidées) ; rien n'est réparé ni supprimé ; empreinte d'un fichier ancien établie à la première vérification ; doublon non bloquant, ne nommant que ce que l'utilisateur peut avoir (D-14) ; début de l'empreinte au journal pour le seul cercle de rédaction |
+| 2. Consultations et historique des métadonnées | `cea4652` | 28, 22 | Ouverture d'une fiche et fichier affiché dans l'aperçu journalisés, dédoublonnés par demi-heure ; onglet Historique de la fiche en trois vues (activité, métadonnées avant → après, consultations) ; consultations filtrables dans le journal, retirées des fils d'activité | Tous les niveaux de confidentialité journalisés ; fiche journalisée par le navigateur une fois affichée, jamais au préchargement ; lecteurs du journal inchangés (D-14 ; restreindre la liste des consultants relève de M05) ; pas de réglage de la fenêtre par variable |
+| 3. Auteur désigné et modèles rattachés aux types | `b13794a` | 4, 6 | Auteur choisi parmi les personnes du groupe ou saisi en texte libre (MET-10), partout le même (fiche, recherche, exports) ; types cibles d'un modèle FRM (FON-12), réglés depuis sa fiche ou Administration, proposés en tête de « Nouveau depuis un modèle » | L'auteur ne donne aucun droit et n'entre pas dans le cercle de rédaction ; créateur par défaut ; aucun refus d'un modèle prévu pour d'autres types ; type visé par un modèle compté comme utilisé |
+| 4. Conservation par document et dates d'événement | `b6e825c` | 7, 18 | Date de l'événement déclencheur (fin de vie de l'actif, départ du salarié) saisie et journalisée ; classe de conservation modifiable par document (dérogation) et retour à la règle du type ; répercussion facultative de la règle d'un type sur ses documents, avec aperçu ; onglet Archivage › Dates d'événement | Fin de projet non saisissable (attend Keystone, O-03) ; durée nulle laissée « à fixer » (O-07) ; répercussion décochée par défaut, documents gelés laissés tels quels ; rien n'est archivé ni détruit automatiquement (O-07, M03) |
+| 5. Pages d'erreur traçables et index de base | commit « Lot 8, étape 5 », qui suit `b6e825c` | 44, 39 | `global-error.tsx`, `error.tsx` (avec `retry`), `not-found.tsx` dans le style Nocturne, FR/EN, avec une référence reliée au journal technique et jamais le message ; document introuvable en 404 ; référence affichée par les dialogues et boutons d'action ; 17 index pour les requêtes ciblées et les cascades, mesurés avant et après | Référence = identifiant de requête pour une action, digest de Next.js pour un rendu ; erreur du navigateur non remontée au serveur (O-02) ; page d'erreur racine en deux langues ; document non lisible toujours « pas d'accès » en 200 ; coût des index à l'écriture accepté, aucun index pour les listes qui chargent encore toute la table |
+
+### 17.5 Pages d'erreur traçables et index de base
+
+Points 44 et 39 de [reste-a-faire.md](reste-a-faire.md), revérifiés au commit `b6e825c` : seul `src/app/error.tsx`
+existait (avec `reset`, et le message de l'erreur quand elle n'avait pas de digest) ; une URL inconnue affichait la page
+404 de Next.js en anglais, un document introuvable un message en HTTP 200 ; les dialogues et boutons d'action
+remplaçaient toute erreur par « Une erreur est survenue », sans référence. Le journal technique du lot 7 notait déjà le
+digest des erreurs de rendu, mais aucun écran ne le montrait, et une action en échec n'avait que son identifiant de
+requête, que le navigateur ne recevait pas. Côté base, seuls `audit_log_at`, `audit_log_doc`, `working_versions_sha256`
+et les index uniques existaient.
+
+- **Référence d'erreur** (`src/lib/errors.ts`) : Next.js garde le digest qu'une erreur porte déjà et le transmet au
+  navigateur, jamais le message en production. `traceAction` (`src/lib/log.ts`) pose donc l'identifiant de requête de
+  l'action comme digest (`withDigest`) : la référence affichée est celle de l'entrée « action failed ». Pour un rendu,
+  c'est le digest calculé par Next.js, que `logRequestError` écrit dans `err.digest`.
+- **Écrans** : `global-error.tsx` (erreur du layout racine : base injoignable, migration en échec) a ses propres
+  `<html>` et `<body>`, importe Nocturne et Inter et montre les deux langues ; ses textes viennent de
+  `src/lib/i18n-errors.ts`, repris par les dictionnaires de `src/lib/i18n.ts`. `error.tsx` passe à `retry` (qui
+  recharge l'écran depuis le serveur). `not-found.tsx` et `documents/[id]/not-found.tsx` s'affichent dans le shell, en
+  404. `useSubmit`, `ActionButton`, `CommentBox` et `DueTable` affichent « Une erreur est survenue · Réf. … ».
+- **Vérification** : en développement et en build de production (`next start`), avec une route de test temporaire,
+  retirée avant le commit : rendu en échec (500, référence = digest de l'entrée du journal), action en échec (toast
+  avec l'identifiant de requête de l'entrée « action failed »), base au schéma périmé (global-error, 500, référence
+  retrouvée dans le journal), adresse et document inconnus (404, FR et EN). Aucun message interne dans le HTML.
+- **Index** (`src/db/schema.ts`, migration unique régénérée) : GIN `jsonb_path_ops` sur `documents.aliases`, utilisé
+  par `getDoc`, qui résout un ancien identifiant par `aliases @>` au lieu de charger toute la table ; par document et
+  par clé de fichier sur `working_versions` ; par document et par révision sur `workflows` ; par personne sur
+  `workflow_steps` et `document_readers` (sous-requêtes de visibilité) ; par circuit sur `workflow_comments` ; par
+  document et par document de remplacement sur `change_requests` ; par extrémité sur `document_links` ; par projet et
+  par document sur `project_expected` ; par personne, par action et par révision sur `audit_log`.
+- **Mesures** (script hors dépôt, PGlite en mémoire, 5 000 documents, 5 714 révisions, 17 142 versions, 5 496
+  circuits, 125 001 entrées de journal ; médiane de 15 exécutions) :
+
+| Requête | Avant (ms) | Après (ms) |
+|---|---|---|
+| Document par ancien identifiant (table entière → `aliases @>`) | 198 | 1,1 |
+| Versions d'un document | 2,7 | 0,6 |
+| Version par clé de fichier (`nameStoredFile`) | 3,1 | 0,3 |
+| Circuits d'un document / d'une révision | 1,2 / 1,1 | 0,5 / 0,4 |
+| Journal d'une révision (fiche de visa) | 27,3 | 0,8 |
+| Dernier contrôle d'intégrité | 13,3 | 0,6 |
+| Journal filtré par personne (500 dernières entrées) | 23,1 | 5,9 |
+| Journal filtré par action (500 dernières entrées) | 7,3 | 6,0 |
+| Lecteurs désignés / étapes d'une personne | 2,2 / 3,0 | 0,6 / 1,1 |
+| Documents lisibles par une personne (`readableSql`, compte) | 9,9 | 7,0 |
+| Reclassement d'un document (cascades) | 6,0 | 1,1 |
+| Écriture de 1 000 entrées du journal | 17,7 | 27,2 |
+
+Les autres requêtes ciblées (demandes, liens, attendus d'un projet) restent sous la milliseconde sur ce volume. Les
+écrans qui chargent des tables entières (`listDocs`, `listWorkflows`, index d'accès) n'en profitent pas encore : c'est
+le point 47 de reste-a-faire.md (« Chaque navigation recharge toutes les tables »).
+
+### Bilan du lot 8
+
+Cinq étapes, neuf points de [reste-a-faire.md](reste-a-faire.md) (31, 28, 22, 4, 6, 7, 18, 44, 39), tous développables
+sans décision de l'utilisateur : intégrité des fichiers (étape 1), traçabilité des lectures et des métadonnées (2),
+métadonnées du deck encore manquantes (auteur, types cibles des modèles, 3), conservation document par document (4),
+erreurs traçables et index (5). Aucune question ouverte n'a été tranchée ; chaque choix qui en dépend (O-01, O-02, O-03,
+O-07, O-09, M03, M05, M22) prend l'option la plus prudente et figure dans « Choix de l'assistant non validés
+explicitement » de [decisions.md](decisions.md).

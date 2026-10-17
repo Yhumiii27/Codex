@@ -151,96 +151,106 @@ export const researchPrograms = pgTable('research_programs', {
 
 // ── Documents ───────────────────────────────────────────────────────────
 
-export const documents = pgTable('documents', {
-  /** TYPE-CONTEXTE-SEQ, frozen once a revision has been approved. */
-  id: text('id').primaryKey(),
-  /** Earlier IDs (reclassification before first approval, migrated legacy references). */
-  aliases: jsonb('aliases').$type<string[]>().notNull().default([]),
-  /**
-   * Reference in the legacy system the document was migrated from (/api/import), also kept in aliases; null for a
-   * document created in Codex. Aliases also hold former IDs: only this column says which reference was imported.
-   */
-  legacyRef: text('legacy_ref').unique(),
-  title: text('title').notNull(),
-  origin: text('origin').$type<Origin>().notNull(),
-  attachment: text('attachment').$type<Attachment>().notNull(),
-  projectCode: text('project_code').references(() => projects.code),
-  programCode: text('program_code').references(() => researchPrograms.code),
-  family: text('family').notNull().references(() => families.key),
-  typeCode: text('type_code').notNull().references(() => docTypes.code),
-  subtype: text('subtype'),
-  department: text('department').notNull().references(() => departments.code),
-  site: text('site').references(() => sites.key),
-  ownerId: text('owner_id').notNull().references(() => users.id),
-  authorId: text('author_id').references(() => users.id),
-  authorText: text('author_text'),
-  conf: text('conf').$type<Conf>().notNull(),
-  keywords: jsonb('keywords').$type<string[]>().notNull(),
-  lang: text('lang'),
-  state: text('state').$type<DocState>().notNull().default('active'),
-  /** Headline status for lists and filters, kept in step with the revisions (see lib/lifecycle.ts). */
-  status: text('status').notNull(),
-  /** Letter of the revision in force, and of the revision being drafted or reviewed. */
-  revInForce: text('rev_in_force'),
-  revWorking: text('rev_working'),
-  issuedAt: date('issued_at', { mode: 'string' }),
-  reviewDueAt: date('review_due_at', { mode: 'string' }),
-  expiresAt: date('expires_at', { mode: 'string' }),
-  // Retention class: copied from the type at creation, adjustable by a records manager (lib/actions.ts setRetentionClass).
-  retentionYears: integer('retention_years'),
-  retentionTrigger: text('retention_trigger').$type<RetentionTrigger>().notNull(),
-  retentionDisposition: text('retention_disposition').$type<Disposition>().notNull(),
-  /**
-   * The class was set on this document by a records manager and no longer follows its type: a change of the type's rule
-   * applied to its documents leaves it as it is (lib/actions.ts updateType). False: it follows the type's rule.
-   */
-  retentionOverride: boolean('retention_override').notNull().default(false),
-  /**
-   * Date of a trigger event Codex cannot know (end of life of the asset, departure of the employee: lib/retention.ts
-   * EVENT_TRIGGERS), entered on the record by its owner or a records manager; null until then.
-   */
-  retentionEventAt: date('retention_event_at', { mode: 'string' }),
-  // External documents
-  sourceOrg: text('source_org'),
-  externalRef: text('external_ref'),
-  receivedAt: date('received_at', { mode: 'string' }),
-  // Project documents
-  projectPhase: text('project_phase'),
-  workPackage: text('work_package'),
-  discipline: text('discipline'),
-  // Research documents
-  researchTheme: text('research_theme'),
-  studyId: text('study_id'),
-  ipStatus: text('ip_status'),
-  // Internal documents
-  processOwnerId: text('process_owner_id').references(() => users.id),
-  legalHold: boolean('legal_hold').notNull().default(false),
-  legalHoldAt: date('legal_hold_at', { mode: 'string' }),
-  obsoleteAt: date('obsolete_at', { mode: 'string' }),
-  archivedAt: date('archived_at', { mode: 'string' }),
-  createdAt: date('created_at', { mode: 'string' }).notNull(),
-  modifiedAt: date('modified_at', { mode: 'string' }).notNull(),
-  /**
-   * Raised by the database at every change of the row, whatever writes it (trigger documents_version, src/db/index.ts),
-   * and by hand when the named readers change. The record's dialogs send it back: an edit from an outdated view is
-   * refused (lib/actions.ts updateMeta, setReaders; lib/concurrency.ts). Shown to the drafting circle only (docView).
-   */
-  version: integer('version').notNull().default(1),
-});
+export const documents = pgTable(
+  'documents',
+  {
+    /** TYPE-CONTEXTE-SEQ, frozen once a revision has been approved. */
+    id: text('id').primaryKey(),
+    /** Earlier IDs (reclassification before first approval, migrated legacy references). */
+    aliases: jsonb('aliases').$type<string[]>().notNull().default([]),
+    /**
+     * Reference in the legacy system the document was migrated from (/api/import), also kept in aliases; null for a
+     * document created in Codex. Aliases also hold former IDs: only this column says which reference was imported.
+     */
+    legacyRef: text('legacy_ref').unique(),
+    title: text('title').notNull(),
+    origin: text('origin').$type<Origin>().notNull(),
+    attachment: text('attachment').$type<Attachment>().notNull(),
+    projectCode: text('project_code').references(() => projects.code),
+    programCode: text('program_code').references(() => researchPrograms.code),
+    family: text('family').notNull().references(() => families.key),
+    typeCode: text('type_code').notNull().references(() => docTypes.code),
+    subtype: text('subtype'),
+    department: text('department').notNull().references(() => departments.code),
+    site: text('site').references(() => sites.key),
+    ownerId: text('owner_id').notNull().references(() => users.id),
+    authorId: text('author_id').references(() => users.id),
+    authorText: text('author_text'),
+    conf: text('conf').$type<Conf>().notNull(),
+    keywords: jsonb('keywords').$type<string[]>().notNull(),
+    lang: text('lang'),
+    state: text('state').$type<DocState>().notNull().default('active'),
+    /** Headline status for lists and filters, kept in step with the revisions (see lib/lifecycle.ts). */
+    status: text('status').notNull(),
+    /** Letter of the revision in force, and of the revision being drafted or reviewed. */
+    revInForce: text('rev_in_force'),
+    revWorking: text('rev_working'),
+    issuedAt: date('issued_at', { mode: 'string' }),
+    reviewDueAt: date('review_due_at', { mode: 'string' }),
+    expiresAt: date('expires_at', { mode: 'string' }),
+    // Retention class: copied from the type at creation, adjustable by a records manager (lib/actions.ts setRetentionClass).
+    retentionYears: integer('retention_years'),
+    retentionTrigger: text('retention_trigger').$type<RetentionTrigger>().notNull(),
+    retentionDisposition: text('retention_disposition').$type<Disposition>().notNull(),
+    /**
+     * The class was set on this document by a records manager and no longer follows its type: a change of the type's rule
+     * applied to its documents leaves it as it is (lib/actions.ts updateType). False: it follows the type's rule.
+     */
+    retentionOverride: boolean('retention_override').notNull().default(false),
+    /**
+     * Date of a trigger event Codex cannot know (end of life of the asset, departure of the employee: lib/retention.ts
+     * EVENT_TRIGGERS), entered on the record by its owner or a records manager; null until then.
+     */
+    retentionEventAt: date('retention_event_at', { mode: 'string' }),
+    // External documents
+    sourceOrg: text('source_org'),
+    externalRef: text('external_ref'),
+    receivedAt: date('received_at', { mode: 'string' }),
+    // Project documents
+    projectPhase: text('project_phase'),
+    workPackage: text('work_package'),
+    discipline: text('discipline'),
+    // Research documents
+    researchTheme: text('research_theme'),
+    studyId: text('study_id'),
+    ipStatus: text('ip_status'),
+    // Internal documents
+    processOwnerId: text('process_owner_id').references(() => users.id),
+    legalHold: boolean('legal_hold').notNull().default(false),
+    legalHoldAt: date('legal_hold_at', { mode: 'string' }),
+    obsoleteAt: date('obsolete_at', { mode: 'string' }),
+    archivedAt: date('archived_at', { mode: 'string' }),
+    createdAt: date('created_at', { mode: 'string' }).notNull(),
+    modifiedAt: date('modified_at', { mode: 'string' }).notNull(),
+    /**
+     * Raised by the database at every change of the row, whatever writes it (trigger documents_version, src/db/index.ts),
+     * and by hand when the named readers change. The record's dialogs send it back: an edit from an outdated view is
+     * refused (lib/actions.ts updateMeta, setReaders; lib/concurrency.ts). Shown to the drafting circle only (docView).
+     */
+    version: integer('version').notNull().default(1),
+  },
+  // A former ID (reclassification, migration) resolves with `aliases @> '["…"]'` (lib/queries.ts getDoc, lib/importer.ts).
+  (t) => [index('documents_aliases').using('gin', t.aliases.op('jsonb_path_ops'))],
+);
 
 const docRef = () => documents.id;
 const cascade = { onUpdate: 'cascade' as const };
 
 /** Documents Keystone expects on a project (checklist of the project tab). */
-export const projectExpected = pgTable('project_expected', {
-  id: serial('id').primaryKey(),
-  projectCode: text('project_code').notNull().references(() => projects.code),
-  label: jsonb('label').$type<Localized>().notNull(),
-  typeCode: text('type_code').references(() => docTypes.code),
-  docId: text('doc_id').references(docRef, cascade),
-  later: boolean('later').notNull().default(false),
-  sort: integer('sort').notNull().default(0),
-});
+export const projectExpected = pgTable(
+  'project_expected',
+  {
+    id: serial('id').primaryKey(),
+    projectCode: text('project_code').notNull().references(() => projects.code),
+    label: jsonb('label').$type<Localized>().notNull(),
+    typeCode: text('type_code').references(() => docTypes.code),
+    docId: text('doc_id').references(docRef, cascade),
+    later: boolean('later').notNull().default(false),
+    sort: integer('sort').notNull().default(0),
+  },
+  // The project tab's checklist (lib/keystone.ts); the expected item a document fills, and the cascade of a reclassification.
+  (t) => [index('project_expected_project').on(t.projectCode), index('project_expected_doc').on(t.docId)],
+);
 
 export const projectEvents = pgTable('project_events', {
   id: serial('id').primaryKey(),
@@ -256,7 +266,8 @@ export const documentReaders = pgTable(
     docId: text('doc_id').notNull().references(docRef, cascade),
     userId: text('user_id').notNull().references(() => users.id),
   },
-  (t) => [primaryKey({ columns: [t.docId, t.userId] })],
+  // The key serves a document's readers; user_id the readers' clause of lib/access.ts readableSql, in every list.
+  (t) => [primaryKey({ columns: [t.docId, t.userId] }), index('document_readers_user').on(t.userId)],
 );
 
 /**
@@ -322,6 +333,9 @@ export const documentLinks = pgTable(
     check('document_links_kind', sql`${t.kind} in ('replaces', 'see_also')`),
     check('document_links_distinct', sql`${t.sourceId} <> ${t.targetId}`),
     uniqueIndex('document_links_pair').on(sql`least(${t.sourceId}, ${t.targetId})`, sql`greatest(${t.sourceId}, ${t.targetId})`),
+    // The links of one document, either end (lib/queries.ts listDocLinks, lib/lifecycle.ts linkBetween), and the cascades of a reclassification.
+    index('document_links_source').on(t.sourceId),
+    index('document_links_target').on(t.targetId),
   ],
 );
 
@@ -371,7 +385,14 @@ export const workingVersions = pgTable(
      */
     sha256: text('sha256'),
   },
-  (t) => [uniqueIndex('working_versions_rev_n').on(t.revisionId, t.n), index('working_versions_sha256').on(t.sha256)],
+  // Per revision (the key), per document (listRevisions, file route, cascade of a reclassification), per stored file
+  // (lib/storage.ts nameStoredFile, lib/orphans.ts), per SHA-256 (duplicate warning).
+  (t) => [
+    uniqueIndex('working_versions_rev_n').on(t.revisionId, t.n),
+    index('working_versions_doc').on(t.docId),
+    index('working_versions_file_key').on(t.fileKey),
+    index('working_versions_sha256').on(t.sha256),
+  ],
 );
 
 // ── Approval workflows ──────────────────────────────────────────────────
@@ -398,8 +419,13 @@ export const workflows = pgTable(
     reason: text('reason'),
     createdAt: date('created_at', { mode: 'string' }).notNull(),
   },
-  // A revision has one running workflow at most.
-  (t) => [uniqueIndex('workflows_running').on(t.revisionId).where(sql`${t.outcome} is null`)],
+  // A revision has one running workflow at most. Per document (lib/actions.ts, lib/lifecycle.ts, cascade of a
+  // reclassification) and per revision, finished ones included (lib/queries.ts approvalRecord).
+  (t) => [
+    uniqueIndex('workflows_running').on(t.revisionId).where(sql`${t.outcome} is null`),
+    index('workflows_doc').on(t.docId),
+    index('workflows_revision').on(t.revisionId),
+  ],
 );
 
 export const workflowSteps = pgTable(
@@ -414,16 +440,21 @@ export const workflowSteps = pgTable(
     date: date('date', { mode: 'string' }),
     sign: boolean('sign').notNull().default(false),
   },
-  (t) => [primaryKey({ columns: [t.workflowId, t.idx] })],
+  // Steps of one person: the drafting circle of lib/access.ts draftingCircleSql, in every list.
+  (t) => [primaryKey({ columns: [t.workflowId, t.idx] }), index('workflow_steps_assignee').on(t.assigneeId)],
 );
 
-export const workflowComments = pgTable('workflow_comments', {
-  id: serial('id').primaryKey(),
-  workflowId: text('workflow_id').notNull().references(() => workflows.id),
-  authorId: text('author_id').notNull().references(() => users.id),
-  at: date('at', { mode: 'string' }).notNull(),
-  text: jsonb('text').$type<Localized>().notNull(),
-});
+export const workflowComments = pgTable(
+  'workflow_comments',
+  {
+    id: serial('id').primaryKey(),
+    workflowId: text('workflow_id').notNull().references(() => workflows.id),
+    authorId: text('author_id').notNull().references(() => users.id),
+    at: date('at', { mode: 'string' }).notNull(),
+    text: jsonb('text').$type<Localized>().notNull(),
+  },
+  (t) => [index('workflow_comments_workflow').on(t.workflowId)],
+);
 
 // ── Change requests (owned by Vigie, mirrored here) ─────────────────────
 
@@ -464,6 +495,9 @@ export const changeRequests = pgTable(
   (t) => [
     // One pending request per document.
     uniqueIndex('change_requests_pending').on(t.docId).where(sql`${t.status} in ('submitted', 'accepted')`),
+    // Every request of a document, decided ones included (lib/queries.ts), and the cascades of a reclassification.
+    index('change_requests_doc').on(t.docId),
+    index('change_requests_replacement').on(t.replacementId).where(sql`${t.replacementId} is not null`),
     check('change_requests_replacement', sql`${t.replacementId} is null or (${t.kind} = 'obsolescence' and ${t.replacementId} <> ${t.docId})`),
   ],
 );
@@ -591,11 +625,15 @@ export const auditLog = pgTable(
     revisionId: integer('revision_id'),
   },
   // Newest first (Journal tab, export, activity feeds); per document (dates shown outside the drafting circle), and per
-  // document, user and action (a user's latest consultation of a document, lib/lifecycle.ts journalConsultation).
+  // document, user and action (a user's latest consultation of a document, lib/lifecycle.ts journalConsultation); per
+  // user and per action, newest first (filters of the Journal tab, latest integrity check); per revision (approval record).
   (t) => [
     check('audit_log_subject', sql`${t.docId} is not null or (${t.targetKind} is not null and ${t.targetId} is not null)`),
     index('audit_log_at').on(t.at, t.id),
     index('audit_log_doc').on(t.docId, t.userId, t.action, t.at),
+    index('audit_log_user').on(t.userId, t.at, t.id),
+    index('audit_log_action').on(t.action, t.at, t.id),
+    index('audit_log_revision').on(t.revisionId).where(sql`${t.revisionId} is not null`),
   ],
 );
 

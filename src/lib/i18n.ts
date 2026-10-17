@@ -1,9 +1,12 @@
 // Interface strings. The first block of each language is copied from the design (design/GED Groupe.dc.html);
 // the "Added" blocks cover the dialogs and states the mockup leaves implicit.
 
+import { ERROR_EN, ERROR_FR } from './i18n-errors';
+
 export type Lang = 'fr' | 'en';
 
 const fr = {
+  ...ERROR_FR,
   brand_sub:'GED Groupe', nav_home:'Accueil', nav_explorer:'Explorateur', nav_search:'Recherche', nav_workflow:'Validations', nav_retention:'Archivage & rétention', nav_admin:'Administration',
   search_ph:'Rechercher un document, une référence, un mot-clé…', notes:'Notes de conception', notif:'Notifications',
   role_collaborateur:'Collaboratrice', role_validateur:'Manager validatrice', role_auditeur:'Audit & conformité', role_gestionnaire:'Gestionnaire documentaire',
@@ -32,13 +35,13 @@ const fr = {
   keywords_hint:'Séparés par des virgules', request_title:'Demander une validation', circuit:'Circuit',
   delegate_title:'Déléguer l’étape', delegate_to:'Déléguer à',
   hold_on:'Actif depuis le', link_copied:'Lien copié dans le presse-papiers', not_allowed:'Droit requis', no_file:'Aucun fichier joint à cette version — aperçu de démonstration.',
-  saved_ok:'Modifications enregistrées', error:'Une erreur est survenue', forbidden:'Vous n’avez pas accès à cet écran avec le rôle simulé.',
+  saved_ok:'Modifications enregistrées', page_not_found:'Page introuvable', page_not_found_hint:'Cette adresse ne correspond à aucun écran de Codex.', forbidden:'Vous n’avez pas accès à cet écran avec le rôle simulé.',
   notif_empty:'Rien de nouveau.', notif_recent:'Activité récente',
   label_fr:'Libellé (FR)', label_en:'Libellé (EN)',
   years:'Durée (années)', disposition:'Action à échéance', rule_id:'Code',
   compare_title:'Comparer les versions', current_version:'Version courante', selected_version:'Version sélectionnée', size:'Taille', pages:'Pages', author:'Auteur', date:'Date',
   locked_archived:'Document archivé : modification impossible.', locked_hold:'Document sous gel juridique : modification impossible.', archive_skipped:'document(s) non archivé(s) : gel juridique ou circuit en cours.', wrong_step:'Le circuit a avancé entre-temps : la page a été actualisée.', no_self_approval:'L’auteur ou le demandeur d’une révision ne peut pas la valider.',
-  days_late:'j de retard', not_found:'Document introuvable.', back_home:'Retour à l’accueil',
+  days_late:'j de retard', not_found:'Document introuvable.',
   // Model v2 (docs/modele-cible.md)
   st_in_review:'En révision', st_approved:'Approuvé', st_in_force:'En vigueur', st_superseded:'Remplacé', st_obsolete:'Obsolète',
   f_in_force:'En vigueur', f_in_review:'En révision', f_obsolete:'Obsolètes',
@@ -373,6 +376,7 @@ const fr = {
 type Dict = Record<keyof typeof fr, string>;
 
 const en: Dict = {
+  ...ERROR_EN,
   brand_sub:'Group DMS', nav_home:'Home', nav_explorer:'Browse', nav_search:'Search', nav_workflow:'Approvals', nav_retention:'Archiving & retention', nav_admin:'Administration',
   search_ph:'Search documents, references, keywords…', notes:'Design notes', notif:'Notifications',
   role_collaborateur:'Employee', role_validateur:'Approving manager', role_auditeur:'Audit & compliance', role_gestionnaire:'Records manager',
@@ -401,13 +405,13 @@ const en: Dict = {
   keywords_hint:'Comma-separated', request_title:'Request approval', circuit:'Workflow',
   delegate_title:'Delegate the step', delegate_to:'Delegate to',
   hold_on:'Active since', link_copied:'Link copied to the clipboard', not_allowed:'Permission required', no_file:'No file attached to this version — demo preview.',
-  saved_ok:'Changes saved', error:'Something went wrong', forbidden:'The simulated role cannot access this screen.',
+  saved_ok:'Changes saved', page_not_found:'Page not found', page_not_found_hint:'This address matches no screen of Codex.', forbidden:'The simulated role cannot access this screen.',
   notif_empty:'Nothing new.', notif_recent:'Recent activity',
   label_fr:'Label (FR)', label_en:'Label (EN)',
   years:'Duration (years)', disposition:'Action when due', rule_id:'Code',
   compare_title:'Compare versions', current_version:'Current version', selected_version:'Selected version', size:'Size', pages:'Pages', author:'Author', date:'Date',
   locked_archived:'Archived document: it cannot be changed.', locked_hold:'Document under legal hold: it cannot be changed.', archive_skipped:'document(s) not archived: legal hold or approval in progress.', wrong_step:'The workflow moved on in the meantime: the page has been refreshed.', no_self_approval:'The author or requester of a revision cannot approve it.',
-  days_late:'days overdue', not_found:'Document not found.', back_home:'Back to home',
+  days_late:'days overdue', not_found:'Document not found.',
   // Model v2 (docs/modele-cible.md)
   st_in_review:'In review', st_approved:'Approved', st_in_force:'In force', st_superseded:'Superseded', st_obsolete:'Obsolete',
   f_in_force:'In force', f_in_review:'In review', f_obsolete:'Obsolete',

@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import { useApp } from '@/components/shell/AppProvider';
 import { addComment } from '@/lib/actions';
+import { failureText } from '@/lib/errors';
 
 export function CommentBox({ workflowId }: { workflowId: string }) {
   const { t, toast } = useApp();
@@ -15,8 +16,8 @@ export function CommentBox({ workflowId }: { workflowId: string }) {
         const r = await addComment(workflowId, text);
         if (r.ok) setText('');
         else toast(r.error, true);
-      } catch {
-        toast(t.error, true);
+      } catch (err) {
+        toast(failureText(t, err), true);
       }
     });
   };

@@ -2,7 +2,7 @@ import { inspect } from 'node:util';
 import { DrizzleQueryError } from 'drizzle-orm';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  formatEntry, logRequestError, logSettings, logger, makeEntry, requestIdOf, traceAction, withoutQueryValues, withRequestContext, withRequestLog, type Entry,
+  formatEntry, logRequestError, logSettings, logger, makeEntry, requestIdOf, traceAction, withoutQueryValues, withDigest, withRequestContext, withRequestLog, type Entry,
 } from '@/lib/log';
 
 // The technical log (lib/log.ts, point 49 of docs/reste-a-faire.md): one line per entry, JSON in production, readable
@@ -252,6 +252,28 @@ describe('Server Actions', () => {
       ['error', 'action failed', 'backUpData', undefined],
       ['info', 'action', 'graftChange', 'navigation'],
     ]);
+  });
+});
+
+describe('reference of a failed action', () => {
+  it('is the request identifier of its entry: Next.js keeps the digest an error carries and hands it to the browser', async () => {
+    vi.stubEnv('CODEX_LOG_FORMAT', 'json');
+    let thrown: unknown;
+    const lines = await captured(async () => {
+      thrown = await traceAction('archiveDocuments', async () => { throw new Error('disk full'); }).catch((e: unknown) => e);
+    });
+    const [e] = json(lines);
+    expect(e).toMatchObject({ msg: 'action failed', action: 'archiveDocuments' });
+    expect((thrown as { digest?: string }).digest).toBe(e.requestId);
+  });
+
+  it('leaves a digest already set, a value that is no object, and a frozen error as they are', () => {
+    const own = Object.assign(new Error('x'), { digest: 'd-1' });
+    expect((withDigest(own, 'req-1') as { digest: string }).digest).toBe('d-1');
+    expect(withDigest('boom', 'req-1')).toBe('boom');
+    const frozen = Object.freeze(new Error('x'));
+    expect(withDigest(frozen, 'req-1')).toBe(frozen);
+    expect((frozen as { digest?: string }).digest).toBeUndefined();
   });
 });
 

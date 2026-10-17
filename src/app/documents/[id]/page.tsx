@@ -1,6 +1,6 @@
 import { Fragment, type CSSProperties, type ReactNode } from 'react';
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import type { MetaDoc, VersionLite } from '@/components/dialogs/types';
 import { Forbidden } from '@/components/ui/Forbidden';
 import { Icon } from '@/components/ui/Icon';
@@ -65,14 +65,8 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
   const ctx = await getCtx();
   const { t, lang } = ctx;
   const res = await getDoc(ctx, id);
-  if (!res) {
-    return (
-      <div className="screen" style={{ padding: 'var(--space-8)' }}>
-        <p className="text-muted">{t.not_found}</p>
-        <Link href="/" className="btn btn-secondary">{t.back_home}</Link>
-      </div>
-    );
-  }
+  // No document under this ID nor a former one: HTTP 404 and not-found.tsx.
+  if (!res) notFound();
   // Drafts are only visible to their drafting circle; confidential documents to their audience (lib/access.ts).
   if (res === 'hidden') return <Forbidden text={t.no_access} back={t.back_home} />;
   const { doc, circle, ix } = res;
