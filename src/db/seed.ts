@@ -84,6 +84,9 @@ export async function seed(db: Db) {
   }
 
   await db.transaction(async (tx) => {
+    // Two server instances may start together: the write lock serialises this transaction, so the second one finds
+    // the users of the first and stops here.
+    if ((await tx.$count(s.users)) > 0) return;
     await tx.insert(s.departments).values(DEPARTMENTS.map(([code, labelFr, labelEn], sort) => ({ code, labelFr, labelEn, sort })));
     await tx.insert(s.sites).values(SITES.map(([key, label], sort) => ({ key, label, sort })));
     await tx.insert(s.users).values(USERS.map((u) => ({

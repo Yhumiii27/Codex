@@ -1,4 +1,4 @@
-CREATE TABLE "audit_log" (
+CREATE TABLE "codex"."audit_log" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"at" timestamp NOT NULL,
 	"user_id" text NOT NULL,
@@ -7,7 +7,7 @@ CREATE TABLE "audit_log" (
 	"detail" text DEFAULT '' NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "change_requests" (
+CREATE TABLE "codex"."change_requests" (
 	"id" text PRIMARY KEY NOT NULL,
 	"kind" text NOT NULL,
 	"doc_id" text NOT NULL,
@@ -23,14 +23,14 @@ CREATE TABLE "change_requests" (
 	"decided_at" timestamp
 );
 --> statement-breakpoint
-CREATE TABLE "departments" (
+CREATE TABLE "codex"."departments" (
 	"code" text PRIMARY KEY NOT NULL,
 	"label_fr" text NOT NULL,
 	"label_en" text NOT NULL,
 	"sort" integer DEFAULT 0 NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "doc_types" (
+CREATE TABLE "codex"."doc_types" (
 	"code" text PRIMARY KEY NOT NULL,
 	"label_fr" text NOT NULL,
 	"label_en" text NOT NULL,
@@ -52,13 +52,13 @@ CREATE TABLE "doc_types" (
 	"sort" integer DEFAULT 0 NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "document_readers" (
+CREATE TABLE "codex"."document_readers" (
 	"doc_id" text NOT NULL,
 	"user_id" text NOT NULL,
 	CONSTRAINT "document_readers_doc_id_user_id_pk" PRIMARY KEY("doc_id","user_id")
 );
 --> statement-breakpoint
-CREATE TABLE "documents" (
+CREATE TABLE "codex"."documents" (
 	"id" text PRIMARY KEY NOT NULL,
 	"aliases" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"title" text NOT NULL,
@@ -105,7 +105,7 @@ CREATE TABLE "documents" (
 	"modified_at" date NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "families" (
+CREATE TABLE "codex"."families" (
 	"key" text PRIMARY KEY NOT NULL,
 	"label_fr" text NOT NULL,
 	"label_en" text NOT NULL,
@@ -113,14 +113,14 @@ CREATE TABLE "families" (
 	"sort" integer DEFAULT 0 NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "function_holders" (
+CREATE TABLE "codex"."function_holders" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"function_key" text NOT NULL,
 	"scope_value" text,
 	"user_id" text NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "functions" (
+CREATE TABLE "codex"."functions" (
 	"key" text PRIMARY KEY NOT NULL,
 	"label_fr" text NOT NULL,
 	"label_en" text NOT NULL,
@@ -128,14 +128,14 @@ CREATE TABLE "functions" (
 	"sort" integer DEFAULT 0 NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "project_events" (
+CREATE TABLE "codex"."project_events" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"project_code" text NOT NULL,
 	"at" timestamp NOT NULL,
 	"text" jsonb NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "project_expected" (
+CREATE TABLE "codex"."project_expected" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"project_code" text NOT NULL,
 	"label" jsonb NOT NULL,
@@ -145,7 +145,7 @@ CREATE TABLE "project_expected" (
 	"sort" integer DEFAULT 0 NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "projects" (
+CREATE TABLE "codex"."projects" (
 	"code" text PRIMARY KEY NOT NULL,
 	"name" text NOT NULL,
 	"client" text NOT NULL,
@@ -156,13 +156,13 @@ CREATE TABLE "projects" (
 	"synced_at" timestamp NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "research_programs" (
+CREATE TABLE "codex"."research_programs" (
 	"code" text PRIMARY KEY NOT NULL,
 	"name" text NOT NULL,
 	"manager_id" text NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "revisions" (
+CREATE TABLE "codex"."revisions" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"doc_id" text NOT NULL,
 	"letter" text NOT NULL,
@@ -176,14 +176,14 @@ CREATE TABLE "revisions" (
 	"created_at" date NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "role_permissions" (
+CREATE TABLE "codex"."role_permissions" (
 	"role" text NOT NULL,
 	"perm" text NOT NULL,
 	"granted" boolean NOT NULL,
 	CONSTRAINT "role_permissions_role_perm_pk" PRIMARY KEY("role","perm")
 );
 --> statement-breakpoint
-CREATE TABLE "saved_searches" (
+CREATE TABLE "codex"."saved_searches" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"label" jsonb NOT NULL,
 	"q" text DEFAULT '' NOT NULL,
@@ -191,13 +191,13 @@ CREATE TABLE "saved_searches" (
 	"sort" integer DEFAULT 0 NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "sites" (
+CREATE TABLE "codex"."sites" (
 	"key" text PRIMARY KEY NOT NULL,
 	"label" text NOT NULL,
 	"sort" integer DEFAULT 0 NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "users" (
+CREATE TABLE "codex"."users" (
 	"id" text PRIMARY KEY NOT NULL,
 	"name" text NOT NULL,
 	"initials" text NOT NULL,
@@ -208,7 +208,7 @@ CREATE TABLE "users" (
 	"is_system" boolean DEFAULT false NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "workflow_comments" (
+CREATE TABLE "codex"."workflow_comments" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"workflow_id" text NOT NULL,
 	"author_id" text NOT NULL,
@@ -216,7 +216,7 @@ CREATE TABLE "workflow_comments" (
 	"text" jsonb NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "workflow_steps" (
+CREATE TABLE "codex"."workflow_steps" (
 	"workflow_id" text NOT NULL,
 	"idx" integer NOT NULL,
 	"function_key" text,
@@ -227,7 +227,7 @@ CREATE TABLE "workflow_steps" (
 	CONSTRAINT "workflow_steps_workflow_id_idx_pk" PRIMARY KEY("workflow_id","idx")
 );
 --> statement-breakpoint
-CREATE TABLE "workflows" (
+CREATE TABLE "codex"."workflows" (
 	"id" text PRIMARY KEY NOT NULL,
 	"doc_id" text NOT NULL,
 	"revision_id" integer NOT NULL,
@@ -238,7 +238,7 @@ CREATE TABLE "workflows" (
 	"created_at" date NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "working_versions" (
+CREATE TABLE "codex"."working_versions" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"revision_id" integer NOT NULL,
 	"doc_id" text NOT NULL,
@@ -254,46 +254,46 @@ CREATE TABLE "working_versions" (
 	"pages" integer
 );
 --> statement-breakpoint
-ALTER TABLE "audit_log" ADD CONSTRAINT "audit_log_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "change_requests" ADD CONSTRAINT "change_requests_doc_id_documents_id_fk" FOREIGN KEY ("doc_id") REFERENCES "public"."documents"("id") ON DELETE no action ON UPDATE cascade;--> statement-breakpoint
-ALTER TABLE "change_requests" ADD CONSTRAINT "change_requests_requester_id_users_id_fk" FOREIGN KEY ("requester_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "change_requests" ADD CONSTRAINT "change_requests_modifier_id_users_id_fk" FOREIGN KEY ("modifier_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "doc_types" ADD CONSTRAINT "doc_types_family_families_key_fk" FOREIGN KEY ("family") REFERENCES "public"."families"("key") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "document_readers" ADD CONSTRAINT "document_readers_doc_id_documents_id_fk" FOREIGN KEY ("doc_id") REFERENCES "public"."documents"("id") ON DELETE no action ON UPDATE cascade;--> statement-breakpoint
-ALTER TABLE "document_readers" ADD CONSTRAINT "document_readers_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "documents" ADD CONSTRAINT "documents_project_code_projects_code_fk" FOREIGN KEY ("project_code") REFERENCES "public"."projects"("code") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "documents" ADD CONSTRAINT "documents_program_code_research_programs_code_fk" FOREIGN KEY ("program_code") REFERENCES "public"."research_programs"("code") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "documents" ADD CONSTRAINT "documents_family_families_key_fk" FOREIGN KEY ("family") REFERENCES "public"."families"("key") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "documents" ADD CONSTRAINT "documents_type_code_doc_types_code_fk" FOREIGN KEY ("type_code") REFERENCES "public"."doc_types"("code") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "documents" ADD CONSTRAINT "documents_department_departments_code_fk" FOREIGN KEY ("department") REFERENCES "public"."departments"("code") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "documents" ADD CONSTRAINT "documents_site_sites_key_fk" FOREIGN KEY ("site") REFERENCES "public"."sites"("key") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "documents" ADD CONSTRAINT "documents_owner_id_users_id_fk" FOREIGN KEY ("owner_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "documents" ADD CONSTRAINT "documents_author_id_users_id_fk" FOREIGN KEY ("author_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "documents" ADD CONSTRAINT "documents_process_owner_id_users_id_fk" FOREIGN KEY ("process_owner_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "function_holders" ADD CONSTRAINT "function_holders_function_key_functions_key_fk" FOREIGN KEY ("function_key") REFERENCES "public"."functions"("key") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "function_holders" ADD CONSTRAINT "function_holders_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "project_events" ADD CONSTRAINT "project_events_project_code_projects_code_fk" FOREIGN KEY ("project_code") REFERENCES "public"."projects"("code") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "project_expected" ADD CONSTRAINT "project_expected_project_code_projects_code_fk" FOREIGN KEY ("project_code") REFERENCES "public"."projects"("code") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "project_expected" ADD CONSTRAINT "project_expected_type_code_doc_types_code_fk" FOREIGN KEY ("type_code") REFERENCES "public"."doc_types"("code") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "project_expected" ADD CONSTRAINT "project_expected_doc_id_documents_id_fk" FOREIGN KEY ("doc_id") REFERENCES "public"."documents"("id") ON DELETE no action ON UPDATE cascade;--> statement-breakpoint
-ALTER TABLE "projects" ADD CONSTRAINT "projects_manager_id_users_id_fk" FOREIGN KEY ("manager_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "research_programs" ADD CONSTRAINT "research_programs_manager_id_users_id_fk" FOREIGN KEY ("manager_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "revisions" ADD CONSTRAINT "revisions_doc_id_documents_id_fk" FOREIGN KEY ("doc_id") REFERENCES "public"."documents"("id") ON DELETE no action ON UPDATE cascade;--> statement-breakpoint
-ALTER TABLE "revisions" ADD CONSTRAINT "revisions_modifier_id_users_id_fk" FOREIGN KEY ("modifier_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "users" ADD CONSTRAINT "users_department_departments_code_fk" FOREIGN KEY ("department") REFERENCES "public"."departments"("code") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "users" ADD CONSTRAINT "users_site_sites_key_fk" FOREIGN KEY ("site") REFERENCES "public"."sites"("key") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "workflow_comments" ADD CONSTRAINT "workflow_comments_workflow_id_workflows_id_fk" FOREIGN KEY ("workflow_id") REFERENCES "public"."workflows"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "workflow_comments" ADD CONSTRAINT "workflow_comments_author_id_users_id_fk" FOREIGN KEY ("author_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "workflow_steps" ADD CONSTRAINT "workflow_steps_workflow_id_workflows_id_fk" FOREIGN KEY ("workflow_id") REFERENCES "public"."workflows"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "workflow_steps" ADD CONSTRAINT "workflow_steps_assignee_id_users_id_fk" FOREIGN KEY ("assignee_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "workflows" ADD CONSTRAINT "workflows_doc_id_documents_id_fk" FOREIGN KEY ("doc_id") REFERENCES "public"."documents"("id") ON DELETE no action ON UPDATE cascade;--> statement-breakpoint
-ALTER TABLE "workflows" ADD CONSTRAINT "workflows_revision_id_revisions_id_fk" FOREIGN KEY ("revision_id") REFERENCES "public"."revisions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "workflows" ADD CONSTRAINT "workflows_requester_id_users_id_fk" FOREIGN KEY ("requester_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "working_versions" ADD CONSTRAINT "working_versions_revision_id_revisions_id_fk" FOREIGN KEY ("revision_id") REFERENCES "public"."revisions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "working_versions" ADD CONSTRAINT "working_versions_doc_id_documents_id_fk" FOREIGN KEY ("doc_id") REFERENCES "public"."documents"("id") ON DELETE no action ON UPDATE cascade;--> statement-breakpoint
-ALTER TABLE "working_versions" ADD CONSTRAINT "working_versions_author_id_users_id_fk" FOREIGN KEY ("author_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-CREATE UNIQUE INDEX "change_requests_pending" ON "change_requests" USING btree ("doc_id") WHERE "change_requests"."status" in ('submitted', 'accepted');--> statement-breakpoint
-CREATE UNIQUE INDEX "revisions_doc_letter" ON "revisions" USING btree ("doc_id","letter");--> statement-breakpoint
-CREATE UNIQUE INDEX "revisions_in_force" ON "revisions" USING btree ("doc_id") WHERE "revisions"."status" = 'in_force';--> statement-breakpoint
-CREATE UNIQUE INDEX "workflows_running" ON "workflows" USING btree ("revision_id") WHERE "workflows"."outcome" is null;--> statement-breakpoint
-CREATE UNIQUE INDEX "working_versions_rev_n" ON "working_versions" USING btree ("revision_id","n");
+ALTER TABLE "codex"."audit_log" ADD CONSTRAINT "audit_log_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "codex"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."change_requests" ADD CONSTRAINT "change_requests_doc_id_documents_id_fk" FOREIGN KEY ("doc_id") REFERENCES "codex"."documents"("id") ON DELETE no action ON UPDATE cascade;--> statement-breakpoint
+ALTER TABLE "codex"."change_requests" ADD CONSTRAINT "change_requests_requester_id_users_id_fk" FOREIGN KEY ("requester_id") REFERENCES "codex"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."change_requests" ADD CONSTRAINT "change_requests_modifier_id_users_id_fk" FOREIGN KEY ("modifier_id") REFERENCES "codex"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."doc_types" ADD CONSTRAINT "doc_types_family_families_key_fk" FOREIGN KEY ("family") REFERENCES "codex"."families"("key") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."document_readers" ADD CONSTRAINT "document_readers_doc_id_documents_id_fk" FOREIGN KEY ("doc_id") REFERENCES "codex"."documents"("id") ON DELETE no action ON UPDATE cascade;--> statement-breakpoint
+ALTER TABLE "codex"."document_readers" ADD CONSTRAINT "document_readers_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "codex"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."documents" ADD CONSTRAINT "documents_project_code_projects_code_fk" FOREIGN KEY ("project_code") REFERENCES "codex"."projects"("code") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."documents" ADD CONSTRAINT "documents_program_code_research_programs_code_fk" FOREIGN KEY ("program_code") REFERENCES "codex"."research_programs"("code") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."documents" ADD CONSTRAINT "documents_family_families_key_fk" FOREIGN KEY ("family") REFERENCES "codex"."families"("key") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."documents" ADD CONSTRAINT "documents_type_code_doc_types_code_fk" FOREIGN KEY ("type_code") REFERENCES "codex"."doc_types"("code") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."documents" ADD CONSTRAINT "documents_department_departments_code_fk" FOREIGN KEY ("department") REFERENCES "codex"."departments"("code") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."documents" ADD CONSTRAINT "documents_site_sites_key_fk" FOREIGN KEY ("site") REFERENCES "codex"."sites"("key") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."documents" ADD CONSTRAINT "documents_owner_id_users_id_fk" FOREIGN KEY ("owner_id") REFERENCES "codex"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."documents" ADD CONSTRAINT "documents_author_id_users_id_fk" FOREIGN KEY ("author_id") REFERENCES "codex"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."documents" ADD CONSTRAINT "documents_process_owner_id_users_id_fk" FOREIGN KEY ("process_owner_id") REFERENCES "codex"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."function_holders" ADD CONSTRAINT "function_holders_function_key_functions_key_fk" FOREIGN KEY ("function_key") REFERENCES "codex"."functions"("key") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."function_holders" ADD CONSTRAINT "function_holders_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "codex"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."project_events" ADD CONSTRAINT "project_events_project_code_projects_code_fk" FOREIGN KEY ("project_code") REFERENCES "codex"."projects"("code") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."project_expected" ADD CONSTRAINT "project_expected_project_code_projects_code_fk" FOREIGN KEY ("project_code") REFERENCES "codex"."projects"("code") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."project_expected" ADD CONSTRAINT "project_expected_type_code_doc_types_code_fk" FOREIGN KEY ("type_code") REFERENCES "codex"."doc_types"("code") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."project_expected" ADD CONSTRAINT "project_expected_doc_id_documents_id_fk" FOREIGN KEY ("doc_id") REFERENCES "codex"."documents"("id") ON DELETE no action ON UPDATE cascade;--> statement-breakpoint
+ALTER TABLE "codex"."projects" ADD CONSTRAINT "projects_manager_id_users_id_fk" FOREIGN KEY ("manager_id") REFERENCES "codex"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."research_programs" ADD CONSTRAINT "research_programs_manager_id_users_id_fk" FOREIGN KEY ("manager_id") REFERENCES "codex"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."revisions" ADD CONSTRAINT "revisions_doc_id_documents_id_fk" FOREIGN KEY ("doc_id") REFERENCES "codex"."documents"("id") ON DELETE no action ON UPDATE cascade;--> statement-breakpoint
+ALTER TABLE "codex"."revisions" ADD CONSTRAINT "revisions_modifier_id_users_id_fk" FOREIGN KEY ("modifier_id") REFERENCES "codex"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."users" ADD CONSTRAINT "users_department_departments_code_fk" FOREIGN KEY ("department") REFERENCES "codex"."departments"("code") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."users" ADD CONSTRAINT "users_site_sites_key_fk" FOREIGN KEY ("site") REFERENCES "codex"."sites"("key") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."workflow_comments" ADD CONSTRAINT "workflow_comments_workflow_id_workflows_id_fk" FOREIGN KEY ("workflow_id") REFERENCES "codex"."workflows"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."workflow_comments" ADD CONSTRAINT "workflow_comments_author_id_users_id_fk" FOREIGN KEY ("author_id") REFERENCES "codex"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."workflow_steps" ADD CONSTRAINT "workflow_steps_workflow_id_workflows_id_fk" FOREIGN KEY ("workflow_id") REFERENCES "codex"."workflows"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."workflow_steps" ADD CONSTRAINT "workflow_steps_assignee_id_users_id_fk" FOREIGN KEY ("assignee_id") REFERENCES "codex"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."workflows" ADD CONSTRAINT "workflows_doc_id_documents_id_fk" FOREIGN KEY ("doc_id") REFERENCES "codex"."documents"("id") ON DELETE no action ON UPDATE cascade;--> statement-breakpoint
+ALTER TABLE "codex"."workflows" ADD CONSTRAINT "workflows_revision_id_revisions_id_fk" FOREIGN KEY ("revision_id") REFERENCES "codex"."revisions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."workflows" ADD CONSTRAINT "workflows_requester_id_users_id_fk" FOREIGN KEY ("requester_id") REFERENCES "codex"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."working_versions" ADD CONSTRAINT "working_versions_revision_id_revisions_id_fk" FOREIGN KEY ("revision_id") REFERENCES "codex"."revisions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."working_versions" ADD CONSTRAINT "working_versions_doc_id_documents_id_fk" FOREIGN KEY ("doc_id") REFERENCES "codex"."documents"("id") ON DELETE no action ON UPDATE cascade;--> statement-breakpoint
+ALTER TABLE "codex"."working_versions" ADD CONSTRAINT "working_versions_author_id_users_id_fk" FOREIGN KEY ("author_id") REFERENCES "codex"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+CREATE UNIQUE INDEX "change_requests_pending" ON "codex"."change_requests" USING btree ("doc_id") WHERE "codex"."change_requests"."status" in ('submitted', 'accepted');--> statement-breakpoint
+CREATE UNIQUE INDEX "revisions_doc_letter" ON "codex"."revisions" USING btree ("doc_id","letter");--> statement-breakpoint
+CREATE UNIQUE INDEX "revisions_in_force" ON "codex"."revisions" USING btree ("doc_id") WHERE "codex"."revisions"."status" = 'in_force';--> statement-breakpoint
+CREATE UNIQUE INDEX "workflows_running" ON "codex"."workflows" USING btree ("revision_id") WHERE "codex"."workflows"."outcome" is null;--> statement-breakpoint
+CREATE UNIQUE INDEX "working_versions_rev_n" ON "codex"."working_versions" USING btree ("revision_id","n");

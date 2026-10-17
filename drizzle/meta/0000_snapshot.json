@@ -1,12 +1,12 @@
 {
-  "id": "ec8aa783-a4a2-4063-a706-f6c12bf7f682",
+  "id": "b1c864db-5759-4b01-86e2-4cc05bedcf85",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
-    "public.audit_log": {
+    "codex.audit_log": {
       "name": "audit_log",
-      "schema": "",
+      "schema": "codex",
       "columns": {
         "id": {
           "name": "id",
@@ -52,6 +52,7 @@
           "name": "audit_log_user_id_users_id_fk",
           "tableFrom": "audit_log",
           "tableTo": "users",
+          "schemaTo": "codex",
           "columnsFrom": [
             "user_id"
           ],
@@ -68,9 +69,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.change_requests": {
+    "codex.change_requests": {
       "name": "change_requests",
-      "schema": "",
+      "schema": "codex",
       "columns": {
         "id": {
           "name": "id",
@@ -165,7 +166,7 @@
             }
           ],
           "isUnique": true,
-          "where": "\"change_requests\".\"status\" in ('submitted', 'accepted')",
+          "where": "\"codex\".\"change_requests\".\"status\" in ('submitted', 'accepted')",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -176,6 +177,7 @@
           "name": "change_requests_doc_id_documents_id_fk",
           "tableFrom": "change_requests",
           "tableTo": "documents",
+          "schemaTo": "codex",
           "columnsFrom": [
             "doc_id"
           ],
@@ -189,6 +191,7 @@
           "name": "change_requests_requester_id_users_id_fk",
           "tableFrom": "change_requests",
           "tableTo": "users",
+          "schemaTo": "codex",
           "columnsFrom": [
             "requester_id"
           ],
@@ -202,6 +205,7 @@
           "name": "change_requests_modifier_id_users_id_fk",
           "tableFrom": "change_requests",
           "tableTo": "users",
+          "schemaTo": "codex",
           "columnsFrom": [
             "modifier_id"
           ],
@@ -218,9 +222,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.departments": {
+    "codex.departments": {
       "name": "departments",
-      "schema": "",
+      "schema": "codex",
       "columns": {
         "code": {
           "name": "code",
@@ -256,9 +260,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.doc_types": {
+    "codex.doc_types": {
       "name": "doc_types",
-      "schema": "",
+      "schema": "codex",
       "columns": {
         "code": {
           "name": "code",
@@ -386,6 +390,7 @@
           "name": "doc_types_family_families_key_fk",
           "tableFrom": "doc_types",
           "tableTo": "families",
+          "schemaTo": "codex",
           "columnsFrom": [
             "family"
           ],
@@ -402,9 +407,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.document_readers": {
+    "codex.document_readers": {
       "name": "document_readers",
-      "schema": "",
+      "schema": "codex",
       "columns": {
         "doc_id": {
           "name": "doc_id",
@@ -425,6 +430,7 @@
           "name": "document_readers_doc_id_documents_id_fk",
           "tableFrom": "document_readers",
           "tableTo": "documents",
+          "schemaTo": "codex",
           "columnsFrom": [
             "doc_id"
           ],
@@ -438,6 +444,7 @@
           "name": "document_readers_user_id_users_id_fk",
           "tableFrom": "document_readers",
           "tableTo": "users",
+          "schemaTo": "codex",
           "columnsFrom": [
             "user_id"
           ],
@@ -462,9 +469,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.documents": {
+    "codex.documents": {
       "name": "documents",
-      "schema": "",
+      "schema": "codex",
       "columns": {
         "id": {
           "name": "id",
@@ -740,6 +747,7 @@
           "name": "documents_project_code_projects_code_fk",
           "tableFrom": "documents",
           "tableTo": "projects",
+          "schemaTo": "codex",
           "columnsFrom": [
             "project_code"
           ],
@@ -753,6 +761,7 @@
           "name": "documents_program_code_research_programs_code_fk",
           "tableFrom": "documents",
           "tableTo": "research_programs",
+          "schemaTo": "codex",
           "columnsFrom": [
             "program_code"
           ],
@@ -766,6 +775,7 @@
           "name": "documents_family_families_key_fk",
           "tableFrom": "documents",
           "tableTo": "families",
+          "schemaTo": "codex",
           "columnsFrom": [
             "family"
           ],
@@ -779,6 +789,7 @@
           "name": "documents_type_code_doc_types_code_fk",
           "tableFrom": "documents",
           "tableTo": "doc_types",
+          "schemaTo": "codex",
           "columnsFrom": [
             "type_code"
           ],
@@ -792,6 +803,7 @@
           "name": "documents_department_departments_code_fk",
           "tableFrom": "documents",
           "tableTo": "departments",
+          "schemaTo": "codex",
           "columnsFrom": [
             "department"
           ],
@@ -805,6 +817,7 @@
           "name": "documents_site_sites_key_fk",
           "tableFrom": "documents",
           "tableTo": "sites",
+          "schemaTo": "codex",
           "columnsFrom": [
             "site"
           ],
@@ -818,6 +831,7 @@
           "name": "documents_owner_id_users_id_fk",
           "tableFrom": "documents",
           "tableTo": "users",
+          "schemaTo": "codex",
           "columnsFrom": [
             "owner_id"
           ],
@@ -831,6 +845,7 @@
           "name": "documents_author_id_users_id_fk",
           "tableFrom": "documents",
           "tableTo": "users",
+          "schemaTo": "codex",
           "columnsFrom": [
             "author_id"
           ],
@@ -844,6 +859,7 @@
           "name": "documents_process_owner_id_users_id_fk",
           "tableFrom": "documents",
           "tableTo": "users",
+          "schemaTo": "codex",
           "columnsFrom": [
             "process_owner_id"
           ],
@@ -860,9 +876,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.families": {
+    "codex.families": {
       "name": "families",
-      "schema": "",
+      "schema": "codex",
       "columns": {
         "key": {
           "name": "key",
@@ -904,9 +920,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.function_holders": {
+    "codex.function_holders": {
       "name": "function_holders",
-      "schema": "",
+      "schema": "codex",
       "columns": {
         "id": {
           "name": "id",
@@ -939,6 +955,7 @@
           "name": "function_holders_function_key_functions_key_fk",
           "tableFrom": "function_holders",
           "tableTo": "functions",
+          "schemaTo": "codex",
           "columnsFrom": [
             "function_key"
           ],
@@ -952,6 +969,7 @@
           "name": "function_holders_user_id_users_id_fk",
           "tableFrom": "function_holders",
           "tableTo": "users",
+          "schemaTo": "codex",
           "columnsFrom": [
             "user_id"
           ],
@@ -968,9 +986,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.functions": {
+    "codex.functions": {
       "name": "functions",
-      "schema": "",
+      "schema": "codex",
       "columns": {
         "key": {
           "name": "key",
@@ -1012,9 +1030,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.project_events": {
+    "codex.project_events": {
       "name": "project_events",
-      "schema": "",
+      "schema": "codex",
       "columns": {
         "id": {
           "name": "id",
@@ -1047,6 +1065,7 @@
           "name": "project_events_project_code_projects_code_fk",
           "tableFrom": "project_events",
           "tableTo": "projects",
+          "schemaTo": "codex",
           "columnsFrom": [
             "project_code"
           ],
@@ -1063,9 +1082,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.project_expected": {
+    "codex.project_expected": {
       "name": "project_expected",
-      "schema": "",
+      "schema": "codex",
       "columns": {
         "id": {
           "name": "id",
@@ -1118,6 +1137,7 @@
           "name": "project_expected_project_code_projects_code_fk",
           "tableFrom": "project_expected",
           "tableTo": "projects",
+          "schemaTo": "codex",
           "columnsFrom": [
             "project_code"
           ],
@@ -1131,6 +1151,7 @@
           "name": "project_expected_type_code_doc_types_code_fk",
           "tableFrom": "project_expected",
           "tableTo": "doc_types",
+          "schemaTo": "codex",
           "columnsFrom": [
             "type_code"
           ],
@@ -1144,6 +1165,7 @@
           "name": "project_expected_doc_id_documents_id_fk",
           "tableFrom": "project_expected",
           "tableTo": "documents",
+          "schemaTo": "codex",
           "columnsFrom": [
             "doc_id"
           ],
@@ -1160,9 +1182,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.projects": {
+    "codex.projects": {
       "name": "projects",
-      "schema": "",
+      "schema": "codex",
       "columns": {
         "code": {
           "name": "code",
@@ -1219,6 +1241,7 @@
           "name": "projects_manager_id_users_id_fk",
           "tableFrom": "projects",
           "tableTo": "users",
+          "schemaTo": "codex",
           "columnsFrom": [
             "manager_id"
           ],
@@ -1235,9 +1258,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.research_programs": {
+    "codex.research_programs": {
       "name": "research_programs",
-      "schema": "",
+      "schema": "codex",
       "columns": {
         "code": {
           "name": "code",
@@ -1264,6 +1287,7 @@
           "name": "research_programs_manager_id_users_id_fk",
           "tableFrom": "research_programs",
           "tableTo": "users",
+          "schemaTo": "codex",
           "columnsFrom": [
             "manager_id"
           ],
@@ -1280,9 +1304,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.revisions": {
+    "codex.revisions": {
       "name": "revisions",
-      "schema": "",
+      "schema": "codex",
       "columns": {
         "id": {
           "name": "id",
@@ -1384,7 +1408,7 @@
             }
           ],
           "isUnique": true,
-          "where": "\"revisions\".\"status\" = 'in_force'",
+          "where": "\"codex\".\"revisions\".\"status\" = 'in_force'",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -1395,6 +1419,7 @@
           "name": "revisions_doc_id_documents_id_fk",
           "tableFrom": "revisions",
           "tableTo": "documents",
+          "schemaTo": "codex",
           "columnsFrom": [
             "doc_id"
           ],
@@ -1408,6 +1433,7 @@
           "name": "revisions_modifier_id_users_id_fk",
           "tableFrom": "revisions",
           "tableTo": "users",
+          "schemaTo": "codex",
           "columnsFrom": [
             "modifier_id"
           ],
@@ -1424,9 +1450,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.role_permissions": {
+    "codex.role_permissions": {
       "name": "role_permissions",
-      "schema": "",
+      "schema": "codex",
       "columns": {
         "role": {
           "name": "role",
@@ -1463,9 +1489,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.saved_searches": {
+    "codex.saved_searches": {
       "name": "saved_searches",
-      "schema": "",
+      "schema": "codex",
       "columns": {
         "id": {
           "name": "id",
@@ -1508,9 +1534,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.sites": {
+    "codex.sites": {
       "name": "sites",
-      "schema": "",
+      "schema": "codex",
       "columns": {
         "key": {
           "name": "key",
@@ -1540,9 +1566,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.users": {
+    "codex.users": {
       "name": "users",
-      "schema": "",
+      "schema": "codex",
       "columns": {
         "id": {
           "name": "id",
@@ -1600,6 +1626,7 @@
           "name": "users_department_departments_code_fk",
           "tableFrom": "users",
           "tableTo": "departments",
+          "schemaTo": "codex",
           "columnsFrom": [
             "department"
           ],
@@ -1613,6 +1640,7 @@
           "name": "users_site_sites_key_fk",
           "tableFrom": "users",
           "tableTo": "sites",
+          "schemaTo": "codex",
           "columnsFrom": [
             "site"
           ],
@@ -1629,9 +1657,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.workflow_comments": {
+    "codex.workflow_comments": {
       "name": "workflow_comments",
-      "schema": "",
+      "schema": "codex",
       "columns": {
         "id": {
           "name": "id",
@@ -1670,6 +1698,7 @@
           "name": "workflow_comments_workflow_id_workflows_id_fk",
           "tableFrom": "workflow_comments",
           "tableTo": "workflows",
+          "schemaTo": "codex",
           "columnsFrom": [
             "workflow_id"
           ],
@@ -1683,6 +1712,7 @@
           "name": "workflow_comments_author_id_users_id_fk",
           "tableFrom": "workflow_comments",
           "tableTo": "users",
+          "schemaTo": "codex",
           "columnsFrom": [
             "author_id"
           ],
@@ -1699,9 +1729,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.workflow_steps": {
+    "codex.workflow_steps": {
       "name": "workflow_steps",
-      "schema": "",
+      "schema": "codex",
       "columns": {
         "workflow_id": {
           "name": "workflow_id",
@@ -1753,6 +1783,7 @@
           "name": "workflow_steps_workflow_id_workflows_id_fk",
           "tableFrom": "workflow_steps",
           "tableTo": "workflows",
+          "schemaTo": "codex",
           "columnsFrom": [
             "workflow_id"
           ],
@@ -1766,6 +1797,7 @@
           "name": "workflow_steps_assignee_id_users_id_fk",
           "tableFrom": "workflow_steps",
           "tableTo": "users",
+          "schemaTo": "codex",
           "columnsFrom": [
             "assignee_id"
           ],
@@ -1790,9 +1822,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.workflows": {
+    "codex.workflows": {
       "name": "workflows",
-      "schema": "",
+      "schema": "codex",
       "columns": {
         "id": {
           "name": "id",
@@ -1855,7 +1887,7 @@
             }
           ],
           "isUnique": true,
-          "where": "\"workflows\".\"outcome\" is null",
+          "where": "\"codex\".\"workflows\".\"outcome\" is null",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -1866,6 +1898,7 @@
           "name": "workflows_doc_id_documents_id_fk",
           "tableFrom": "workflows",
           "tableTo": "documents",
+          "schemaTo": "codex",
           "columnsFrom": [
             "doc_id"
           ],
@@ -1879,6 +1912,7 @@
           "name": "workflows_revision_id_revisions_id_fk",
           "tableFrom": "workflows",
           "tableTo": "revisions",
+          "schemaTo": "codex",
           "columnsFrom": [
             "revision_id"
           ],
@@ -1892,6 +1926,7 @@
           "name": "workflows_requester_id_users_id_fk",
           "tableFrom": "workflows",
           "tableTo": "users",
+          "schemaTo": "codex",
           "columnsFrom": [
             "requester_id"
           ],
@@ -1908,9 +1943,9 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.working_versions": {
+    "codex.working_versions": {
       "name": "working_versions",
-      "schema": "",
+      "schema": "codex",
       "columns": {
         "id": {
           "name": "id",
@@ -2019,6 +2054,7 @@
           "name": "working_versions_revision_id_revisions_id_fk",
           "tableFrom": "working_versions",
           "tableTo": "revisions",
+          "schemaTo": "codex",
           "columnsFrom": [
             "revision_id"
           ],
@@ -2032,6 +2068,7 @@
           "name": "working_versions_doc_id_documents_id_fk",
           "tableFrom": "working_versions",
           "tableTo": "documents",
+          "schemaTo": "codex",
           "columnsFrom": [
             "doc_id"
           ],
@@ -2045,6 +2082,7 @@
           "name": "working_versions_author_id_users_id_fk",
           "tableFrom": "working_versions",
           "tableTo": "users",
+          "schemaTo": "codex",
           "columnsFrom": [
             "author_id"
           ],

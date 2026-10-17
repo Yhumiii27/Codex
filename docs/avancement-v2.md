@@ -37,6 +37,13 @@ recevoir.
   actions (visibilité avant tout état), matrice des droits appliquée, versions de travail réservées au cercle, import
   (rejeu, conflit d'identifiant, type MIME), stockage hors transaction, accessibilité des dialogues et des listes.
 
+- Bascule PostgreSQL (17 octobre, décision M-01, plan `docs/architecture-postgres.md` § 6 du dépôt Matrix) : tables
+  dans le schéma `codex` (`pgSchema`), migrateur propre (`src/db/migrate.ts`), deux modes (`DATABASE_URL` : serveur
+  commun en `codex_app` ; sinon PGlite), verrou d'écriture, garde-fou contre une base PGlite antérieure, migration
+  `partage` (colonnes D01, D10, D15, index D18, 7 vues `pub_`). Essayé dans les deux modes : écrans, registre, deux
+  instances simultanées, 20 imports simultanés (20 identifiants distincts), déclaration à Matrix (22 tables).
+  **Une base `.data/` antérieure est refusée** : `npm run db:reset`.
+
 ## Reste à faire
 - Dépôt de fichiers réels : vérifié dans le navigateur (création depuis un fichier et version de travail, `PRO-HSE-0003`
   le 7 octobre, `PRO-QUA-0003` le 8) ; reste à tester dans la fenêtre de l'app Mac (dépôt et téléchargement).
