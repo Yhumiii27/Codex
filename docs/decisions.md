@@ -557,6 +557,11 @@ Les valeurs de la maquette n'existent plus dans le modèle v2 :
   - La spec Keystone décrit un index synchronisé depuis Codex (« Real time (webhooks) »). Elle laisse elle aussi
     ouvert le contrat de dépôt (« deep link? API create? »).
   - Question ouverte O-03.
+- **Réponse partielle du 15 octobre 2026** (décision M-01, consignée dans le dépôt Matrix) : « Oui, je valide le
+  format postgreSQL commun avec un schema par outil ».
+  - Codex rejoint la base commune `epc2i`, dans son schéma `codex`, avec son rôle `codex_app`.
+  - Aucun outil ne lit le schéma d'un autre : la liaison avec Keystone reste une API.
+  - Le contrat de dépôt et de synchronisation des documents projet reste ouvert (O-03).
 
 ### Premier commit
 **Fait** (D-23, D-24).
@@ -573,7 +578,7 @@ reposer, une fois, en citant leur numéro.
 |---|---|---|---|
 | O-01 | **SharePoint** : faut-il l'activer ? Si oui, faut-il un fichier par version, sans accès direct des utilisateurs à la bibliothèque ? Sans cette restriction, les utilisateurs pourraient contourner les droits de Codex. Avec elle, on modifie un fichier en le téléchargeant puis en le redéposant, sans édition Office en ligne. Posée 4 fois (7 oct. à 17:33, 18:07 et 23:18 ; 8 oct. à 06:18), jamais répondue. | utilisateur | `docs/modele-cible.md` §1 (provisoire : un fichier par version de travail, aucun accès direct) ; `src/lib/storage.ts` |
 | O-02 | **Fournisseur d'authentification** pour remplacer la simulation. Entra ID est proposé, non confirmé. | utilisateur | ce fichier ; `docs/avancement-v2.md` (Reste à faire) |
-| O-03 | **Liaison avec Keystone** : API ou base partagée ? Il faut aussi définir le contrat de dépôt et de synchronisation des documents projet. | utilisateur | ce fichier ; spec Keystone (dépôt Keystone) |
+| O-03 | **Liaison avec Keystone** : API ou base partagée ? Il faut aussi définir le contrat de dépôt et de synchronisation des documents projet. En partie répondue le 15 octobre 2026 (M-01) : base commune, un schéma par outil, sans accès croisé ; la liaison reste une API. Reste ouvert : le contrat de dépôt et de synchronisation. | utilisateur | ce fichier ; spec Keystone (dépôt Keystone) ; dépôt Matrix, `docs/architecture-postgres.md` |
 | O-04 | **Organigramme** : sociétés, sites, départements. | utilisateur | `src/db/seed-org.ts` (valeurs provisoires) |
 | O-05 | **Registre des types** : les 9 questions ouvertes et les choix de fusion à valider. | utilisateur | `docs/registre-points-ouverts.md` (seule liste qui fait foi) |
 | O-06 | **Matrice type → circuit et titulaires des fonctions** : ce sont des valeurs de démonstration. | utilisateur | `src/db/registry.ts` (`circuit`), `src/db/seed-org.ts` (`FUNCTIONS`, `HOLDERS`) |

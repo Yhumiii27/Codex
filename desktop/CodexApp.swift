@@ -96,6 +96,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     env["NODE_ENV"] = "production"
     env["NEXT_TELEMETRY_DISABLED"] = "1"
     env["CODEX_DATA_DIR"] = supportDir.appendingPathComponent("data").path
+    env["DATABASE_URL"] = ""
     return env
   }
 

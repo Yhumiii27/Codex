@@ -1,7 +1,15 @@
 import { sql } from 'drizzle-orm';
-import { boolean, date, integer, jsonb, pgTable, primaryKey, serial, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { boolean, check, date, index, integer, jsonb, pgSchema, primaryKey, serial, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 
 // Data model of the GED — see docs/modele-cible.md.
+
+/**
+ * PostgreSQL schema of Codex: its tables and the journal of its migrations, on the shared EPC2I server and in PGlite.
+ * The pgSchema object is deliberately not exported: exported, drizzle-kit would start the migration with
+ * CREATE SCHEMA, which the codex_app role may not run (the schema is created by the server setup).
+ */
+export const DB_SCHEMA = 'codex';
+const codex = pgSchema(DB_SCHEMA);
 
 /** Text that is either written once (user content) or carried in both interface languages (system labels, seed data). */
 export type Localized = string | { fr: string; en: string };
@@ -18,21 +26,23 @@ export type Disposition = 'destroy' | 'review' | 'archive' | 'permanent';
 
 // ── Organisation (provisional until the org chart is provided) ─────────────
 
-export const departments = pgTable('departments', {
+export const departments = codex.table('departments', {
   code: text('code').primaryKey(), // 3 letters, used in document IDs without attachment
   labelFr: text('label_fr').notNull(),
   labelEn: text('label_en').notNull(),
   sort: integer('sort').notNull().default(0),
+  /** Shared data D15: a closed unit stays (key of documents.department) and is flagged inactive. */
+  active: boolean('active').notNull().default(true),
 });
 
-export const sites = pgTable('sites', {
+export const sites = codex.table('sites', {
   key: text('key').primaryKey(),
   label: text('label').notNull(),
   sort: integer('sort').notNull().default(0),
 });
 
 /** People of the group. `role` is the default simulated application role; system actors (Codex, Keystone, Vigie) are flagged. */
-export const users = pgTable('users', {
+export const users = codex.table('users', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   initials: text('initials').notNull(),
@@ -41,11 +51,15 @@ export const users = pgTable('users', {
   department: text('department').references(() => departments.code),
   site: text('site').references(() => sites.key),
   isSystem: boolean('is_system').notNull().default(false),
-});
+  /** Shared data D01: Cursus personnel number (EMP-nnnn); null for system actors. */
+  matricule: text('matricule').unique('users_matricule_unique'),
+}, (t) => [
+  check('users_matricule_check', sql`${t.matricule} IS NULL OR (${t.matricule} ~ '^EMP-[0-9]{4,}$' AND NOT ${t.isSystem})`),
+]);
 
 // ── Registry of document types (owned by Codex, read by Keystone) ─────────
 
-export const families = pgTable('families', {
+export const families = codex.table('families', {
   key: text('key').primaryKey(),
   labelFr: text('label_fr').notNull(),
   labelEn: text('label_en').notNull(),
@@ -54,7 +68,7 @@ export const families = pgTable('families', {
   sort: integer('sort').notNull().default(0),
 });
 
-export const docTypes = pgTable('doc_types', {
+export const docTypes = codex.table('doc_types', {
   code: text('code').primaryKey(),
   labelFr: text('label_fr').notNull(),
   labelEn: text('label_en').notNull(),
@@ -78,7 +92,7 @@ export const docTypes = pgTable('doc_types', {
 });
 
 /** Functions that approval circuits are made of (Responsable qualité, Chef de projet…). */
-export const functions = pgTable('functions', {
+export const functions = codex.table('functions', {
   key: text('key').primaryKey(),
   labelFr: text('label_fr').notNull(),
   labelEn: text('label_en').notNull(),
@@ -87,7 +101,7 @@ export const functions = pgTable('functions', {
   sort: integer('sort').notNull().default(0),
 });
 
-export const functionHolders = pgTable('function_holders', {
+export const functionHolders = codex.table('function_holders', {
   id: serial('id').primaryKey(),
   functionKey: text('function_key').notNull().references(() => functions.key),
   /** Department code, project code or programme code for scoped functions; null for global ones. */
@@ -98,7 +112,7 @@ export const functionHolders = pgTable('function_holders', {
 // ── Projects (Keystone) and research programmes ─────────────────────────
 
 /** Projects mirrored from Keystone (simulated until the Keystone integration exists). */
-export const projects = pgTable('projects', {
+export const projects = codex.table('projects', {
   code: text('code').primaryKey(),
   name: text('name').notNull(),
   client: text('client').notNull(),
@@ -109,7 +123,7 @@ export const projects = pgTable('projects', {
   syncedAt: timestamp('synced_at', { mode: 'string' }).notNull(),
 });
 
-export const researchPrograms = pgTable('research_programs', {
+export const researchPrograms = codex.table('research_programs', {
   code: text('code').primaryKey(),
   name: text('name').notNull(),
   managerId: text('manager_id').notNull().references(() => users.id),
@@ -117,7 +131,7 @@ export const researchPrograms = pgTable('research_programs', {
 
 // ── Documents ───────────────────────────────────────────────────────────
 
-export const documents = pgTable('documents', {
+export const documents = codex.table('documents', {
   /** TYPE-CONTEXTE-SEQ, frozen once a revision has been approved. */
   id: text('id').primaryKey(),
   /** Earlier IDs (reclassification before first approval, migrated legacy references). */
@@ -171,13 +185,17 @@ export const documents = pgTable('documents', {
   archivedAt: date('archived_at', { mode: 'string' }),
   createdAt: date('created_at', { mode: 'string' }).notNull(),
   modifiedAt: date('modified_at', { mode: 'string' }).notNull(),
-});
+  // Shared data D10: fields of Vigie's controlled documents, now carried by Codex.
+  distribution: text('distribution').notNull().default(''),
+  reviewMonths: integer('review_months'),
+  processCode: text('process_code'),
+}, (t) => [check('documents_review_months_check', sql`${t.reviewMonths} > 0`)]);
 
 const docRef = () => documents.id;
 const cascade = { onUpdate: 'cascade' as const };
 
 /** Documents Keystone expects on a project (checklist of the project tab). */
-export const projectExpected = pgTable('project_expected', {
+export const projectExpected = codex.table('project_expected', {
   id: serial('id').primaryKey(),
   projectCode: text('project_code').notNull().references(() => projects.code),
   label: jsonb('label').$type<Localized>().notNull(),
@@ -187,7 +205,7 @@ export const projectExpected = pgTable('project_expected', {
   sort: integer('sort').notNull().default(0),
 });
 
-export const projectEvents = pgTable('project_events', {
+export const projectEvents = codex.table('project_events', {
   id: serial('id').primaryKey(),
   projectCode: text('project_code').notNull().references(() => projects.code),
   at: timestamp('at', { mode: 'string' }).notNull(),
@@ -195,7 +213,7 @@ export const projectEvents = pgTable('project_events', {
 });
 
 /** Named readers of a confidential or "très confidentiel" document (lib/access.ts). */
-export const documentReaders = pgTable(
+export const documentReaders = codex.table(
   'document_readers',
   {
     docId: text('doc_id').notNull().references(docRef, cascade),
@@ -204,7 +222,7 @@ export const documentReaders = pgTable(
   (t) => [primaryKey({ columns: [t.docId, t.userId] })],
 );
 
-export const revisions = pgTable(
+export const revisions = codex.table(
   'revisions',
   {
     id: serial('id').primaryKey(),
@@ -226,7 +244,7 @@ export const revisions = pgTable(
 );
 
 /** Working versions A.1, A.2… of a revision; the last one becomes the revision when approved. */
-export const workingVersions = pgTable(
+export const workingVersions = codex.table(
   'working_versions',
   {
     id: serial('id').primaryKey(),
@@ -248,7 +266,7 @@ export const workingVersions = pgTable(
 
 // ── Approval workflows ──────────────────────────────────────────────────
 
-export const workflows = pgTable(
+export const workflows = codex.table(
   'workflows',
   {
     id: text('id').primaryKey(),
@@ -265,7 +283,7 @@ export const workflows = pgTable(
   (t) => [uniqueIndex('workflows_running').on(t.revisionId).where(sql`${t.outcome} is null`)],
 );
 
-export const workflowSteps = pgTable(
+export const workflowSteps = codex.table(
   'workflow_steps',
   {
     workflowId: text('workflow_id').notNull().references(() => workflows.id),
@@ -280,7 +298,7 @@ export const workflowSteps = pgTable(
   (t) => [primaryKey({ columns: [t.workflowId, t.idx] })],
 );
 
-export const workflowComments = pgTable('workflow_comments', {
+export const workflowComments = codex.table('workflow_comments', {
   id: serial('id').primaryKey(),
   workflowId: text('workflow_id').notNull().references(() => workflows.id),
   authorId: text('author_id').notNull().references(() => users.id),
@@ -292,7 +310,7 @@ export const workflowComments = pgTable('workflow_comments', {
 
 export type ChangeStatus = 'submitted' | 'accepted' | 'rejected' | 'implemented';
 
-export const changeRequests = pgTable(
+export const changeRequests = codex.table(
   'change_requests',
   {
     /** Vigie reference (ECR-…). */
@@ -317,16 +335,16 @@ export const changeRequests = pgTable(
 
 // ── Audit, rights, saved searches ───────────────────────────────────────
 
-export const auditLog = pgTable('audit_log', {
+export const auditLog = codex.table('audit_log', {
   id: serial('id').primaryKey(),
   at: timestamp('at', { mode: 'string' }).notNull(),
   userId: text('user_id').notNull().references(() => users.id),
   action: text('action').notNull(),
   docId: text('doc_id').notNull(),
   detail: text('detail').notNull().default(''),
-});
+}, (t) => [index('audit_log_at_idx').on(t.at)]);
 
-export const rolePermissions = pgTable(
+export const rolePermissions = codex.table(
   'role_permissions',
   {
     role: text('role').notNull(),
@@ -336,7 +354,7 @@ export const rolePermissions = pgTable(
   (t) => [primaryKey({ columns: [t.role, t.perm] })],
 );
 
-export const savedSearches = pgTable('saved_searches', {
+export const savedSearches = codex.table('saved_searches', {
   id: serial('id').primaryKey(),
   label: jsonb('label').$type<Localized>().notNull(),
   q: text('q').notNull().default(''),

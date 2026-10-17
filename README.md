@@ -3,7 +3,8 @@
 Gestion électronique des documents du groupe, construite d'après la maquette Claude Design
 (`design/GED Groupe.dc.html`, design system Nocturne dans `design/_ds/`).
 
-Même socle que Keystone : **Next.js 16 (App Router) · React 19 · PGlite (Postgres embarqué) + Drizzle**.
+Même socle que Keystone : **Next.js 16 (App Router) · React 19 · PGlite (Postgres embarqué) + Drizzle**. En
+ligne, Codex utilise le serveur PostgreSQL commun EPC2I (schéma `codex`) ; PGlite reste la base de repli.
 
 ## Démarrer
 
@@ -18,11 +19,37 @@ déposés sont stockés dans `.data/files/` (ou dans SharePoint, voir `src/lib/s
 
 - Repartir de zéro : arrêter le serveur, `npm run db:reset`, relancer. **Obligatoire après le passage au modèle v2** :
   une base créée avec l'ancien modèle ne peut pas recevoir la nouvelle migration.
-- Après une modification de `src/db/schema.ts` : tant qu'il n'y a pas de base de production, régénérer la migration
-  unique (`rm -rf drizzle && npx drizzle-kit generate --name init`) puis `npm run db:reset`.
+- **Obligatoire aussi après le passage au schéma `codex`** : une base PGlite dont les tables sont dans `public` est
+  refusée au démarrage (« Base PGlite antérieure au schéma codex »).
+- Migrations (`drizzle/`) : `0000_init` (migration de base) puis `0001_partage` (prérequis du partage générés par
+  drizzle-kit, puis vues `pub_` lues par Keystone, Vigie et Matrix, écrites à la main d'après
+  `infra/postgres/partage/40-codex.sql` du dépôt Matrix).
+- Après une modification de `src/db/schema.ts` : nouvelle migration incrémentale (`npx drizzle-kit generate --name
+  <objet>`). Tant qu'il n'y a pas de données à garder sur le serveur commun, on peut encore régénérer la migration de
+  base (`rm -rf drizzle && npx drizzle-kit generate --name init`), à condition de recopier ensuite les vues `pub_` dans
+  la migration suivante ; puis `npm run db:reset`.
 - Contrôles : `npm run typecheck`, `npm run lint`, `npm run build`.
 
-Variables : voir `.env.example` (Keystone, Vigie, dossier de données, jetons de l'API d'intégration).
+Variables : voir `.env.example` (Keystone, Vigie, dossier de données, base, jetons de l'API d'intégration).
+
+### Deux modes de base
+
+| `DATABASE_URL` | Base | Remplissage de démonstration |
+| --- | --- | --- |
+| absente ou vide | PGlite dans `$CODEX_DATA_DIR/pglite` (développement, application Mac) | toujours, si la base est vide |
+| `postgres://codex_app:…@hôte:5432/epc2i` | serveur PostgreSQL commun EPC2I, schéma `codex` | seulement avec `CODEX_SEED_DEMO=1` |
+
+Le code est le même dans les deux cas : les tables sont déclarées dans le schéma `codex` (`pgSchema` de
+`src/db/schema.ts`), aussi dans PGlite. Au démarrage, `src/db/migrate.ts` applique les migrations de `drizzle/`, avec
+le journal dans `codex.__drizzle_migrations`. Sur le serveur, le schéma et le rôle `codex_app` sont créés par le socle
+(dépôt Matrix, `infra/postgres/`) ; `codex_app` n'a aucun droit hors du schéma `codex`. `next build` n'ouvre jamais le
+serveur commun.
+
+Sur le serveur commun, chaque transaction prend d'abord le verrou d'écriture de Codex
+(`pg_advisory_xact_lock(hashtext('codex.ecritures'))`) : les écritures passent l'une après l'autre, comme dans PGlite,
+et les identifiants `TYPE-CONTEXTE-SEQ` calculés dans la transaction restent distincts entre plusieurs instances. Les
+droits de lecture des vues `pub_` par les autres outils sont posés par le socle (`partage/90-droits.sql`), hors de
+Codex.
 
 Le modèle fonctionnel fait foi dans `docs/modele-cible.md` ; l'API d'intégration est décrite dans `docs/api.md`.
 
@@ -93,7 +120,7 @@ src/
     shell/             barre latérale, en-tête, contexte client (dialogues, toasts)
     dialogs/           toutes les boîtes de dialogue
     ui/                icônes de la maquette, contrôle segmenté, steppers, boutons d'action
-  db/                  schéma Drizzle, connexion PGlite, données de démonstration
+  db/                  schéma Drizzle, connexion (PGlite ou serveur commun), migrations, données de démonstration
   lib/
     actions.ts         Server Actions (toutes les mutations + contrôles de droits)
     queries.ts         lectures et modèles de vue
@@ -121,10 +148,13 @@ Le `Dockerfile` à la racine compile l'application et lance `next start`. Régla
 | Réglage | Valeur |
 | --- | --- |
 | Port interne | `3000` |
-| Volume persistant | `/data` (base PGlite dans `/data/pglite`, fichiers dans `/data/files`) |
+| Volume persistant | `/data` (fichiers dans `/data/files` ; base PGlite de repli dans `/data/pglite`) |
 | Variables disponibles au build | `NEXT_PUBLIC_KEYSTONE_URL`, `NEXT_PUBLIC_VIGIE_URL` : adresses publiques de Keystone et de Vigie |
+| Variables d'exécution seulement | `DATABASE_URL` (serveur commun, rôle `codex_app`), `CODEX_DB_POOL`, `CODEX_SEED_DEMO` (voir `.env.example`) |
 
 - Les deux adresses sont figées dans l'application au moment du build : après les avoir modifiées, il faut redéployer.
+- `DATABASE_URL` ne doit jamais être disponible au build ni écrite dans l'image. Dans Coolify, Codex et le serveur
+  PostgreSQL doivent partager un réseau (dépôt Matrix, `infra/postgres/README.md`).
 - Le build télécharge la police Inter depuis Google Fonts : le serveur de build doit avoir accès à Internet.
 - Tant que l'authentification n'est pas branchée, protéger l'accès au niveau de l'hébergeur (authentification HTTP de
   Coolify, par exemple).

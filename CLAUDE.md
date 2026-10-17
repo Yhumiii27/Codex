@@ -62,7 +62,8 @@ numéro, sans les trancher à la place de l'utilisateur.
 - **Conservation par type de document, selon les règles d'usage.** La migration de l'existant se fera par un code
   dédié, **hors de Codex**.
 - **Non tranché** : activation de SharePoint (O-01), fournisseur d'authentification (O-02 ; Entra ID est proposé, pas
-  confirmé), liaison avec Keystone par API ou base partagée (O-03), organigramme (O-04), arbitrages du registre (O-05).
+  confirmé), liaison avec Keystone par API ou base partagée (O-03, en partie répondue par M-01 : base commune, un
+  schéma par outil, la liaison reste une API), organigramme (O-04), arbitrages du registre (O-05).
 
 ## Lancer et vérifier
 
@@ -72,10 +73,19 @@ npm run dev          # http://localhost:3100
 npm run typecheck && npm run lint && npm run build
 ```
 
-- **Base de démo.** Au premier lancement, elle est créée dans `.data/` (non versionné) puis remplie par
-  `src/db/seed*.ts`. Pour repartir de zéro : arrêter le serveur, `npm run db:reset`, relancer.
-- **Changement de `src/db/schema.ts`.** Tant qu'il n'y a pas de base de production, on régénère une migration
-  unique : `rm -rf drizzle && npx drizzle-kit generate --name init`, puis `npm run db:reset`.
+- **Base de démo.** Sans `DATABASE_URL`, elle est créée au premier lancement dans `.data/` (PGlite, non versionné)
+  puis remplie par `src/db/seed*.ts`. Pour repartir de zéro : arrêter le serveur, `npm run db:reset`, relancer.
+- **Serveur commun.** Avec `DATABASE_URL`, Codex se connecte au serveur PostgreSQL commun EPC2I en tant que
+  `codex_app` (schéma `codex`, aucun accès ailleurs) ; il n'y est rempli qu'avec `CODEX_SEED_DEMO=1`. Les tables se
+  déclarent avec `codex.table(…)`, jamais `pgTable(…)`. L'objet `pgSchema` n'est jamais exporté : exporté,
+  drizzle-kit ajoute un `CREATE SCHEMA` que `codex_app` ne peut pas exécuter.
+- **Changement de `src/db/schema.ts`.** Migrations : `0000_init` (base) et `0001_partage` (prérequis du partage et
+  vues `pub_`, écrites à la main d'après `infra/postgres/partage/40-codex.sql` du dépôt Matrix). Un changement va dans
+  une nouvelle migration incrémentale (`npx drizzle-kit generate --name <objet>`), puis `npm run db:reset`. Tant qu'il
+  n'y a pas de données à garder sur le serveur commun, on peut encore régénérer la base
+  (`rm -rf drizzle && npx drizzle-kit generate --name init`), en recopiant ensuite les vues `pub_` ; dès les
+  premières données à garder, les migrations existantes sont figées. Une vue `pub_` ne perd ni ne renomme jamais de
+  colonne (sinon nouvelle vue `_v2`).
 - **Utilisateur et rôle simulés** par cookie. Par défaut : Claire Bardet, gestionnaire documentaire. Pour changer,
   cliquer sur le profil en bas de la barre latérale.
 - **Pas de secrets dans le dépôt.** Les variables sont décrites dans `.env.example`, et `.gitignore` exclut `.env*`,

@@ -1,7 +1,9 @@
 # Deployment image for Codex (Coolify or any Docker host).
 # - Internal port: 3000.
-# - Data: /data (PGlite database in /data/pglite, uploaded files in /data/files). Mount a persistent volume
-#   there, otherwise the data is lost on every deployment.
+# - Database: the shared EPC2I PostgreSQL server (schema codex, role codex_app) when DATABASE_URL is set at run time.
+#   Never put DATABASE_URL in the image, nor make it available at build time. Without it: PGlite in /data/pglite.
+# - Data: /data (uploaded files in /data/files, and the PGlite fallback). Mount a persistent volume there, otherwise
+#   the data is lost on every deployment.
 FROM node:22-bookworm-slim
 
 WORKDIR /app
