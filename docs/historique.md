@@ -36,7 +36,7 @@ Conventions :
 | 11 oct. | Fonctions du deck (lot 5), une étape par fonction : « Mes demandes Vigie », « À traiter » complet, rejet motivé et rappel, recherches enregistrées partagées, facettes et tri de la recherche, pages par département | 14 |
 | 12 oct. | Lot 6 : points développables de reste-a-faire.md, une étape par point. Étape 1 : dates, format contrôlé et cohérence émission ≤ effet ≤ expiration. Étape 2 : expiration et revue périodique. Étape 3 : lien « remplacé par ». Étape 4 : fiche de visa. Étape 5 : modifications simultanées détectées. Étape 6 : recherche, explorateur et journal filtrés et paginés en base | 15 |
 | 15 oct. | Lot 7 : suite des points développables de reste-a-faire.md. Étape 1 : en-têtes de sécurité HTTP et limitation de débit des API | 16 |
-| 18 oct. | Lot 10 : préparer les réponses aux questions ouvertes sans rien trancher. Étape 1 : fiches de décision O-01 à O-11. Étape 2 : cahiers de validation du registre et de l'organigramme | 19 |
+| 18 oct. | Lot 10 : préparer les réponses aux questions ouvertes sans rien trancher. Étape 1 : fiches de décision O-01 à O-11. Étape 2 : cahiers de validation du registre et de l'organigramme. Étape 3 : SharePoint essayé contre un faux Microsoft Graph, quatre défauts corrigés, `npm run storage:check` | 19 |
 
 La session a été coupée plusieurs fois par une limite d'usage ou de dépense :
 - le 7 octobre à 13:38, reprise à 17:31 sur « Try again » ;
@@ -2811,6 +2811,7 @@ présentent l'état du code et recueillent les réponses ; rien n'est prérégl�
 |---|---|---|---|---|
 | 1. Fiches de décision pour les questions O-01 à O-11 | `79d2dc2` | 70 à 120 (préparation) | [fiches-decision.md](fiches-decision.md) : une fiche par question (question citée, état du code, options, effort, irréversible, points débloqués, données attendues) ; JUR relevé en collision type/département | Propositions de l'assistant étiquetées « non validée » ; aucune question reposée plus d'une fois |
 | 2. Cahiers de validation du registre et de l'organigramme | commit « Lot 10, étape 2 », qui suit `79d2dc2` | 113 à 118 (préparation, toujours bloqués) | `npm run registry:review` (cahiers `types.csv` et `fonctions.csv`, contrôle d'un cahier rempli et écart avec le code) ; modèle `docs/modeles/organigramme.csv` et `npm run org:check` | Cahiers tirés du code, pas d'une base ; réponses vides ; aucune table société ; rien n'est écrit ni en base ni dans `registry.ts`, `seed-org.ts` |
+| 3. SharePoint sans tenant | commits « Lot 10, étape 3 » (deux) | 36, 103 (préparation, O-01 toujours ouverte) | Faux Microsoft Graph et 26 tests du pilote ; quatre défauts corrigés (délai d'envoi non entier, jeton refusé gardé en cache, `Retry-After`, corps des réponses de limitation) ; `npm run storage:check` ; procédure d'essai sur un tenant (`docs/exploitation.md` §8) | `CODEX_STORAGE` reste `local` par défaut ; aucune suppression sur SharePoint ; pas de session d'envoi ; plafond de 250 Mo inchangé |
 
 ### 19.1 Cahiers de validation du registre et de l'organigramme
 
@@ -2857,3 +2858,30 @@ pouvait reprendre un code déjà pris (FIN-FIN-0001) ou une valeur que Codex ref
 - **Vérifié** : `npm run typecheck`, `npm run lint`, `npm run db:check`, `npm test` (104 fichiers dont 1 sauté, 1 385
   tests passés, 13 sautés, aussi avec `.data` déplacé), `npm run build` ; `npm run registry:review` et
   `npm run org:check` lancés sur les cahiers écrits, un cahier modifié et le modèle.
+
+### 19.2 SharePoint sans tenant (lot 10, étape 3)
+
+- **Demande** : tester le pilote SharePoint existant (`sharepoint()`, `src/lib/storage.ts`) sans tenant, sans activer
+  SharePoint ni changer le défaut de `CODEX_STORAGE` (O-01 reste ouverte).
+- **Faux Graph** : `tests/support/fake-graph.ts`, une bibliothèque en mémoire derrière `fetch`. Il répond au jeton
+  Entra ID, à l'envoi dans `_staging` (`conflictBehavior=fail`), à la création de dossier, au renommage avec
+  déplacement, à la lecture par redirection (Range conservé, Authorization retiré), à la suppression, à la liste
+  paginée et à la sonde. Il sait injecter 429/503 avec Retry-After, 401 et des jetons révoqués.
+- **Tests** : `tests/integration/sharepoint-store.test.ts` (26 tests). Dépôt et nommage, reclassement, route fichier
+  avec plage, liste de `_staging` et reprise des noms provisoires, orphelins listés jamais supprimés, export complet,
+  sonde et son cache, reprises, 401, commande d'essai.
+- **Défauts prouvés puis corrigés** (test rouge d'abord) :
+  - le délai d'envoi n'était pas un entier, donc `AbortSignal.timeout` levait une erreur et aucun envoi SharePoint
+    n'aurait abouti ;
+  - un jeton refusé (401) restait en cache jusqu'à son expiration ; il est maintenant oublié et redemandé une fois ;
+  - `Retry-After: 0` était lu comme 2 s et une date HTTP n'était pas lue (`retryAfterSeconds`) ;
+  - le corps des réponses 429/503 n'était pas libéré.
+  `resetStores()` oublie aussi le stockage actif (accès de test), et `storeFor(name)` est ajouté.
+- **Commande** : `npm run storage:check` (`scripts/codex-storage-check.mts`, `src/lib/storage-check.ts`). Elle essaie
+  le stockage actif sans base : envoi, nommage, lecture complète et par plage, suppression, avec un message clair
+  par étape.
+- **Procédure** : `docs/exploitation.md` §8, « Essayer SharePoint sur un tenant » (inscription de l'application,
+  Sites.Selected, consentement, accès au site en écriture, variables `CODEX_SP_*`, `storage:check`, retour arrière).
+- **Reste** : l'essai sur un vrai tenant, notamment la forme du déplacement par `parentReference.path`. Restent aussi
+  la décision O-01, la suppression des orphelins sur SharePoint, la session d'envoi au-delà de 250 Mo et la sauvegarde
+  des fichiers SharePoint.
