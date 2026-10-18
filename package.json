@@ -22,6 +22,7 @@
     "seed:large": "tsx --conditions=react-server scripts/codex-seed-large.mts",
     "perf": "node scripts/codex-perf.mjs",
     "a11y": "tsx scripts/codex-a11y.mts",
+    "e2e": "tsx scripts/codex-e2e.mts",
     "backup": "node scripts/codex-backup.mjs create",
     "backup:list": "node scripts/codex-backup.mjs list",
     "backup:check": "node scripts/codex-backup.mjs check",

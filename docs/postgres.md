@@ -120,7 +120,8 @@ CODEX_TEST_DATABASE_URL=postgres://postgres@127.0.0.1:5432/postgres npm run test
   une sur PGlite comme sur le serveur ; envoyées toutes à la fois, 3,0 s sur PGlite (une connexion) et 1,15 s sur le
   serveur (pool de 10), sans doublon.
 - L'intégration continue lance `npm run test:pg` sur un service `postgres:18` (`.github/workflows/ci.yml`).
-- Essai du 18 octobre 2026 : 79 fichiers, 1 172 tests réussis sur PostgreSQL 18.3, 2 sautés. L'un est le test de tri
+- Essai du 18 octobre 2026, fin du lot 9 : 101 fichiers, 1 364 tests réussis sur PostgreSQL 18.3, 3 sautés (premier
+  essai de l'étape 3 : 79 fichiers, 1 172 tests, 2 sautés). L'un est le test de tri
   `codex_fr`, sauté quand l'ICU du serveur est plus ancien que celui de PGlite (Unicode antérieur à 16.0) : le serveur
   de l'essai (binaires `@embedded-postgres`, ICU 60) classe l'apostrophe droite avant l'apostrophe typographique, que
   l'ICU récent tient pour égales. Un serveur avec un ICU récent (Debian, Ubuntu actuels) est vérifié par ce test.

@@ -1528,6 +1528,14 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     et `{lettre}.{n}` comme `renameDocFiles` ; un fichier qui occupe déjà le nom final n'est jamais remplacé (sauf le
     même fichier, lien laissé par un renommage arrêté) ; tâche du planificateur **désactivée par défaut** ; sur
     SharePoint, l'interface du dépôt, sans essai réel (O-01) ;
+  - **aperçu paginé** (point 46) : copie du fichier **en mémoire de la page** (adresse `blob:`), plutôt qu'un cache
+    privé du navigateur pour les brouillons et les documents confidentiels, qui restent `no-store` (D-14) ; la copie
+    est libérée quand la fiche se ferme ; un téléchargement qui échoue rend l'ancien fonctionnement ; aucun rendu de
+    page côté serveur (il demanderait une bibliothèque de rendu) ; non essayé dans WebKit (app Mac, session macOS) ;
+  - **parcours de bout en bout** (point 57) : un seul parcours (créer avec un fichier, déposer, demander la
+    validation, valider, en vigueur), joué comme un utilisateur (boutons, dialogues), les personnes simulées par le
+    cookie de session comme le menu du profil ; ajouté à la CI parce qu'il est rapide (une vingtaine de secondes) et
+    a donné le même résultat à chaque passage ; Chromium seul ;
 - **Git** (D-23) : premier commit sur une branche `codex-ged-v2` plutôt que sur `main`.
 
 ## Ce qui est explicitement hors périmètre

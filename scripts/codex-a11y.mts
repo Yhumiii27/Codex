@@ -16,16 +16,13 @@
 // Fails (exit 1) on a violation axe rates serious or critical, or when the skip link does not work; moderate and minor
 // ones are listed only. Exit 2 on a wrong usage or when the server cannot start.
 
-import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import os from 'node:os';
-import path from 'node:path';
-import { chromium, type Browser, type Page } from 'playwright-core';
+import type { Browser, Page } from 'playwright-core';
 import { DICT, type Lang } from '../src/lib/i18n';
+import { launchChromium, serverLogTail, startServer, stopServer, waitHealthy } from './codex-browser.mjs';
 
 const require = createRequire(import.meta.url);
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 
 const args = process.argv.slice(2);
 const opt = (name: string) => {
@@ -175,50 +172,21 @@ async function dialog(page: Page, base: string, d: (typeof DIALOGS)[number], t: 
   await box.first().waitFor({ state: 'detached', timeout: 5_000 }).catch(() => problems.push(`${d.name} : Échap ne ferme pas le dialogue`));
 }
 
-function startServer(): { child: ChildProcess; dir: string; base: string; log: string } {
-  if (!DEV && !existsSync(path.join(ROOT, '.next', 'BUILD_ID'))) {
-    console.error('npm run a11y : pas de build de production. Lancez `npm run build` d’abord, ou passez --dev.');
-    process.exit(2);
-  }
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'codex-a11y-'));
-  const log = path.join(dir, 'server.log');
-  const fd = openSync(log, 'a');
-  const next = require.resolve('next/dist/bin/next');
-  const child = spawn(process.execPath, [next, DEV ? 'dev' : 'start', '--port', String(PORT)], {
-    cwd: ROOT,
-    env: { ...process.env, CODEX_DATA_DIR: path.join(dir, 'data'), CODEX_SEED: 'demo', CODEX_MIGRATION_BACKUP: 'off', NEXT_TELEMETRY_DISABLED: '1', DATABASE_URL: '' },
-    stdio: ['ignore', fd, fd],
-    detached: true,
-  });
-  return { child, dir, base: `http://localhost:${PORT}`, log };
-}
 
-async function waitHealthy(base: string, child?: ChildProcess) {
-  const until = Date.now() + 180_000;
-  while (Date.now() < until) {
-    if (child && child.exitCode != null) return false;
-    try {
-      const r = await fetch(`${base}/api/health`, { signal: AbortSignal.timeout(30_000) });
-      if (r.ok) return true;
-    } catch { /* not yet */ }
-    await new Promise((r) => setTimeout(r, 1_000));
-  }
-  return false;
-}
 
 async function main() {
   const t0 = Date.now();
-  const server = URL_ARG ? null : startServer();
+  const server = URL_ARG ? null : startServer({ port: PORT, dev: DEV, prefix: 'codex-a11y', command: 'a11y' });
   const base = URL_ARG?.replace(/\/$/, '') ?? server!.base;
   let browser: Browser | null = null;
   try {
     if (!(await waitHealthy(base, server?.child))) {
       console.error(`npm run a11y : le serveur ne répond pas sur ${base}${server ? ` (journal : ${server.log})` : ''}.`);
-      if (server) console.error(readFileSync(server.log, 'utf8').split('\n').slice(-30).join('\n'));
+      if (server) console.error(serverLogTail(server));
       process.exitCode = 2;
       return;
     }
-    browser = await chromium.launch(process.env.CODEX_A11Y_CHROMIUM ? { executablePath: process.env.CODEX_A11Y_CHROMIUM } : {});
+    browser = await launchChromium();
     for (const lang of LANGS) {
       const t = DICT[lang];
       const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
@@ -236,12 +204,7 @@ async function main() {
     }
   } finally {
     await browser?.close();
-    if (server) {
-      try { process.kill(-server.child.pid!, 'SIGTERM'); } catch { /* already gone */ }
-      await new Promise((r) => setTimeout(r, 1_500));
-      try { process.kill(-server.child.pid!, 'SIGKILL'); } catch { /* gone */ }
-      rmSync(server.dir, { recursive: true, force: true });
-    }
+    await stopServer(server);
   }
   if (process.exitCode === 2) return;
 

@@ -23,6 +23,37 @@ export function RecordConsultation({ docId }: { docId: string }) {
   return null;
 }
 
+/**
+ * The file at `src`, fetched once and kept in this page's memory as a blob: URL while it shows, so that the paged viewer
+ * changes page without downloading it again (point 46). A draft or a confidential file is served `no-store` (D-14): the
+ * browser keeps it in no cache nor history, and neither does this copy, released when the record closes or shows
+ * another file. `failed`: the fetch did not succeed; the viewer then opens the address itself, as before.
+ */
+function useLocalCopy(src: string | null): { url: string | null; failed: boolean } {
+  const [copy, setCopy] = useState<{ src: string; url: string | null; failed: boolean } | null>(null);
+  useEffect(() => {
+    if (!src) return;
+    let gone = false;
+    let made: string | null = null;
+    fetch(src, { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(String(r.status)))))
+      .then((b) => {
+        if (gone) return;
+        // The viewer opens a blob by its type: a PDF, whatever the response called it.
+        made = URL.createObjectURL(b.type === 'application/pdf' ? b : new Blob([b], { type: 'application/pdf' }));
+        setCopy({ src, url: made, failed: false });
+      })
+      .catch(() => {
+        if (!gone) setCopy({ src, url: null, failed: true });
+      });
+    return () => {
+      gone = true;
+      if (made) URL.revokeObjectURL(made);
+    };
+  }, [src]);
+  return copy && copy.src === src ? copy : { url: null, failed: false };
+}
+
 /** PDF rendering of an Office file (lib/office-preview.ts): its address, and its page count once it is made. */
 type PreviewRender = { url: string; pages: number | null };
 
@@ -45,12 +76,17 @@ export function Preview({ doc, file, pages, render, renderNote, hasVersion }: { 
   const isText = kind === 'text';
   const shown = isPdf || isImage || isText;
   const paged = isPdf && pageCount != null;
+  const source = isPdf ? (rendered ? render.url : file!.url) : null;
+  const local = useLocalCopy(paged ? source : null);
   const rev = doc.revLabel ? `${t.rev_short} ${doc.revLabel}` : '';
   return (
     <div className={styles.previewCol}>
       <div className={styles.previewScroll}>
-        {isPdf ? (
-          <iframe key={page} title={doc.title} src={(rendered ? render.url : file!.url) + (paged ? `#page=${page}&toolbar=0` : '')} className={styles.pdf} />
+        {isPdf && paged && !local.url && !local.failed ? (
+          <div className={styles.unavailable} role="status"><div className="text-muted" style={{ fontSize: 13 }}>{t.preview_loading}</div></div>
+        ) : isPdf ? (
+          // Paged: a new frame per page (only a new document takes the #page fragment), on the copy kept in memory.
+          <iframe key={page} title={doc.title} src={(paged && local.url ? local.url : source!) + (paged ? `#page=${page}&toolbar=0` : '')} className={styles.pdf} />
         ) : isImage ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={file!.url} alt={doc.title} className={styles.image} />

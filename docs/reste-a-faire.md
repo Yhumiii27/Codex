@@ -1,33 +1,29 @@
 # Reste à faire sur Codex
 
 Inventaire du 9 octobre 2026, sur la branche `codex-ged-v2-vkmf4l`, tenu à jour jusqu'au 18 octobre 2026 (fin du
-lot 9). Chaque point fait porte sa ligne « Fait le … » ; le détail de chaque lot est dans `docs/historique.md` (§11 à
-§18).
+lot 9, étape 9 comprise). Chaque point fait porte sa ligne « Fait le … » ; le détail de chaque lot est dans
+`docs/historique.md` (§11 à §18).
 
 ## État au 18 octobre 2026 (fin du lot 9)
 
 | Ce qui bloque (classement du 9 octobre) | Points | Faits | Faits en partie | Pas commencés |
 |---|---|---|---|---|
-| Développable maintenant | 69 | 55 | 14 | 0 |
+| Développable maintenant | 69 | 58 | 11 | 0 |
 | Attend une décision de l'utilisateur | 49 | 0 | 0 | 49 |
 | Attend des données de l'utilisateur | 2 | 0 | 0 | 2 |
 | Demande une session sur macOS | 9 | 0 | 0 | 9 |
 
-Les 69 points développables sans décision ont tous été traités (lots 1 à 9, du 10 au 18 octobre). Ce qui reste, selon
-ce qui le bloque (un point peut dépendre de plusieurs questions ; aucune n'a été tranchée à la place de l'utilisateur) :
+Les 69 points développables sans décision ont tous été traités (lots 1 à 9, du 10 au 18 octobre). L'étape 9 du lot 9 a
+repris les restes qui ne dépendaient de rien (points 36, 43, 46, 47, 50, 51, 52 et 57) : 43, 52 et 57 sont faits, les
+autres n'ont plus que des restes bloqués par une décision ou par macOS. Ce qui reste, selon ce qui le bloque (un point
+peut dépendre de plusieurs questions ; aucune n'a été tranchée à la place de l'utilisateur) :
 
-- **Rien : développable dans une session cloud**, les restes de points faits en partie :
-  - 36 : reprise de `nameStoredFile` sur les clés restées sous leur nom provisoire ;
-  - 43 : `.nvmrc` et `@types/node` alignés sur `engines` (la vérification dans `desktop/build-app.sh` demande macOS) ;
-  - 46 : aperçu paginé d'un brouillon ou d'un document confidentiel sans retélécharger le fichier à chaque page ;
-  - 47 et 50 : Validations lit tous les circuits et n'est pas paginé ; l'index d'accès relit à chaque requête les
-    lecteurs désignés, les révisions ouvertes et les titulaires ;
-  - 51 : migrations au déploiement plutôt qu'au premier accès, revue des transactions en `READ COMMITTED`, plusieurs
-    processus (limites de débit, fichiers locaux, verrou) ;
-  - 52 : `npm audit` dans la CI ;
-  - 57 : réponses d'erreur des routes d'import et de fichier testées par leurs handlers, parcours de bout en bout.
+- **Rien : développable dans une session cloud** : plus rien. Améliorations possibles notées dans les points, sans
+  manque constaté : la fiche transmet à ses dialogues la liste des documents lisibles (point 47), d'autres parcours de
+  bout en bout (rejet, rappel, demande Vigie, import ; point 57).
 - **Une décision de l'utilisateur** (questions O-01 à O-11 de `docs/decisions.md`, ou questions de l'audit) :
-  - O-01, SharePoint : 73, 78, 79, 82, 84, 86, 88, 98, 103, 107, 112, et les restes de 36 et 48 ;
+  - O-01, SharePoint : 73, 78, 79, 82, 84, 86, 88, 98, 103, 107, 112, et les restes de 36 (suppression et renommage
+    essayés sur un vrai tenant), 46 (dépôt en flux, avec 98 et 106), 48 et 50 (contenu des fichiers, avec 82) ;
   - O-02, authentification : 79, 89, 93, 94, 104, 107, 117, et le retrait des notes de conception en production (69) ;
   - O-03, liaison avec Keystone : 80, 97, 101, 102, 105, 110, 111, et les restes de 38 et 51 ;
   - O-04, organigramme : 89, 92, 96, 116, 117, 120, et le reste de 62 ;
@@ -41,11 +37,12 @@ ce qui le bloque (un point peut dépendre de plusieurs questions ; aucune n'a é
   - O-10, ECR/ECO dans Vigie : 100, 109, et le reste de 38 ;
   - O-11, migration et volumes : 73, 78, 79, 82, 86, 99, 106, 107, 112 ;
   - questions de l'audit sans numéro O : 70 et 71 (C11, G43, A17), 74 (A24), 75 (M06), 77 (M13), 81 (A18), 83 (A22,
-    M12), 85 (M09, M10), 91 (M05), 95 (M04), 108 (P04, Q06) ; hébergement (M22) pour les restes de 38, 48, 49 et 51 ;
-    formation, utilisateurs clés et pilote (M14) pour le reste de 69.
+    M12), 85 (M09, M10), 91 (M05), 95 (M04), 108 (P04, Q06) ; hébergement (M22) pour les restes de 38, 48, 49 et 51
+    (sauvegarde du serveur, plusieurs processus) ; formation, utilisateurs clés et pilote (M14) pour le reste de 69.
 - **Des données de l'utilisateur** : 119 (vrais modèles EPC2I, aussi le reste de 6), 120 (date de clôture de
   l'exercice).
-- **Une session sur macOS** : 121 à 129 (app Mac, T-02).
+- **Une session sur macOS** : 121 à 129 (app Mac, T-02), et les essais sous macOS des restes de 43 (contrôle de version
+  de `desktop/build-app.sh`) et 46 (aperçu paginé dans WebKit).
 
 ## Méthode
 
@@ -878,6 +875,7 @@ src/db/index.ts:21-22 lance seed() dès que la table users est vide. seed() (src
 #### 46. Servir les fichiers en flux, avec les requêtes partielles (Range)
 - **Fait en partie le 15 octobre 2026** : la route fichier sert le stockage en flux (`openStored`, src/lib/storage.ts ; pour SharePoint, corps de `/content` relayé avec l'en-tête Range, non essayé sur un vrai tenant) avec `Accept-Ranges`, 206 et `Content-Range`, 416, le fichier entier pour plusieurs plages, `If-Range`, ETag, Last-Modified, 304 et un HEAD cohérent (`src/lib/ranges.ts`), après les mêmes contrôles d'accès, D-14, suffixes et limite de débit qu'avant, un téléchargement étant journalisé quand sa réponse part du premier octet, et le navigateur garde, revalidé à chaque usage (`private, no-cache`), le seul fichier final de la révision en vigueur sous Confidentiel, dont l'aperçu paginé obtient un 304 à chaque page. Reste : pour un brouillon, une révision en circuit (`in_review`, `approved`) ou un document confidentiel ou très confidentiel, toujours en `no-store`, l'aperçu paginé recrée son iframe (`key={page}`, src/app/documents/[id]/DocClient.tsx:33) et retélécharge tout le fichier à chaque page : la seconde option de l'étape 3, changer de page sans recréer l'iframe, reste à faire et à essayer dans Chromium et dans l'app Mac (WebKit, session macOS) ; l'étape 4, le dépôt en flux (écriture sur disque puis comptage des pages), avec l'import par morceaux (points 98 et 106). Tests : tests/unit/ranges.test.ts, tests/integration/file-stream.test.ts.
 
+- **Complété le 18 octobre 2026** (lot 9, étape 9) : l'aperçu paginé d'un PDF (fichier stocké ou rendu PDF d'un fichier Office) télécharge le fichier une fois, en garde une copie en mémoire (`useLocalCopy`, `src/app/documents/[id]/DocClient.tsx` : `fetch` puis adresse `blob:`, libérée quand la fiche se ferme ou montre un autre fichier) et change de page sur cette copie (un nouveau cadre par page, que Chromium seul accepte pour `#page=` : changer seulement le fragment du même cadre ne tourne pas la page, essayé). Les réponses restent `no-store` pour un brouillon, une révision en circuit et un document confidentiel (D-14) : la copie n'est ni dans le cache ni dans l'historique du navigateur. `frame-src 'self' blob:` dans la politique de sécurité (les adresses `blob:` sont propres à l'origine). Si le téléchargement échoue, la visionneuse ouvre l'adresse comme avant. Mesuré par `npm run e2e` (Chromium, brouillon de 3 pages, pages 1 à 3) : 3 téléchargements avant, 1 après ; capture : la page 3 s'affiche. Reste : l'essai dans l'app Mac (WebKit, session macOS) ; l'étape 4, le dépôt en flux, avec l'import par morceaux (points 98 et 106).
 - **Effort** : moyen
 
 Le constat est juste, mais la cause du rechargement à chaque page est surtout l'iframe recréée (`key={page}`, DocClient.tsx:30), combinée au `no-store` (route.ts:81). Range seul ne la corrige pas. À faire :
@@ -1097,6 +1095,7 @@ Constaté. src/db/seed-docs.ts contient 63 entrées `title:`. package.json n'a a
 #### 57. Tests automatisés
 
 - **Fait en partie le 10 octobre 2026** : Vitest (`npm test`) lance des tests unitaires des règles pures (`tests/unit/`) et des tests d'intégration des règles métier et des Server Actions sur un PGlite en mémoire (`tests/integration/`, base ouverte par `openDb` dans `src/db/index.ts`, `next/headers` et `next/cache` simulés), dont le handler du webhook `/api/integrations/vigie`. Le 11 octobre, `tests/integration/files.test.ts` appelle les handlers `POST /api/import` et `GET`/`HEAD /api/documents/[id]/file` : type de fichier enregistré, `Content-Type` et `Content-Disposition` servis, nom proposé, aperçu correspondant. Restent : les autres réponses de ces deux routes par leurs handlers (401, 400, 413, 415 et 409 de l'import, dont seuls les cas 409 sont testés, par `importDocument` ; 404 de la route fichier pour un document ou une version non visibles, la règle étant testée par `readerMaySeeVersion` ; 502 du stockage ; ligne de journal d'un téléchargement), les parcours Playwright, et l'atomicité des compteurs entre connexions (PGlite n'a qu'une connexion : il faut un Postgres serveur).
+- **Complété le 18 octobre 2026** (lot 9, étape 9) : `tests/integration/route-errors.test.ts` appelle les handlers : `POST /api/import` répond 401 sans jeton ou avec un autre, 415 à un corps ni JSON ni multipart et à un format de fichier refusé, 400 à un corps illisible, sans métadonnées, à un JSON invalide, à un « fichier » qui est un champ texte et à des métadonnées qui ne tiennent pas, 413 à un fichier au-delà de la limite et à un corps coupé en lecture, 409 au rejeu d'une référence et à une référence qui est un identifiant Codex, 500 avec l'identifiant de la requête sans la cause ; `GET`/`HEAD /api/documents/[id]/file` répondent 404 au document inconnu comme au document illisible, à une version invalide, d'un autre document ou que le lecteur n'a pas (D-14), à un aperçu demandé à tort, au fichier absent du stockage, et 502 au stockage injoignable (lien en boucle en local, SharePoint sans réglages), sans rien journaliser ; un téléchargement et une consultation sont journalisés (personne, fichier, révision), un `HEAD` non. Parcours de bout en bout `npm run e2e` (`scripts/codex-e2e.mts`, playwright-core, outillage commun avec `npm run a11y` dans `scripts/codex-browser.mts`, base de démo jetable) : création d'un document avec son PDF, aperçu paginé téléchargé une fois, demande de validation, chaque étape approuvée par son titulaire lu à l'écran, document en vigueur ; 15 à 17 s, cinq passages identiques : ajouté à la CI après `npm run a11y`. L'atomicité des compteurs entre connexions est testée sur PostgreSQL depuis le point 51. Reste : d'autres parcours (rejet, rappel, demande Vigie, import) si on les juge utiles.
 - **Effort** : important
 
 Le manque est réel. Il faut une base de tests, sans changer le périmètre :

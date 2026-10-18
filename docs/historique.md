@@ -2258,7 +2258,7 @@ de [decisions.md](decisions.md).
 | 6. Reprise des documents d'une personne qui part et vocabulaires contrôlés | commit « Lot 9, étape 6 », qui suit `5f92467` | 19, 59 | Administration › Reprise (départ) : simulation puis transfert journalisé, à un remplaçant choisi, des documents et processus possédés, révisions à rédiger, étapes en attente, titulariats et lectures désignées ; réassignation d'une étape par un gestionnaire ; langue contrôlée ; référentiels des organismes sources et des mots-clés (tables `source_orgs`, `keyword_terms`, migration `0003_vocabulaires` avec reprise), autocomplétion et ajout confirmé, Administration › Vocabulaires (ajout, renommage, fusion, sous-types hors liste) | Aucun remplaçant proposé, aucun compte désactivé ; gestionnaires documentaires seulement ; simulation = transfert annulé, empreinte exigée ; documents verrouillés repris, étapes figées par un verrou laissées ; documents gardant le nom du terme en texte ; nouveau terme confirmé dans les formulaires, ajouté à l'import ; termes proposés selon la lecture (D-14) ; sous-types non fermés ; gel juridique respecté au renommage |
 | 7. Finitions de l'interface : phases, Restaurer, compteur des modèles, écarts avec la maquette, bilinguisme | commit « Lot 9, étape 7 », qui suit `2d36d97` | 63, 64 (vérifié), 65, 66, 67, 68 | Phases Keystone en frise compacte ; « Restaurer » une version de travail du brouillon (`restoreWorkingVersion`) ; `documents.template_id` et compteur d'utilisations (migration `0004_modele_source` avec reprise sûre) ; onglet Projet toujours présent et « Rattacher à un projet » ; « Déposer » dans l'explorateur prérempli par l'arbre ; fondement de conservation en anglais, phases en anglais, détail du journal structuré et traduit, titres de page par écran et par fiche | Frise sans libellés sauf la phase courante, libellés EN des phases provisoires ; restauration limitée au brouillon ouvert, journalisée comme une version de travail ; compte limité aux documents lisibles, reprise seulement sur trois indices concordants ; projet non prérempli depuis l'arbre ; aucun fondement traduit, français suivi de « (FR) » ; anciennes entrées du journal non réécrites ; titre générique pour une fiche illisible ou introuvable |
 | 8. Accessibilité, aide aux utilisateurs et documentation alignée sur le code | commit « Lot 9, étape 8 », qui suit `65af2e6` | 55, 69, 53, 54 | Lien « Aller au contenu » ; contrôle axe-core `npm run a11y` (30 écrans, 20 dialogues, base de démo jetable) ajouté à la CI ; contrastes et violations corrigés (82 éléments sérieux et 52 modérés ou mineurs → 0, FR et EN) ; page `/aide` bilingue et aides contextuelles des dialogues ; README, avancement, audit, décisions et modèle cible relus contre le code | WCAG 2.2 AA comme démarche de qualité, sans RGAA ; seules les couleurs qui échouaient changent, d'un cran, Nocturne intact ; titres `<h1>`/`<h2>` au même rendu ; aide limitée à ce que l'application fait, simulations signalées, liens selon le rôle ; notes de conception gardées (O-02) ; formation et pilote laissés à M14 |
-| 9. Restes développables sans décision | commits « Lot 9, étape 9 », qui suivent `d0ed61e` | 43, 52, 36, 51, 47, 50, 46, 57 (restes) | Version de Node et audit des dépendances dans la CI ; index d'accès limité à la personne, Validations paginé en base ; `npm run db:migrate`, verrou du document dans les transactions qui relisent avant d'écrire ; reprise des noms provisoires | Version de référence 22 et tests sous Node 20.19 ; exception d'audit écrite et motivée, seulement pour un outil sans correction publiée ; aucun cache entre requêtes ; pages de 50 circuits ; le démarrage migre toujours, verrou de ligne plutôt que `SERIALIZABLE`, plusieurs processus laissés en limite ; noms provisoires : même délai de grâce et mêmes droits que les orphelins, tâche désactivée par défaut |
+| 9. Restes développables sans décision | commits « Lot 9, étape 9 », qui suivent `d0ed61e` | 43, 52, 47, 50, 51, 36, 46, 57 (restes) | Version de Node et audit des dépendances dans la CI ; index d'accès limité à la personne, Validations paginé en base ; `npm run db:migrate`, verrou du document dans les transactions qui relisent avant d'écrire ; reprise des noms provisoires ; aperçu paginé sans retéléchargement ; tests des réponses d'erreur des routes, `npm run e2e` | Version de référence 22 et tests sous Node 20.19 ; exception d'audit écrite et motivée, seulement pour un outil sans correction publiée ; aucun cache entre requêtes ; pages de 50 circuits ; le démarrage migre toujours, verrou de ligne plutôt que `SERIALIZABLE`, plusieurs processus laissés en limite ; noms provisoires : même délai de grâce et mêmes droits que les orphelins, tâche désactivée par défaut ; copie en mémoire plutôt que cache du navigateur ; un seul parcours, Chromium seul |
 
 ### 18.1 Rechargement en boucle en développement et lectures ciblées
 
@@ -2696,17 +2696,41 @@ groupe de points, chacun vérifié.
   simulation dans Administration › Journal d'audit, puis renommage des fichiers listés (`renameProvisionalFiles`),
   journalisé (« Fichiers renommés »), tâche `renames` du planificateur désactivée par défaut ; le renommage local
   reprend un lien déjà fait vers le même fichier et refuse tout autre fichier sous le nom final.
+- **Aperçu paginé (point 46).** Constat exact : pour un brouillon ou un document confidentiel (`no-store`), la
+  visionneuse recréait son cadre à chaque page et retéléchargeait le fichier. Essai dans Chromium : changer seulement
+  le fragment `#page=` du même cadre ne tourne pas la page ; un cadre neuf sur une adresse `blob:` le fait sans
+  réseau. La fiche télécharge donc le fichier une fois et pagine sur sa copie en mémoire (`useLocalCopy`), libérée à la
+  fermeture ; `frame-src 'self' blob:`. Brouillon de 3 pages, pages 1 à 3 : 3 téléchargements avant, 1 après ; la page
+  3 s'affiche (capture, Chromium complet).
+- **Tests des routes et parcours de bout en bout (point 57).** Constat exact : les réponses d'erreur de l'import (401,
+  400, 413, 415, 409, 500) et de la route fichier (404, 502, journal) n'étaient pas testées par leurs handlers ; aucun
+  parcours dans un navigateur. `tests/integration/route-errors.test.ts` ; `npm run e2e` (`scripts/codex-e2e.mts`,
+  outillage commun avec `npm run a11y` dans `scripts/codex-browser.mts`) : création avec un PDF, aperçu paginé
+  téléchargé une fois, demande de validation, chaque étape approuvée par son titulaire lu à l'écran, en vigueur ;
+  15 à 17 s, ajouté à la CI.
+- **Vérifié** (à chaque commit, et en fin d'étape) : `npm run typecheck`, `npm run lint`, `npm run db:check`, `npm test`
+  (101 fichiers, 1 356 tests passés, 11 sautés, aussi avec `.data` déplacé), `npm run test:pg` sur PostgreSQL 18.3
+  (1 364 passés, 3 sautés), toute la suite sous Node 20.19.0, `npm run build`, `npm run a11y` (0 violation),
+  `npm run e2e` (6 étapes, 18 s, passages identiques) ; `npm run db:migrate` sur une copie de la base de démonstration
+  (cinq migrations en attente, sauvegarde, puis rien à faire) et sur une base PostgreSQL neuve ; Administration ›
+  « Fichiers sous un nom provisoire » sur une copie de la démo ; mesures à 10 000 documents
+  ([performances.md](performances.md)).
+- **Reste** : essais sous macOS (contrôle de version de l'app, aperçu dans WebKit) ; SharePoint sur un vrai tenant
+  (O-01) ; sauvegarde du serveur PostgreSQL et plusieurs processus (M22) ; contenu des fichiers non indexé (82).
 
 ### Bilan du lot 9
 
-Huit étapes, 24 points de [reste-a-faire.md](reste-a-faire.md) (47, 42, 41, 45, 60, 52 en partie, 51 en partie, 56, 38 en
+Neuf étapes, 24 points de [reste-a-faire.md](reste-a-faire.md) (47, 42, 41, 45, 60, 52 en partie, 51 en partie, 56, 38 en
 partie, 23, 14, 15, 19, 59, 63 à 68, 55, 69, 53, 54) et un bogue (rechargement en boucle de `next dev`), tous
 développables sans décision. Avec ce lot, les 69 points « développables maintenant » de l'inventaire du 9 octobre sont
-traités : 55 entièrement, 14 en partie, leurs restes listés en tête de reste-a-faire.md avec ce qui les bloque. Le lot
-a rendu Codex plus rapide (lectures ciblées), déployable sur une vraie base (migrations incrémentales, PostgreSQL
+traités : 55 entièrement, 14 en partie, leurs restes listés en tête de reste-a-faire.md avec ce qui les bloque.
+L'étape 9 a repris les restes que rien ne bloquait (36, 43, 46, 47, 50, 51, 52, 57) : 58 points entièrement faits,
+11 en partie, dont les restes attendent tous une décision, l'hébergement ou une session macOS ; plus aucun reste
+n'est développable sans eux. Le lot a rendu Codex plus rapide (lectures ciblées, index d'accès, Validations paginé), déployable sur une vraie base (migrations incrémentales, PostgreSQL
 serveur, amorçage minimal, planificateur, signatures entre serveurs), plus complet pour les utilisateurs (comparaison
 du contenu, aperçu Office, reprise d'une personne qui part, vocabulaires, finitions de la maquette, bilinguisme, aide)
-et vérifié pour l'accessibilité. Aucune question ouverte n'a été tranchée ; chaque choix qui en dépend (O-01 à O-11,
+plus sûr sur un serveur (transactions revues pour `READ COMMITTED`, migrations au déploiement) et vérifié pour
+l'accessibilité et de bout en bout. Aucune question ouverte n'a été tranchée ; chaque choix qui en dépend (O-01 à O-11,
 M14, M22, A05) prend l'option la plus prudente et figure dans « Choix de l'assistant non validés explicitement » de
 [decisions.md](decisions.md). Ce qui reste attend une décision de l'utilisateur (49 points), ses données (2) ou une
 session sur macOS (9).

@@ -78,11 +78,15 @@ Les fichiers déposés sont stockés dans `.data/files/` (ou dans SharePoint, vo
 - Contrôles : `npm test`, `npm run typecheck`, `npm run lint`, `npm run build` (sans accès réseau : la police Inter
   est dans `src/fonts/`, servie par `next/font/local`, licence OFL dans `src/fonts/inter/OFL.txt`), puis
   `npm run a11y` (accessibilité : axe-core dans Chromium sur les écrans et dialogues principaux du build, base de démo
-  jetable ; `docs/accessibilite.md`).
+  jetable ; `docs/accessibilite.md`) et `npm run e2e` (parcours de bout en bout dans Chromium, même build, base de démo
+  jetable : document créé avec son PDF, aperçu paginé téléchargé une fois, demande de validation, chaque étape
+  approuvée par son titulaire, document en vigueur ; une vingtaine de secondes ; `CODEX_E2E_SHOTS=<dossier>` garde une
+  capture de l'aperçu).
 - Intégration continue GitHub Actions (`.github/workflows/ci.yml`) : `npm ci`, `npm run deps:audit`, `npm run db:check`
-  puis ces contrôles, `npm run a11y` compris (après `npx playwright-core install --with-deps chromium`), sous la version
-  de référence de Node (`.nvmrc` : 22), à chaque push et PR ; `npm run test:pg` sur un service PostgreSQL 18 ; et
-  `npm test` sous Node 20.19, la plus basse que `engines` admet (`@types/node` suit la version de référence).
+  puis ces contrôles, `npm run a11y` et `npm run e2e` compris (après `npx playwright-core install --with-deps
+  chromium`), sous la version de référence de Node (`.nvmrc` : 22), à chaque push et PR ; `npm run test:pg` sur un
+  service PostgreSQL 18 ; et `npm test` sous Node 20.19, la plus basse que `engines` admet (`@types/node` suit la
+  version de référence).
 - Version de Node : `engines` de package.json (`^20.19.0 || >=22.12.0`), version de référence dans `.nvmrc` (22),
   `@types/node` en `^22.12.0` ; `node scripts/codex-node-check.mjs` dit si le Node lancé convient (l'app Mac le vérifie).
 - Vulnérabilités connues : `npm run deps:audit` (`scripts/codex-audit.mjs`, deux passages de `npm audit`) échoue sur un
@@ -396,9 +400,10 @@ Points 46 et 36 de `docs/reste-a-faire.md`.
   (`Cache-Control: private, no-cache`, revalidée à chaque usage, donc droits contrôlés à chaque fois) que du fichier
   final de la révision en vigueur, sous le niveau Confidentiel : changer de page dans l'aperçu ne retélécharge plus
   le PDF (304). Brouillons, fichiers confidentiels et très confidentiels et téléchargements explicites
-  (`?download=1`) restent en `no-store`, envoyés en entier à chaque fois : pour eux, l'aperçu paginé, qui recrée son
-  iframe à chaque page (`key={page}`, `src/app/documents/[id]/DocClient.tsx`), retélécharge encore tout le fichier à
-  chaque page (reste du point 46). `no-transform` empêche la compression, qui
+  (`?download=1`) restent en `no-store`, envoyés en entier à chaque fois. L'aperçu paginé télécharge le fichier une
+  fois, en garde une copie en mémoire (adresse `blob:`, ni cache ni historique, libérée quand la fiche se ferme) et
+  change de page sur elle (`useLocalCopy`, `src/app/documents/[id]/DocClient.tsx`) : un brouillon de P pages n'est
+  plus téléchargé P fois (point 46 ; `frame-src 'self' blob:`). `no-transform` empêche la compression, qui
   fausserait les plages.
 - **Téléchargements journalisés** : un téléchargement (`?download=1`) est inscrit au journal quand la réponse part du
   premier octet (200, ou 206 à partir de 0) ; une reprise (plage plus loin), un 416 ou un HEAD ne le sont pas.
@@ -688,6 +693,11 @@ scripts/
   codex-seed-large.mts commande npm run seed:large : volume synthétique pour les mesures (docs/performances.md)
   codex-perf.mjs       commande npm run perf : temps des écrans et routes principaux d'un serveur lancé
   codex-a11y.mts       commande npm run a11y : contrôle d'accessibilité (axe-core, Chromium), docs/accessibilite.md
+  codex-e2e.mts        commande npm run e2e : parcours de bout en bout (créer, déposer, valider, en vigueur)
+  codex-browser.mts    serveur jetable et Chromium, communs à a11y et e2e
+  codex-migrate.mts    commande npm run db:migrate : migrations au déploiement (docs/exploitation.md §7)
+  codex-audit.mjs      commande npm run deps:audit : vulnérabilités connues des dépendances (CI)
+  codex-node-check.mjs la version de Node satisfait-elle engines (app Mac)
 tests/
   unit/                tests unitaires des règles pures de src/lib (Vitest, vitest.config.ts)
   integration/         tests d'intégration sur PGlite en mémoire, ou sur un serveur PostgreSQL (npm run test:pg)
