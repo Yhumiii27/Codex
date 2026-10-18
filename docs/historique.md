@@ -2734,3 +2734,68 @@ l'accessibilité et de bout en bout. Aucune question ouverte n'a été tranchée
 M14, M22, A05) prend l'option la plus prudente et figure dans « Choix de l'assistant non validés explicitement » de
 [decisions.md](decisions.md). Ce qui reste attend une décision de l'utilisateur (49 points), ses données (2) ou une
 session sur macOS (9).
+
+### 18.10 Revue du lot 9
+
+Revue à charge du diff `d7ee1de..HEAD` (lot 9 entier), le 18 octobre 2026 : chaque constat suivi depuis un appelant
+réel (route, Server Action, page, planificateur) ; chaque défaut confirmé d'abord par un test qui échoue, puis corrigé
+au plus juste. Aucun choix de [decisions.md](decisions.md) n'a été changé, aucune question ouverte tranchée.
+
+**Défauts confirmés et corrigés**
+
+| Gravité | Défaut et chemin | Correction | Test |
+|---|---|---|---|
+| Moyenne | **Anti-rejeu contourné pendant une rotation de secret.** `checkSignature` retenait la signature reconnue ; une requête signée avec le secret et son `_NEXT` (ce que [api.md](api.md) recommande pendant une rotation), renvoyée avec la seconde signature seule, était acceptée une seconde fois (webhook Vigie, import). | La clé anti-rejeu porte sur l'horodatage et le SHA-256 du corps brut, quelle que soit la signature reconnue (`src/lib/server-auth.ts`). | `tests/integration/server-auth.test.ts` (rejeu avec chaque signature seule, dans l'autre ordre, en majuscules) |
+| Faible à moyenne | **Corps du webhook Vigie lu sans borne avant toute authentification** quand seul `VIGIE_WEBHOOK_SECRET` est défini (avant le lot 9, un jeton était exigé avant la lecture) : un client quelconque pouvait faire lire un corps de plusieurs centaines de Mo en mémoire. | Corps borné à 64 Kio (`Content-Length` ou lecture coupée) : 413 `too_large` avant la signature (`src/app/api/integrations/vigie/route.ts`, [api.md](api.md)). | `server-auth.test.ts` (avec et sans `Content-Length`) |
+| Moyenne (serveur PostgreSQL) | **Règle de conservation d'un type appliquée par-dessus un gel posé entre-temps.** `applyTypeRetention` (Administration › Registre, « appliquer aux documents ») lisait les documents sans verrou ; un gel juridique ou une dérogation engagés pendant la transaction étaient écrasés (`READ COMMITTED`). | Documents du type verrouillés dans l'ordre de leurs identifiants, puis relus (`src/lib/actions.ts`). | `tests/integration/read-committed.test.ts` (sur PostgreSQL 18.3 : échouait, passe) |
+| Faible (serveur PostgreSQL) | **Mot-clé perdu au renommage ou à la fusion d'un terme.** `applyTerm` réécrivait les mots-clés d'après une lecture sans verrou : un mot-clé ajouté au document pendant le renommage disparaissait. | `documentsWith` verrouille les documents concernés, puis les relit (`src/lib/vocab.ts`). | `read-committed.test.ts` (sur PostgreSQL 18.3 : échouait, passe) |
+| Faible à moyenne (D-14) | **Chiffres du planificateur montrés à tout administrateur.** Administration › Journal d'audit › Planificateur affichait à quiconque a l'accès Administration les chiffres de chaque exécution (fichiers vérifiés, altérés, absents, nom et taille des archives), que le journal réserve aux gestionnaires documentaires parce qu'ils comptent les brouillons (`integrityL`, `backupL`, `archiveL`). | `schedulerOverview(viewer, …)` ne donne les chiffres qu'aux gestionnaires documentaires ; les autres voient le résultat et la raison d'une exécution sautée (`summaryShown`, `src/lib/scheduler.ts` ; [exploitation.md](exploitation.md) §4). | `tests/integration/scheduler-panel.test.ts` |
+| Faible (i18n) | **« Comparaison » en français dans le journal anglais** : la consultation d'une version comparée n'avait pas de détail structuré, alors que le lot a traduit le journal. | Détail structuré `compared` (`journalConsultation` accepte des données ; « Comparison » en anglais) ; le détail libre reste celui qui sert à ne journaliser qu'une fois. | `tests/integration/compare.test.ts` |
+
+**Constats écartés**
+
+- Signature HMAC : comparaisons en temps constant (empreintes de longueur fixe, `timingSafeEqual` sur chaque paire),
+  fenêtre bornée dans les deux sens, empreinte gardée jusqu'à la fin de la fenêtre de son horodatage, corps brut signé
+  tel que reçu : conformes.
+- Secrets dans les journaux : les refus nomment la variable, jamais la valeur ; le contrôle de configuration ne cite
+  aucun jeton ni secret.
+- LibreOffice : arguments sans interpréteur de commandes, nom de fichier fixe, extension d'une liste fermée,
+  environnement réduit, groupe de processus tué au délai, dossier temporaire supprimé dans tous les cas ; Gotenberg :
+  redirections refusées, réponse bornée. Seul ajout, documentaire : isoler la conversion du réseau
+  ([exploitation.md](exploitation.md) §6).
+- ZIP et extraction de texte : taille dépliée bornée par entrée (`maxOutputLength`), lignes, caractères et durée bornés.
+- Comparaison et aperçu (D-14) : `readableVersions` et la route fichier appliquent `readerMaySeeVersion` avant toute
+  lecture ; le cache de textes, indexé par empreinte, ne sert qu'après ce contrôle.
+- Autocomplétion, compte des modèles, comptes de Validations : filtrés par `readableSql` et `workflowVisibleSql`.
+- Synthèse d'une reprise et fichiers renommés dans le journal : comptes et noms déjà réservés aux gestionnaires
+  (`transferL`, `renameL`).
+- Nouvelles Server Actions (`restoreWorkingVersion`, `reassignStep`, `renameProvisionalFiles`, `transferHoldings`,
+  vocabulaires, `adoptSubtype`) : droits contrôlés côté serveur avant toute lecture, limitées (`throttled`), déjà dans
+  `rate-limits.test.ts`.
+- Migrations 0001 à 0005 : appliquées une fois par drizzle dans une transaction, contraintes et index égaux au schéma
+  (`db:check`, `migrations.test.ts`) ; les mises à jour de 0003 et 0004 font avancer `documents.version` (déclencheur
+  déjà posé sur une base existante), ce qui est voulu : un dialogue resté ouvert pendant le déploiement est averti.
+- Copie en mémoire de l'aperçu : adresse `blob:` révoquée au démontage, `frame-src` limité à `'self' blob:`.
+- Antérieurs au lot 9, hors de son diff : existence d'un circuit invisible signalée par `/validations?r=` ; noms des
+  lecteurs désignés sur la fiche ; doublons possibles d'une consultation sur un serveur (déjà notés).
+- Interblocage possible entre un renommage de terme (verrou de la table du vocabulaire) et une modification de fiche
+  qui ajoute un terme de ce vocabulaire : PostgreSQL l'interrompt par une erreur, sans incohérence ; laissé.
+- `npm run lint` signale deux erreurs dans `.claude/worktrees/` : copie de travail non versionnée d'un autre agent, hors
+  du dépôt ; `eslint . --ignore-pattern '.claude/**'` ne trouve rien.
+
+**Choix documentés qui méritent l'attention de l'utilisateur** (non changés)
+
+- Vocabulaires : un terme qu'on ne propose pas est reconnu quand on le saisit. [decisions.md](decisions.md) dit que
+  « seule la casse ou les accents pourraient trahir son existence » ; en fait l'absence de demande de confirmation le
+  trahit aussi (un appel direct sans case cochée réussit si le terme existe, échoue sinon), donc l'existence d'un
+  mot-clé porté seulement par des brouillons.
+- Administration › Vocabulaires compte les documents de chaque terme, brouillons et confidentiels compris, pour toute
+  personne qui a l'accès Administration, alors que le journal réserve ce genre de comptes aux gestionnaires
+  documentaires (D-14).
+- Import signé sans jeton : le corps (jusqu'à `CODEX_MAX_FILE_MB` + 1 Mo) est lu en mémoire avant que la signature
+  puisse être vérifiée ; définir aussi `CODEX_IMPORT_TOKEN` fait refuser plus tôt un client inconnu.
+
+**Vérifié** : `npm run typecheck`, `npm run lint` (hors `.claude/`), `npm run db:check`, `npm test` (102 fichiers dont 1
+sauté, 1 360 tests passés, 13 sautés, aussi avec `.data` déplacé), `npm run test:pg` sur PostgreSQL 18.3 (102
+fichiers, 1 370 passés, 3 sautés), `npm run build`. Chaque nouveau test a d'abord échoué sur le code du lot 9 (les deux
+cas `READ COMMITTED` sur le serveur seulement).
