@@ -455,7 +455,7 @@ const fr = {
   restore_draft_only:'Restaurer ne vaut que pour les versions de travail de la révision en brouillon.',
   uses:'Utilisations', tpl_uses:'utilisations', tpl_uses_hint:'Documents créés depuis ce modèle, parmi ceux que vous pouvez lire',
   retention_basis_fr:'Fondement (FR)', retention_basis_en:'Fondement (EN)', retention_basis_en_hint:'Vide : le texte français est affiché en anglais, suivi de « (FR) ».',
-  audit_from_template:'depuis le modèle {id}', audit_restored_from:'restaurée depuis {from}',
+  audit_from_template:'depuis le modèle {id}', audit_restored_from:'restaurée depuis {from}', audit_compared:'Comparaison',
   app_description:'Gestion électronique des documents du groupe', title_suffix:'Codex',
   // Added (lot 9, step 8): accessibility and help.
   skip_to_content:'Aller au contenu', nav_label:'Navigation principale', nav_help:'Aide', sc_help:'Aide', help_title:'Aide à l’utilisation',
@@ -916,7 +916,7 @@ const en: Dict = {
   restore_draft_only:'Restore only applies to the working versions of the draft revision.',
   uses:'Uses', tpl_uses:'uses', tpl_uses_hint:'Documents created from this template, among those you may read',
   retention_basis_fr:'Basis (FR)', retention_basis_en:'Basis (EN)', retention_basis_en_hint:'Empty: the French text is shown in English, followed by “(FR)”.',
-  audit_from_template:'from template {id}', audit_restored_from:'restored from {from}',
+  audit_from_template:'from template {id}', audit_restored_from:'restored from {from}', audit_compared:'Comparison',
   app_description:'Document management for the group', title_suffix:'Codex',
   skip_to_content:'Skip to content', nav_label:'Main navigation', nav_help:'Help', sc_help:'Help', help_title:'Using Codex',
   help_sub:'The common tasks, step by step.', col_actions:'Actions', col_attribute:'Attribute', version_select:'Select version {v}',

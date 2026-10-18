@@ -616,9 +616,9 @@ export type AuditChange = { field: string; before?: AuditValue; after?: AuditVal
  * (`version_restored`: label, from, size), imported (`import`: legacy reference, label, size), named readers set
  * (`readers`: n), a step delegated or reassigned (`step_delegated`: wf, step, to; `step_reassigned`: wf, step, from,
  * to), a step handed over (`step_transferred`: wf, step), an author set aside by Codex (`modifier_swap`: ref, from, to,
- * denied).
+ * denied), a version read for a comparison of versions (`compared`: label).
  */
-export type AuditTextCode = 'version' | 'version_restored' | 'import' | 'readers' | 'step_delegated' | 'step_reassigned' | 'step_transferred' | 'modifier_swap';
+export type AuditTextCode = 'version' | 'version_restored' | 'import' | 'readers' | 'step_delegated' | 'step_reassigned' | 'step_transferred' | 'modifier_swap' | 'compared';
 /** A parameter: a value written once (an ID, a name), a number, a flag, or a text in both languages (a step's name). */
 export type AuditParam = string | number | boolean | { fr: string; en: string };
 export type AuditText = { code: AuditTextCode; params: Record<string, AuditParam> };

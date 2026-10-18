@@ -60,9 +60,10 @@ export const CONSULT_WINDOW_MINUTES = 30;
  * document, action, revision and detail (the version and format of a file) every CONSULT_WINDOW_MINUTES, counted from
  * the last entry written: paging through a preview, reloading the record or its revalidated file add nothing within
  * that time. True when an entry was written. PGlite runs one transaction at a time; on a server with several
- * connections, two requests at the same instant could each write one, which is harmless.
+ * connections, two requests at the same instant could each write one, which is harmless. `data`: the entry's structured
+ * part, such as its detail in the reader's language (a version read for a comparison, lib/compare.ts).
  */
-export async function journalConsultation(db: Db, userId: string, action: 'consult' | 'view', docId: string, detail: string, revisionId: number | null): Promise<boolean> {
+export async function journalConsultation(db: Db, userId: string, action: 'consult' | 'view', docId: string, detail: string, revisionId: number | null, data: AuditData | null = null): Promise<boolean> {
   const A = s.auditLog;
   const since = new Date(Date.now() - CONSULT_WINDOW_MINUTES * 60_000).toISOString();
   return db.transaction(async (tx) => {
@@ -70,7 +71,7 @@ export async function journalConsultation(db: Db, userId: string, action: 'consu
       .where(and(eq(A.docId, docId), eq(A.userId, userId), eq(A.action, action), gte(A.at, since), eq(A.detail, detail), revisionId == null ? isNull(A.revisionId) : eq(A.revisionId, revisionId)))
       .limit(1);
     if (seen) return false;
-    await audit(tx, userId, action, docId, detail, revisionId);
+    await audit(tx, userId, action, docId, detail, revisionId, data);
     return true;
   });
 }

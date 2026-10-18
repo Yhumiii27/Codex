@@ -92,7 +92,7 @@ export async function compareVersions(ctx: Ctx, docId: string, a: number, b: num
     const ta = await textOf(va, labels);
     const tb = a === b ? ta : await textOf(vb, labels);
     const db = await getDb();
-    for (const v of a === b ? [va] : [va, vb]) await journalConsultation(db, ctx.user.id, 'view', found.doc.id, `${v.label} · Comparaison`, v.version.revisionId);
+    for (const v of a === b ? [va] : [va, vb]) await journalConsultation(db, ctx.user.id, 'view', found.doc.id, `${v.label} · Comparaison`, v.version.revisionId, { text: { code: 'compared', params: { label: v.label } } });
     let diff: LineDiff | null = null;
     if (ta.ok && tb.ok) {
       diff = diffLines(ta.lines, tb.lines);

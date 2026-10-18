@@ -69,7 +69,7 @@ describe('deferred entry into force', () => {
     expect(await revisionStatuses(db(), ID)).toEqual({ A: 'in_force', B: 'approved' });
     // process-2 stopped during its run: once its lease lapses, the run shows as interrupted and another process takes over.
     setClock('2026-10-10T08:04:00Z');
-    expect((await schedulerOverview({}, db())).tasks.find((x) => x.task === 'promote')).toMatchObject({ status: 'error', error: 'interrupted' });
+    expect((await schedulerOverview({ seesAll: true }, {}, db())).tasks.find((x) => x.task === 'promote')).toMatchObject({ status: 'error', error: 'interrupted' });
     setClock('2026-10-10T08:05:00Z');
     expect(await promote('process-1')).toMatchObject({ ran: true, summary: { promoted: 1 } });
     expect(await revisionStatuses(db(), ID)).toEqual({ A: 'superseded', B: 'in_force' });
@@ -143,7 +143,7 @@ describe('export written by the scheduler', () => {
 describe('administration', () => {
   it('shows each task with its setting, its last run and the next', async () => {
     await promote();
-    const view = await schedulerOverview({ CODEX_SCHEDULE_BACKUP: '1d' }, db());
+    const view = await schedulerOverview({ seesAll: true }, { CODEX_SCHEDULE_BACKUP: '1d' }, db());
     expect(view).toMatchObject({ enabled: true });
     expect(view.tasks.map((x) => [x.task, x.interval, x.status, x.next])).toEqual([
       ['promote', FIVE_MIN, 'ok', '2026-10-10 08:05:00+00'],

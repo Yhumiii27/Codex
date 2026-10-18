@@ -229,8 +229,19 @@ export type TaskView = {
   next: string | null;
 };
 
-/** Every task with its setting and its last run, for Administration › Journal d'audit. */
-export async function schedulerOverview(env: Env = process.env, db?: Db, now = Date.now()): Promise<{ enabled: boolean; started: boolean; tasks: TaskView[] }> {
+/**
+ * What a run's figures show to `viewer`: everything to a records manager; to anyone else who reaches Administration,
+ * only why a run was skipped. The figures count every document and file, drafts and confidential ones included (files
+ * checked, altered or missing, size and name of an archive): the journal gives them to records managers only, for the
+ * same reason (lib/queries.ts integrityL, backupL, archiveL; D-14; revue du lot 9).
+ */
+export function summaryShown(viewer: { seesAll: boolean }, summary: Record<string, unknown> | null): Record<string, unknown> | null {
+  if (!summary || viewer.seesAll) return summary;
+  return typeof summary.reason === 'string' ? { reason: summary.reason } : {};
+}
+
+/** Every task with its setting and its last run, for Administration › Journal d'audit, as `viewer` may see them (summaryShown). */
+export async function schedulerOverview(viewer: { seesAll: boolean }, env: Env = process.env, db?: Db, now = Date.now()): Promise<{ enabled: boolean; started: boolean; tasks: TaskView[] }> {
   const rows = await (db ?? (await getDb())).select().from(s.schedulerRuns);
   const by = new Map(rows.map((r) => [r.task, r]));
   return {
@@ -244,7 +255,7 @@ export async function schedulerOverview(env: Env = process.env, db?: Db, now = D
       return {
         task, env: SCHEDULE[task].env, interval,
         lastStart: r?.startedAt ?? null, lastEnd: r?.finishedAt ?? null, status: lapsed ? 'error' : r?.status ?? null,
-        summary: r?.summary ?? null, error: lapsed ? 'interrupted' : r?.error ?? null,
+        summary: summaryShown(viewer, r?.summary ?? null), error: lapsed ? 'interrupted' : r?.error ?? null,
         next: interval == null ? null : r?.nextAt ?? null,
       };
     }),

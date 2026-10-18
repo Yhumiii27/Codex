@@ -765,7 +765,8 @@ function runSummary(ctx: Ctx, x: TaskView): string {
  */
 async function Scheduler({ ctx }: { ctx: Ctx }) {
   const { t, lang } = ctx;
-  const view = await schedulerOverview();
+  // The figures of each run to records managers only (summaryShown, D-14).
+  const view = await schedulerOverview(ctx);
   const when = (ts: string | null) => (ts ? fmtDateTime(parisStamp(ts), lang) : null);
   return (
     <section className={styles.orphans} aria-label={t.sched_title}>

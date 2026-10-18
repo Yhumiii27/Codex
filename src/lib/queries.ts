@@ -1559,6 +1559,7 @@ export function auditTextL(ctx: Ctx, x: AuditText): string {
     case 'step_delegated': return join(str('wf'), `${str('step')} → ${str('to')}`);
     case 'step_reassigned': return join(str('wf'), `${str('step')}${lang === 'fr' ? ' : ' : ': '}${str('from')} → ${str('to')}`);
     case 'step_transferred': return join(str('wf'), str('step'));
+    case 'compared': return join(str('label'), t.audit_compared);
     case 'modifier_swap': return join(str('ref'), `${str('from')} → ${str('to')}${p.denied === true ? ` (${t.not_allowed}${lang === 'fr' ? ' : ' : ': '}${t.perm_upload})` : ''}`);
     default: return '';
   }

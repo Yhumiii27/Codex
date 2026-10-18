@@ -7,10 +7,12 @@ import { GET } from '@/app/api/documents/[id]/compare/route';
 import { FILES_DIR, schema as s } from '@/db';
 import type { CompareResult } from '@/lib/compare';
 import { simplePdf } from '@/lib/pdf';
+import { getCtx } from '@/lib/context';
+import { auditDetailL } from '@/lib/queries';
 import { addDoc, fixClock, setupDb } from '../support/db';
 import type { Person } from '../support/fixtures';
 import { docx } from '../support/office';
-import { actAs } from '../support/session';
+import { actAs, setLangCookie } from '../support/session';
 
 // Comparison of the content of two versions (GET /api/documents/[id]/compare, src/lib/compare.ts, point 14 of
 // docs/reste-a-faire.md): text extracted on the server, differences line by line, under the file route's rules (D-14):
@@ -80,6 +82,21 @@ describe('within the drafting circle', () => {
     // Word against PDF.
     const pdf = await json(await compare('owner', b1, b2));
     expect(pdf.diff).toMatchObject({ kind: 'diff', added: 0, removed: 2 });
+  });
+
+  it('journals the comparison in the reader\'s language', async () => {
+    // Revue du lot 9 : le détail « Comparaison » était écrit en français seulement, alors que le journal est traduit.
+    const { a, b1 } = await setup();
+    await json(await compare('owner', a, b1));
+    const rows = await db().select().from(s.auditLog).where(and(eq(s.auditLog.userId, 'owner'), eq(s.auditLog.action, 'view')));
+    expect(rows).toHaveLength(2);
+    for (const [lang, word, other] of [['en', 'Comparison', 'Comparaison'], ['fr', 'Comparaison', 'Comparison']] as const) {
+      setLangCookie(lang);
+      const ctx = await getCtx();
+      const shown = rows.map((r) => auditDetailL(ctx, r)).sort();
+      expect(shown).toEqual([`A · ${word}`, `B.1 · ${word}`]);
+      expect(shown.join()).not.toContain(other);
+    }
   });
 
   it('a records manager compares drafts too; the same version compared with itself is the same text', async () => {
