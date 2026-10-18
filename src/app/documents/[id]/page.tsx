@@ -17,7 +17,7 @@ import { previewKind } from '@/lib/filetypes';
 import { ECR_TAGCLS, PROJECT_PHASES, phaseIndex, phaseLabel } from '@/lib/i18n';
 import { getProject } from '@/lib/keystone';
 import { CONSULT_WINDOW_MINUTES, decisionWait, defaultModifier, draftersOf } from '@/lib/lifecycle';
-import { decisionWaitL, getDoc, listAudit, templateTypesOf, METADATA_ACTIONS, RETENTION_ACTIONS, listChangeRequests, listDocLinks, listRevisions, projectDocs as projectDocsOf, readableBriefs, stateNotice, typeView, docWorkflows, type RevisionView } from '@/lib/queries';
+import { decisionWaitL, getDoc, namedReaders, listAudit, templateTypesOf, METADATA_ACTIONS, RETENTION_ACTIONS, listChangeRequests, listDocLinks, listRevisions, projectDocs as projectDocsOf, readableBriefs, stateNotice, typeView, docWorkflows, type RevisionView } from '@/lib/queries';
 import { sameRule } from '@/lib/retention';
 import { previewPlan } from '@/lib/office-preview';
 import { normalizeMime, storedExt } from '@/lib/storage';
@@ -296,7 +296,7 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
   );
   const attachNote = project ? null : !attachable ? t.attach_aff_type.replace('{type}', doc.typeCode) : !meta.idMayChange ? t.attach_aff_frozen : null;
 
-  const readerIds = [...ix.readers(doc.id)];
+  const readerIds = await namedReaders(doc.id);
   // Named readers count for confidential levels; leftovers on a lower level stay listed so they can be removed.
   const showReaders = readersApply(doc.conf) || readerIds.length > 0;
   const simulateVigie = ctx.seesAll && vigieSimulated();

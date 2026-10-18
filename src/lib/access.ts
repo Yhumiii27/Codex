@@ -1,6 +1,6 @@
 import 'server-only';
 import { cache } from 'react';
-import { and, eq, inArray, or, sql, type SQL, type SQLWrapper } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, or, sql, type SQL, type SQLWrapper } from 'drizzle-orm';
 import { getDb, schema as s, type Db } from '@/db';
 import type { Conf } from '@/db/schema';
 import { TEMPLATE_TYPE } from './codes';
@@ -20,24 +20,75 @@ type OpenStatus = (typeof OPEN_REVISION)[number];
 const isOpenRevision = (status: string | null | undefined): status is OpenStatus => (OPEN_REVISION as readonly string[]).includes(status ?? '');
 
 /**
+ * What an access index holds. Without `users` nor `docs`, everything (the reference the tests compare with). Otherwise
+ * only the rows of these people (`users`: membership of each of them, on any document) and of these documents (`docs`:
+ * every member of each of them, and of the teams of their projects); asking about anything else throws rather than answer
+ * wrong (Members), so that a forgotten scope fails loudly instead of hiding or showing a document.
+ */
+export type AccessScope = { users?: readonly string[]; docs?: readonly { id: string; projectCode: string | null }[] };
+
+/**
+ * Who is around a document for one relation (named readers, designated authors…): `has(user)` answers for a person of
+ * the scope or on a document of the scope; listing or counting needs the document in the scope.
+ */
+export type Who = Pick<ReadonlySet<string>, 'has' | 'size'> & Iterable<string>;
+export class Members implements Who {
+  constructor(private readonly set: ReadonlySet<string>, private readonly whole: boolean, private readonly users: ReadonlySet<string> | null, private readonly what: string) {}
+  has(userId: string): boolean {
+    if (!this.whole && !this.users?.has(userId)) throw new Error(`access index: ${this.what}, ${userId} is outside its scope`);
+    return this.set.has(userId);
+  }
+  get size(): number {
+    if (!this.whole) throw new Error(`access index: ${this.what} cannot be counted outside its scope`);
+    return this.set.size;
+  }
+  [Symbol.iterator](): Iterator<string> {
+    if (!this.whole) throw new Error(`access index: ${this.what} cannot be listed outside its scope`);
+    return this.set[Symbol.iterator]();
+  }
+}
+
+/** `column` is one of `values`, passed as one array (an empty one selects nothing). */
+const among = (column: SQLWrapper, values: readonly string[]) => sql`${column} = any(${sql.param([...values])}::text[])`;
+
+/**
  * People around each document: named readers, designated authors of open revisions, authors Vigie designated for an
  * accepted change that waits to open the next one (`designated`; D-14: whoever « modifiera un document via une ECO »,
- * D-26), approvers of running workflows, project teams. Built from `q` (a transaction inside lib/lifecycle.ts);
- * getAccessIndex() caches it per request. `pending: false` leaves the waiting changes out: whether their author may
- * still draft the document must not rest on that very designation (lib/lifecycle.ts mayDraft).
+ * D-26), approvers of running workflows, project teams. Built from `q` (a transaction inside lib/lifecycle.ts), for
+ * `scope` (AccessScope: everything without it); getAccessIndex() builds the user's own per request, reading only their
+ * rows instead of every reader, open revision and function holder. `pending: false` leaves the waiting changes out:
+ * whether their author may still draft the document must not rest on that very designation (lib/lifecycle.ts mayDraft).
  */
-export async function buildAccessIndex(q: Q, { pending = true }: { pending?: boolean } = {}) {
-  const [readers, revs, waiting, wfs, steps, holders, projects] = await Promise.all([
-    q.select().from(s.documentReaders),
-    q.select({ docId: s.revisions.docId, modifierId: s.revisions.modifierId, status: s.revisions.status }).from(s.revisions).where(inArray(s.revisions.status, [...OPEN_REVISION])),
+export async function buildAccessIndex(q: Q, { pending = true, users, docs: scoped }: { pending?: boolean } & AccessScope = {}) {
+  const everything = !users && !scoped;
+  const userSet = users ? new Set(users) : null;
+  const docIds = [...new Set((scoped ?? []).map((d) => d.id))];
+  const codes = [...new Set((scoped ?? []).flatMap((d) => (d.projectCode ? [d.projectCode] : [])))];
+  const userIds = [...(userSet ?? [])];
+  /**
+   * The rows of the scope, as the conditions to read them by: none (everything), or `who` one of the users and `doc`
+   * one of the documents, read apart so that each goes by its index rather than one scan for both.
+   */
+  const parts = (who: SQLWrapper, doc: SQLWrapper): (SQL | undefined)[] =>
+    everything ? [undefined] : [...(userIds.length ? [among(who, userIds)] : []), ...(docIds.length ? [among(doc, docIds)] : [])];
+  const each = async <T,>(conds: (SQL | undefined)[], read: (c: SQL | undefined) => Promise<T[]>): Promise<T[]> => (await Promise.all(conds.map(read))).flat();
+  const running = sql`coalesce(${s.workflows.outcome}, '') = '' and ${s.workflows.step} < (select count(*) from ${s.workflowSteps} y where y.workflow_id = ${s.workflows.id})`;
+  const [readers, revs, waiting, approvers, holders, projects] = await Promise.all([
+    each(parts(s.documentReaders.userId, s.documentReaders.docId), (c) => q.select({ docId: s.documentReaders.docId, userId: s.documentReaders.userId }).from(s.documentReaders).where(c)),
+    each(parts(s.revisions.modifierId, s.revisions.docId), (c) => q.select({ docId: s.revisions.docId, modifierId: s.revisions.modifierId }).from(s.revisions)
+      .where(and(inArray(s.revisions.status, [...OPEN_REVISION]), c))),
     pending
-      ? q.select({ docId: s.changeRequests.docId, modifierId: s.changeRequests.modifierId }).from(s.changeRequests).where(and(eq(s.changeRequests.kind, 'modification'), eq(s.changeRequests.status, 'accepted')))
+      ? each(parts(s.changeRequests.modifierId, s.changeRequests.docId), (c) => q.select({ docId: s.changeRequests.docId, modifierId: s.changeRequests.modifierId }).from(s.changeRequests)
+        .where(and(eq(s.changeRequests.kind, 'modification'), eq(s.changeRequests.status, 'accepted'), c)))
       : [],
-    // Running workflows only (no outcome), with their steps: finished ones open no draft (below).
-    q.select().from(s.workflows).where(sql`coalesce(${s.workflows.outcome}, '') = ''`),
-    q.select({ workflowId: s.workflowSteps.workflowId, idx: s.workflowSteps.idx, assigneeId: s.workflowSteps.assigneeId }).from(s.workflowSteps)
-      .where(sql`${s.workflowSteps.workflowId} in (select w.id from ${s.workflows} w where coalesce(w.outcome, '') = '')`),
-    q.select().from(s.functionHolders),
+    // Running workflows only (no outcome, a step still to decide): finished or rejected ones open no draft to their
+    // approvers, whoever holds their steps.
+    each(parts(s.workflowSteps.assigneeId, s.workflows.docId), (c) => q.select({ docId: s.workflows.docId, assigneeId: s.workflowSteps.assigneeId }).from(s.workflowSteps)
+      .innerJoin(s.workflows, eq(s.workflows.id, s.workflowSteps.workflowId))
+      .where(and(running, c))),
+    // Holders of functions scoped to a project (its team); the project managers below.
+    each(everything ? [undefined] : [...(userIds.length ? [among(s.functionHolders.userId, userIds)] : []), ...(codes.length ? [among(s.functionHolders.scopeValue, codes)] : [])],
+      (c) => q.select({ userId: s.functionHolders.userId, scopeValue: s.functionHolders.scopeValue }).from(s.functionHolders).where(and(isNotNull(s.functionHolders.scopeValue), c))),
     q.select({ code: s.projects.code, managerId: s.projects.managerId }).from(s.projects),
   ]);
   const add = (m: Map<string, Set<string>>, k: string, v: string | null) => { if (!v) return; if (!m.has(k)) m.set(k, new Set()); m.get(k)!.add(v); };
@@ -46,30 +97,33 @@ export async function buildAccessIndex(q: Q, { pending = true }: { pending?: boo
   readers.forEach((r) => add(readersBy, r.docId, r.userId));
   revs.forEach((r) => add(modifiersBy, r.docId, r.modifierId));
   waiting.forEach((r) => add(designatedBy, r.docId, r.modifierId));
-  const stepsBy = new Map<string, typeof steps>();
-  for (const x of steps) {
-    if (!stepsBy.has(x.workflowId)) stepsBy.set(x.workflowId, []);
-    stepsBy.get(x.workflowId)!.push(x);
-  }
-  for (const w of wfs) {
-    const ws = stepsBy.get(w.id) ?? [];
-    if (w.outcome || w.step >= ws.length) continue; // finished or rejected workflows no longer open drafts to their approvers
-    ws.forEach((x) => add(approversBy, w.docId, x.assigneeId));
-  }
+  approvers.forEach((r) => add(approversBy, r.docId, r.assigneeId));
   projects.forEach((p) => add(teamBy, p.code, p.managerId));
-  holders.filter((h) => h.scopeValue && projects.some((p) => p.code === h.scopeValue)).forEach((h) => add(teamBy, h.scopeValue!, h.userId));
+  const projectCodes = new Set(projects.map((p) => p.code));
+  holders.filter((h) => projectCodes.has(h.scopeValue!)).forEach((h) => add(teamBy, h.scopeValue!, h.userId));
+  const docSet = new Set(docIds), codeSet = new Set(codes);
   const none = new Set<string>();
+  const members = (m: Map<string, Set<string>>, key: string, inScope: boolean, what: string): Who =>
+    new Members(m.get(key) ?? none, everything || inScope, userSet, `${what} of ${key}`);
   return {
-    readers: (docId: string) => readersBy.get(docId) ?? none,
-    modifiers: (docId: string) => modifiersBy.get(docId) ?? none,
-    designated: (docId: string) => designatedBy.get(docId) ?? none,
-    approvers: (docId: string) => approversBy.get(docId) ?? none,
-    team: (projectCode: string | null) => (projectCode ? teamBy.get(projectCode) ?? none : none),
+    readers: (docId: string) => members(readersBy, docId, docSet.has(docId), 'named readers'),
+    modifiers: (docId: string) => members(modifiersBy, docId, docSet.has(docId), 'designated authors'),
+    designated: (docId: string) => members(designatedBy, docId, docSet.has(docId), 'authors of a waiting change'),
+    approvers: (docId: string) => members(approversBy, docId, docSet.has(docId), 'approvers'),
+    // The projects table is read whole (a handful of rows): a manager is always known.
+    team: (projectCode: string | null): Who => (projectCode ? members(teamBy, projectCode, codeSet.has(projectCode), 'project team') : new Members(none, true, null, 'no project')),
   };
 }
 export type AccessIndex = Awaited<ReturnType<typeof buildAccessIndex>>;
 
-export const getAccessIndex = cache(async () => buildAccessIndex(await getDb()));
+/**
+ * The access index of `v` (the user, or another person: a designated author, the account of an import), per request:
+ * their own rows only (AccessScope `users`), enough for every rule of this file about them, on any document.
+ */
+export function getAccessIndex(v: Pick<Viewer, 'user'>): Promise<AccessIndex> {
+  return accessIndexOf(v.user.id);
+}
+const accessIndexOf = cache(async (userId: string) => buildAccessIndex(await getDb(), { users: [userId] }));
 
 /**
  * Owner, designated author (of the open revision, or of an accepted change waiting for it, D-26), current approvers and

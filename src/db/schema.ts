@@ -392,7 +392,12 @@ export const revisions = pgTable(
     createdAt: date('created_at', { mode: 'string' }).notNull(),
   },
   // One letter per document, and at most one revision in force.
-  (t) => [uniqueIndex('revisions_doc_letter').on(t.docId, t.letter), uniqueIndex('revisions_in_force').on(t.docId).where(sql`${t.status} = 'in_force'`)],
+  // Open revisions of a designated author: their drafting circle (lib/access.ts draftingCircleSql, the access index of a
+  // request), read by every list.
+  (t) => [
+    uniqueIndex('revisions_doc_letter').on(t.docId, t.letter), uniqueIndex('revisions_in_force').on(t.docId).where(sql`${t.status} = 'in_force'`),
+    index('revisions_open_modifier').on(t.modifierId).where(sql`${t.status} in ('draft', 'in_review', 'approved')`),
+  ],
 );
 
 /** Working versions A.1, A.2… of a revision; the last one becomes the revision when approved. */
@@ -493,6 +498,8 @@ export const workflows = pgTable(
     uniqueIndex('workflows_running').on(t.revisionId).where(sql`${t.outcome} is null`),
     index('workflows_doc').on(t.docId),
     index('workflows_revision').on(t.revisionId),
+    // The circuits a person requested: what /validations shows them (lib/queries.ts validationsPage).
+    index('workflows_requester').on(t.requesterId),
   ],
 );
 

@@ -40,7 +40,7 @@ const tally = (): Tally => ({ actions: 0, deadlines: 0, inForce: 0, activity: 0,
 
 /** Each targeted read against its reference, for the person `ctx` is about; counts in `n` the items compared. */
 async function compare(ctx: Ctx, who: string, n: Tally): Promise<void> {
-  const [all, workflows, ix] = await Promise.all([listDocs(ctx), listWorkflows(ctx), getAccessIndex()]);
+  const [all, workflows, ix] = await Promise.all([listDocs(ctx), listWorkflows(ctx), getAccessIndex(ctx)]);
   const ids = (xs: { id: string }[]) => xs.map((x) => x.id);
   // Home: recent documents, deadlines, the week's entries into force, activity; the shell's activity.
   expect(await recentDocs(ctx, 5), who).toEqual(all.slice(0, 5));

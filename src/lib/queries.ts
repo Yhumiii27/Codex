@@ -150,7 +150,7 @@ const visibleDocs = cache((ctx: Ctx) => loadDocs(ctx, false));
 async function loadDocs(ctx: Ctx, includeHidden: boolean, where?: SQL): Promise<DocView[]> {
   const db = await getDb();
   const rows = await db.select().from(s.documents).where(where).orderBy(desc(s.documents.modifiedAt), desc(s.documents.id));
-  const [ix, wl] = await Promise.all([getAccessIndex(), workingLabels(where ? rows.map((d) => d.id) : undefined)]);
+  const [ix, wl] = await Promise.all([getAccessIndex(ctx), workingLabels(where ? rows.map((d) => d.id) : undefined)]);
   const shown = rows.filter((d) => includeHidden || canRead(ctx, d, ix)).map((d) => ({ d, circle: inDraftingCircle(ctx, d, ix) }));
   const vm = await visibleModified(shown.filter((x) => !x.circle && x.d.revWorking).map((x) => x.d.id));
   const docs = shown.map((x) => docView(ctx, x.d, wl.get(x.d.id), x.circle, vm.get(x.d.id)));
@@ -594,11 +594,18 @@ export async function getDoc(ctx: Ctx, id: string): Promise<{ doc: DocView; circ
     [d] = await db.select().from(s.documents).where(sql`${s.documents.aliases} @> ${JSON.stringify([id])}::jsonb`).limit(1);
     if (!d) return null;
   }
-  const ix = await getAccessIndex();
+  const ix = await getAccessIndex(ctx);
   if (!canRead(ctx, d, ix)) return 'hidden';
   const circle = inDraftingCircle(ctx, d, ix);
   const [wl, vm] = await Promise.all([workingLabels([d.id]), visibleModified(!circle && d.revWorking ? [d.id] : [])]);
   return { doc: docView(ctx, d, wl.get(d.id), circle, vm.get(d.id)), circle, ix };
+}
+
+/** The people named as readers of a document (document_readers), for its record; the caller has checked it may be read. */
+export async function namedReaders(docId: string): Promise<string[]> {
+  const db = await getDb();
+  const rows = await db.select({ userId: s.documentReaders.userId }).from(s.documentReaders).where(eq(s.documentReaders.docId, docId)).orderBy(asc(s.documentReaders.userId));
+  return rows.map((r) => r.userId);
 }
 
 /** A working version the user may have, as the file route serves it: the row and its label ("B", "B.2"). */
@@ -656,7 +663,7 @@ export async function sameFiles(viewer: Pick<Ctx, 'user' | 'seesAll' | 'can'>, s
   if (!rows.length) return [];
   const [docs, ix] = await Promise.all([
     db.select().from(s.documents).where(anyOf(s.documents.id, [...new Set(rows.map((r) => r.docId))])),
-    getAccessIndex(),
+    getAccessIndex(viewer),
   ]);
   const docBy = new Map(docs.map((d) => [d.id, d]));
   const out: SameFile[] = [];
@@ -809,7 +816,7 @@ export async function workflowsWhere(ctx: Ctx, where?: SQL) {
     db.select().from(s.workflowComments).where(only(s.workflowComments.workflowId, ids)).orderBy(asc(s.workflowComments.id)),
     db.select().from(s.documents).where(only(s.documents.id, docIds)),
     db.select({ id: s.revisions.id, letter: s.revisions.letter, status: s.revisions.status }).from(s.revisions).where(where ? anyInt(s.revisions.id, revIds) : undefined),
-    getAccessIndex(),
+    getAccessIndex(ctx),
   ]) : [[], [], [], [], null];
   if (!ix) return [];
   const stepsBy = groupBy(steps, (x) => x.workflowId), commentsBy = groupBy(comments, (c) => c.workflowId);
@@ -873,6 +880,135 @@ export async function workflowsWhere(ctx: Ctx, where?: SQL) {
 }
 export type WorkflowView = Awaited<ReturnType<typeof workflowsWhere>>[number];
 
+// ── /validations, filtered and paged by the database ─────────────────────
+// The same circuits, in the same order and with the same counts as listWorkflows filtered in memory (the reference of
+// tests/integration/validations-sql.test.ts), without reading every circuit: visibility (followsCircuit, canRead,
+// readerMaySeeRevision) and the filters run as SQL; only the circuits of the page shown are read whole.
+
+export const WORKFLOW_FILTERS = ['mine', 'requested', 'active', 'done'] as const;
+export type WorkflowFilter = (typeof WORKFLOW_FILTERS)[number];
+/** Circuits listed per page in /validations. */
+export const VALIDATIONS_PAGE_SIZE = 50;
+
+const W = s.workflows;
+/** Steps of the circuit of the row: their number, as `ws.length` in workflowsWhere. */
+const stepCount = sql`(select count(*) from ${s.workflowSteps} y where y.workflow_id = ${W.id})`;
+const wfDoneSql = sql`(coalesce(${W.outcome}, '') <> '' or ${W.step} >= ${stepCount})`;
+
+/** The filters of /validations as SQL conditions on the workflow row (WorkflowView mine, requested, done). */
+function workflowFilterSql(ctx: Ctx, f: WorkflowFilter): SQL {
+  const me = ctx.user.id;
+  switch (f) {
+    case 'mine': return sql`(coalesce(${W.outcome}, '') = '' and exists (select 1 from ${s.workflowSteps} x where x.workflow_id = ${W.id} and x.idx = ${W.step} and x.assignee_id = ${me}))`;
+    case 'requested': return sql`${W.requesterId} = ${me}`;
+    case 'active': return sql`not ${wfDoneSql}`;
+    case 'done': return wfDoneSql;
+  }
+}
+
+/**
+ * WorkflowView `visible` as an SQL condition on workflows joined to their document (`documents`, not aliased) and
+ * revision (`revisions`): records managers every circuit; others those they requested or hold a step of, on a document
+ * they may read, whose revision they see (D-14: once a circuit is over, its approvers leave the drafting circle).
+ */
+function workflowVisibleSql(ctx: Ctx): SQL {
+  if (ctx.seesAll) return sql`true`;
+  const me = ctx.user.id;
+  const circle = draftingCircleSql(ctx);
+  return sql`((${W.requesterId} = ${me} or exists (select 1 from ${s.workflowSteps} x where x.workflow_id = ${W.id} and x.assignee_id = ${me}))
+    and ${readableSql(ctx, circle)} and (${circle} or coalesce(${s.revisions.status}, '') in ('in_force', 'superseded')))`;
+}
+
+/** Order of a filter's list: by due date then ID; the finished ones most recent first; mine requested, running first. */
+function workflowOrder(f: WorkflowFilter | null): SQL {
+  if (f === 'done') return sql`${W.due} desc, ${W.id} desc`;
+  if (f === 'requested') return sql`${wfDoneSql}, ${W.due} asc, ${W.id} asc`;
+  return sql`${W.due} asc, ${W.id} asc`;
+}
+
+/** IDs of the visible circuits `where` selects, in the order of `f`, one page (or all of them when `limit` is null). */
+async function workflowIds(ctx: Ctx, where: SQL | undefined, order: WorkflowFilter | null, limit: number | null, offset = 0): Promise<string[]> {
+  const db = await getDb();
+  const q = db.select({ id: W.id }).from(W)
+    .innerJoin(s.documents, eq(s.documents.id, W.docId))
+    .leftJoin(s.revisions, eq(s.revisions.id, W.revisionId))
+    .where(and(workflowVisibleSql(ctx), where))
+    .orderBy(workflowOrder(order));
+  const rows = limit == null ? await q : await q.limit(limit).offset(offset);
+  return rows.map((r) => r.id);
+}
+
+/** The circuits `ids`, as workflowsWhere gives them, in that order. */
+async function workflowsByIds(ctx: Ctx, ids: string[]): Promise<WorkflowView[]> {
+  if (!ids.length) return [];
+  const views = await workflowsWhere(ctx, anyOf(W.id, ids));
+  const by = new Map(views.map((w) => [w.id, w]));
+  return ids.flatMap((id) => (by.has(id) ? [by.get(id)!] : []));
+}
+
+export type ValidationsPage = {
+  /** Visible circuits per filter, and in all. */
+  counts: Record<WorkflowFilter, number>;
+  total: number;
+  /** The filter shown, its page (1-based) and number of pages, and the circuits of that page. */
+  filter: WorkflowFilter;
+  page: number;
+  pages: number;
+  list: WorkflowView[];
+  /** The circuit shown: the one asked for, else the first of the list, else the first visible one. */
+  selected: WorkflowView | null;
+  /**
+   * The circuit asked for (`r`) exists but is not visible: `took part` when the user requested it or held a step of it
+   * (an approver who left the drafting circle), else null for any other one. Undefined when nothing is hidden.
+   */
+  hidden?: { tookPart: boolean };
+};
+
+/**
+ * What /validations shows: counts of each filter, the page of the filter asked for (`filter`, else the one the circuit
+ * asked for `r` belongs to, else the first with something in it), and the circuit shown. `page`: asked for (from 1);
+ * without it, the page that holds `r`. `size`: circuits per page (VALIDATIONS_PAGE_SIZE; tests set fewer).
+ */
+export async function validationsPage(ctx: Ctx, opts: { filter?: WorkflowFilter | null; r?: string | null; page?: number | null; size?: number } = {}): Promise<ValidationsPage> {
+  const db = await getDb();
+  const size = opts.size ?? VALIDATIONS_PAGE_SIZE;
+  const visible = workflowVisibleSql(ctx);
+  const n = (f: WorkflowFilter) => sql<number>`(count(*) filter (where ${workflowFilterSql(ctx, f)}))::int`;
+  const [counted] = await db.select({ total: sql<number>`count(*)::int`, mine: n('mine'), requested: n('requested'), active: n('active'), done: n('done') })
+    .from(W)
+    .innerJoin(s.documents, eq(s.documents.id, W.docId))
+    .leftJoin(s.revisions, eq(s.revisions.id, W.revisionId))
+    .where(visible);
+  const counts = Object.fromEntries(WORKFLOW_FILTERS.map((f) => [f, Number(counted?.[f] ?? 0)])) as Record<WorkflowFilter, number>;
+  const total = Number(counted?.total ?? 0);
+  const landing: WorkflowFilter = WORKFLOW_FILTERS.find((f) => counts[f] > 0) ?? 'mine';
+
+  let requested: WorkflowView | undefined;
+  let hidden: ValidationsPage['hidden'];
+  if (opts.r) {
+    const [one] = await workflowsByIds(ctx, [opts.r]);
+    if (one?.visible) requested = one;
+    else if (one) hidden = { tookPart: one.requested || one.steps.some((st) => st.assigneeId === ctx.user.id) };
+  }
+  const filter: WorkflowFilter =
+    opts.filter ??
+    (requested ? (requested.mine ? 'mine' : requested.requested ? 'requested' : requested.done ? 'done' : 'active') : landing);
+  const pages = Math.max(1, Math.ceil(counts[filter] / size));
+  let page = opts.page && opts.page >= 1 ? Math.min(Math.floor(opts.page), pages) : 1;
+  if (!opts.page && requested) {
+    // The page of the filter's list that holds the circuit asked for, if it is in that list.
+    const ids = await db.execute<{ n: number }>(sql`select t.n::int as n from (
+      select ${W.id} as id, row_number() over (order by ${workflowOrder(filter)}) as n from ${W}
+      join ${s.documents} on ${s.documents.id} = ${W.docId} left join ${s.revisions} on ${s.revisions.id} = ${W.revisionId}
+      where ${visible} and ${workflowFilterSql(ctx, filter)}) t where t.id = ${requested.id}`);
+    const n = Number(ids.rows[0]?.n ?? 0);
+    if (n) page = Math.ceil(n / size);
+  }
+  const list = await workflowsByIds(ctx, await workflowIds(ctx, workflowFilterSql(ctx, filter), filter, size, (page - 1) * size));
+  const selected = requested ?? list[0] ?? (total ? (await workflowsByIds(ctx, await workflowIds(ctx, undefined, null, 1)))[0] ?? null : null);
+  return { counts, total, filter, page, pages, list, selected, ...(hidden ? { hidden } : {}) };
+}
+
 /** The circuits of a document, as listWorkflows gives them (the record). */
 export function docWorkflows(ctx: Ctx, docId: string): Promise<WorkflowView[]> {
   return workflowsWhere(ctx, eq(s.workflows.docId, docId));
@@ -892,7 +1028,7 @@ export async function listChangeRequests(ctx: Ctx, opts: { docId?: string; mine?
   const all = await db.select().from(s.changeRequests).where(where).orderBy(desc(s.changeRequests.createdAt), desc(s.changeRequests.id));
   const ids = [...new Set(all.flatMap((r) => (r.replacementId ? [r.docId, r.replacementId] : [r.docId])))];
   const revIds = [...new Set(all.flatMap((r) => (r.revisionId == null ? [] : [r.revisionId])))];
-  const ix = await getAccessIndex();
+  const ix = await getAccessIndex(ctx);
   const [docs, revs] = await Promise.all([
     ids.length ? db.select().from(s.documents).where(inArray(s.documents.id, ids)) : [],
     revIds.length ? db.select({ id: s.revisions.id, letter: s.revisions.letter, status: s.revisions.status, changeRef: s.revisions.changeRef }).from(s.revisions).where(inArray(s.revisions.id, revIds)) : [],
@@ -999,7 +1135,7 @@ export async function listDocLinks(ctx: Ctx, docId: string) {
   const db = await getDb();
   const rows = await db.select().from(s.documentLinks).where(or(eq(s.documentLinks.sourceId, docId), eq(s.documentLinks.targetId, docId)));
   const ids = [...new Set(rows.map((l) => otherEnd(l, docId)))];
-  const [docs, ix] = await Promise.all([ids.length ? db.select().from(s.documents).where(inArray(s.documents.id, ids)) : [], getAccessIndex()]);
+  const [docs, ix] = await Promise.all([ids.length ? db.select().from(s.documents).where(inArray(s.documents.id, ids)) : [], getAccessIndex(ctx)]);
   const docBy = new Map(docs.map((d) => [d.id, d]));
   return rows
     .flatMap((l) => {
@@ -1123,7 +1259,7 @@ export async function actionsAmong(ctx: Ctx, docs: DocView[], workflows: Workflo
   const db = await getDb();
   const { t } = ctx;
   const me = ctx.user.id;
-  const [{ open, pending }, ix] = await Promise.all([todoSources(), getAccessIndex()]);
+  const [{ open, pending }, ix] = await Promise.all([todoSources(), getAccessIndex(ctx)]);
   const docBy = new Map(docs.map((d) => [d.id, d]));
   // Revisions being drafted that already have a working version (they may be sent for approval).
   const draftIds = open.filter((r) => r.status === 'draft' && docBy.has(r.docId)).map((r) => r.id);
@@ -1241,7 +1377,7 @@ export async function auditForReader(ctx: Ctx, all: AuditRow[]): Promise<AuditEn
   const [docs, revs, ix] = await Promise.all([
     docIds.length ? db.select().from(s.documents).where(inArray(s.documents.id, docIds)) : [],
     revIds.length ? db.select({ id: s.revisions.id, status: s.revisions.status, changeRef: s.revisions.changeRef }).from(s.revisions).where(inArray(s.revisions.id, revIds)) : [],
-    getAccessIndex(),
+    getAccessIndex(ctx),
   ]);
   const docBy = new Map(docs.map((d) => [d.id, d]));
   const statusBy = new Map(revs.map((r) => [r.id, r.status]));
@@ -1925,7 +2061,7 @@ export async function templateTypesOf(ctx: Ctx, docIds: string[]): Promise<Map<s
  * createDocument), and the types each is meant for (`types`, empty when none is set).
  */
 export async function listTemplates(ctx: Ctx) {
-  const [ix, candidates] = await Promise.all([getAccessIndex(), visibleWhere(ctx, is(col(D.typeCode), TEMPLATE_TYPE))]);
+  const [ix, candidates] = await Promise.all([getAccessIndex(ctx), visibleWhere(ctx, is(col(D.typeCode), TEMPLATE_TYPE))]);
   const docs = candidates.filter((d) => isUsableTemplate(ctx, d, ix));
   const [types, uses] = await Promise.all([templateTypesOf(ctx, docs.map((d) => d.id)), templateUses(ctx, docs.map((d) => d.id))]);
   return docs.map((d) => ({ id: d.id, label: d.title, rev: d.revInForce!, owner: d.owner, ownerId: d.ownerId, typeCode: d.typeCode, department: d.department, state: d.state, legalHold: d.legalHold, version: d.version, types: types.get(d.id) ?? [], uses: uses.get(d.id) ?? 0 }));

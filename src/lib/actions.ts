@@ -376,7 +376,7 @@ async function createDocumentNow(fd: FormData): Promise<ActionResult> {
   if (!file && templateId) {
     // Same rule as the templates the dialog offers (listTemplates): a template the user cannot see does not exist for them.
     const [tpl] = await db.select().from(s.documents).where(eq(s.documents.id, templateId));
-    if (!tpl || !isUsableTemplate(ctx, tpl, await getAccessIndex())) return fail(ctx, 'not_found');
+    if (!tpl || !isUsableTemplate(ctx, tpl, await getAccessIndex(ctx))) return fail(ctx, 'not_found');
     const [rev] = await db.select().from(s.revisions).where(and(eq(s.revisions.docId, tpl.id), eq(s.revisions.status, 'in_force')));
     if (!rev) return fail(ctx, 'not_found');
     const [v] = await db.select().from(s.workingVersions).where(eq(s.workingVersions.revisionId, rev.id)).orderBy(desc(s.workingVersions.n)).limit(1);
@@ -479,7 +479,7 @@ async function addWorkingVersionNow(fd: FormData): Promise<ActionResult> {
   if (!file) return fail(ctx, 'choose_file');
   const base = seenWorkingBase(fd.get('baseRevision'), fd.get('baseVersion'));
   const db = await getDb();
-  const ix = await getAccessIndex();
+  const ix = await getAccessIndex(ctx);
   const [d] = await db.select().from(s.documents).where(eq(s.documents.id, docId));
   if (!d) return movedSince(db, ctx, docId, (x) => canRead(ctx, x, ix) && mayWorkOnDraft(ctx, x, ix));
   // Access first: a document the user cannot see gives nothing away, not even its lock.
@@ -546,7 +546,7 @@ async function restoreWorkingVersionNow(docId: string, versionId: number, base: 
   const seen = seenWorkingBase(base?.revisionId, base?.n);
   if (typeof docId !== 'string' || !Number.isSafeInteger(versionId)) return fail(ctx, 'not_found');
   const db = await getDb();
-  const ix = await getAccessIndex();
+  const ix = await getAccessIndex(ctx);
   const [d] = await db.select().from(s.documents).where(eq(s.documents.id, docId));
   if (!d) return movedSince(db, ctx, docId, (x) => canRead(ctx, x, ix) && mayWorkOnDraft(ctx, x, ix));
   // Access first: a document the user cannot see gives nothing away, not even its lock or its versions.
@@ -641,7 +641,7 @@ async function updateMetaNow(fd: FormData): Promise<ActionResult> {
   const docId = str(fd, 'docId');
   const seen = seenVersion(fd.get('version'));
   const db = await getDb();
-  const ix = await getAccessIndex();
+  const ix = await getAccessIndex(ctx);
   const mayEdit = (x: DocRow) => ctx.seesAll || x.ownerId === ctx.user.id;
   const [d] = await db.select().from(s.documents).where(eq(s.documents.id, docId));
   if (!d) return movedSince(db, ctx, docId, (x) => canRead(ctx, x, ix) && mayEdit(x));
@@ -733,7 +733,7 @@ async function setReadersNow(docId: string, userIds: string[], version: number):
   if (!ctx.can('edit')) return denied(ctx, 'edit');
   const seen = seenVersion(version);
   const db = await getDb();
-  const ix = await getAccessIndex();
+  const ix = await getAccessIndex(ctx);
   const mayEdit = (x: DocRow) => ctx.seesAll || x.ownerId === ctx.user.id;
   const [d] = await db.select().from(s.documents).where(eq(s.documents.id, docId));
   if (!d) return movedSince(db, ctx, docId, (x) => canRead(ctx, x, ix) && mayEdit(x));
@@ -777,7 +777,7 @@ async function setTemplateTypesNow(docId: string, typeCodes: string[], version: 
   if (!ctx.can('edit')) return denied(ctx, 'edit');
   const seen = seenVersion(version);
   const db = await getDb();
-  const ix = await getAccessIndex();
+  const ix = await getAccessIndex(ctx);
   const [d] = await db.select().from(s.documents).where(eq(s.documents.id, String(docId)));
   if (!d) return movedSince(db, ctx, String(docId), (x) => canRead(ctx, x, ix) && mayLinkTemplate(ctx, x));
   if (!canRead(ctx, d, ix)) return fail(ctx, 'not_found');
@@ -833,7 +833,7 @@ async function recordReviewNow(docId: string, next: string | null, comment = '')
   const note = typeof comment === 'string' ? comment.trim() : '';
   if (note.length > REVIEW_COMMENT_MAX) return { ok: false, error: ctx.t.review_comment_too_long, field: 'comment' };
   const entered = typeof next === 'string' && next.trim() ? next.trim() : null;
-  const ix = await getAccessIndex();
+  const ix = await getAccessIndex(ctx);
   const db = await getDb();
   const res = await db.transaction(async (tx): Promise<{ err: TKey; field?: string } | { date: string }> => {
     const [d] = await tx.select().from(s.documents).where(eq(s.documents.id, docId));
@@ -898,7 +898,7 @@ async function requestValidationNow(docId: string, effectiveAt: string | null, b
   // Effective date: a real day, today or later (approveRevision moves it to the approval day if the circuit outlasts it).
   const effective = effectiveAt ? parseIsoDay(effectiveAt) : null;
   if (effectiveAt && (!effective || effective < todayIso())) return fail(ctx, 'invalid_date');
-  const ix = await getAccessIndex();
+  const ix = await getAccessIndex(ctx);
   const db = await getDb();
 
   type Res = { id: string } | { href: string } | { err: TKey; extra?: string } | { date: DateIssue } | { behind: ActionResult };
@@ -1060,7 +1060,7 @@ async function recallValidationNow(workflowId: string, expectedStep: number, rea
   if ('err' in motive) return fail(ctx, motive.err);
   const { why } = motive;
   if (!ctx.can('edit')) return denied(ctx, 'edit');
-  const ix = await getAccessIndex();
+  const ix = await getAccessIndex(ctx);
   const db = await getDb();
   const err = await db.transaction(async (tx): Promise<TKey | null> => {
     const wf = await loadWorkflow(tx, workflowId);
@@ -1186,7 +1186,7 @@ async function addCommentNow(workflowId: string, text: string): Promise<ActionRe
   const [[d], [rev], ix] = await Promise.all([
     db.select().from(s.documents).where(eq(s.documents.id, wf.w.docId)),
     db.select({ status: s.revisions.status }).from(s.revisions).where(eq(s.revisions.id, wf.w.revisionId)),
-    getAccessIndex(),
+    getAccessIndex(ctx),
   ]);
   if (!d || !canRead(ctx, d, ix) || !readerMaySeeRevision(inDraftingCircle(ctx, d, ix), rev?.status)) return fail(ctx, 'not_found');
   if (!followsCircuit(ctx, wf.w, wf.steps)) return fail(ctx, 'not_allowed');
@@ -1221,7 +1221,7 @@ async function requestChangeNow(docId: string, kind: 'modification' | 'obsolesce
   const replacement = typeof replacementId === 'string' && replacementId.trim() ? replacementId.trim() : null;
   if (!why || (kind !== 'modification' && kind !== 'obsolescence') || (replacement && kind !== 'obsolescence')) return fail(ctx);
   if (!ctx.can('edit')) return denied(ctx, 'edit');
-  const ix = await getAccessIndex();
+  const ix = await getAccessIndex(ctx);
   const db = await getDb();
   const res = await db.transaction(async (tx): Promise<{ err: TKey; extra?: string; field?: string } | { id: string }> => {
     const [d] = await tx.select().from(s.documents).where(eq(s.documents.id, docId));
@@ -1283,7 +1283,7 @@ async function graftChangeNow(requestId: string): Promise<ActionResult> {
   const busy = throttled(ctx);
   if (busy) return busy;
   if (!ctx.can('edit')) return denied(ctx, 'edit');
-  const ix = await getAccessIndex();
+  const ix = await getAccessIndex(ctx);
   const db = await getDb();
   const res = await db.transaction(async (tx): Promise<{ err: TKey } | { ref: string; letter: string }> => {
     const [req] = await tx.select().from(s.changeRequests).where(eq(s.changeRequests.id, requestId));
@@ -1333,7 +1333,7 @@ async function addDocLinkNow(docId: string, rel: string, otherId: string): Promi
   if (!isLinkRel(rel)) return fail(ctx);
   if (!ctx.can('edit')) return denied(ctx, 'edit');
   const other = typeof otherId === 'string' ? otherId.trim() : '';
-  const ix = await getAccessIndex();
+  const ix = await getAccessIndex(ctx);
   const db = await getDb();
   const res = await db.transaction(async (tx): Promise<{ err: TKey; field?: string } | { ok: true }> => {
     const [d] = await tx.select().from(s.documents).where(eq(s.documents.id, docId));
@@ -1369,7 +1369,7 @@ async function removeDocLinkNow(docId: string, linkId: number): Promise<ActionRe
   const busy = throttled(ctx);
   if (busy) return busy;
   if (!ctx.can('edit')) return denied(ctx, 'edit');
-  const ix = await getAccessIndex();
+  const ix = await getAccessIndex(ctx);
   const db = await getDb();
   const res = await db.transaction(async (tx): Promise<{ err: TKey } | { ok: true }> => {
     const [d] = await tx.select().from(s.documents).where(eq(s.documents.id, docId));
@@ -1393,7 +1393,7 @@ async function removeDocLinkNow(docId: string, linkId: number): Promise<ActionRe
 
 /** Documents among `ids` the user can see; the others are treated as if they did not exist. */
 async function visibleDocs(tx: Tx, ctx: Ctx, ids: string[]) {
-  const ix = await getAccessIndex();
+  const ix = await getAccessIndex(ctx);
   const docs = ids.length ? await tx.select().from(s.documents).where(inArray(s.documents.id, ids)) : [];
   return docs.filter((d) => canRead(ctx, d, ix));
 }
@@ -1452,7 +1452,8 @@ async function holdDocumentsNow(ids: string[]): Promise<ActionResult> {
  * circle (D-14): nobody outside it is told.
  */
 async function pendingApplied(ctx: Ctx, d: DocRow, swap: ModifierSwap | null): Promise<ActionResult> {
-  if (!swap || !inDraftingCircle(ctx, d, await buildAccessIndex(await getDb()))) return { ok: true };
+  // Read again (not the index of the request): the decision just changed who drafts the document.
+  if (!swap || !inDraftingCircle(ctx, d, await buildAccessIndex(await getDb(), { users: [ctx.user.id] }))) return { ok: true };
   const who = swap.setAside === swap.modifierId ? ctx.userName(swap.modifierId) : `${ctx.userName(swap.setAside)} → ${ctx.userName(swap.modifierId)}`;
   return { ok: true, message: `${swap.mayDraft ? ctx.t.modifier_set_aside : ctx.t.modifier_none_allowed} : ${who}` };
 }
@@ -1536,7 +1537,7 @@ async function setRetentionEventNow(docId: string, date: string | null, version:
   if (busy) return busy;
   const seen = seenVersion(version);
   const db = await getDb();
-  const ix = await getAccessIndex();
+  const ix = await getAccessIndex(ctx);
   const [d] = await db.select().from(s.documents).where(eq(s.documents.id, String(docId)));
   if (!d) return movedSince(db, ctx, String(docId), (x) => canRead(ctx, x, ix) && maySetRetentionEvent(ctx, x));
   if (!canRead(ctx, d, ix)) return fail(ctx, 'not_found');
@@ -1584,7 +1585,7 @@ async function setRetentionClassNow(fd: FormData): Promise<ActionResult> {
   const docId = str(fd, 'docId');
   const seen = seenVersion(fd.get('version'));
   const db = await getDb();
-  const ix = await getAccessIndex();
+  const ix = await getAccessIndex(ctx);
   const [d] = await db.select().from(s.documents).where(eq(s.documents.id, docId));
   if (!d) return movedSince(db, ctx, docId, (x) => canRead(ctx, x, ix));
   if (!canRead(ctx, d, ix)) return fail(ctx, 'not_found');
@@ -1635,7 +1636,7 @@ async function recordConsultationNow(docId: string): Promise<ActionResult> {
   if (busy) return busy;
   if (typeof docId !== 'string' || !docId) return fail(ctx, 'not_found');
   const db = await getDb();
-  const [[d], ix] = await Promise.all([db.select().from(s.documents).where(eq(s.documents.id, docId)), getAccessIndex()]);
+  const [[d], ix] = await Promise.all([db.select().from(s.documents).where(eq(s.documents.id, docId)), getAccessIndex(ctx)]);
   if (!d || !canRead(ctx, d, ix)) return fail(ctx, 'not_found');
   const revs = await db.select({ id: s.revisions.id, letter: s.revisions.letter, status: s.revisions.status }).from(s.revisions).where(eq(s.revisions.docId, docId)).orderBy(asc(s.revisions.id));
   const rev = revs.findLast((r) => r.status === 'in_force') ?? revs.findLast((r) => r.status === 'superseded') ?? revs.at(-1);

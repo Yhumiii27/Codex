@@ -1507,6 +1507,12 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     dépendances de l'application ; pour les outils de développement, une exception écrite dans
     `scripts/codex-audit.mjs` avec sa raison, seulement sans version corrigée publiée (`braces`, lint) ; avis modérés
     signalés sans échec (`esbuild` par `drizzle-kit`, dont la seule « correction » serait une version très antérieure) ;
+  - **index d'accès et Validations** (points 47 et 50) : index lu par requête pour la seule personne, **sans cache entre
+    requêtes** (un cache invalidé par la base imposerait un verrou commun à toutes les écritures ; rien n'y serait
+    périmé, mais le gain ne le justifie pas à ce volume) ; une question hors de la portée d'un index lève une erreur
+    plutôt que de répondre ; Validations par pages de **50 circuits**, ordre inchangé (échéance puis identifiant, les
+    terminés du plus récent au plus ancien, « Mes demandes » en cours d'abord), et la page qui contient le circuit
+    demandé quand l'adresse n'en donne pas ;
 - **Git** (D-23) : premier commit sur une branche `codex-ged-v2` plutôt que sur `main`.
 
 ## Ce qui est explicitement hors périmètre

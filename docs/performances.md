@@ -107,16 +107,51 @@ l'activité récente, les modèles et « À traiter », tous les circuits), déj
 - **Tout reste utilisable à 10 000 documents**, mais rien n'est instantané : 0,4 à 0,6 s par écran sur PGlite, 0,2 à
   0,3 s sur PostgreSQL. La base de démonstration répond en 70 à 110 ms : le temps croît avec le volume.
 - **PostgreSQL est 2 à 3 fois plus rapide** que PGlite sur les mêmes données, une requête à la fois.
-- **Les écrans les plus lents** sont Validations (1,6 s sur PGlite, 0,6 s sur PostgreSQL : il lit tous les circuits,
-  sans pagination) et l'export CSV de toute la recherche (1,1 s et 0,44 s pour 2,8 Mo). Puis l'Archivage et la fiche,
+- **Les écrans les plus lents** étaient Validations (1,6 s sur PGlite, 0,6 s sur PostgreSQL : il lisait tous les
+  circuits, sans pagination ; 0,26 s depuis le lot 9, étape 9, plus bas) et l'export CSV de toute la recherche (1,1 s et 0,44 s pour 2,8 Mo). Puis l'Archivage et la fiche,
   dont les pages pèsent près de 2 Mo.
 - **La charge simultanée ne se répartit pas** : un processus Node traite les pages l'une après l'autre. Plusieurs
   processus derrière un répartiteur ne sont possibles qu'avec un serveur PostgreSQL, et demanderaient en plus des
   limites de débit partagées et un stockage de fichiers commun (le verrou du dossier de données refuse un second
   serveur sur le même dossier).
 - **Prochaines étapes** (point 50 et hébergement) : lire l'en-tête commun, l'accueil, l'archivage et la fiche par la
-  base au lieu de charger tous les documents visibles ; paginer Validations ; refaire ces mesures avec les volumes
+  base au lieu de charger tous les documents visibles (fait le 17 octobre, point 47) ; paginer Validations (fait le 18
+  octobre, plus bas) ; refaire ces mesures avec les volumes
   réels (M18, O-11), un serveur distant et, si plusieurs processus sont retenus, sous charge.
+
+## Lot 9, étape 9 : index d'accès ciblé et Validations paginé (18 octobre)
+
+Points 47 et 50 de [reste-a-faire.md](reste-a-faire.md). Même base de 10 063 documents (régénérée par
+`npm run seed:large -- --docs 10000`, même graine), PGlite, build de production, médiane de 5 requêtes, sur la même
+machine, avant (commit `d0ed61e`) et après :
+
+- **Index d'accès** (`getAccessIndex`, `src/lib/access.ts`) : chaque requête lisait tous les lecteurs nommés (4 994
+  lignes), toutes les révisions ouvertes (4 501), tous les circuits en cours et leurs étapes (1 479 et 3 691) et tous
+  les titulaires de fonctions, soit 70 ms de requêtes sur PGlite ; il ne lit plus que les lignes de la personne (ses
+  lectures nommées, ses révisions, ses étapes, ses fonctions), 13 à 30 lignes, 3 ms environ (index partiel
+  `revisions_open_modifier`, migration `0005_index_acces_validations`).
+- **Validations** (`validationsPage`, `src/lib/queries.ts`) : comptes des quatre filtres par un agrégat SQL, liste du
+  filtre par pages de 50 (`?p=`), seuls les circuits de la page lus entiers ; visibilité en SQL (`readableSql`, cercle
+  de rédaction, révision visible) ; index `workflows_requester`.
+
+| Personne | Route | Avant | Après | Écart |
+| --- | --- | ---: | ---: | ---: |
+| Claire Bardet (gestionnaire) | Validations | 1,60 s | 263 ms | −84 % |
+| Claire Bardet | Accueil | 631 ms | 501 ms | −21 % |
+| Claire Bardet | Recherche « soudure » | 427 ms | 316 ms | −26 % |
+| Claire Bardet | Explorateur | 418 ms | 359 ms | −14 % |
+| Claire Bardet | Fiche document | 567 ms | 443 ms | −22 % |
+| Claire Bardet | Archivage | 584 ms | 451 ms | −23 % |
+| Claire Bardet | Administration › Journal | 319 ms | 234 ms | −27 % |
+| Claire Bardet | Export CSV de toute la recherche | 1,04 s | 1,11 s | +7 % (inchangé : déjà en SQL) |
+| Personne fictive (collaborateur) | Validations | 1,71 s | 366 ms | −79 % |
+| Personne fictive | Accueil | 663 ms | 589 ms | −11 % |
+| Personne fictive | Fiche document | 802 ms | 610 ms | −24 % |
+| Personne fictive | Explorateur | 488 ms | 341 ms | −30 % |
+
+Dix requêtes simultanées de Validations : 15,95 s avant, 2,72 s après (le rapport reste d'environ 10 : un seul
+processus Node). Les autres écrans gagnent 10 à 30 % par l'index d'accès seul. Ce qui reste du temps d'un écran est
+surtout le rendu et l'en-tête commun (« À traiter », activité récente), rendus à chaque chargement complet.
 
 ## Rejouer les mesures
 
