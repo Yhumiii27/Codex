@@ -67,6 +67,7 @@ Fonds Nocturne : `--color-bg` #161826 (écran), `--color-surface` #232532 (carte
 | `.card-meta` de Nocturne (50 %, 11 px), sous les chiffres des cartes | — | 4,25 | **corrigé** : 55 % comme `.text-muted`, 4,83 (`src/app/globals.css`) |
 | Portée d'un titulaire et nombre d'usages d'un terme (opacité 0,6 sur une étiquette neutre) | — | 4,47 | **corrigé** : opacité 0,7, 5,47 |
 | Nombre de termes dans le titre d'une section de Vocabulaires (texte atténué dans un titre déjà à 70 %) | 3,18 | — | **corrigé** : le nombre prend l'opacité du titre, 7,64 |
+| Référence d'un modèle sur une ligne survolée de « Nouveau document » (`.text-muted` à 55 %, 11 px, sur la teinte de survol `hover-tint`, 6 % du texte) | — | 4,38 (axe : #95969e sur #2f313d) | **corrigé** (lot 10, étape 7) : sur une ligne survolée, le texte atténué passe à 60 %, le cran des en-têtes de tableau ; 4,91 (#9f9fa7), teinte de survol inchangée (`src/app/globals.css`) |
 | Petits caractères de la page maquette de l'aperçu (neutral-600 sur neutral-100, 8 et 9 px) | 3,96 sur le papier | | **corrigé** : entre neutral-600 et neutral-700, 4,9 (`document.module.css`) |
 
 Les états désactivés (opacité 0,45 de Nocturne) sont exemptés par les WCAG et n'ont pas été modifiés. Aucune taille
@@ -187,8 +188,8 @@ barre latérale repliable, ni PWA.
 - **Titres en points de suspension** dans les listes (205 à 200 %, dont 183 déjà au bureau) : le titre entier est dans
   la fiche.
 - **Contraste au survol** (trouvé par `--narrow`, présent aussi au bureau) : dans « Nouveau document », la référence
-  d'un modèle (texte atténué à 55 %, 11 px) sur une ligne survolée (`hover-tint`) donne 4,38:1, sous les 4,5:1. Ce
-  n'est pas un débordement : laissé tel quel, à corriger avec la teinte de survol de Nocturne.
+  d'un modèle (texte atténué à 55 %, 11 px) sur une ligne survolée (`hover-tint`) donnait 4,38:1, sous les 4,5:1.
+  **Corrigé** au lot 10, étape 7 : 4,91:1 (tableau des contrastes ci-dessus).
 - **Anglais** : `--narrow --lang all` n'a pas été mesuré, seulement le français.
 
 ## Ce qui reste

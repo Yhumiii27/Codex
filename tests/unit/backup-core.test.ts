@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   archiveDate, archiveName, backupDirOf, BackupError, DEFAULT_KEEP, entryNameOk, isArchiveName, keepOf, listBackups, LOCK_FILE, lockForCommand,
-  lockForServer, lockHeld, pendingMigrations, readLock, readManifest, rotate, unlock, type Manifest,
+  lockForServer, lockHeld, lockIdentity, pendingMigrations, readLock, readManifest, rotate, unlock, type Manifest,
 } from '@/lib/backup-core.mjs';
 
 // Rules of the backups (src/lib/backup-core.mjs, point 48 of docs/reste-a-faire.md): settings, archive names, entry
@@ -157,7 +157,7 @@ describe('lock of the data directory', () => {
 
   it('is held by another live process only: not by this one, nor by a process that is gone', () => {
     expect(lockHeld(null)).toBe(false);
-    expect(lockHeld({ pid: process.pid, kind: 'server', since: now() })).toBe(false);
+    expect(lockHeld({ pid: process.pid, kind: 'server', since: now(), ...lockIdentity() })).toBe(false);
     expect(lockHeld({ pid: process.ppid, kind: 'server', since: now() })).toBe(true);
     expect(lockHeld({ pid: 2 ** 22 + 12_345, kind: 'server', since: now() })).toBe(false);
   });
@@ -177,9 +177,9 @@ describe('lock of the data directory', () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
     vi.setSystemTime(new Date('2026-10-15T08:00:00Z'));
     await lockForCommand(d, 'backup');
-    expect(await readLock(d)).toEqual({ pid: process.pid, kind: 'backup', since: '2026-10-15T08:00:00.000Z', beat: '2026-10-15T08:00:00.000Z' });
+    expect(await readLock(d)).toEqual({ pid: process.pid, kind: 'backup', since: '2026-10-15T08:00:00.000Z', beat: '2026-10-15T08:00:00.000Z', ...lockIdentity() });
     vi.advanceTimersByTime(20 * 60_000);
-    expect(await readLock(d)).toEqual({ pid: process.pid, kind: 'backup', since: '2026-10-15T08:00:00.000Z', beat: '2026-10-15T08:20:00.000Z' });
+    expect(await readLock(d)).toEqual({ pid: process.pid, kind: 'backup', since: '2026-10-15T08:00:00.000Z', beat: '2026-10-15T08:20:00.000Z', ...lockIdentity() });
     await unlock(d);
     vi.advanceTimersByTime(60_000);
     expect(existsSync(path.join(d, LOCK_FILE))).toBe(false);
@@ -218,5 +218,72 @@ describe('lock of the data directory', () => {
     expect(await readLock(d)).toBeNull();
     lock(d, { pid: -42, kind: 'server', since: now() });
     expect(await readLock(d)).toBeNull();
+  });
+
+  // Lot 10, étape 7: a lock written in another container (another pid namespace) or on another machine sharing the
+  // volume. Its process number means nothing here: never this process's, never « gone » because no process here has it;
+  // it lapses only when no longer refreshed for 10 minutes, the server's included (the server refreshes it too).
+  it('never takes a lock of another container or machine for its own, nor for gone because its pid is absent here', () => {
+    const other = { id: 'f1b8c7f2-autre-processus', space: 'boot:autre-machine/pid:[4026532999]' };
+    const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
+    // Same process number as this one (pid 1 in two containers): held, not « mine ».
+    expect(lockHeld({ pid: process.pid, kind: 'server', since: ago(60), beat: ago(0.5), ...other })).toBe(true);
+    expect(lockHeld({ pid: process.pid, kind: 'backup', since: ago(60), beat: ago(0.5), ...other })).toBe(true);
+    // A process number no process has here: held all the same while refreshed.
+    expect(lockHeld({ pid: 2 ** 22 + 12_345, kind: 'server', since: ago(60), beat: ago(9), ...other })).toBe(true);
+    // Not refreshed for 10 minutes (that server or command was killed): lapsed, whatever its process number.
+    expect(lockHeld({ pid: process.pid, kind: 'server', since: ago(60), beat: ago(11), ...other })).toBe(false);
+    expect(lockHeld({ pid: process.ppid, kind: 'restore', since: ago(11), ...other })).toBe(false);
+  });
+
+  it('refuses a command while a server of another container holds the directory, even with the same pid', async () => {
+    const d = tmp();
+    const other = { id: 'f1b8c7f2-autre-processus', space: 'boot:autre-machine/pid:[4026532999]' };
+    lock(d, { pid: process.pid, kind: 'server', since: now(), beat: now(), ...other });
+    await expect(lockForCommand(d, 'backup')).rejects.toMatchObject({ code: 'busy', lock: { kind: 'server', pid: process.pid, ...other } });
+    // Nor does this process remove it on unlock: it is not its own.
+    await unlock(d);
+    expect(await readLock(d)).toMatchObject({ pid: process.pid, ...other });
+    // A command of another container: the server refuses to open the database while it is refreshed.
+    lock(d, { pid: process.pid, kind: 'restore', since: now(), beat: now(), ...other });
+    await expect(lockForServer(d)).rejects.toMatchObject({ code: 'busy' });
+  });
+
+  it('records who holds it: process number, a random id for the process, and its process space', async () => {
+    const d = tmp();
+    await lockForCommand(d, 'export');
+    const held = await readLock(d);
+    expect(held).toMatchObject({ pid: process.pid, kind: 'export', ...lockIdentity() });
+    expect(lockIdentity().id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(lockIdentity().space).toBeTruthy();
+    expect(lockHeld(held)).toBe(false);
+    // Same process space, same process number, another id: the process that wrote it is gone, its number reused.
+    expect(lockHeld({ ...held!, id: 'un-processus-disparu' })).toBe(false);
+    // Same process space, another live process: held.
+    expect(lockHeld({ ...held!, id: 'un-autre-processus', pid: process.ppid })).toBe(true);
+    await unlock(d);
+    expect(await readLock(d)).toBeNull();
+  });
+
+  it('reads a lock of the former format (no id nor space) by its process number, never as this process’s own', () => {
+    const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
+    expect(lockHeld({ pid: process.ppid, kind: 'server', since: ago(60) })).toBe(true);
+    expect(lockHeld({ pid: 2 ** 22 + 12_345, kind: 'server', since: ago(60) })).toBe(false);
+    expect(lockHeld({ pid: process.ppid, kind: 'backup', since: ago(60), beat: ago(11) })).toBe(false);
+    // Its pid is this process's: written by a former version, here or in another container; held while that pid lives.
+    expect(lockHeld({ pid: process.pid, kind: 'server', since: ago(60) })).toBe(true);
+  });
+
+  it('refreshes the server’s lock every 30 s too, so that another container can tell it lives', async () => {
+    const d = tmp();
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
+    vi.setSystemTime(new Date('2026-10-18T08:00:00Z'));
+    await lockForServer(d);
+    expect(await readLock(d)).toMatchObject({ kind: 'server', since: '2026-10-18T08:00:00.000Z', beat: '2026-10-18T08:00:00.000Z' });
+    vi.advanceTimersByTime(20 * 60_000);
+    expect(await readLock(d)).toMatchObject({ kind: 'server', since: '2026-10-18T08:00:00.000Z', beat: '2026-10-18T08:20:00.000Z' });
+    await unlock(d);
+    vi.advanceTimersByTime(60_000);
+    expect(existsSync(path.join(d, LOCK_FILE))).toBe(false);
   });
 });

@@ -20,7 +20,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
 import nextEnv from '@next/env';
 import {
-  BackupError, LOCK_FILE, backupDirOf, createBackup, journal, journalData, keepOf, listBackups, lockForCommand, pendingMigrations,
+  BackupError, LOCK_FILE, backupDirOf, createBackup, journal, journalData, keepOf, listBackups, lockForCommand, lockPid, pendingMigrations,
   readMigrations, restoreBackup, serverDatabaseRefusal, unlock, verifyArchive,
 } from '../src/lib/backup-core.mjs';
 
@@ -75,8 +75,8 @@ function explain(err) {
     case 'busy': {
       const lock = /** @type {{ lock?: { kind: string, pid: number } }} */ (/** @type {unknown} */ (err)).lock;
       return lock?.kind === 'server'
-        ? `Le serveur Codex tourne (processus ${lock.pid}) et tient la base de ${DATA_DIR}.\nArrêtez-le (npm run dev, npm run start ou l'app Mac), ou sauvegardez depuis Administration › Journal d'audit › Sauvegardes.\nSi aucun serveur ne tourne plus, supprimez ${path.join(DATA_DIR, LOCK_FILE)}.`
-        : `Une autre commande (${lock?.kind ?? d}) travaille sur ${DATA_DIR} (processus ${lock?.pid ?? '?'}).\nSi aucune commande ne tourne plus, supprimez ${path.join(DATA_DIR, LOCK_FILE)} (sinon il est ignoré 10 minutes après son dernier rafraîchissement).`;
+        ? `Le serveur Codex tourne (processus ${lockPid(lock)}) et tient la base de ${DATA_DIR}.\nArrêtez-le (npm run dev, npm run start ou l'app Mac), ou sauvegardez depuis Administration › Journal d'audit › Sauvegardes.\nSi aucun serveur ne tourne plus, supprimez ${path.join(DATA_DIR, LOCK_FILE)}.`
+        : `Une autre commande (${lock?.kind ?? d}) travaille sur ${DATA_DIR} (processus ${lockPid(lock)}).\nSi aucune commande ne tourne plus, supprimez ${path.join(DATA_DIR, LOCK_FILE)} (sinon il est ignoré 10 minutes après son dernier rafraîchissement).`;
     }
     case 'no_database': return `Aucune base Codex dans ${DATA_DIR} : rien à sauvegarder${d ? ` (${d})` : ''}.`;
     case 'backup_dir': return `Le dossier des sauvegardes (${d}) ne peut pas être dans la base ni dans les fichiers, ni les contenir : choisissez un autre CODEX_BACKUP_DIR.`;

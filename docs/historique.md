@@ -2815,6 +2815,7 @@ présentent l'état du code et recueillent les réponses ; rien n'est prérégl�
 | 4. Constats remis à jour et corrections neutres | commit « Lot 10, étape 4 » | 70 à 120 (constats), 87, 88, 94 (avancés, toujours bloqués) | 50 constats revérifiés ; état récapitulatif recompté par question (O-01 : 5 points au lieu de 11, O-11 : 2 au lieu de 9) et annexe B des fiches alignée ; vocabulaires : un terme non proposé est traité comme inconnu, comptes réservés aux gestionnaires (D-14) ; indicateur « En retard » des circuits ; chiffrement au repos documenté ; bouton « Copier le lien du document » ; JUR dans la question 1 du registre | Aucune question tranchée ; délai de 7 jours, relances et « À traiter » inchangés ; rien de chiffré par Codex |
 | 5. Parcours de bout en bout et simulation d'import | commit « Lot 10, étape 5 » | 57 (avancé), 106 (préparé, toujours bloqué) | `npm run e2e` : cinq parcours indépendants (approbation, rejet avec motif puis nouvelle demande, rappel, demande Vigie acceptée puis greffe ou attente, import simulé puis réel), chacun avec le contrôle D-14 hors du cercle de rédaction ; `POST /api/import?dryRun=1` | Simulation : transaction annulée, aucun fichier stocké, rien au journal d'audit, aucun champ ni limite de plus ; paramètre d'adresse inconnu refusé ; identifiant prévu non réservé ; parcours lancés tous dans la CI (stables sur trois passages) |
 | 6. Affichage étroit et image générique | commits « Lot 10, étape 6 » (deux) | 79 (avancé), 112 (préparé), toujours bloqués | `npm run a11y -- --narrow` (320 px, 1 280 px à 200 %) ; quatre débordements corrigés sans effet sur le bureau ; `Dockerfile` et `.dockerignore`, sortie autonome seulement avec `CODEX_STANDALONE=1` ; image construite et essayée | Captures du bureau identiques avant et après ; ni mise en page mobile, ni barre repliable, ni PWA (M23) ; ni hébergeur, ni proxy, ni TLS, `CODEX_SEED` non posé (M22) ; build par défaut inchangé |
+| 7. Verrou entre conteneurs et contraste au survol | commit « Lot 10, étape 7 » | 112 (préparé), 79 (avancé), toujours bloqués | `codex.lock` enregistre aussi un identifiant tiré au hasard par processus et l'espace de processus (démarrage du noyau, espace de noms, départ de son premier processus ; nom de machine hors Linux) ; le serveur rafraîchit son verrou toutes les 30 s ; une commande lancée dans un autre conteneur à côté du serveur refuse ; texte atténué à 60 % sur une ligne survolée (4,38 → 4,91:1) | Un verrou d'un autre espace n'est jugé que par son rafraîchissement (10 min) ; ancien format lu par son numéro, jamais pris pour le sien ; un serveur ne refuse toujours pas le verrou d'un serveur ; teinte de survol de Nocturne inchangée ; aucun hébergement choisi (M22) |
 
 ### 19.1 Cahiers de validation du registre et de l'organigramme
 
@@ -3032,7 +3033,7 @@ Rien de ce qui suit ne tranche une question ouverte : M22 (hébergement), M23 (a
   - **Reste, selon M23** : 320 px (barre latérale de 224 px et en-tête), panneau de fiche de 400 px, trois colonnes de
     l'Explorateur, colonne des filtres de la Recherche, tableaux qui défilent dans leur bloc, zone d'aperçu de la fiche
     sans focus à 320 px (axe, 14 écrans). Constat hors débordement : la référence d'un modèle sur une ligne survolée
-    donne 4,38:1 (présent au bureau ; non corrigé).
+    donne 4,38:1 (présent au bureau ; non corrigé à cette étape, corrigé à l'étape 7, §19.6).
 - **Image générique** ([exploitation.md](exploitation.md) §10, `Dockerfile`, `.dockerignore`) : trois étapes (`npm ci`,
   build avec `CODEX_STANDALONE=1`, exécution sur `node:22-bookworm-slim`) ; l'image ne garde que `server.js`,
   `package.json`, `node_modules` réduit, `.next` et ses fichiers statiques, `drizzle/` et les commandes de sauvegarde,
@@ -3048,7 +3049,7 @@ Rien de ce qui suit ne tranche une question ouverte : M22 (hébergement), M23 (a
   - **Limite relevée** : le verrou `codex.lock` compare des numéros de processus, qui ne traversent pas les conteneurs ;
     une commande lancée dans un autre conteneur, numéro 1 comme le serveur, prend son verrou pour le sien (vérifié).
     Documenté : arrêter le conteneur du serveur avant toute commande, jamais deux conteneurs sur un volume, sauvegarde
-    depuis l'Administration pendant que le serveur tourne. Non corrigé (le verrou est partagé par toutes les commandes).
+    depuis l'Administration pendant que le serveur tourne. Non corrigé à cette étape (le verrou est partagé par toutes les commandes) ; corrigé à l'étape 7 (§19.6).
   - **Essayé** : le démon Docker de la session lancé à la main, l'image de base prise sur `mirror.gcr.io` (quota de
     Docker Hub épuisé), build par le proxy de la session ; image de 436 Mo sur disque (106 Mo compressés), conteneur
     `healthy` en 15 s, `npm run a11y -- --url` sur le conteneur sans violation ni erreur au journal, arrêt en 0,3 s avec
@@ -3064,6 +3065,51 @@ Rien de ce qui suit ne tranche une question ouverte : M22 (hébergement), M23 (a
   (30 écrans et 20 dialogues, 0 violation), `npm run a11y -- --narrow` (190 s), `npm run e2e` (5 parcours sur 5,
   32 étapes, 73 s), `docker build` et le conteneur comme ci-dessus.
 
+### 19.6 Verrou entre conteneurs et contraste au survol (lot 10, étape 7)
+
+Deux défauts relevés à l'étape 6, corrigés sans rien décider (M22 reste ouverte).
+
+- **Verrou du dossier de données** (`src/lib/backup-core.mjs`, [exploitation.md](exploitation.md) §10,
+  [sauvegarde.md](sauvegarde.md)).
+  - **Défaut** : `codex.lock` identifiait son détenteur par son seul numéro de processus. Dans deux conteneurs sur un
+    même volume, le serveur et une commande ont tous deux le numéro 1 : la commande prenait le verrou du serveur pour
+    le sien, et un numéro absent de son conteneur le lui faisait croire périmé. Reproduit d'abord par cinq tests
+    (`tests/unit/backup-core.test.ts`, verrou d'un « autre espace » simulé : même numéro, autre identifiant et autre
+    espace), tous en échec sur le code d'avant.
+  - **Correction** : le verrou enregistre en plus `id`, tiré au hasard une fois par processus (gardé sur `globalThis`,
+    commun aux copies du module dans un bundle), et `space`, l'espace de processus. Sous Linux, ce sont le démarrage du
+    noyau (`boot_id`), l'espace de noms des processus (`/proc/self/ns/pid`) et l'instant de départ de son premier
+    processus (`/proc/1/stat`) ; ailleurs, le nom de la machine. Un verrou est « le mien » par son `id` seulement.
+    Un verrou d'un autre espace n'est jamais jugé par son numéro : il tient tant qu'il est rafraîchi, et cesse
+    10 minutes après. Le serveur rafraîchit désormais son verrou toutes les 30 s, comme les commandes, pour qu'un autre
+    conteneur sache qu'il vit. Les messages des commandes le disent : « processus 1, dans un autre conteneur ou sur
+    une autre machine ».
+  - **Compatibilité** : un verrou de l'ancien format (sans `id` ni `space`) est jugé par son numéro comme avant, mais
+    n'est jamais pris pour celui du processus qui le lit : on ne sait pas d'où il vient. Un serveur démarre dessus ;
+    une commande de même numéro refuse, avec la consigne de supprimer le fichier si aucun serveur ne tourne.
+  - **Piège relevé à l'essai** : le noyau réutilise le numéro d'un espace de noms disparu. Le conteneur lancé après un
+    serveur tué a reçu le même `pid:[…]` : sans autre indice, il aurait jugé le verrou par son numéro dans son propre
+    espace. D'où l'instant de départ du premier processus, propre à chaque conteneur.
+  - **Inchangé** : un serveur ne refuse jamais le verrou d'un serveur (redémarrage après un arrêt brutal) ; deux
+    conteneurs serveurs sur un volume restent à proscrire, et arrêter le serveur avant une commande reste la règle.
+  - **Essayé avec Docker** (démon de la session, image reconstruite) : serveur en marche, `backup create`,
+    `restore latest --replace`, `export create` et `integrity check` dans un autre conteneur refusent (code 1) ;
+    `docker exec` aussi. Battement relevé toutes les 30 s. Après `docker kill`, la commande refuse, puis passe une fois
+    le verrou vieilli de 11 minutes ; le serveur relancé démarre. Après `docker stop` (0,2 s), plus de verrou. Verrou
+    de l'ancien format : la commande refuse, le serveur démarre.
+- **Contraste au survol** ([accessibilite.md](accessibilite.md)) : dans « Nouveau document », la référence d'un modèle
+  (`.text-muted` à 55 %, 11 px) sur une ligne survolée (`hover-tint`) donnait 4,38:1 (axe : #95969e sur #2f313d).
+  Sur une ligne survolée, le texte atténué passe à 60 %, le cran des en-têtes de tableau : 4,91:1 (#9f9fa7). Teinte
+  de survol de Nocturne et rendu hors survol inchangés (`src/app/globals.css`). Mesuré par axe dans Chromium sur le
+  build de production, ligne survolée, avant (règle neutralisée) et après.
+- **Documentation** : [exploitation.md](exploitation.md) §10, [sauvegarde.md](sauvegarde.md) (verrou, dépannage),
+  [accessibilite.md](accessibilite.md), README (image générique), [reste-a-faire.md](reste-a-faire.md) (points 79
+  et 112).
+- **Vérifié** : `npm run typecheck`, `npm run lint`, `npm run db:check`, `npm test` (106 fichiers dont 1 sauté,
+  1 436 tests passés, 13 sautés, aussi avec `.data` déplacé), `npm run build`, `npm run a11y` (30 écrans et
+  20 dialogues, 0 violation), `npm run e2e` (5 parcours sur 5, 32 étapes, 72 s), image Docker et scénarios ci-dessus.
+
+
 ### Bilan du lot 10
 
 Le lot 10 a préparé, sans en trancher aucune, les réponses que Codex attend de l'utilisateur, et fait ce qui pouvait
@@ -3075,12 +3121,12 @@ l'être sans elles.
   générique pour l'hébergement (M22).
 - **Vérifié sans décision** : pilote SharePoint contre un faux Microsoft Graph (quatre défauts corrigés) ; constats
   des points 70 à 120 revérifiés et état récapitulatif recompté ; cinq parcours de bout en bout dans la CI ; affichage
-  étroit et zoom mesurés, débordements neutres corrigés.
+  étroit et zoom mesurés, débordements neutres corrigés ; verrou du dossier de données essayé entre deux conteneurs.
 - **Corrections neutres** : vocabulaires et D-14, indicateur « En retard », bouton de copie du lien, chiffrement au
-  repos documenté, barre latérale, onglets et en-têtes de colonne à l'écran étroit.
+  repos documenté, barre latérale, onglets et en-têtes de colonne à l'écran étroit, verrou du dossier de données
+  valable d'un conteneur à l'autre, contraste de la référence d'un modèle sur une ligne survolée (§19.6).
 - **Points** : aucun ne change d'état. Préparés : 36 (reste), 103, 106, 112, 113 à 118 ; avancés : 57, 79, 87, 88, 94.
 - **Toujours ouvert** : O-01 à O-11 ; M22 (hébergement, exploitation) ; M23 (accès terrain et mobile) ; les autres
   questions de l'audit listées en tête de [reste-a-faire.md](reste-a-faire.md).
-- **Suites possibles sans décision** : verrou du dossier de données valable d'un conteneur à l'autre (§19.5) ;
-  contraste de la référence d'un modèle sur une ligne survolée ; `--narrow --lang en`.
+- **Suites possibles sans décision** : `--narrow --lang en`.
 

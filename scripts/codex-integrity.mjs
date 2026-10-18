@@ -17,7 +17,7 @@ import path from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
 import nextEnv from '@next/env';
-import { BackupError, LOCK_FILE, lockForCommand, serverDatabaseRefusal, unlock } from '../src/lib/backup-core.mjs';
+import { BackupError, LOCK_FILE, lockForCommand, lockPid, serverDatabaseRefusal, unlock } from '../src/lib/backup-core.mjs';
 import { checkIntegrity, INTEGRITY_LIST_MAX } from '../src/lib/integrity-core.mjs';
 
 const DEV = process.argv.includes('--dev') || process.env.NODE_ENV === 'development';
@@ -53,8 +53,8 @@ function explain(err) {
   if (err instanceof BackupError && err.code === 'busy') {
     const lock = /** @type {{ lock?: { kind: string, pid: number } }} */ (/** @type {unknown} */ (err)).lock;
     return lock?.kind === 'server'
-      ? `Le serveur Codex tourne (processus ${lock.pid}) et tient la base de ${DATA_DIR}.\nArrêtez-le (npm run dev, npm run start ou l'app Mac), ou lancez la vérification depuis Administration › Journal d'audit › Intégrité des fichiers.\nSi aucun serveur ne tourne plus, supprimez ${path.join(DATA_DIR, LOCK_FILE)}.`
-      : `Une autre commande (${lock?.kind ?? err.detail}) travaille sur ${DATA_DIR} (processus ${lock?.pid ?? '?'}).\nSi aucune commande ne tourne plus, supprimez ${path.join(DATA_DIR, LOCK_FILE)} (sinon il est ignoré 10 minutes après son dernier rafraîchissement).`;
+      ? `Le serveur Codex tourne (processus ${lockPid(lock)}) et tient la base de ${DATA_DIR}.\nArrêtez-le (npm run dev, npm run start ou l'app Mac), ou lancez la vérification depuis Administration › Journal d'audit › Intégrité des fichiers.\nSi aucun serveur ne tourne plus, supprimez ${path.join(DATA_DIR, LOCK_FILE)}.`
+      : `Une autre commande (${lock?.kind ?? err.detail}) travaille sur ${DATA_DIR} (processus ${lockPid(lock)}).\nSi aucune commande ne tourne plus, supprimez ${path.join(DATA_DIR, LOCK_FILE)} (sinon il est ignoré 10 minutes après son dernier rafraîchissement).`;
   }
   return `Erreur : ${err instanceof Error ? err.message : String(err)}`;
 }

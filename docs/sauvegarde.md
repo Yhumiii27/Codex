@@ -86,6 +86,15 @@ La commande refuse de tourner tant que le serveur qui tient la base vit (fichier
 Administration. Si le serveur s'est arrêté brutalement, son verrou est ignoré dès que son processus n'existe plus ; en
 cas de doute (numéro de processus réutilisé), vérifier qu'aucun serveur ne tourne puis supprimer `codex.lock`.
 
+Le verrou enregistre le numéro du processus, un identifiant tiré au hasard par processus et l'espace de processus
+(machine ou conteneur) où il tourne. Le serveur le rafraîchit toutes les 30 secondes, comme les commandes. Un verrou
+posé dans un autre conteneur ou sur une autre machine qui partage le dossier n'est jamais jugé par son numéro : il
+tient tant qu'il est rafraîchi, et cesse 10 minutes après. Une commande lancée dans un conteneur à côté du serveur
+refuse donc (« processus 1, dans un autre conteneur ou sur une autre machine »), même si elle a le même numéro que
+lui ([exploitation.md](exploitation.md) §10). Arrêter le serveur d'abord reste la règle : le verrou protège la base
+si on l'oublie. Un verrou de l'ancien format (sans identifiant) est jugé par son numéro, mais jamais pris pour celui
+du processus qui le lit.
+
 **Variables.** Les commandes lisent `CODEX_DATA_DIR`, `CODEX_BACKUP_DIR` et `CODEX_BACKUP_KEEP` comme Next les lit
 (`@next/env`) : l'environnement d'abord, puis les fichiers de `next start` (et de l'app Mac), dans cet ordre :
 `.env.production.local`, `.env.local`, `.env.production`, `.env`. Avec `--dev` (ou `NODE_ENV=development`), ceux de
@@ -164,7 +173,8 @@ Pendant la restauration, le serveur refuse d'ouvrir la base : il répond par une
 command (pid N) holds …/codex.lock; if no backup, restore or export command is running, delete that file ». Relancé
 trop tôt, il suffit de recharger la page une fois la commande terminée. Une commande rafraîchit son verrou toutes les 30
 secondes ; tuée sans avoir pu le retirer (arrêt brutal, coupure), son verrou est ignoré dès que son processus n'existe
-plus, ou 10 minutes après son dernier rafraîchissement si son numéro de processus a été repris par un autre.
+plus, ou 10 minutes après son dernier rafraîchissement si son numéro de processus a été repris par un autre, ou si
+elle tournait dans un autre conteneur ou sur une autre machine.
 
 ## Tester une restauration
 
@@ -196,6 +206,7 @@ la sauvegarde. Un échec forcé du déplacement des fichiers (`chattr +i`) a lai
 | Message | Cause, action |
 |---|---|
 | « Le serveur Codex tourne (processus N)… » | Le serveur tient la base : l'arrêter, ou sauvegarder depuis Administration. |
+| « Le serveur Codex tourne (processus N, dans un autre conteneur ou sur une autre machine)… » | Un serveur d'un autre conteneur ou d'une autre machine tient le dossier : l'arrêter (`docker stop`), ou sauvegarder depuis Administration. S'il a été tué (`docker kill`, coupure), le verrou cesse 10 minutes après son dernier rafraîchissement ; ou, après avoir vérifié qu'aucun conteneur ne tourne sur le volume, supprimer `codex.lock`. |
 | « Une autre commande (backup ou restore) travaille sur … » | Attendre la fin de l'autre commande. Si aucune ne tourne plus, le verrou est ignoré 10 minutes après son dernier rafraîchissement, ou se supprime (`codex.lock` du dossier de données). |
 | Serveur en erreur, journal « busy: a backup/restore command (pid N) holds …/codex.lock… » | Une commande travaille sur le dossier de données : attendre sa fin et recharger la page. Si aucune commande ne tourne (`ps -p N`), supprimer le fichier `codex.lock` nommé, puis recharger. |
 | « La dernière sauvegarde date du …, il y a moins de 15 minutes » | Depuis l'application, une sauvegarde par quart d'heure au plus : la dernière archive sert de point de restauration ; attendre l'heure indiquée, ou sauvegarder en ligne de commande, serveur arrêté. |

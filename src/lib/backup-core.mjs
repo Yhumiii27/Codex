@@ -19,8 +19,9 @@
 // bytes. Files no record of the dump points to (orphans, uploads whose record was not committed) are left out.
 
 import { createHash, randomUUID } from 'node:crypto';
-import { readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { readFileSync, readlinkSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { cp, lstat, mkdir, open, readdir, readFile, rename, rm, rmdir, stat, writeFile } from 'node:fs/promises';
+import { hostname } from 'node:os';
 import path from 'node:path';
 
 export const FORMAT = 'codex-backup';
@@ -40,9 +41,10 @@ const BLOCK = 512;
 const CHUNK = 1 << 20;
 const MAX_OCTAL = 0o77777777777;
 const MAX_MANIFEST = 256 * 1024 * 1024;
-/** A backup, restore or export command refreshes its lock this often while it runs... */
+/** The server and the commands (backup, restore, export...) refresh their lock this often while they run... */
 const BEAT_MS = 30_000;
-/** ...and its lock lapses, whatever its process number, when not refreshed for this long (killed, number reused). */
+/** ...and a command's lock, or any lock of another process space, lapses when not refreshed for this long (killed,
+ * number reused), whatever its process number. */
 const COMMAND_STALE_MS = 10 * 60_000;
 
 /**
@@ -155,9 +157,74 @@ function inside(child, parent) {
 // ── Lock of the data directory ──────────────────────────────────────────
 // PGlite cannot share a data directory between processes, and its own postmaster.pid always says -42. The server
 // writes codex.lock when it opens the database; the commands refuse to run while that process lives, and write their
-// own lock, which the server respects and which they refresh while they run.
+// own lock, which the server respects. Both refresh their lock every 30 s while they run.
+//
+// A process number only means something in the process space (pid namespace) it was given in: two containers on one
+// volume both run as pid 1 (lot 10, étape 7). So a lock also records a random id of the process that wrote it (« mine »
+// is that id, never the pid) and its process space. A lock of another space is never judged by its pid: it holds while
+// refreshed and lapses 10 minutes after its last refresh. A lock of the former format (pid, kind, since, beat only) is
+// judged by its pid as before, but is never this process's own.
 
-/** @typedef {{ pid: number, kind: 'server' | 'backup' | 'restore' | 'export' | 'integrity' | 'registry' | 'seed' | 'migrate', since: string, beat?: string }} DataDirLock */
+/**
+ * @typedef {{ pid: number, kind: 'server' | 'backup' | 'restore' | 'export' | 'integrity' | 'registry' | 'seed' | 'migrate', since: string, beat?: string,
+ *   id?: string, space?: string }} DataDirLock
+ */
+
+const LOCK_ID_KEY = Symbol.for('codex.lock.id');
+/** @type {string | undefined} */
+let lockSpace;
+
+/**
+ * Who this process is to the lock: a random id drawn once per process (kept on globalThis, so that every copy of this
+ * module in a bundle shares it), and its process space. Under Linux, the space is the boot (random per boot, shared
+ * by the containers of one kernel) and the pid namespace (one per container, unless --pid=host): two processes with the
+ * same space see the same process numbers. The kernel reuses the number of a namespace once it is gone (seen: a
+ * container started after a killed one got its number), so the start of the namespace's first process is added.
+ * Elsewhere (macOS), the host name.
+ * @returns {{ id: string, space: string }}
+ */
+export function lockIdentity() {
+  const g = /** @type {Record<symbol, string | undefined>} */ (/** @type {unknown} */ (globalThis));
+  const id = (g[LOCK_ID_KEY] ??= randomUUID());
+  if (lockSpace === undefined) {
+    try {
+      const boot = readFileSync('/proc/sys/kernel/random/boot_id', 'utf8').trim();
+      lockSpace = `boot:${boot}/${readlinkSync('/proc/self/ns/pid')}${initStart()}`;
+    } catch {
+      lockSpace = `host:${hostname()}`;
+    }
+  }
+  return { id, space: lockSpace };
+}
+
+/** When the first process of this pid namespace started (clock ticks since boot, /proc/1/stat), or '' if unreadable. */
+function initStart() {
+  try {
+    const stat = readFileSync('/proc/1/stat', 'utf8');
+    const start = stat.slice(stat.lastIndexOf(')') + 2).split(' ')[19];
+    return /^\d+$/.test(start ?? '') ? `/init:${start}` : '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Was the lock written in another process space (another container, another machine sharing the volume)? A lock of the
+ * former format, without a space, cannot tell: false.
+ * @param {DataDirLock | null} lock
+ */
+export function foreignLock(lock) {
+  return !!lock && typeof lock.space === 'string' && lock.space !== lockIdentity().space;
+}
+
+/**
+ * The holder's process number, for the commands' messages (French), saying when it is another container's or machine's.
+ * @param {{ pid: number, space?: string } | null | undefined} lock
+ */
+export function lockPid(lock) {
+  if (!lock) return '?';
+  return `${lock.pid}${foreignLock(/** @type {DataDirLock} */ (lock)) ? ', dans un autre conteneur ou sur une autre machine' : ''}`;
+}
 
 /**
  * @param {string} dataDir
@@ -183,14 +250,31 @@ export function pidAlive(pid) {
 }
 
 /**
- * Is the directory held by another live process? A command's lock lapses when it was not refreshed for 10 minutes (a
- * command killed before it released it, its process number then reused); a server's lasts as long as its process.
+ * Is this lock this process's own? Only by its id: a lock of the former format never is.
+ * @param {DataDirLock | null} lock
+ */
+function ownLock(lock) {
+  return !!lock && typeof lock.id === 'string' && lock.id === lockIdentity().id;
+}
+
+/**
+ * Is the directory held by another live process?
+ * - This process's own lock: no.
+ * - Another process space: yes while refreshed, for 10 minutes after the last refresh, whatever its pid.
+ * - The same space: a command's lock lapses when not refreshed for 10 minutes (killed, its number reused); otherwise it
+ *   holds while its process lives. A lock of the same space with this process's pid but another id was left by a
+ *   process that is gone (its number reused by this one).
+ * - The former format: judged by its pid as in the same space, but held even when its pid is this process's (written by
+ *   a former version, here or in another container: there is no telling).
  * @param {DataDirLock | null} lock
  * @param {number} [now]
  */
 export function lockHeld(lock, now = Date.now()) {
-  if (!lock || lock.pid === process.pid) return false;
-  if (lock.kind !== 'server' && !(now - Date.parse(lock.beat ?? lock.since) < COMMAND_STALE_MS)) return false;
+  if (!lock || ownLock(lock)) return false;
+  const fresh = now - Date.parse(lock.beat ?? lock.since) < COMMAND_STALE_MS;
+  if (foreignLock(lock)) return fresh;
+  if (lock.kind !== 'server' && !fresh) return false;
+  if (typeof lock.id === 'string' && lock.pid === process.pid) return false;
   return pidAlive(lock.pid);
 }
 
@@ -199,7 +283,7 @@ export function lockHeld(lock, now = Date.now()) {
  * @param {string} since
  */
 function lockRecord(kind, since) {
-  return JSON.stringify({ pid: process.pid, kind, since, beat: new Date().toISOString() });
+  return JSON.stringify({ pid: process.pid, kind, since, beat: new Date().toISOString(), ...lockIdentity() });
 }
 
 /**
@@ -214,22 +298,47 @@ async function writeLock(dataDir, kind, since) {
   await rename(tmp, file);
 }
 
-/** Refresh timers of the commands' locks, by data directory. @type {Map<string, NodeJS.Timeout>} */
+/** Refresh timers of this process's locks, by data directory. @type {Map<string, NodeJS.Timeout>} */
 const beats = new Map();
 
 /**
+ * Refreshes this process's lock every 30 s until unlock(). Written synchronously: no write still in flight once
+ * unlock() has stopped the timer and removed the file.
+ * @param {string} dataDir
+ * @param {DataDirLock['kind']} kind
+ * @param {string} since
+ */
+function keepLock(dataDir, kind, since) {
+  const file = path.join(dataDir, LOCK_FILE);
+  const timer = setInterval(() => {
+    try {
+      writeFileSync(`${file}.${process.pid}.tmp`, lockRecord(kind, since));
+      renameSync(`${file}.${process.pid}.tmp`, file);
+    } catch (err) {
+      console.warn('[backup] could not refresh the lock of', dataDir, err);
+    }
+  }, BEAT_MS);
+  timer.unref();
+  clearInterval(beats.get(path.resolve(dataDir)));
+  beats.set(path.resolve(dataDir), timer);
+}
+
+/**
  * The server, opening the database: refuses while a backup, restore, export or integrity command works on the directory, then
- * writes its own lock, removed when the process exits. A lock it cannot write never stops it (a warning).
+ * writes its own lock, refreshed every 30 s and removed when the process exits. A lock it cannot write never stops it (a warning).
  * @param {string} dataDir
  */
 export async function lockForServer(dataDir) {
   const held = await readLock(dataDir);
   if (held && held.kind !== 'server' && lockHeld(held)) {
     const file = path.join(dataDir, LOCK_FILE);
-    throw new BackupError('busy', `a ${held.kind} command (pid ${held.pid}) holds ${file}; if no backup, restore, export, integrity, registry or migrate command is running, delete that file`);
+    const where = foreignLock(held) ? ' in another container or on another machine' : '';
+    throw new BackupError('busy', `a ${held.kind} command (pid ${held.pid}${where}) holds ${file}; if no backup, restore, export, integrity, registry or migrate command is running, delete that file`);
   }
   try {
-    await writeLock(dataDir, 'server', new Date().toISOString());
+    const since = new Date().toISOString();
+    await writeLock(dataDir, 'server', since);
+    keepLock(dataDir, 'server', since);
     process.once('exit', () => releaseSync(dataDir));
   } catch (err) {
     console.warn('[backup] could not write the lock of', dataDir, err);
@@ -246,26 +355,14 @@ export async function lockForServer(dataDir) {
 export async function lockForCommand(dataDir, kind) {
   const held = await readLock(dataDir);
   if (held && lockHeld(held)) {
-    const err = new BackupError('busy', `${held.kind} (pid ${held.pid})`);
+    const err = new BackupError('busy', `${held.kind} (pid ${held.pid}${foreignLock(held) ? ', another container or machine' : ''})`);
     Object.assign(err, { lock: held });
     throw err;
   }
   await mkdir(dataDir, { recursive: true });
   const since = new Date().toISOString();
   await writeLock(dataDir, kind, since);
-  const file = path.join(dataDir, LOCK_FILE);
-  // Written synchronously: no write still in flight once unlock() has stopped the timer and removed the file.
-  const timer = setInterval(() => {
-    try {
-      writeFileSync(`${file}.${process.pid}.tmp`, lockRecord(kind, since));
-      renameSync(`${file}.${process.pid}.tmp`, file);
-    } catch (err) {
-      console.warn('[backup] could not refresh the lock of', dataDir, err);
-    }
-  }, BEAT_MS);
-  timer.unref();
-  clearInterval(beats.get(path.resolve(dataDir)));
-  beats.set(path.resolve(dataDir), timer);
+  keepLock(dataDir, kind, since);
 }
 
 /**
@@ -275,14 +372,15 @@ export async function lockForCommand(dataDir, kind) {
 export async function unlock(dataDir) {
   clearInterval(beats.get(path.resolve(dataDir)));
   beats.delete(path.resolve(dataDir));
-  if ((await readLock(dataDir))?.pid === process.pid) await rm(path.join(dataDir, LOCK_FILE), { force: true });
+  if (ownLock(await readLock(dataDir))) await rm(path.join(dataDir, LOCK_FILE), { force: true });
 }
 
 /** @param {string} dataDir */
 function releaseSync(dataDir) {
   try {
     const file = path.join(dataDir, LOCK_FILE);
-    if (JSON.parse(readFileSync(file, 'utf8')).pid === process.pid) rmSync(file, { force: true });
+    clearInterval(beats.get(path.resolve(dataDir)));
+    if (ownLock(JSON.parse(readFileSync(file, 'utf8')))) rmSync(file, { force: true });
   } catch {
     // Gone, or another process's: nothing to release.
   }

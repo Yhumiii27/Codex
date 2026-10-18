@@ -580,7 +580,8 @@ supervision, codes du contrôle de configuration et leur correction).
   seulement quand `CODEX_STANDALONE=1` : `npm run build` et l'app Mac sont inchangés), utilisateur non root, volume des
   données, `HEALTHCHECK` sur `/api/health`, variables au lancement seulement, aucun secret ni donnée dans l'image ; ni
   hébergeur, ni proxy, ni TLS choisis (M22). Commandes de sauvegarde, d'export et d'intégrité dans l'image, conteneur du
-  serveur arrêté (le verrou du dossier de données ne traverse pas les conteneurs).
+  serveur arrêté ; lancées à côté d'un serveur en marche, elles refusent (le verrou du dossier de données reconnaît un
+  autre conteneur).
 - **Planificateur** (`src/lib/scheduler.ts`, démarré par `register`) : toutes les 5 minutes par défaut, met en vigueur
   les révisions approuvées dont la date d'effet est venue (les pages ne le font plus elles-mêmes) et applique une
   acceptation de Vigie que plus rien ne retient. Nettoyage des orphelins, vérification d'intégrité, sauvegarde et

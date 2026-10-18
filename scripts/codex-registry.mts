@@ -20,7 +20,7 @@ import type { Db } from '../src/db';
 import { appliedMigrations, migrationPlan } from '../src/db/migrations';
 import * as schema from '../src/db/schema';
 import { databaseUrlOf, PgServerClient, redactUrl, serverPool } from '../src/db/sql-client';
-import { BackupError, backupDirOf, createBackup, journal, journalData, keepOf, LOCK_FILE, lockForCommand, readMigrations, unlock } from '../src/lib/backup-core.mjs';
+import { BackupError, backupDirOf, createBackup, journal, journalData, keepOf, LOCK_FILE, lockForCommand, lockPid, readMigrations, unlock } from '../src/lib/backup-core.mjs';
 import { applyRegistry, type RegistryNote, type RegistryStep } from '../src/lib/registry-apply';
 
 const args = process.argv.slice(2);
@@ -68,8 +68,8 @@ function explain(err: unknown): string {
   if (err instanceof BackupError && err.code === 'busy') {
     const lock = (err as unknown as { lock?: { kind: string; pid: number } }).lock;
     return lock?.kind === 'server'
-      ? `Le serveur Codex tourne (processus ${lock.pid}) et tient la base de ${DATA_DIR}.\nArrêtez-le (npm run dev, npm run start ou l'app Mac), puis relancez la commande.\nSi aucun serveur ne tourne plus, supprimez ${path.join(DATA_DIR, LOCK_FILE)}.`
-      : `Une autre commande (${lock?.kind ?? err.detail}) travaille sur ${DATA_DIR} (processus ${lock?.pid ?? '?'}).\nSi aucune commande ne tourne plus, supprimez ${path.join(DATA_DIR, LOCK_FILE)}.`;
+      ? `Le serveur Codex tourne (processus ${lockPid(lock)}) et tient la base de ${DATA_DIR}.\nArrêtez-le (npm run dev, npm run start ou l'app Mac), puis relancez la commande.\nSi aucun serveur ne tourne plus, supprimez ${path.join(DATA_DIR, LOCK_FILE)}.`
+      : `Une autre commande (${lock?.kind ?? err.detail}) travaille sur ${DATA_DIR} (processus ${lockPid(lock)}).\nSi aucune commande ne tourne plus, supprimez ${path.join(DATA_DIR, LOCK_FILE)}.`;
   }
   return `Erreur : ${err instanceof Error ? err.message : String(err)}`;
 }

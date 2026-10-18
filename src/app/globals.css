@@ -48,6 +48,9 @@ th > .sr-only { position: static; display: block; }
 .nowrap { white-space: nowrap; }
 .plain-btn { border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; text-align: left; padding: 0; }
 .hover-tint:hover { background: color-mix(in srgb, var(--color-text) 6%, transparent); }
+/* Muted text (55 %) on a hovered line of a dialog: 4.38:1 over the tint, under the 4.5:1 of 11 px text (a template's
+   reference in « Nouveau document »). One step up, the 60 % of table headings: 4.93:1, the tint unchanged. */
+.hover-tint:hover .text-muted { color: color-mix(in srgb, var(--color-text) 60%, transparent); }
 .sec-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }
 .sec-title { margin: 0; opacity: .7; }
 /* Section headings are <h2> (or <h3> under a page title) for the outline, drawn as Nocturne's h6. */
