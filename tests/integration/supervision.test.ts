@@ -127,9 +127,11 @@ describe('SharePoint store check', () => {
     expect(driveCalls()).toBe(1);
     drive.status = 401;
     await expect(probeStore(t0 + 61_000)).rejects.toThrow('SharePoint drive: 401');
+    // The token refused: asked again once, refused again (tests/integration/sharepoint-store.test.ts).
+    expect(driveCalls()).toBe(3);
     // Failed: said again within the minute without asking Graph.
     await expect(probeStore(t0 + 62_000)).rejects.toThrow();
-    expect(driveCalls()).toBe(2);
+    expect(driveCalls()).toBe(3);
   });
 
   it('makes one call to Entra ID and one to Graph for checks asked at once, success or failure', async () => {

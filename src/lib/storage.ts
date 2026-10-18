@@ -49,7 +49,7 @@ export type FileSource = {
  */
 export type ListedFile = { key: string; size: number; touched: number };
 
-interface FileStore {
+export interface FileStore {
   readonly name: string;
   /** Uploads under a provisional name, never replacing an existing file; returns the key. */
   put(buf: Buffer, name: string): Promise<string>;
@@ -180,7 +180,21 @@ const local: FileStore = {
   },
 };
 
-// Not exercised against a real tenant yet: enable only once the app registration and the library exist.
+/**
+ * Seconds a Retry-After header asks to wait: a whole number of seconds (0 included), or an HTTP date (RFC 9110 §10.2.3);
+ * null when absent or unreadable.
+ */
+export function retryAfterSeconds(header: string | null, now = Date.now()): number | null {
+  const v = header?.trim();
+  if (!v) return null;
+  if (/^\d+$/.test(v)) return Number(v);
+  // An HTTP date names its day and month ("Sun, 18 Oct 2026 08:00:05 GMT"); Date.parse would take "-3" for a year.
+  const at = /^[A-Za-z]{3}, /.test(v) ? Date.parse(v) : NaN;
+  return Number.isNaN(at) ? null : Math.max(0, Math.ceil((at - now) / 1000));
+}
+
+// Tried against a fake Microsoft Graph only (tests/integration/sharepoint-store.test.ts), never against a real tenant
+// yet: enable only once the app registration and the library exist (docs/exploitation.md, npm run storage:check).
 function sharepoint(): FileStore {
   const env = (k: string) => {
     const v = process.env[k];
@@ -208,13 +222,30 @@ function sharepoint(): FileStore {
     token = { value: j.access_token, exp: Date.now() + j.expires_in * 1000 };
     return token.value;
   }
-  /** Graph call with a timeout, retried (a few times, bounded) when Graph throttles: 429 / 503 with Retry-After. */
+  /**
+   * A Graph call with the app's token; a token Graph refuses (401: revoked, or the secret rotated before it expired) is
+   * dropped and the call made once more with a new one, rather than failing until the token would have expired.
+   */
+  async function authorized(call: (bearer: string) => Promise<Response>): Promise<Response> {
+    const used = await bearer();
+    const res = await call(used);
+    if (res.status !== 401) return res;
+    await res.body?.cancel().catch(() => {});
+    if (token?.value === used) token = null;
+    return call(await bearer());
+  }
+  /**
+   * Graph call with a timeout, retried when Graph throttles (429 / 503): at most 3 attempts, after what Retry-After asks
+   * (seconds, 0 included, or a date), else 2 then 4 s, never more than 10 s each. The body of an answer not used is
+   * released (an unread body holds its connection).
+   */
   async function graph(url: string, init: RequestInit = {}, timeoutMs = 30_000): Promise<Response> {
     for (let attempt = 1; ; attempt++) {
-      const res = await fetch(url, { ...init, headers: { Authorization: `Bearer ${await bearer()}`, ...init.headers }, signal: init.signal ?? AbortSignal.timeout(timeoutMs) });
+      const res = await authorized((b) => fetch(url, { ...init, headers: { Authorization: `Bearer ${b}`, ...init.headers }, signal: init.signal ?? AbortSignal.timeout(timeoutMs) }));
       if ((res.status !== 429 && res.status !== 503) || attempt >= 3) return res;
-      const wait = Math.min(Number(res.headers.get('retry-after')) || 2 ** attempt, 10);
-      await new Promise((r) => setTimeout(r, wait * 1000));
+      const wait = retryAfterSeconds(res.headers.get('retry-after')) ?? 2 ** attempt;
+      await res.body?.cancel().catch(() => {});
+      await new Promise((r) => setTimeout(r, Math.min(wait, 10) * 1000));
     }
   }
   const drive = () => `https://graph.microsoft.com/v1.0/drives/${env('CODEX_SP_DRIVE_ID')}`;
@@ -224,7 +255,7 @@ function sharepoint(): FileStore {
     async put(buf, name) {
       // Simple upload (≤ 250 MB, the cap of lib/filetypes.ts maxFileBytes); `fail` never silently replaces another file.
       const target = `_staging/${encodeURIComponent(`${randomUUID()}-${name}`)}`;
-      const res = await graph(`${drive()}/root:/${target}:/content?@microsoft.graph.conflictBehavior=fail`, { method: 'PUT', body: new Uint8Array(buf) }, 60_000 + buf.length / 1000);
+      const res = await graph(`${drive()}/root:/${target}:/content?@microsoft.graph.conflictBehavior=fail`, { method: 'PUT', body: new Uint8Array(buf) }, 60_000 + Math.ceil(buf.length / 1000));
       if (!res.ok) throw new Error(`SharePoint upload failed: ${res.status}`);
       return ((await res.json()) as { id: string }).id;
     },
@@ -285,9 +316,9 @@ function sharepoint(): FileStore {
       return out;
     },
     async probe() {
-      // The library's drive, its id only: the app registration can still sign in and reach it. Not retried: a health
-      // check answers at once.
-      const res = await fetch(`${drive()}?$select=id`, { headers: { Authorization: `Bearer ${await bearer()}` }, signal: AbortSignal.timeout(5_000) });
+      // The library's drive, its id only: the app registration can still sign in and reach it. Not retried when Graph
+      // throttles: a health check answers at once (a refused token is asked again once, as for any call).
+      const res = await authorized((b) => fetch(`${drive()}?$select=id`, { headers: { Authorization: `Bearer ${b}` }, signal: AbortSignal.timeout(5_000) }));
       if (!res.ok) throw new Error(`SharePoint drive: ${res.status}`);
     },
   };
@@ -590,8 +621,17 @@ export async function probeStore(now = Date.now()): Promise<{ store: StoreName; 
   return { store: name, cached: joined };
 }
 
-/** Forgets the SharePoint store's token and last check (tests). */
+/**
+ * The store of that name, the one stageFile, readStored… use (the active one: storeFor(activeStore())): for the storage
+ * check (lib/storage-check.ts). The SharePoint store is made on first use and kept, with its token.
+ */
+export function storeFor(name: StoreName): FileStore {
+  return stores(name);
+}
+
+/** Forgets the stores made (the SharePoint store and its token, the active store) and the last check (tests). */
 export function resetStores(): void {
+  current = null;
   sp = null;
   probed = null;
   probing = null;
