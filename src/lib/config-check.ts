@@ -3,8 +3,10 @@ import { access, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { backupDirOf } from './backup-core.mjs';
 import { admittedExtensions, DENIED_EXTENSIONS, SHAREPOINT_MAX_FILE_MB } from './filetypes';
+import { ENDPOINTS, type Endpoint } from './integration-credentials';
 import { LOG_LEVELS, write } from './log';
 import { parseRule, RATE_LIMITS } from './ratelimit';
+import { parseInterval, SCHEDULE, TASK_NAMES } from './scheduler-state';
 import { seedModeOf } from './seed-mode';
 import { appVersion } from './version';
 
@@ -34,10 +36,6 @@ const DOMAIN = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}
 export const MIN_TOKEN_LENGTH = 32;
 
 export const SHAREPOINT_VARS = ['CODEX_SP_TENANT_ID', 'CODEX_SP_CLIENT_ID', 'CODEX_SP_CLIENT_SECRET', 'CODEX_SP_DRIVE_ID'] as const;
-const TOKENS = [
-  ['CODEX_IMPORT_TOKEN', 'POST /api/import'],
-  ['VIGIE_WEBHOOK_TOKEN', 'POST /api/integrations/vigie'],
-] as const;
 const URLS = ['VIGIE_API_URL', 'NEXT_PUBLIC_VIGIE_URL', 'NEXT_PUBLIC_KEYSTONE_URL'] as const;
 
 /** Where the database and the files live, as src/db/index.ts reads it (`cwd`: the folder the server runs in). */
@@ -85,17 +83,55 @@ export function checkConfig(env: Env, { production }: { production: boolean }): 
     if (stray.length) add('warn', 'sharepoint_unused', `${stray.join(', ')} set while CODEX_STORAGE is not sharepoint: not used, files are stored locally`);
   }
 
-  // ── Integration tokens (lib/importer.ts checkBearer) ──
-  for (const [name, route] of TOKENS) {
-    const v = env[name]?.trim();
-    if (!v) add('info', 'token_unset', `${name} is not set: ${route} is disabled (503)`);
-    else if (/\s/.test(v)) add('error', 'token_invalid', `${name} holds a space: no Authorization header can carry it, ${route} would refuse every call`);
-    else if (v.length < MIN_TOKEN_LENGTH || new Set(v).size < 10) {
-      add('error', 'token_weak', `${name} is too short or too simple to resist guessing (at least ${MIN_TOKEN_LENGTH} varied characters; generate one with: openssl rand -base64 32)`);
+  // ── Integration credentials (lib/server-auth.ts): tokens and signing secrets, each with its _NEXT for a rotation ──
+  const values: { name: string; value: string }[] = [];
+  for (const endpoint of Object.keys(ENDPOINTS) as Endpoint[]) {
+    const e = ENDPOINTS[endpoint];
+    const names = [e.token, `${e.token}_NEXT`, ...(e.secret ? [e.secret, `${e.secret}_NEXT`] : [])];
+    for (const name of names) {
+      const v = env[name]?.trim();
+      if (!v) continue;
+      values.push({ name, value: v });
+      const secret = name.includes('SECRET');
+      if (!secret && /\s/.test(v)) add('error', 'token_invalid', `${name} holds a space: no Authorization header can carry it, ${e.route} would refuse every call`);
+      else if (v.length < MIN_TOKEN_LENGTH || new Set(v).size < 10) {
+        add('error', 'token_weak', `${name} is too short or too simple to resist guessing (at least ${MIN_TOKEN_LENGTH} varied characters; generate one with: openssl rand -base64 32)`);
+      }
+    }
+    for (const name of [e.token, e.secret]) {
+      if (name && !set(name) && set(`${name}_NEXT`)) add('warn', 'rotation_incomplete', `${name}_NEXT is set without ${name}: it is accepted alone; at the end of a rotation, move its value to ${name} and remove ${name}_NEXT`);
+    }
+    if (!names.some(set)) {
+      if (endpoint === 'registry') add('info', 'registry_open', `${e.token} is not set: ${e.route} answers without a token, as Keystone reads it today`);
+      else add('info', 'token_unset', `${e.token}${e.secret ? ` and ${e.secret} are` : ' is'} not set: ${e.route} is disabled (503)`);
     }
   }
-  const [importToken, vigieToken] = TOKENS.map(([name]) => env[name]?.trim());
-  if (importToken && importToken === vigieToken) add('warn', 'token_shared', 'CODEX_IMPORT_TOKEN and VIGIE_WEBHOOK_TOKEN are the same: whoever holds one can call both endpoints');
+  // One value under two names: whoever holds one credential holds the other (a secret equal to a token travels in a header).
+  for (let i = 0; i < values.length; i++) {
+    for (let j = i + 1; j < values.length; j++) {
+      if (values[i].value === values[j].value && `${values[i].name}_NEXT` !== values[j].name) {
+        add('warn', 'token_shared', `${values[i].name} and ${values[j].name} are the same: whoever holds one holds the other`);
+      }
+    }
+  }
+  const win = env.CODEX_SIGNATURE_WINDOW_S?.trim();
+  if (win && !(/^\d{1,5}$/.test(win) && Number(win) >= 30 && Number(win) <= 3600)) add('warn', 'signature_window_invalid', `CODEX_SIGNATURE_WINDOW_S="${win}" is not a number of seconds from 30 to 3600: 300 applies`);
+  const vigieToken = [ENDPOINTS.vigie.token, `${ENDPOINTS.vigie.token}_NEXT`, ENDPOINTS.vigie.secret!, `${ENDPOINTS.vigie.secret}_NEXT`].some(set);
+
+  // ── Scheduler (lib/scheduler.ts) ──
+  const scheduler = env.CODEX_SCHEDULER?.trim();
+  if (scheduler && !ON.test(scheduler) && !OFF.test(scheduler)) add('warn', 'flag_invalid', `CODEX_SCHEDULER="${scheduler}" is neither 1 nor 0: read as on`);
+  else if (scheduler && OFF.test(scheduler)) add('warn', 'scheduler_off', 'CODEX_SCHEDULER is off: approved revisions enter into force only when a page is opened, and no maintenance task runs');
+  for (const task of TASK_NAMES) {
+    const spec = SCHEDULE[task];
+    const raw = env[spec.env]?.trim();
+    if (!raw) continue;
+    const ms = parseInterval(raw);
+    if (ms === undefined) add('warn', 'schedule_invalid', `${spec.env}="${raw.slice(0, 40)}" is not an interval (30s, 5m, 6h, 1d, off): ${spec.def} applies`);
+    else if (ms === null && task === 'promote') add('warn', 'schedule_promote_off', `${spec.env} is off: approved revisions enter into force on their date only when a page is opened`);
+  }
+  const exportKeep = env.CODEX_SCHEDULE_EXPORT_KEEP?.trim();
+  if (exportKeep && !(/^\d{1,3}$/.test(exportKeep) && Number(exportKeep) >= 1)) add('warn', 'export_keep_invalid', `CODEX_SCHEDULE_EXPORT_KEEP="${exportKeep}" is not a whole number from 1: 3 applies`);
 
   // ── Vigie and Keystone addresses (lib/vigie.ts, lib/keystone.ts) ──
   for (const name of URLS) {
@@ -113,7 +149,7 @@ export function checkConfig(env: Env, { production }: { production: boolean }): 
   }
   if (env.VIGIE_API_URL) {
     add('warn', 'vigie_api_not_wired', 'VIGIE_API_URL is set but Codex does not call Vigie yet: requests stay in Codex and their decisions can no longer be simulated, they must come through POST /api/integrations/vigie');
-    if (!vigieToken) add('warn', 'vigie_no_webhook', 'VIGIE_API_URL is set without VIGIE_WEBHOOK_TOKEN: no decision of Vigie can reach Codex');
+    if (!vigieToken) add('warn', 'vigie_no_webhook', 'VIGIE_API_URL is set without VIGIE_WEBHOOK_TOKEN or VIGIE_WEBHOOK_SECRET: no decision of Vigie can reach Codex');
   }
   if (env.NEXT_PUBLIC_VIGIE_URL !== undefined && !env.NEXT_PUBLIC_VIGIE_URL.trim()) add('warn', 'url_empty', 'NEXT_PUBLIC_VIGIE_URL is empty: links to Vigie would point to Codex itself');
   if (env.NEXT_PUBLIC_KEYSTONE_URL !== undefined && !env.NEXT_PUBLIC_KEYSTONE_URL.trim()) add('warn', 'url_empty', 'NEXT_PUBLIC_KEYSTONE_URL is empty: links to Keystone would point to Codex itself');

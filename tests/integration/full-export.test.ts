@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { linkSync, mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { open } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -15,6 +15,9 @@ import { importDocument } from '@/lib/importer';
 import { auditDetailL } from '@/lib/queries';
 import { addDoc, addWorkflow, fixClock, getDoc, reset, setupDb } from '../support/db';
 import { actAs } from '../support/session';
+
+/** The last migration of the code: the one an export names (drizzle/meta/_journal.json). */
+const LATEST_MIGRATION = (JSON.parse(readFileSync(path.join(process.cwd(), 'drizzle/meta/_journal.json'), 'utf8')) as { entries: { tag: string }[] }).entries.at(-1)!.tag;
 
 // Full export for reversibility (point 17 of docs/reste-a-faire.md, lib/export-core.mjs, GET /api/export/full): an
 // archive of the test database read back whole (every entry against the manifest and SHA256SUMS), its counts against
@@ -128,7 +131,7 @@ describe('GET /api/export/full', () => {
     expect(res.headers.get('cache-control')).toBe('private, no-store');
     const { manifest, names, byName, json } = await readArchive(bytes);
 
-    expect(manifest).toMatchObject({ format: 'codex-export', version: 1, createdAt: '2026-10-15T08:00:00.000Z', mode: 'online', by: 'manager', schema: { migration: '0000_init' } });
+    expect(manifest).toMatchObject({ format: 'codex-export', version: 1, createdAt: '2026-10-15T08:00:00.000Z', mode: 'online', by: 'manager', schema: { migration: LATEST_MIGRATION } });
     expect(names[0]).toBe('LISEZMOI.txt');
     expect(names.slice(-2)).toEqual(['SHA256SUMS', 'manifest.json']);
 

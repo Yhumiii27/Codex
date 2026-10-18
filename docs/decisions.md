@@ -860,7 +860,8 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     lien ou le dernier déplacement du fichier ; 200 fichiers au plus par passage, une entrée de journal par passage avec
     la liste ; seuls les noms que Codex donne sont examinés. SharePoint est listé, jamais nettoyé, tant que le pilote n'a pas été essayé sur un vrai
     tenant (O-01). Pas de commande npm : PGlite n'ouvre la base que dans un seul processus, celui du serveur ; le
-    planificateur (point 38 de `docs/reste-a-faire.md`) appellera la même fonction.
+    planificateur (point 38) appelle la même fonction quand `CODEX_SCHEDULE_ORPHANS` en donne la fréquence (désactivé
+    par défaut, voir « Planificateur interne »).
 - **Sauvegarde et restauration** (point 48 de `docs/reste-a-faire.md`, 15 octobre ; procédure dans
   `docs/sauvegarde.md`. Hébergement, fréquence, lieu de conservation, chiffrement, perte de données et délai de reprise
   tolérés (M22 de l'audit) non décidés ; SharePoint (O-01) non décidé) :
@@ -880,8 +881,8 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     `0600`) : la clé et la copie hors de la machine dépendent de l'hébergement. Rotation, après relecture de la
     nouvelle : les 7 plus récentes (`CODEX_BACKUP_KEEP`) et la plus récente de chacun des 7 derniers jours (UTC) où une
     sauvegarde a été faite, soit 14 au plus : des sauvegardes faites à la suite n'écartent jamais les jours d'avant ;
-  - aucune sauvegarde programmée, faute de fréquence décidée ; le planificateur (point 38) pourra appeler la même
-    fonction ;
+  - aucune sauvegarde programmée par défaut, faute de fréquence décidée ; le planificateur (point 38) appelle la même
+    fonction quand `CODEX_SCHEDULE_BACKUP` en donne la fréquence ;
   - sauvegarde depuis Administration (serveur en marche) réservée aux gestionnaires documentaires ayant l'accès
     Administration, comme le nettoyage du stockage : l'archive contient tous les brouillons et son manifeste nomme les
     fichiers (D-14). Entrée de journal « Sauvegarde créée » avec l'archive, sa taille, le début de son SHA-256 et des
@@ -947,7 +948,7 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     requête de base en échec (le message de Drizzle est réduit au SQL paramétré, la valeur citée par PostgreSQL masquée)
     ni le `detail` d'une erreur de base. Une Server Action qui échoue ainsi remet à Next.js une erreur refaite sans ces
     valeurs, puisque Next.js imprime lui-même, dans la même sortie, l'erreur entière ; une erreur pendant le rendu d'une
-    page reste imprimée par Next.js telle quelle (limite signalée dans `docs/exploitation.md` §4). Une requête d'API
+    page reste imprimée par Next.js telle quelle (limite signalée dans `docs/exploitation.md` §5). Une requête d'API
     qui lève une erreur répond 500 `{"error":"internal","requestId"}` au lieu de la page d'erreur de Next.js, comme
     `/api/import` et `/api/integrations/vigie` pour l'erreur qu'elles rattrapent. La 503 `disabled` d'un point
     d'entrée sans jeton, état par défaut, est écrite au niveau `info`, pas `error` : un client anonyme ne peut pas
@@ -1089,7 +1090,8 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     (rien de plus ancien n'en atteste), sauf si leur taille diffère déjà de celle enregistrée (le fichier est alors
     signalé altéré). Le journal compte ces empreintes établies après coup ; la fiche de visa d'un fichier sans empreinte
     dit « non calculée » ;
-  - **vérification** à la demande seulement : Administration › Journal d'audit › Intégrité des fichiers (gestionnaires
+  - **vérification** à la demande (et par le planificateur si `CODEX_SCHEDULE_INTEGRITY` en donne la fréquence,
+    désactivé par défaut) : Administration › Journal d'audit › Intégrité des fichiers (gestionnaires
     documentaires ayant l'accès Administration, comme la sauvegarde : le résultat nomme des brouillons) et
     `npm run integrity`, serveur arrêté, qui sort en erreur (code 1) s'il y a un écart, pour qu'un planificateur puisse
     alerter. Rien n'est réparé ni supprimé : revenir à une copie saine (sauvegarde) reste une décision humaine. Le
@@ -1311,6 +1313,43 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
   base qui a déjà des documents sans `--append`, et charge la démonstration avant le volume synthétique (200
   personnes fictives de plus par défaut). Les fichiers ne sont pas créés (versions de travail sans fichier). Les
   volumes cibles restent à fixer (M18, O-11) : 10 000 documents ont servi aux mesures de `docs/performances.md`.
+- **Planificateur interne** (point 38 de `docs/reste-a-faire.md`, 18 octobre) : une boucle dans le processus du
+  serveur (`src/lib/scheduler.ts`, lancée par `src/instrumentation.ts`), sans route `/api/cron` ni cron externe, pour
+  qu'une installation sans hébergement décidé (app Mac, poste local) mette quand même en vigueur à la date. Choix
+  prudents, à confirmer :
+  - **seule la mise en vigueur différée tourne par défaut** (toutes les 5 minutes, `CODEX_SCHEDULE_PROMOTE`) ; la
+    mise en vigueur automatique elle-même reste la proposition non confirmée de D-11 (O-09) ; nettoyage des orphelins,
+    vérification d'intégrité, sauvegarde et export complet sont **désactivés** tant qu'une variable `CODEX_SCHEDULE_*`
+    n'en donne pas la fréquence, qui relève de l'hébergement (M22) ; les fréquences se comptent depuis le dernier départ,
+    pas à heure fixe ;
+  - les pages ne mettent plus en vigueur quand le planificateur du processus le fait : une révision dont la date
+    d'effet est le jour même entre en vigueur au plus 5 minutes après minuit (heure de Paris), avec sa date d'effet
+    comme date d'entrée en vigueur ; `CODEX_SCHEDULER=off` rend l'ancien comportement ;
+  - la même tâche applique une acceptation de Vigie restée « acceptée » alors que plus rien ne la retient (filet de
+    sécurité ; un document obsolète reste exclu, comme au point 35) ;
+  - une exécution à la fois par tâche, même à plusieurs processus sur une base (bail de 2 minutes dans la table
+    `scheduler_runs`, repris quand il échoit) ; chaque exécution au journal technique, ce qu'elle change au journal
+    d'audit sous l'acteur Codex ; état dans Administration › Journal d'audit, visible de qui a accès à l'Administration ;
+  - l'export planifié va dans `<dossier de données>-exports` (comme `npm run export`), sous un nom à part, et seuls les
+    3 plus récents sont gardés (`CODEX_SCHEDULE_EXPORT_KEEP`) ; la sauvegarde planifiée garde la rotation et l'écart
+    minimal de 15 minutes de la sauvegarde manuelle, et est sautée sur un serveur PostgreSQL ;
+  - **aucune relance ni notification hors application**, faute de destinataires, d'échéances (M19) et de canal décidés
+    (Teams ou Outlook, non discuté), et aucun envoi vers Vigie ou Keystone (T-01, O-03, O-10) : seul le point
+    d'extension est prévu et documenté (`docs/exploitation.md` §4).
+- **Authentification entre serveurs** (point 23, 18 octobre) : sans décision sur Vigie et Keystone eux-mêmes (O-03,
+  O-10) ni sur le fournisseur d'identité (O-02), Codex vérifie un contrat qu'il fixe (`docs/api.md`,
+  « Authentification »). Choix prudents, à confirmer :
+  - signature **HMAC-SHA256** de `"<horodatage>." + corps brut`, en-têtes `X-Codex-Timestamp` (secondes Unix) et
+    `X-Codex-Signature: v1=<hex>`, fenêtre de **5 minutes** de part et d'autre (`CODEX_SIGNATURE_WINDOW_S`), et
+    **anti-rejeu** en base : une signature n'est acceptée qu'une fois, un nouvel essai doit être signé à nouveau ;
+  - jeton et signature se règlent séparément ; **tout ce qui est défini est exigé** ; un jeton seul se comporte comme
+    avant, rien n'est imposé par défaut (aucune variable : import et webhook désactivés, comme avant) ;
+  - rotation par une variable `…_NEXT` acceptée à côté de la première (plutôt qu'une liste séparée par des virgules) ;
+    secrets soumis à la même règle de longueur que les jetons ;
+  - **registre ouvert par défaut** pour ne pas couper Keystone ; `CODEX_REGISTRY_TOKEN` le ferme, et il répond alors
+    `Cache-Control: private` ; pas de signature sur ce `GET` ;
+  - Codex n'appelle pas encore Vigie : la même signature servira à ses envois (`signRequest`), sans file d'envoi tant
+    que les branchements réels ne sont pas faits (T-01).
 - **Git** (D-23) : premier commit sur une branche `codex-ged-v2` plutôt que sur `main`.
 
 ## Ce qui est explicitement hors périmètre

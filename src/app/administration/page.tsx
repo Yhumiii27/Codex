@@ -16,6 +16,7 @@ import { ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLE_LABEL, MATRIX_ROLES, PERMS, SI
 import { AUDIT_ID_MAX, auditPage, getMatrix, integrityL, latestIntegrityCheck, listFunctionHolders, listTemplates, orgUsage, registryUsage, retentionByType, typeView, type AuditFilter, type RegistryUsage } from '@/lib/queries';
 import { fmtDateTime, fmtSize, parisStamp, parseIsoDay } from '@/lib/format';
 import { MAX_PER_RUN, orphanReport, type OrphanScan } from '@/lib/orphans';
+import { schedulerOverview, type TaskView } from '@/lib/scheduler';
 import { inUse } from '@/lib/org-rules';
 import { DEPARTMENT_HEAD_FUNCTION } from '@/lib/registry-rules';
 import { FACET_LABEL, oneEach } from '@/lib/search';
@@ -651,6 +652,63 @@ function FullExport({ ctx }: { ctx: Ctx }) {
   );
 }
 
+/** An interval as the scheduler table shows it: 30 s, 5 min, 6 h, 1 j. */
+function fmtInterval(ms: number, lang: 'fr' | 'en'): string {
+  const units: [number, string][] = [[86_400_000, lang === 'fr' ? 'j' : 'd'], [3_600_000, 'h'], [60_000, 'min'], [1000, 's']];
+  const [size, unit] = units.find(([u]) => ms % u === 0) ?? [1000, 's'];
+  return `${ms / size} ${unit}`;
+}
+
+/** The figures of a task's last run, in the reader's language (lib/scheduler.ts TASKS). */
+function runSummary(ctx: Ctx, x: TaskView): string {
+  const { t, lang } = ctx;
+  if (x.error === 'interrupted') return t.sched_interrupted;
+  if (x.status === 'error') return x.error ?? '';
+  const sum = x.summary ?? {};
+  const n = (key: TKey, v: unknown) => (typeof v === 'number' ? t[key].replace('{n}', String(v)) : null);
+  const parts = [
+    n('sched_sum_promoted', sum.promoted), n('sched_sum_decisions', sum.decisions),
+    n('sched_sum_removed', sum.removed), sum.bytes ? fmtSize(Number(sum.bytes), lang) : null, sum.failed ? n('sched_sum_failed', sum.failed) : null, n('sched_sum_left', sum.left),
+    n('sched_sum_checked', sum.checked), sum.altered ? n('sched_sum_altered', sum.altered) : null, sum.missing ? n('sched_sum_missing', sum.missing) : null,
+    typeof sum.archive === 'string' ? t.sched_sum_archive.replace('{v}', sum.archive) : null, sum.size ? fmtSize(Number(sum.size), lang) : null, n('sched_sum_files', sum.files),
+    typeof sum.reason === 'string' && `sched_reason_${sum.reason}` in t ? t[`sched_reason_${sum.reason}` as TKey] : null,
+  ];
+  return parts.filter(Boolean).join(' · ');
+}
+
+/**
+ * The scheduler (lib/scheduler.ts), for whoever reaches Administration: each task with its setting, its last run and the
+ * next. The settings are this process's variables; the runs, those any process on the database made.
+ */
+async function Scheduler({ ctx }: { ctx: Ctx }) {
+  const { t, lang } = ctx;
+  const view = await schedulerOverview();
+  const when = (ts: string | null) => (ts ? fmtDateTime(parisStamp(ts), lang) : null);
+  return (
+    <section className={styles.orphans} aria-label={t.sched_title}>
+      <div className={styles.orphansHead}><strong>{t.sched_title}</strong></div>
+      <p className="text-muted">{t.sched_hint}</p>
+      {!view.enabled ? <p className={styles.filesOff}>{t.sched_off}</p> : !view.started && <p className={styles.filesOff}>{t.sched_not_started}</p>}
+      <table className={`table ${styles.orphanTable}`}>
+        <thead><tr><th>{t.sched_col_task}</th><th>{t.sched_col_every}</th><th>{t.sched_col_last}</th><th>{t.sched_col_result}</th><th>{t.sched_col_next}</th></tr></thead>
+        <tbody>
+          {view.tasks.map((x) => (
+            <tr key={x.task}>
+              <td>{t[`sched_task_${x.task}` as TKey]}<div className="text-muted" style={sub}>{x.env}</div></td>
+              <td className="nowrap">{x.interval == null ? <span className="text-muted">{t.sched_disabled}</span> : t.sched_every.replace('{d}', fmtInterval(x.interval, lang))}</td>
+              <td className="nowrap tabnum">{when(x.lastStart) ?? <span className="text-muted">{t.sched_never}</span>}</td>
+              <td className={x.status === 'error' ? styles.filesOff : undefined}>
+                {x.status && <>{t[`sched_st_${x.status}` as TKey]}{runSummary(ctx, x) && ` · ${runSummary(ctx, x)}`}</>}
+              </td>
+              <td className="nowrap tabnum">{x.interval == null ? '—' : when(x.next) ?? <span className="text-muted">{t.sched_next_first}</span>}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
 /**
  * Journal tab: the entries the user may read, newest first, filtered and paged by the database (lib/queries.ts
  * auditPage), the filters and the page in the URL; the CSV export above it gives the whole journal.
@@ -678,6 +736,7 @@ async function Audit({ ctx, sp }: { ctx: Ctx; sp: Record<string, string | undefi
       {mayBackUp(ctx) && <Backups ctx={ctx} open={sp.backups === '1'} />}
       {mayCheckIntegrity(ctx) && <Integrity ctx={ctx} />}
       {mayExportAll(ctx) && <FullExport ctx={ctx} />}
+      <Scheduler ctx={ctx} />
       {/* Mounted again when the URL changes its filters (Effacer, a link), so that the fields show them. */}
       <div key={JSON.stringify(f)}>
         <Form action="/administration" scroll={false} className={styles.auditFilters}>

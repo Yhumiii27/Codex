@@ -236,7 +236,7 @@ function tagged(res: Response, requestId: string): Response {
 
 /**
  * Marks a 5xx answer the code means to give, not a failure: an integration endpoint left disabled (503 "disabled",
- * lib/importer.ts checkBearer), the default state, which any client can ask for. withRequestLog writes it at info level,
+ * lib/server-auth.ts checkBearer), the default state, which any client can ask for. withRequestLog writes it at info level,
  * keeping error for what calls for someone (500, a store out of reach, a health check failed).
  */
 export function expectedAnswer(res: Response): Response {

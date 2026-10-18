@@ -1899,7 +1899,7 @@ qu'au premier appel à Graph.
     chacune coupée à 300 caractères. Next.js imprimant lui-même, dans la même sortie, l'erreur entière d'une Server
     Action (propriétés et cause comprises), `traceAction` lui remet une erreur refaite sans ces valeurs
     (`withoutQueryValues`). Une erreur de requête pendant le rendu d'une page reste imprimée telle quelle par Next.js :
-    limite consignée dans `docs/exploitation.md` §4 ;
+    limite consignée dans `docs/exploitation.md` §5 ;
   - la 503 `disabled` d'un point d'entrée d'intégration sans jeton, état par défaut, était écrite au niveau `error` :
     n'importe quel client remplissait le journal d'erreurs. Elle est marquée prévue (`expectedAnswer`) et écrite en
     `info`, la ligne `auth` aussi ; `error` reste aux 500, au stockage injoignable (502) et à la santé en échec ;
@@ -2252,6 +2252,7 @@ de [decisions.md](decisions.md).
 | 1. Rechargement en boucle en développement et lectures ciblées par navigation | commit « Lot 9, étape 1 », qui suit `c80d6ae` | bogue, 47 | Cache disque de Turbopack désactivé pour `next dev` ; chaque écran lit ce qu'il montre au lieu de tous les documents et circuits, à l'identique pour chaque utilisateur | Cache de développement désactivé plutôt que montée de version de Next.js ; « Mis en vigueur cette semaine » compté sur toute la semaine ; fenêtres de l'activité récente gardées (60 et 500 entrées) |
 | 2. Police locale, migrations incrémentales, amorçage séparé et application du registre | commit « Lot 9, étape 2 », qui suit `7d3db2e` | 42, 41, 45, 60 (et 52 en partie) | Inter servie depuis le dépôt (build sans réseau) ; migrations versionnées à partir de `0000_init`, contrôlées et précédées d'une sauvegarde ; `CODEX_SEED=demo|minimal` ; `npm run registry:apply` | Mêmes fichiers de police que Google, à l'octet ; refus d'une base d'un autre schéma, sauvegarde obligatoire avant migration ; démo par défaut partout, administrateur initial fictif en minimal ; simulation par défaut, l'administration l'emporte, codes figés, types retirés désactivés |
 | 3. Postgres serveur en option et mesures sur gros volume | commit « Lot 9, étape 3 », qui suit `98b45db` | 51 (en partie), 56 | `DATABASE_URL` : serveur PostgreSQL 18 par node-postgres, mêmes migrations et compléments sous verrou consultatif ; suite de tests rejouée sur un serveur (`npm run test:pg`, CI) ; `npm run seed:large` et `npm run perf`, mesures dans `docs/performances.md` | PGlite par défaut ; PostgreSQL 18 exigé ; référentiel minimal par défaut sur un serveur ; sauvegarde, restauration, `export` et `integrity` en ligne de commande refusés sur un serveur ; migration d'une base serveur seulement avec `CODEX_MIGRATION_BACKUP=off` ; `READ COMMITTED` ; volume dans une base à part |
+| 4. Planificateur interne et signature des échanges entre serveurs | commit « Lot 9, étape 4 », qui suit `ccf5940` | 38 (en partie), 23 | Mise en vigueur différée lancée par le serveur toutes les 5 minutes, tâches d'exploitation réglables ; signature HMAC avec fenêtre et anti-rejeu sur le webhook Vigie et l'import, rotation par `…_NEXT`, registre protégeable par jeton | Tâches d'exploitation désactivées par défaut ; pages qui ne mettent plus en vigueur tant que le planificateur le fait ; aucune relance ni envoi sortant ; registre ouvert par défaut ; tout ce qui est défini est exigé ; fenêtre de 5 minutes |
 
 ### 18.1 Rechargement en boucle en développement et lectures ciblées
 
@@ -2441,3 +2442,40 @@ recherches et filtres passaient déjà par SQL depuis le point 50).
 - **Reste** : sauvegarde du serveur et hébergement (M22, O-03) ; migrations lancées au déploiement ; revue des
   transactions en `READ COMMITTED` ; plusieurs processus ; mesures avec les volumes réels (M18, O-11) et un serveur
   distant.
+
+### 18.4 Planificateur interne et signature des échanges entre serveurs
+
+Points 38 et 23 de [reste-a-faire.md](reste-a-faire.md), vérifiés au commit `ccf5940` : `promoteDue` appelé seulement
+par `getCtx` (une révision approuvée n'entrait en vigueur à sa date qu'à l'ouverture d'une page), aucune boucle ni
+cron ; `GET /api/registry` sans contrôle, `checkBearer` à une seule valeur par variable, aucune signature ni horodatage.
+Seule différence : `src/instrumentation.ts` existait déjà (point 37).
+
+- **Planificateur (point 38, en partie ; [exploitation.md](exploitation.md) §4).** `src/lib/scheduler.ts`, démarré
+  par `register` une fois la configuration acceptée. Par défaut, une seule tâche : la mise en vigueur différée, toutes
+  les 5 minutes (`promoteDue`, plus `applyDuePendingDecisions` qui applique une acceptation de Vigie restée en attente
+  sans plus rien pour la retenir) ; `getCtx` ne la fait plus tant que le planificateur du processus la fait
+  (`src/lib/scheduler-state.ts`, sur `globalThis` : l'instrumentation est empaquetée à part des pages). Les tâches
+  d'exploitation existantes se branchent sans changer : `purgeOrphans`, `checkFilesNow`, `backUpNow`, et l'export
+  complet, qui s'écrit maintenant aussi dans un fichier (`writeFullExport` : nom provisoire, relecture, rotation des
+  seuls exports du planificateur). Chacune est désactivée tant que sa variable `CODEX_SCHEDULE_*` n'en donne pas la
+  fréquence. Une exécution à la fois par tâche : bail dans `scheduler_runs` (migration `0001_planificateur_signatures`,
+  première migration incrémentale), pris par une mise à jour conditionnelle, renouvelé pendant l'exécution, repris à
+  échéance ; les verrous « déjà en cours » de ces tâches passent sur `globalThis` pour valoir entre l'Administration et
+  le planificateur. Journal technique à chaque exécution ; état dans Administration › Journal d'audit › Planificateur.
+  Relances, notifications et envois sortants : point d'extension documenté, rien d'inventé (M19, T-01).
+- **Signature des échanges (point 23 ; [api.md](api.md), « Authentification »).** `src/lib/server-auth.ts` reprend
+  `checkBearer` de `src/lib/importer.ts` et ajoute `checkSignature` : HMAC-SHA256 de `"<horodatage>." + corps brut`,
+  fenêtre de 300 s, anti-rejeu dans `integration_signatures` (vidée de ce qui sort de la fenêtre). Le webhook lit son
+  corps brut avant de le décoder ; l'import lit le sien (dans la limite de taille) quand un secret est défini, puis
+  l'analyse. Variables `…_SECRET`, `…_NEXT` pour la rotation, `CODEX_REGISTRY_TOKEN` (registre ouvert sans elle,
+  `Cache-Control: private` avec), `CODEX_SIGNATURE_WINDOW_S` ; règles et constats du contrôle de configuration
+  étendus (`src/lib/integration-credentials.ts`, sans base, partagé avec lui).
+- **Vérifié** : `npm test`, `npm run typecheck`, `npm run lint`, `npm run db:check`, `npm run build` ; `npm run dev` sur
+  une copie de la base de démonstration avec des périodes de 10 à 20 s : migration `0001` appliquée au premier passage
+  (sauvegarde avant), révision B approuvée du jour de `AUD-QUA-0001` mise en vigueur sans visite (« Mise en vigueur ·
+  B », Codex), passages suivants toutes les 10 s, état visible dans l'Administration ; `curl` sur le webhook : sans
+  signature 401 `signature_missing`, signé 200, rejoué 401 `signature_replayed`, expiré 401 `signature_expired`,
+  re-signé 200 `alreadyApplied` ; registre 401 sans jeton, 200 `private` avec.
+- **Reste** : relances et notifications (M19, canal), envois vers Vigie et Keystone (T-01, O-03, O-10), reprise des
+  noms provisoires (point 36), fréquences d'exploitation et heure fixe éventuelle (M22), alignement du contrat de
+  signature avec Vigie et Keystone, identifiants OAuth (O-02).

@@ -155,12 +155,14 @@ migration n'en demande pas : l'app sauvegarde sa base puis la migre au démarrag
 | `/departements/[code]` | Page d'un département (`/departements` ouvre celui de l'utilisateur, un sélecteur passe aux autres) : documents en vigueur, échéances, circuits en cours qu'il suit, recherches partagées avec le département et le groupe, filtres mis en avant (valeurs les plus fréquentes, chacune un lien vers la recherche filtrée), le tout limité à ce que l'utilisateur peut lire. Départements provisoires (organigramme attendu) ; filtres par défaut (type, statut, projet), réglables par département dans Administration › Organisation, en attendant le recueil des besoins de chaque métier |
 | `/validations` | Circuits de validation : à valider, mes demandes, en cours, terminées ; approuver / rejeter (motif obligatoire) / déléguer, rappeler sa demande avant la dernière approbation, commentaires. Vue « Mes demandes Vigie » : demandes de modification et de retrait envoyées par l'utilisateur, avec leur statut |
 | `/archivage` | Échéances (archivage, gel juridique, revue effectuée ; filtres « Expirés » et « Revues en retard »), règles de conservation du registre, archives |
-| `/administration` | Registre des types (création et modification complète des types et des familles, dont la périodicité de revue), fonctions & circuits (fonctions, titulaires, programmes de recherche), rôles & droits, organisation (départements et sites : ajout, renommage FR/EN, désactivation ou suppression d'une valeur inutilisée ; filtres mis en avant des départements), modèles (QMS) et leurs types cibles, journal d'audit (filtres par document ou cible, personne, action et période ; 100 entrées par page ; export CSV complet), sauvegardes, export complet de toutes les données et de tous les fichiers (archive ZIP, gestionnaires documentaires) |
+| `/administration` | Registre des types (création et modification complète des types et des familles, dont la périodicité de revue), fonctions & circuits (fonctions, titulaires, programmes de recherche), rôles & droits, organisation (départements et sites : ajout, renommage FR/EN, désactivation ou suppression d'une valeur inutilisée ; filtres mis en avant des départements), modèles (QMS) et leurs types cibles, journal d'audit (filtres par document ou cible, personne, action et période ; 100 entrées par page ; export CSV complet), sauvegardes, planificateur (tâches, dernière et prochaine exécution), export complet de toutes les données et de tous les fichiers (archive ZIP, gestionnaires documentaires) |
 
 API : `/api/registry` (lu par Keystone), `/api/import` (outil de migration), `/api/integrations/vigie` (décisions
 Vigie), `/api/documents/[id]/file` (fichier d'une version de travail), `/api/documents/[id]/approval?rev=B` (fiche de
 visa d'une révision approuvée, PDF tiré du journal), `/api/export/search` et `/api/export/audit` (CSV),
-`/api/export/full` (export complet, archive ZIP : `docs/export.md`).
+`/api/export/full` (export complet, archive ZIP : `docs/export.md`). Entre serveurs : jeton et/ou signature HMAC
+(horodatage, anti-rejeu, rotation par `…_NEXT`) pour l'import et le webhook Vigie, registre ouvert sauf
+`CODEX_REGISTRY_TOKEN` (`docs/api.md`, « Authentification »).
 
 Tout l'état d'écran est dans l'URL (onglets, filtres, sélection) : les liens sont partageables.
 
@@ -381,7 +383,8 @@ Points 46 et 36 de `docs/reste-a-faire.md`.
   - SharePoint (dossier `_staging`) : listé seulement quand il est actif ou que des versions y pointent, jamais
     supprimé tant que le pilote n'a pas été essayé sur un vrai tenant (O-01).
   - Pas de commande npm : PGlite n'ouvre la base que dans un seul processus, celui du serveur. Le planificateur
-    (point 38) appellera `purgeOrphans` quand il existera.
+    lance la même suppression quand `CODEX_SCHEDULE_ORPHANS` en donne la fréquence (désactivée par défaut ;
+    `docs/exploitation.md` §4).
 
 ## Sauvegarde et restauration
 
@@ -480,7 +483,7 @@ npm run integrity                       # serveur arrêté : relit chaque fichie
 
 ## Exploitation : journal technique, santé, configuration
 
-Points 37 et 49 de `docs/reste-a-faire.md` ; procédure complète dans **`docs/exploitation.md`** (champs du journal,
+Points 37, 38 et 49 de `docs/reste-a-faire.md` ; procédure complète dans **`docs/exploitation.md`** (champs du journal,
 supervision, codes du contrôle de configuration et leur correction).
 
 - **Journal technique** (`src/lib/log.ts`), distinct du journal d'audit : une entrée par ligne sur la sortie du
@@ -506,6 +509,12 @@ supervision, codes du contrôle de configuration et leur correction).
   illisible, dossier de données non inscriptible) **arrête le serveur en production** (code de sortie 1) ; en
   développement, elle est seulement écrite. `CODEX_CONFIG_CHECK=warn` ou `strict` change ce comportement. Sans
   aucune variable, il n'y a aucune erreur : `npm run dev`, `npm run start` et l'app Mac démarrent comme avant.
+- **Planificateur** (`src/lib/scheduler.ts`, démarré par `register`) : toutes les 5 minutes par défaut, met en vigueur
+  les révisions approuvées dont la date d'effet est venue (les pages ne le font plus elles-mêmes) et applique une
+  acceptation de Vigie que plus rien ne retient. Nettoyage des orphelins, vérification d'intégrité, sauvegarde et
+  export complet sont désactivés tant que leur variable `CODEX_SCHEDULE_*` n'en donne pas la fréquence. Une seule
+  exécution à la fois par tâche, même à plusieurs processus sur une base (bail en base). État dans Administration ›
+  Journal d'audit › Planificateur ; détail dans `docs/exploitation.md` §4.
 
 ## Organisation du code
 
@@ -555,16 +564,21 @@ src/
     backup.ts          sauvegarde depuis Administration (serveur en marche), journalisée
     export-core.mjs    export complet : archive ZIP en flux (écriture, relecture), instantané des tables, manifeste,
                        vue d'import (JavaScript, lancé aussi par scripts/codex-export.mjs sans compilation)
-    full-export.ts     export complet depuis Administration (serveur en marche), journalisé
+    full-export.ts     export complet depuis Administration (serveur en marche), journalisé ; écrit en fichier par le
+                       planificateur
     filetypes.ts       formats, contenu (signatures, ZIP, OLE2, macros) et taille admis au dépôt ; types servis en
                        ligne et affichés en aperçu
     antivirus.ts       analyse antivirus des fichiers déposés (clamd, commande INSTREAM)
     keystone.ts, vigie.ts  frontières d'intégration
     importer.ts        API d'import (outil de migration)
+    server-auth.ts     authentification entre serveurs : jetons, signature HMAC, anti-rejeu, rotation
+                       (variables : integration-credentials.ts)
     ratelimit.ts       limites de débit des routes sensibles et des Server Actions (en mémoire)
     security-headers.ts  en-têtes de sécurité HTTP et politique de sécurité du contenu
     log.ts             journal technique : entrées JSON ou lisibles, identifiant de requête, routes et actions
     config-check.ts    contrôle de la configuration au démarrage
+    scheduler.ts       planificateur : mise en vigueur différée, tâches d'exploitation, bail en base
+                       (réglages et état du processus : scheduler-state.ts)
     version.ts         version de Codex (package.json), pour la santé et les sauvegardes
     i18n.ts            textes FR / EN
 scripts/

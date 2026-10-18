@@ -209,6 +209,7 @@ la sauvegarde. Un échec forcé du déplacement des fichiers (`chattr +i`) a lai
   fichiers sont copiés par morceaux.
 - La mise en place d'une restauration n'est pas atomique : elle déplace des entrées une à une, et un arrêt brutal à ce
   moment (coupure, `kill -9`) laisse un état intermédiaire, sans retour arrière (voir « Dépannage », `.restore-…`).
-- Pas de sauvegarde programmée (fréquence non décidée ; le planificateur du point 38 pourra appeler la même fonction),
+- Pas de sauvegarde programmée par défaut (fréquence non décidée) : le planificateur la lance quand
+  `CODEX_SCHEDULE_BACKUP` en donne la fréquence (`docs/exploitation.md` §4) ; toujours
   pas de chiffrement ni de copie hors site (hébergement non décidé), pas de téléchargement de l'archive depuis
   l'application, pas de restauration depuis l'application (elle demande le serveur arrêté).

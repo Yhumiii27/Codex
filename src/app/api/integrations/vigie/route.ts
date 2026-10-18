@@ -1,12 +1,14 @@
 import { and, eq } from 'drizzle-orm';
 import { getDb, schema as s } from '@/db';
-import { checkBearer, json } from '@/lib/importer';
+import { json } from '@/lib/importer';
 import { applyChangeDecision, decisionWait, lockOf } from '@/lib/lifecycle';
 import { currentRequest, logger, withRequestLog } from '@/lib/log';
 import { limitRequest } from '@/lib/ratelimit';
+import { checkBearer, checkSignature } from '@/lib/server-auth';
 
 // Webhook through which Vigie sends its decision on a change (ECR) or withdrawal request (docs/api.md).
-// Bearer token VIGIE_WEBHOOK_TOKEN. Body: { requestId, accepted, ecoRef?, modifierId?, note? }.
+// Bearer token VIGIE_WEBHOOK_TOKEN and/or HMAC signature with VIGIE_WEBHOOK_SECRET (lib/server-auth.ts).
+// Body: { requestId, accepted, ecoRef?, modifierId?, note? }.
 
 type Decision = { requestId: string; accepted: boolean; ecoRef: string | null; modifierId: string | null; note: string | null };
 
@@ -29,14 +31,18 @@ function parse(body: unknown): Decision | { field: string } {
 }
 
 async function handlePost(req: Request) {
-  const denied = checkBearer(req, 'VIGIE_WEBHOOK_TOKEN');
+  const denied = checkBearer(req, 'vigie');
   if (denied) return denied;
   // Counted once the token is checked: a client without it cannot spend the budget of the one holding it.
   const limited = limitRequest(req, 'vigie');
   if (limited) return limited;
+  // The raw bytes: the signature covers them as sent.
+  const raw = new Uint8Array(await req.arrayBuffer());
+  const unsigned = await checkSignature(req, 'vigie', raw);
+  if (unsigned) return unsigned;
   let body: unknown;
   try {
-    body = await req.json();
+    body = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(raw));
   } catch {
     return json({ error: 'invalid_json' }, 400);
   }

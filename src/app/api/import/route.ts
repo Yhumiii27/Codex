@@ -1,10 +1,12 @@
 import { fileRules } from '@/lib/filetypes';
-import { checkBearer, importDocument, json, type ImportFile } from '@/lib/importer';
+import { importDocument, json, type ImportFile } from '@/lib/importer';
 import { currentRequest, logger, withRequestLog } from '@/lib/log';
 import { limitRequest } from '@/lib/ratelimit';
+import { checkBearer, checkSignature, credentialsOf } from '@/lib/server-auth';
 import type { FileRejection } from '@/lib/storage';
 
-// Import API for the migration tool (docs/api.md): one legacy document per call, bearer token CODEX_IMPORT_TOKEN.
+// Import API for the migration tool (docs/api.md): one legacy document per call, bearer token CODEX_IMPORT_TOKEN and/or
+// HMAC signature with CODEX_IMPORT_SECRET (lib/server-auth.ts).
 //   multipart/form-data: part "meta" (JSON, text or file) + optional part "file"
 //   application/json:    the metadata alone, without a file
 
@@ -48,7 +50,7 @@ function capped(req: Request, cap: number): { body: Response; over: () => boolea
 }
 
 async function handlePost(req: Request) {
-  const denied = checkBearer(req, 'CODEX_IMPORT_TOKEN');
+  const denied = checkBearer(req, 'import');
   if (denied) return denied;
   // Counted once the token is checked: a client without it cannot spend the budget of the one holding it.
   const limited = limitRequest(req, 'import');
@@ -56,7 +58,20 @@ async function handlePost(req: Request) {
   // The file plus room for the metadata and the multipart framing.
   const cap = maxBytes() + 1024 * 1024;
   if (Number(req.headers.get('content-length') ?? 0) > cap) return tooLarge();
-  const { body, over } = capped(req, cap);
+  let { body, over } = capped(req, cap);
+  if (credentialsOf('import').secrets.length) {
+    // Signed: the signature covers the raw bytes, read whole (within the cap) and checked before anything is parsed.
+    let raw: ArrayBuffer;
+    try {
+      raw = await body.arrayBuffer();
+    } catch {
+      return over() ? tooLarge() : json({ error: 'invalid_body' }, 400);
+    }
+    const unsigned = await checkSignature(req, 'import', new Uint8Array(raw));
+    if (unsigned) return unsigned;
+    body = new Response(raw, { headers: { 'Content-Type': req.headers.get('content-type') ?? '' } });
+    over = () => false;
+  }
 
   const ctype = (req.headers.get('content-type') ?? '').toLowerCase();
   let meta: unknown;

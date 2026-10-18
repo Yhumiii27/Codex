@@ -5,6 +5,7 @@ import { cookies } from 'next/headers';
 import { getDb, schema as s } from '@/db';
 import { DICT, MATRIX_ROLE, SIM_ROLES, type Lang, type Perm, type SimRole, type T } from './i18n';
 import { promoteDue } from './lifecycle';
+import { schedulerPromotes } from './scheduler-state';
 
 export const COOKIE_LANG = 'codex-lang';
 export const COOKIE_USER = 'codex-user';
@@ -46,8 +47,9 @@ export type Ctx = {
 export const getCtx = cache(async (): Promise<Ctx> => {
   const jar = await cookies();
   const db = await getDb();
-  // Approved revisions whose effective date has come enter into force before anything is read.
-  await promoteDue(db);
+  // Approved revisions whose effective date has come enter into force before anything is read, unless the scheduler of
+  // this process does it (lib/scheduler.ts, every 5 minutes by default): then requests no longer pay for it.
+  if (!schedulerPromotes()) await promoteDue(db);
   const lang: Lang = jar.get(COOKIE_LANG)?.value === 'en' ? 'en' : 'fr';
   const [users, departments, sites, families, types, functions, projects, programs, rows] = await Promise.all([
     db.select().from(s.users),

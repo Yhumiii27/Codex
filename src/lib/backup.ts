@@ -9,7 +9,8 @@ import { appVersion } from './version';
 
 // Backups while the server runs (Administration › Journal d'audit › Sauvegardes): the archive of lib/backup-core.mjs,
 // made from this process, which holds the database. Restoring needs the server stopped: npm run restore
-// (docs/sauvegarde.md). Nothing is scheduled: how often, and where archives should live, are not decided.
+// (docs/sauvegarde.md). Scheduled only when CODEX_SCHEDULE_BACKUP says how often (lib/scheduler.ts): how often, and
+// where archives should live, are not decided.
 
 const log = logger('backup');
 
@@ -37,7 +38,9 @@ export async function backupList(manifests = true) {
   }
 }
 
-let running = false;
+// On globalThis: the scheduler (lib/scheduler.ts) runs in the bundle of src/instrumentation.ts, apart from the Server
+// Actions; both must see a run in progress.
+const busy = ((globalThis as unknown as { __codexBusy?: Set<string> }).__codexBusy ??= new Set<string>());
 
 /**
  * Writes an archive now, journals it by `userId` (action 'backup_created', target the archive: its size, SHA-256 and
@@ -48,11 +51,11 @@ let running = false;
  * (docs/postgres.md).
  */
 export async function backUpNow(userId: string): Promise<BackupResult | 'busy' | 'server' | { recent: string; next: string }> {
-  if (running) return 'busy';
+  if (busy.has('backup')) return 'busy';
   const db = await getDb();
   const pglite = embedded(db.$client);
   if (!pglite) return 'server';
-  running = true;
+  busy.add('backup');
   try {
     const { dir, keep } = backupSettings();
     const latest = (await listBackups(dir, { manifests: false }))[0]?.createdAt;
@@ -67,6 +70,6 @@ export async function backUpNow(userId: string): Promise<BackupResult | 'busy' |
     log.info('backup created', { path: res.path, size: res.size, sha256: res.sha256, rotatedOut: res.removed.length ? res.removed : undefined });
     return res;
   } finally {
-    running = false;
+    busy.delete('backup');
   }
 }

@@ -28,9 +28,9 @@ describe('the default configuration', () => {
     expect(refuses(prod({}), {}, true)).toBe(false);
   });
 
-  it('says the integration endpoints are disabled, and in production that files go unscanned and users are simulated (O-02)', () => {
-    expect(codes(dev({}))).toEqual(['token_unset', 'token_unset']);
-    expect(codes(prod({}))).toEqual(['token_unset', 'token_unset', 'clamd_off', 'auth_simulated']);
+  it('says the integration endpoints are disabled and the registry open, and in production that files go unscanned and users are simulated (O-02)', () => {
+    expect(codes(dev({}))).toEqual(['token_unset', 'token_unset', 'registry_open']);
+    expect(codes(prod({}))).toEqual(['token_unset', 'token_unset', 'registry_open', 'clamd_off', 'auth_simulated']);
     expect(codes(prod({}), 'warn')).toEqual(['clamd_off', 'auth_simulated']);
   });
 });
@@ -84,6 +84,46 @@ describe('integration tokens', () => {
   it('refuses a token no Authorization header can carry, and warns of one token for both endpoints', () => {
     expect(codes(prod({ VIGIE_WEBHOOK_TOKEN: `${TOKEN} ${TOKEN}` }), 'error')).toEqual(['token_invalid']);
     expect(codes(prod({ CODEX_IMPORT_TOKEN: TOKEN, VIGIE_WEBHOOK_TOKEN: ` ${TOKEN}` }), 'warn')).toContain('token_shared');
+  });
+});
+
+describe('signing secrets and rotation', () => {
+  it('holds a secret and the values of a rotation (_NEXT) to the rule of the tokens, without writing them', () => {
+    const f = prod({ VIGIE_WEBHOOK_SECRET: 'change-me', CODEX_IMPORT_TOKEN_NEXT: 'abc', CODEX_REGISTRY_TOKEN: 'x'.repeat(40) });
+    expect(codes(f, 'error')).toEqual(['token_weak', 'token_weak', 'token_weak']);
+    expect(f.filter((x) => x.code === 'token_weak').map((x) => x.message.split(' ')[0])).toEqual(['CODEX_IMPORT_TOKEN_NEXT', 'VIGIE_WEBHOOK_SECRET', 'CODEX_REGISTRY_TOKEN']);
+    expect(JSON.stringify(f)).not.toContain('change-me');
+    // A secret is never sent in a header: a space in it is no error.
+    expect(codes(prod({ VIGIE_WEBHOOK_SECRET: `${TOKEN} ${TOKEN}` }), 'error')).toEqual([]);
+  });
+
+  it('enables an endpoint by its secret alone, and the registry by its token', () => {
+    expect(codes(dev({ VIGIE_WEBHOOK_SECRET: TOKEN }))).toEqual(['token_unset', 'registry_open']);
+    expect(codes(dev({ CODEX_REGISTRY_TOKEN: TOKEN }))).toEqual(['token_unset', 'token_unset']);
+  });
+
+  it('warns of a _NEXT without its current value, and of one value under two names', () => {
+    expect(codes(dev({ VIGIE_WEBHOOK_TOKEN_NEXT: TOKEN }), 'warn')).toEqual(['rotation_incomplete']);
+    expect(codes(dev({ VIGIE_WEBHOOK_TOKEN: TOKEN, VIGIE_WEBHOOK_SECRET: TOKEN }), 'warn')).toEqual(['token_shared']);
+    expect(codes(dev({ CODEX_IMPORT_TOKEN: TOKEN, CODEX_REGISTRY_TOKEN_NEXT: TOKEN, CODEX_REGISTRY_TOKEN: `${TOKEN}2` }), 'warn')).toEqual(['token_shared']);
+    // The same value as current and next is pointless, not shared.
+    expect(codes(dev({ CODEX_IMPORT_TOKEN: TOKEN, CODEX_IMPORT_TOKEN_NEXT: TOKEN }), 'warn')).toEqual([]);
+  });
+
+  it('warns of a signature window it cannot read', () => {
+    expect(codes(dev({ CODEX_SIGNATURE_WINDOW_S: '120' }), 'warn')).toEqual([]);
+    for (const v of ['5m', '10', '7200']) expect(codes(dev({ CODEX_SIGNATURE_WINDOW_S: v }), 'warn'), v).toEqual(['signature_window_invalid']);
+  });
+});
+
+describe('scheduler', () => {
+  it('warns of an interval it cannot read, of the deferred entry into force turned off, and of the scheduler off', () => {
+    expect(codes(dev({ CODEX_SCHEDULE_BACKUP: '1d', CODEX_SCHEDULE_ORPHANS: 'off' }), 'warn')).toEqual([]);
+    expect(codes(dev({ CODEX_SCHEDULE_BACKUP: 'daily' }), 'warn')).toEqual(['schedule_invalid']);
+    expect(codes(dev({ CODEX_SCHEDULE_PROMOTE: 'off' }), 'warn')).toEqual(['schedule_promote_off']);
+    expect(codes(dev({ CODEX_SCHEDULER: 'off' }), 'warn')).toEqual(['scheduler_off']);
+    expect(codes(dev({ CODEX_SCHEDULER: 'maybe' }), 'warn')).toEqual(['flag_invalid']);
+    expect(codes(dev({ CODEX_SCHEDULE_EXPORT_KEEP: '0' }), 'warn')).toEqual(['export_keep_invalid']);
   });
 });
 
@@ -226,7 +266,7 @@ describe('at start', () => {
     vi.spyOn(console, 'info').mockImplementation(() => {});
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    await expect(startupCheck({ NODE_ENV: 'production', CODEX_DATA_DIR: tmp, CODEX_STORAGE: 'nas', CODEX_CONFIG_CHECK: 'warn' }, { cwd: tmp })).resolves.toHaveLength(5);
+    await expect(startupCheck({ NODE_ENV: 'production', CODEX_DATA_DIR: tmp, CODEX_STORAGE: 'nas', CODEX_CONFIG_CHECK: 'warn' }, { cwd: tmp })).resolves.toHaveLength(6);
     expect(warn.mock.calls.at(-1)?.[0]).toContain('started anyway');
     await expect(startupCheck({ NODE_ENV: 'development', CODEX_DATA_DIR: tmp, CODEX_STORAGE: 'nas' }, { cwd: tmp })).resolves.toBeDefined();
   });

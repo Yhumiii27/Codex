@@ -120,7 +120,9 @@ export async function orphanReport(opts: { now?: number; env?: Record<string, st
  */
 export type PurgeResult = { removed: ListedFile[]; bytes: number; failed: number; kept: number; left: number };
 
-let running = false;
+// On globalThis: the scheduler (lib/scheduler.ts) runs in the bundle of src/instrumentation.ts, apart from the Server
+// Actions; both must see a run in progress.
+const busy = ((globalThis as unknown as { __codexBusy?: Set<string> }).__codexBusy ??= new Set<string>());
 
 /**
  * Removes orphans of the local store, at most MAX_PER_RUN, and journals them in one entry by `userId` (action
@@ -128,14 +130,14 @@ let running = false;
  * goes. `keys`: the files the dry run showed, of which only those still orphans go (an orphan that turned up since
  * waits for the next look; a key that is not an orphan, whatever a page sent back, is never removed); without it (the
  * scheduler, point 38), the oldest orphans. Each candidate is checked again just before: still old enough, still named
- * by no record. 'busy' while another purge runs in this process.
+ * by no record. 'busy' while another purge runs in this process (Administration or the scheduler).
  */
 export async function purgeOrphans(
   userId: string,
   opts: { keys?: readonly string[]; now?: number; env?: Record<string, string | undefined> } = {},
 ): Promise<PurgeResult | 'busy'> {
-  if (running) return 'busy';
-  running = true;
+  if (busy.has('orphans')) return 'busy';
+  busy.add('orphans');
   try {
     const now = opts.now ?? Date.now();
     const graceMs = graceHours(opts.env ?? process.env) * 3_600_000;
@@ -170,6 +172,6 @@ export async function purgeOrphans(
     }
     return { removed, bytes, failed, kept: (shown ? shown.size : batch.length) - removed.length - failed, left: orphans.length - removed.length };
   } finally {
-    running = false;
+    busy.delete('orphans');
   }
 }

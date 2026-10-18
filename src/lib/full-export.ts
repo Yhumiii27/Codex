@@ -1,9 +1,10 @@
 import 'server-only';
+import { mkdir, open, readdir, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { Readable } from 'node:stream';
-import { getDb } from '@/db';
+import { DATA_DIR, getDb } from '@/db';
 import { readMigrations } from './backup-core.mjs';
-import { exportArchive, exportName, type FileOpener } from './export-core.mjs';
+import { exportArchive, exportName, verifyExport, type FileOpener } from './export-core.mjs';
 import { logger } from './log';
 import { FileNotFoundError, openStored } from './storage';
 import { appVersion } from './version';
@@ -81,4 +82,77 @@ export async function startFullExport(userId: string, now = new Date()): Promise
     },
   }, { highWaterMark: 0 });
   return { name: exportName(now), body };
+}
+
+// ── Export written to a file by the scheduler ───────────────────────────
+
+/** Where the scheduler writes its exports: beside the data directory, as npm run export does (<data directory>-exports). */
+export const scheduledExportDir = () => `${DATA_DIR}-exports`;
+
+/** Name of an export the scheduler wrote: told apart from those of npm run export, which its rotation never touches. */
+const AUTO_PREFIX = 'codex-export-auto-';
+const isAutoExport = (name: string) => name.startsWith(AUTO_PREFIX) && name.endsWith('.zip');
+
+/**
+ * CODEX_SCHEDULE_EXPORT_KEEP: how many exports of the scheduler are kept (the most recent), 3 by default, at least 1.
+ * An export holds every file: each one weighs as much as the store.
+ */
+export function scheduledExportKeep(env: Record<string, string | undefined> = process.env): number {
+  const raw = env.CODEX_SCHEDULE_EXPORT_KEEP?.trim();
+  return raw && /^\d{1,3}$/.test(raw) && Number(raw) >= 1 ? Number(raw) : 3;
+}
+
+export type FileExportResult = { path: string; size: number; sha256: string; files: number; removed: string[] };
+
+/**
+ * The full export written to a file by `userId` (the scheduler, lib/scheduler.ts), journaled as the download is: written
+ * under a provisional name, read back whole (verifyExport) before it takes its own, owner-only (0600 in a 0700 folder).
+ * The oldest exports of the scheduler beyond `keep` are then removed; those of npm run export are left alone.
+ */
+export async function writeFullExport(userId: string, opts: { dir?: string; keep?: number; now?: Date } = {}): Promise<FileExportResult> {
+  const now = opts.now ?? new Date();
+  const dir = opts.dir ?? scheduledExportDir();
+  const keep = opts.keep ?? scheduledExportKeep();
+  await mkdir(dir, { recursive: true, mode: 0o700 });
+  const file = path.join(dir, exportName(now).replace(/^codex-export-/, AUTO_PREFIX));
+  const partial = `${file}.partial`;
+  try {
+    const fh = await open(partial, 'wx', 0o600);
+    let res;
+    try {
+      const it = exportArchive({
+        pg: (await getDb()).$client, openFile, actor: userId, mode: 'online', by: userId, now,
+        migrations: await readMigrations(path.join(/*turbopackIgnore: true*/ process.cwd(), 'drizzle')), app: await appVersion(),
+        warn: (msg, err) => log.warn(msg, { by: userId, err }),
+      });
+      for (let r = await it.next(); ; r = await it.next()) {
+        if (r.done) {
+          res = r.value;
+          break;
+        }
+        for (let off = 0; off < r.value.length;) off += (await fh.write(r.value, off, r.value.length - off)).bytesWritten;
+      }
+      await fh.sync();
+    } finally {
+      await fh.close();
+    }
+    const check = await open(partial, 'r');
+    try {
+      await verifyExport(check);
+    } finally {
+      await check.close();
+    }
+    await rename(partial, file);
+    const removed: string[] = [];
+    const autos = (await readdir(dir)).filter(isAutoExport).sort().reverse();
+    for (const old of autos.slice(keep)) {
+      await rm(path.join(dir, old), { force: true });
+      removed.push(old);
+    }
+    log.info('full export written to a file', { by: userId, path: file, size: res.size, sha256: res.sha256, files: res.manifest.files.count, rotatedOut: removed.length ? removed : undefined });
+    return { path: file, size: res.size, sha256: res.sha256, files: res.manifest.files.count, removed };
+  } catch (err) {
+    await rm(partial, { force: true });
+    throw err;
+  }
 }

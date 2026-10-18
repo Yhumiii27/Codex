@@ -30,7 +30,7 @@ export const RATE_LIMITS = {
   import: { env: 'CODEX_RATE_IMPORT', def: '600/1m' },
   /** POST /api/integrations/vigie (Vigie's decisions), per address, once the token is checked. */
   vigie: { env: 'CODEX_RATE_VIGIE', def: '600/1m' },
-  /** Tokens refused (missing or wrong) on those two, per address: beyond, 429 instead of 401. */
+  /** Credentials refused (token or signature missing or wrong) on those two and on a registry behind a token, per address: beyond, 429 instead of 401. */
   tokens: { env: 'CODEX_RATE_TOKEN_FAILURES', def: '20/15m' },
   /** GET /api/registry (Keystone), per address, behind a trusted proxy only. */
   registry: { env: 'CODEX_RATE_REGISTRY', def: '300/1m' },

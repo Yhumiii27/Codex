@@ -177,11 +177,13 @@ export async function approveRevision(tx: Tx, revId: number): Promise<boolean> {
 }
 
 /**
- * Approved revisions whose effective date has come enter into force (run lazily at the start of each request).
- * Only on active documents free of legal hold: an archived, obsolete or frozen record never changes (same rule as lockOf).
+ * Approved revisions whose effective date has come enter into force: run by the scheduler (lib/scheduler.ts), or at the
+ * start of each request while the scheduler does not run it (lib/context.ts). Only on active documents free of legal
+ * hold: an archived, obsolete or frozen record never changes (same rule as lockOf). Returns how many entered into force.
  */
-export async function promoteDue(db: Db) {
+export async function promoteDue(db: Db): Promise<number> {
   const today = todayIso();
+  let promoted = 0;
   const due = await db
     .select({ id: s.revisions.id })
     .from(s.revisions)
@@ -195,8 +197,34 @@ export async function promoteDue(db: Db) {
       const [d] = await tx.select().from(s.documents).where(eq(s.documents.id, rev.docId));
       if (!d || lockOf(d)) return;
       await putInForce(tx, rev, rev.effectiveAt ?? today);
+      promoted++;
     });
   }
+  return promoted;
+}
+
+/**
+ * Acceptances of Vigie still waiting ('accepted') although nothing holds them any more: the document is unlocked and, for
+ * a change, no revision is open. Lifting a lock and putting a revision in force or cancelling it apply them at once
+ * (applyPendingDecision); this catches one that a path not foreseen would have left waiting. Run by the scheduler; each
+ * one in its own transaction, the document's row locked as applyChangeDecision does. Returns how many applied.
+ */
+export async function applyDuePendingDecisions(db: Db): Promise<number> {
+  const waiting = await db
+    .select({ id: s.changeRequests.id, docId: s.changeRequests.docId })
+    .from(s.changeRequests)
+    .innerJoin(s.documents, eq(s.documents.id, s.changeRequests.docId))
+    .where(and(eq(s.changeRequests.status, 'accepted'), eq(s.documents.state, 'active'), eq(s.documents.legalHold, false)));
+  let applied = 0;
+  for (const { id, docId } of waiting) {
+    await db.transaction(async (tx) => {
+      await tx.select({ id: s.documents.id }).from(s.documents).where(eq(s.documents.id, docId)).for('update');
+      await applyPendingDecision(tx, docId);
+      const [after] = await tx.select({ status: s.changeRequests.status }).from(s.changeRequests).where(eq(s.changeRequests.id, id));
+      if (after?.status === 'implemented') applied++;
+    });
+  }
+  return applied;
 }
 
 /** Approved revisions of a document waiting for an effective date already past: they enter into force today at the earliest. */

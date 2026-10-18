@@ -676,3 +676,44 @@ export const savedSearches = pgTable(
     check('saved_searches_department', sql`(${t.scope} = 'department') = (${t.department} is not null)`),
   ],
 );
+
+// ── Scheduler and integration signatures ────────────────────────────────
+
+/** What a scheduled task's last run came to (lib/scheduler.ts): 'skipped' when it had nothing it could do (busy, not possible here). */
+export type SchedulerStatus = 'running' | 'ok' | 'skipped' | 'error';
+
+/**
+ * One row per scheduled task (lib/scheduler.ts), shared by every Codex process on the database: the lease that lets one
+ * process at a time run it (`leaseOwner` until `leaseUntil`, renewed while it runs; an expired lease is taken over), and
+ * what its last run did. A process runs a task only once its last start is at least one interval old, so that several
+ * processes on one database do not each run it on their own schedule.
+ */
+export const schedulerRuns = pgTable('scheduler_runs', {
+  task: text('task').primaryKey(),
+  leaseOwner: text('lease_owner'),
+  leaseUntil: timestamp('lease_until', { mode: 'string', withTimezone: true }),
+  startedAt: timestamp('started_at', { mode: 'string', withTimezone: true }),
+  finishedAt: timestamp('finished_at', { mode: 'string', withTimezone: true }),
+  status: text('status').$type<SchedulerStatus>(),
+  /** Figures of the last run (documents put in force, files removed…), never a document's content or a secret. */
+  summary: jsonb('summary').$type<Record<string, unknown>>(),
+  /** The error of a failed run, as the technical log keeps it (message only). */
+  error: text('error'),
+  /** When the process that ran it last plans the next run: start + interval. */
+  nextAt: timestamp('next_at', { mode: 'string', withTimezone: true }),
+});
+
+/**
+ * Signed integration requests already accepted (lib/server-auth.ts), kept until their timestamp leaves the window: the
+ * same signature sent again within it is refused as a replay, whichever Codex process receives it. `digest`: SHA-256 of
+ * the endpoint, timestamp and signature, never the secret or the body.
+ */
+export const integrationSignatures = pgTable(
+  'integration_signatures',
+  {
+    digest: text('digest').primaryKey(),
+    endpoint: text('endpoint').notNull(),
+    expiresAt: timestamp('expires_at', { mode: 'string', withTimezone: true }).notNull(),
+  },
+  (t) => [index('integration_signatures_expires').on(t.expiresAt)],
+);
