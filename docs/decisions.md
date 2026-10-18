@@ -1640,6 +1640,8 @@ Les valeurs de la maquette n'existent plus dans le modèle v2 :
 Toutes ces questions attendent une réponse de l'utilisateur. Ne pas les trancher à sa place. On peut les lui
 reposer, une fois, en citant leur numéro.
 
+Fiches d'aide à la décision (état du code, options, effort, ce qui deviendrait irréversible) : `docs/fiches-decision.md`. Elles ne tranchent rien.
+
 | N° | Question | Responsable | Suivi |
 |---|---|---|---|
 | O-01 | **SharePoint** : faut-il l'activer ? Si oui, faut-il un fichier par version, sans accès direct des utilisateurs à la bibliothèque ? Sans cette restriction, les utilisateurs pourraient contourner les droits de Codex. Avec elle, on modifie un fichier en le téléchargeant puis en le redéposant, sans édition Office en ligne. Posée 4 fois (7 oct. à 17:33, 18:07 et 23:18 ; 8 oct. à 06:18), jamais répondue. | utilisateur | `docs/modele-cible.md` §1 (provisoire : un fichier par version de travail, aucun accès direct) ; `src/lib/storage.ts` |

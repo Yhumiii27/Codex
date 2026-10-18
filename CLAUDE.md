@@ -27,6 +27,7 @@ numéro, sans les trancher à la place de l'utilisateur.
 | Fichier | Contenu |
 | --- | --- |
 | `docs/decisions.md` | **Journal des décisions de l'utilisateur** (citations exactes) et questions encore ouvertes. Les questions qui y sont tranchées ne se reposent pas. |
+| `docs/fiches-decision.md` | Fiches d'aide à la décision pour O-01 à O-11 : état du code, options, effort, ce qui deviendrait irréversible, données attendues. Elles ne tranchent rien ; `docs/decisions.md` prévaut. |
 | `docs/modele-cible.md` | Modèle fonctionnel qui fait foi : identifiants, révisions, confidentialité, circuits, conservation. Les propositions non confirmées qu'il contient sont signalées en tête ; en cas de doute, `docs/decisions.md` prévaut. |
 | `docs/audit-deck-epc2i.md` | Audit du deck (7 octobre 2026) : exigences, modèle de métadonnées, écarts avec Codex et leur statut actuel, architecture. |
 | `docs/sources/deck-ged-epc2i.md` | Texte intégral du deck. L'original est `docs/sources/creation-ged-epc2i.pptx`. |
