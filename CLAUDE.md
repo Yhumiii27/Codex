@@ -74,13 +74,30 @@ npm test             # Vitest : tests/unit et tests/integration (PGlite en mémo
 npm run typecheck && npm run lint && npm run build
 ```
 
-- **Intégration continue** : `.github/workflows/ci.yml` rejoue `npm ci`, typecheck, lint, tests et build à chaque push
-  et pull request.
+- **Intégration continue** : `.github/workflows/ci.yml` rejoue `npm ci`, `npm run db:check`, typecheck, lint, tests et
+  build à chaque push et pull request.
 
 - **Base de démo.** Au premier lancement, elle est créée dans `.data/` (non versionné) puis remplie par
   `src/db/seed*.ts`. Pour repartir de zéro : arrêter le serveur, `npm run db:reset`, relancer.
-- **Changement de `src/db/schema.ts`.** Tant qu'il n'y a pas de base de production, on régénère une migration
-  unique : `rm -rf drizzle && npx drizzle-kit generate --name init`, puis `npm run db:reset`.
+  - `CODEX_SEED=demo` (défaut) charge le référentiel et la démonstration ; `CODEX_SEED=minimal` ne charge que le
+    référentiel (registre, fonctions, matrice des droits, organisation provisoire, acteurs système) et un
+    administrateur initial (`admin`). Lu seulement sur une base vide.
+- **Changement de `src/db/schema.ts` : migrations incrémentales** (depuis le 17 octobre 2026). `drizzle/0000_init.sql`
+  est la base, figée : ne plus jamais supprimer `drizzle/` ni régénérer ou modifier une migration déjà commitée.
+  1. Modifier `src/db/schema.ts`, puis `npm run db:generate -- --name <sujet>` : une nouvelle migration
+     `drizzle/NNNN_<sujet>.sql`, qu'on relit (renommage de colonne : drizzle-kit pose la question ; données à
+     reprendre : compléter le SQL à la main avant de commiter).
+  2. `npm run db:check` et `npm test` (`tests/integration/migrations.test.ts` vérifie que le schéma a sa migration et
+     que la chaîne de migrations donne la structure du schéma).
+  3. Au démarrage, Codex applique les migrations manquantes en une transaction, après une sauvegarde automatique
+     de la base (`CODEX_MIGRATION_BACKUP=off` pour s'en passer) ; il refuse une base faite par un autre schéma
+     (`src/db/migrations.ts`). Pas de `db:reset` à faire. Retour arrière : `npm run restore` de cette sauvegarde
+     avec la version précédente de Codex.
+  - Fonctions et déclencheurs (journal, version, termes de recherche) ne sont pas dans les migrations : ils sont
+    reposés à chaque démarrage par `openDb()` (`src/db/index.ts`), à garder cohérents avec le schéma.
+- **Évolution de `src/db/registry.ts`** (ou des fonctions de `src/db/seed-org.ts`) : `npm run registry:apply`
+  (serveur arrêté) montre l'écart avec la base, `-- --apply` l'applique après une sauvegarde, journalisé. Ce qui a été
+  réglé dans l'Administration est conservé ; un code n'est jamais renommé ni supprimé (un type retiré est désactivé).
 - **Utilisateur et rôle simulés** par cookie. Par défaut : Claire Bardet, gestionnaire documentaire. Pour changer,
   cliquer sur le profil en bas de la barre latérale.
 - **Pas de secrets dans le dépôt.** Les variables sont décrites dans `.env.example`, et `.gitignore` exclut `.env*`,
@@ -103,9 +120,8 @@ npm run typecheck && npm run lint && npm run build
 ## Limites en session cloud (conteneur Linux)
 
 - Node 20.19+ ou 22.12+ est requis (`engines` de package.json : Next 16.4 et Vite 7 pour Vitest ; la session locale
-  utilise Node 26). La police Inter est chargée par
-  `next/font/google` : sans accès réseau à Google Fonts, `npm run build` peut échouer, `npm run dev` se rabat sur une
-  police de secours.
+  utilise Node 26). La police Inter est dans le dépôt (`src/fonts/`, `next/font/local`, licence OFL) : le build ne
+  demande plus d'accès réseau.
 - Une branche cloud créée avant le 9 octobre au soir ne contient pas ces documents : `git fetch origin && git merge
   origin/main`.
 

@@ -145,6 +145,14 @@ describe('other settings', () => {
     expect(codes(prod({ CODEX_RATE_LIMIT: 'off' }), 'warn')).toContain('rate_off');
   });
 
+  it('refuses a seed mode it does not know, and says when migrations go without a backup (src/db/index.ts)', () => {
+    expect(codes(prod({ CODEX_SEED: 'minimal' }))).not.toContain('seed_unknown');
+    expect(codes(prod({ CODEX_SEED: 'reference' }), 'error')).toEqual(['seed_unknown']);
+    expect(codes(dev({ CODEX_MIGRATION_BACKUP: 'off' }), 'warn')).toEqual(['migration_backup_off']);
+    expect(codes(dev({ CODEX_MIGRATION_BACKUP: 'peut-être' }), 'warn')).toEqual(['flag_invalid']);
+    expect(codes(dev({ CODEX_MIGRATION_BACKUP: '1' }), 'warn')).toEqual([]);
+  });
+
   it('reads the data folder as src/db/index.ts does', () => {
     expect(dataDirOf({}, '/srv/codex')).toBe('/srv/codex/.data');
     expect(dataDirOf({ CODEX_DATA_DIR: 'donnees' }, '/srv/codex')).toBe('/srv/codex/donnees');

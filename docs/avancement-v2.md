@@ -2,12 +2,11 @@
 
 Le code suit le modèle de `docs/modele-cible.md`. Typecheck, lint et build passent sans erreur.
 
-**Avant de relancer le serveur de développement** : arrêter le serveur, `npm run db:reset`, relancer. La migration
-`drizzle/0000_init.sql` a été régénérée (8 octobre, après revue) : statut de révision `cancelled`, index uniques
-(une lettre par document, une révision en vigueur, un circuit en cours par révision, une demande Vigie en attente par
-document, un numéro de version de travail par révision) ; les données de démonstration ont aussi changé (rôles des
-titulaires de fonctions, droit Administrer du gestionnaire, chronologie). Une base `.data/` existante ne peut pas la
-recevoir.
+**Schéma et base existante** (mis à jour le 17 octobre 2026) : `drizzle/0000_init.sql` a été régénérée jusqu'au lot 8
+(dernière fois au commit `c80d6ae`) ; une base créée avant cette version doit être réinitialisée une dernière fois
+(`npm run db:reset`), ce que le démarrage signale. Depuis, le schéma évolue par migrations incrémentales, appliquées au
+démarrage après une sauvegarde automatique, sans réinitialisation (README, « Démarrer » ; point 41 de
+`docs/reste-a-faire.md`). Les évolutions du registre s'appliquent par `npm run registry:apply` (point 60).
 
 ## Fait
 - `docs/modele-cible.md` : décisions de l'utilisateur et propositions à confirmer (voir `docs/decisions.md`).

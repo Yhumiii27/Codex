@@ -1,18 +1,16 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
 import './nocturne.css';
 import './globals.css';
 import { AppProvider } from '@/components/shell/AppProvider';
 import { Header } from '@/components/shell/Header';
 import { Sidebar } from '@/components/shell/Sidebar';
 import type { DialogData } from '@/components/dialogs/types';
+import { interClassName } from '@/fonts/inter';
 import { getCtx } from '@/lib/context';
 import { fileRules } from '@/lib/filetypes';
 import { CONF_LEVELS, MATRIX_ROLE, type SimRole, type TKey } from '@/lib/i18n';
 import { keystoneUrl } from '@/lib/keystone';
 import { getMatrix, listTemplates, myTodo, recentActivity, typeView } from '@/lib/queries';
-
-const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' });
 
 export const metadata: Metadata = {
   title: 'Codex — GED Groupe',
@@ -53,7 +51,7 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
     files: fileRules(process.env),
   };
   return (
-    <html lang={ctx.lang} className={inter.variable}>
+    <html lang={ctx.lang} className={interClassName}>
       <body>
         <AppProvider t={ctx.t} lang={ctx.lang} data={data} todo={todo}>
           <div className="app">

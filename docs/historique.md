@@ -2250,6 +2250,7 @@ de [decisions.md](decisions.md).
 | Étape | Commit | Points | Ce qui change | Choix prudents |
 |---|---|---|---|---|
 | 1. Rechargement en boucle en développement et lectures ciblées par navigation | commit « Lot 9, étape 1 », qui suit `c80d6ae` | bogue, 47 | Cache disque de Turbopack désactivé pour `next dev` ; chaque écran lit ce qu'il montre au lieu de tous les documents et circuits, à l'identique pour chaque utilisateur | Cache de développement désactivé plutôt que montée de version de Next.js ; « Mis en vigueur cette semaine » compté sur toute la semaine ; fenêtres de l'activité récente gardées (60 et 500 entrées) |
+| 2. Police locale, migrations incrémentales, amorçage séparé et application du registre | commit « Lot 9, étape 2 », qui suit `7d3db2e` | 42, 41, 45, 60 (et 52 en partie) | Inter servie depuis le dépôt (build sans réseau) ; migrations versionnées à partir de `0000_init`, contrôlées et précédées d'une sauvegarde ; `CODEX_SEED=demo|minimal` ; `npm run registry:apply` | Mêmes fichiers de police que Google, à l'octet ; refus d'une base d'un autre schéma, sauvegarde obligatoire avant migration ; démo par défaut partout, administrateur initial fictif en minimal ; simulation par défaut, l'administration l'emporte, codes figés, types retirés désactivés |
 
 ### 18.1 Rechargement en boucle en développement et lectures ciblées
 
@@ -2325,3 +2326,63 @@ et commentaires ; l'accueil, Archivage, les pages département et la fiche relis
   révisions ouvertes, titulaires de fonctions lus à chaque requête), /validations, la liste des documents lisibles
   que la fiche transmet à ses dialogues.
 - **Vérifié** : `npm test`, `npm run typecheck`, `npm run lint`, `npm run build`.
+
+### 18.2 Police locale, migrations incrémentales, amorçage séparé, registre sur une base existante
+
+Les quatre constats ont été revérifiés au commit `7d3db2e` : `next/font/google` dans `layout.tsx` et
+`global-error.tsx` ; une seule migration, `drizzle/0000_init.sql` (commit `c80d6ae`), égale au schéma
+(`drizzle-kit generate` : « No schema changes ») ; `seed()` amorce référentiel et démonstration ensemble dès que `users`
+est vide ; aucune commande pour appliquer `src/db/registry.ts` à une base existante.
+
+- **Police (point 42).** Les sept sous-ensembles woff2 d'Inter que `next/font/google` téléchargeait (Inter 4.001,
+  Google Fonts v20, axe de graisse 100 à 900) sont dans `src/fonts/inter/`, identiques à l'octet à ceux de
+  `.next/static/media`, avec la licence OFL 1.1. `src/fonts/inter.ts` les déclare par `next/font/local`, un appel par
+  sous-ensemble (la fonction n'accepte pas de plage Unicode par fichier), avec les plages de Google ; le latin seul est
+  préchargé et porte la variable `--font-inter`. Turbopack nomme la famille de la variable d'après la constante
+  (`inter`), que CSS rapproche des faces `Inter` sans tenir compte de la casse. La police de secours reste l'Arial
+  ajustée de `next/font/google` (`Inter Fallback`, mêmes valeurs, dans `globals.css`) : celle que `next/font/local`
+  calcule depuis le fichier latin différait légèrement (89,79 % au lieu de 90,44 % de hauteur, 107,89 % au lieu de
+  107,12 % de taille), et elle dessine les caractères qu'aucun sous-ensemble ne couvre (flèches). Vérifié : CSS
+  produit (8 `@font-face`), fichier servi (48 432 octets), `npm run build` avec un proxy réseau inaccessible.
+- **Migrations incrémentales (point 41).** `0000_init` est figée. `src/db/migrations.ts` lit les migrations
+  appliquées (`drizzle.__drizzle_migrations`) et celles du code (journal, SHA-256 comme drizzle) : la base doit avoir
+  appliqué les premières migrations du code, les mêmes fichiers, dans l'ordre. Sinon le démarrage s'arrête avant toute
+  écriture (drizzle seul ne compare que des instants : il aurait rejoué `0000_init` sur une base faite par une version
+  régénérée, ignoré une migration d'une autre branche datée plus tôt, ou rien dit d'une base faite par un Codex plus
+  récent). S'il manque des migrations à une base qui a des données, `src/db/index.ts` écrit d'abord une sauvegarde
+  (`createBackup` de `backup-core.mjs`, origine application, par Codex) et ne démarre pas s'il n'y arrive pas
+  (`CODEX_MIGRATION_BACKUP=off` pour passer outre, signalé par le contrôle de la configuration) ; drizzle applique
+  ensuite les migrations en une transaction, puis l'entrée « Sauvegarde créée » est journalisée avec « migration … ».
+  Fonctions et déclencheurs restent hors migrations, posés à chaque démarrage. `npm run db:check` (`drizzle-kit
+  check`) entre dans la CI. `tests/integration/migrations.test.ts` : diff vide entre le schéma et le dernier
+  instantané ; une base créée par la chaîne de migrations et une base créée d'un coup depuis le schéma
+  (`generateMigration` de `drizzle-kit/api`) ont les mêmes colonnes, contraintes et index dans le catalogue Postgres
+  (`pushSchema` et `drizzle-kit pull`, essayés d'abord, donnent des faux écarts ou perdent les paramètres des requêtes
+  sur PGlite) ; refus d'une base d'un autre schéma, laissée intacte.
+- **Essai d'une migration incrémentale** (copie du dépôt dans le dossier temporaire de la session, pas dans le dépôt) :
+  base de démo créée, colonne `users.nickname` ajoutée au schéma, `drizzle-kit generate --name factice` →
+  `0001_factice.sql` ; `drizzle-kit check` et les tests de migration passent ; au démarrage, sauvegarde
+  (`backup written before migrating`), migration appliquée, entrée « Sauvegarde créée · migration 0001_factice » ; le
+  test échoue si l'on ajoute une colonne au schéma sans migration, ou si l'on retouche le SQL de `0001_factice` ;
+  `npm run restore -- latest --replace` remet la base d'avant (`backup:check` : « migrations appliquées au démarrage :
+  0001_factice »).
+- **Amorçage (point 45).** `CODEX_SEED` (`src/lib/seed-mode.ts`) : `demo` par défaut, `minimal` sur demande, autre
+  valeur refusée. `seed()` pose le référentiel commun (`seedReference` : départements et sites provisoires, acteurs
+  système, familles, types, fonctions, matrice), puis la démonstration ou l'administrateur initial `admin`. Une base
+  n'est amorcée que sans personne ni type. Démarrages réels : `npm run db:reset` puis `npm run dev` (« new database
+  seeded mode=demo ») et `CODEX_SEED=minimal npm run dev` (« mode=minimal » ; accueil, explorateur, recherche,
+  validations, archivage, administration et ses onglets, page QUA en 200, ouverts sur « Administrateur Codex »).
+- **Registre sur une base existante (point 60).** `npm run registry:apply` (`scripts/codex-registry.mts`, par `tsx`,
+  désormais en devDependency ; règles dans `src/lib/registry-apply.ts`, valeurs du journal partagées avec les Server
+  Actions dans `src/lib/journal-values.ts`) : simulation par défaut, `-- --apply` après sauvegarde. L'historique de
+  l'Administration est relu dans le journal (créations, renommages, suppressions, champs modifiés, par une personne) ;
+  ce qu'elle a réglé l'emporte. Codes jamais renommés ni supprimés ; type absent désactivé ; collision de code
+  refusée ; réglage plus étroit que les documents existants retenu ; portée d'une fonction à titulaires gardée ;
+  chaque changement journalisé par Codex. Essayé dans la copie : libellé de PRO changé, type ajouté, type GA retiré
+  (désactivé, ses documents gardés), refus tant que le serveur tourne ou que la base n'a pas les migrations, puis plus
+  rien à faire au second passage.
+- **Pour l'utilisateur sur son Mac** : rien à faire si sa base a été créée ou réinitialisée depuis le commit `c80d6ae`
+  (lot 8, étape 5) ; sinon un dernier `npm run db:reset` (ou, pour l'app, la suppression de son dossier de données),
+  le démarrage le lui dit. Ensuite, plus de réinitialisation à chaque changement de schéma.
+- **Vérifié** : `npm test`, `npm run typecheck`, `npm run lint`, `npm run db:check`, `npm run build` (aussi sans
+  réseau), démarrages réels en mode démo et en mode minimal.

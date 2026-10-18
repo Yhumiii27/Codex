@@ -5,7 +5,11 @@ import { PGlite } from '@electric-sql/pglite';
 import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
 import { drizzle } from 'drizzle-orm/pglite';
 import { migrate } from 'drizzle-orm/pglite/migrator';
-import { lockForServer } from '../lib/backup-core.mjs';
+import { backupDirOf, createBackup, journal, journalData, keepOf, lockForServer, readMigrations } from '../lib/backup-core.mjs';
+import { logger } from '../lib/log';
+import { seedModeOf } from '../lib/seed-mode';
+import { appVersion } from '../lib/version';
+import { appliedMigrations, migrationPlan, type MigrationPlan } from './migrations';
 import * as schema from './schema';
 import { seed } from './seed';
 
@@ -14,13 +18,18 @@ export type Db = ReturnType<typeof drizzle<typeof schema>>;
 // Runtime data (database, uploaded files) lives outside the build output.
 export const DATA_DIR = path.resolve(/*turbopackIgnore: true*/ process.env.CODEX_DATA_DIR ?? path.join(process.cwd(), '.data'));
 export const FILES_DIR = path.join(DATA_DIR, 'files');
+/** The migrations of the code (versioned, never regenerated: src/db/migrations.ts). */
+export const MIGRATIONS_DIR = path.join(/*turbopackIgnore: true*/ process.cwd(), 'drizzle');
+
+const log = logger('db');
 
 /**
  * The audit log is append-only: the database itself refuses UPDATE, DELETE and TRUNCATE on audit_log (statement-level
  * triggers, so even a statement touching no row fails). Installed at every start, after the migrations, rather than in
- * a migration: while there is no production database, drizzle/ is deleted and regenerated as a single migration
- * (CLAUDE.md), which would lose a hand-written statement. CREATE OR REPLACE makes it idempotent. It guards against the
- * application's own writes; whoever administers the database can still drop it.
+ * a migration: drizzle-kit does not know functions and triggers (its snapshots, and the check that the migrations give
+ * the schema, leave them out), and CREATE OR REPLACE applies their latest version to every database, new or existing,
+ * without a migration. Idempotent. It guards against the application's own writes; whoever administers the database can
+ * still drop it. A migration must therefore never drop or rename what these statements refer to without changing them.
  */
 const AUDIT_APPEND_ONLY = `
 create or replace function audit_log_append_only() returns trigger language plpgsql as $$
@@ -108,15 +117,47 @@ create collation if not exists codex_fr (provider = icu, locale = 'fr@colNumeric
  * it and seeds it; integration tests (tests/integration) open throwaway in-memory databases with it, so they run
  * against the same schema and triggers.
  */
-export async function openDb(dataDir?: string): Promise<Db> {
+export async function openDb(dataDir?: string, opts: { beforeMigrate?: (client: PGlite, plan: MigrationPlan) => Promise<void> } = {}): Promise<Db> {
   const client = new PGlite({ dataDir, extensions: { pg_trgm } });
   const db = drizzle(client, { schema });
-  await client.exec('create extension if not exists pg_trgm');
-  await migrate(db, { migrationsFolder: path.join(process.cwd(), 'drizzle') });
+  try {
+    await client.exec('create extension if not exists pg_trgm');
+    // Refuses a database made by another schema before drizzle replays anything on it (src/db/migrations.ts).
+    const plan = migrationPlan(await appliedMigrations(client), await readMigrations(MIGRATIONS_DIR));
+    if (plan.pending.length && opts.beforeMigrate) await opts.beforeMigrate(client, plan);
+    // All pending migrations in one transaction: a failure leaves the database as it was.
+    await migrate(db, { migrationsFolder: MIGRATIONS_DIR });
+  } catch (err) {
+    await client.close().catch(() => {});
+    throw err;
+  }
   await client.exec(AUDIT_APPEND_ONLY);
   await client.exec(DOCUMENT_VERSION);
   await client.exec(DOCUMENT_SEARCH);
   return db;
+}
+
+/**
+ * Before migrating a database that holds data, an archive of it and of its files (lib/backup-core.mjs, as
+ * Administration › Sauvegardes writes them): the way back from a migration that went through but turned out wrong is
+ * `npm run restore` of that archive with the version of Codex that made it (docs/sauvegarde.md). A failed migration
+ * needs none: drizzle applies them in one transaction. When the archive cannot be written, the server does not start
+ * and the database is left as it was; CODEX_MIGRATION_BACKUP=off migrates without it.
+ */
+async function backUpBeforeMigrating(client: PGlite, plan: MigrationPlan): Promise<{ name: string; data: Record<string, unknown> } | null> {
+  if (plan.fresh) return null;
+  if (/^(0|false|off|no)$/i.test(process.env.CODEX_MIGRATION_BACKUP?.trim() ?? '')) {
+    log.warn('migrating without a backup (CODEX_MIGRATION_BACKUP=off)', { pending: plan.pending });
+    return null;
+  }
+  const res = await createBackup({
+    pg: client, filesDir: FILES_DIR, dbDir: path.join(DATA_DIR, 'pglite'), backupDir: backupDirOf(DATA_DIR, process.env), keep: keepOf(process.env),
+    mode: 'online', by: 'codex', migrations: await readMigrations(MIGRATIONS_DIR), app: await appVersion(),
+  }).catch((err: unknown) => {
+    throw new Error(`no backup could be written before migrating (${plan.pending.join(', ')}): ${err instanceof Error ? err.message : String(err)}. The database was not changed. Correct CODEX_BACKUP_DIR, or set CODEX_MIGRATION_BACKUP=off to migrate without a backup`, { cause: err });
+  });
+  log.info('backup written before migrating', { path: res.path, pending: plan.pending });
+  return { name: res.name, data: journalData(res.manifest, res) };
 }
 
 async function init(): Promise<Db> {
@@ -124,9 +165,23 @@ async function init(): Promise<Db> {
   // codex.lock: the backup and restore commands (npm run backup, npm run restore) refuse to run while this process holds
   // the database, and this process refuses to open it while one of them works on it (lib/backup-core.mjs).
   await lockForServer(DATA_DIR);
-  const db = await openDb(path.join(DATA_DIR, 'pglite'));
-  const [{ n }] = (await db.$client.query<{ n: number }>('select count(*)::int as n from users')).rows;
-  if (n === 0) await seed(db);
+  // The archive written before migrating, journaled once the migrations are applied (the journal's own table may change).
+  const before: { archive: { name: string; data: Record<string, unknown> } | null; pending: string[] } = { archive: null, pending: [] };
+  const db = await openDb(path.join(DATA_DIR, 'pglite'), {
+    beforeMigrate: async (client, plan) => {
+      before.archive = await backUpBeforeMigrating(client, plan);
+      before.pending = plan.pending;
+    },
+  });
+  if (before.archive) await journal(db.$client, 'backup_created', before.archive.name, before.archive.data, `migration ${before.pending.join(', ')}`);
+  // Seeded once, when nothing is there yet: neither a person nor a type (CODEX_SEED, lib/seed-mode.ts).
+  const [{ n }] = (await db.$client.query<{ n: number }>('select ((select count(*) from users) + (select count(*) from doc_types))::int as n')).rows;
+  if (Number(n) === 0) {
+    const mode = seedModeOf(process.env);
+    if (!mode) throw new Error(`CODEX_SEED="${process.env.CODEX_SEED}" is neither demo nor minimal: the new database was left empty`);
+    await seed(db, mode);
+    log.info('new database seeded', { mode });
+  }
   return db;
 }
 

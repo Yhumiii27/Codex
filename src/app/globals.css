@@ -1,6 +1,12 @@
 /* Application layer on top of Nocturne (nocturne.css). Mirrors the design's <helmet> rules, then the
    small patterns every screen repeats. Screen-specific layout lives in each screen's CSS module. */
 
+/* Fallback of Inter (src/fonts/inter.ts): Arial resized to Inter's metrics, the values next/font/google declared. */
+@font-face {
+  font-family: 'Inter Fallback'; src: local('Arial');
+  ascent-override: 90.44%; descent-override: 22.52%; line-gap-override: 0%; size-adjust: 107.12%;
+}
+
 html, body { height: 100%; margin: 0; overflow: hidden; }
 :root { color-scheme: dark; }
 a { color: var(--color-accent); }

@@ -85,6 +85,21 @@ CODEX_DATA_DIR="$HOME/Library/Application Support/Codex/data" npm run backup
 npm run backup -- --dev        # serveur lancé par npm run dev, avec un .env.development
 ```
 
+### Automatiquement : avant une migration, avant `npm run registry:apply -- --apply`
+
+Depuis le 17 octobre 2026, le schéma évolue par migrations incrémentales (`drizzle/`, README « Démarrer »). Quand le
+serveur démarre sur une base qui a des données et à laquelle il manque des migrations du code, il écrit d'abord une
+archive (même format, même dossier, même rotation ; origine « application », par Codex), puis applique les migrations
+en une seule transaction ; l'entrée « Sauvegarde créée » du journal porte « migration » et les migrations appliquées.
+Si l'archive ne peut pas être écrite (dossier des sauvegardes inaccessible, disque plein), le serveur ne démarre pas
+et la base reste telle quelle ; `CODEX_MIGRATION_BACKUP=off` migre sans sauvegarde. `npm run registry:apply -- --apply`
+sauvegarde de même avant d'écrire (`--no-backup` pour s'en passer).
+
+**Retour arrière d'une migration** qui est passée mais se révèle fausse : arrêter le serveur, revenir à la version
+précédente de Codex (git), puis `npm run restore -- <archive> --replace` avec l'archive écrite avant la migration.
+Restaurée avec la nouvelle version, la même archive recevrait de nouveau la migration au démarrage suivant. Une
+migration qui échoue n'a pas besoin de retour arrière : sa transaction est annulée.
+
 ## Vérifier une archive
 
 ```bash

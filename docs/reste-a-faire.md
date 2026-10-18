@@ -744,6 +744,8 @@ Vérifié :
 </details>
 
 #### 41. Passer aux migrations incrémentales avant la première base de production
+- **Fait le 17 octobre 2026** : constat revérifié au commit `7d3db2e` (une seule migration, `drizzle/0000_init.sql` du commit `c80d6ae`, que `drizzle-kit generate` confirme égale au schéma : « No schema changes »). Elle devient la base figée ; chaque changement de schéma ajoute une migration (`npm run db:generate -- --name <sujet>`), relue, jamais régénérée. Au démarrage, `src/db/migrations.ts` compare les migrations appliquées par la base à celles du code (rang, instant, SHA-256) et refuse une base faite par un autre schéma, une migration modifiée, sautée ou hors d'ordre, avant que drizzle ne rejoue quoi que ce soit ; s'il en manque à une base qui a des données, le serveur la sauvegarde d'abord (archive de `npm run backup`, entrée « Sauvegarde créée · migration … » au journal ; `CODEX_MIGRATION_BACKUP=off` pour s'en passer, refus de démarrer si l'archive échoue), puis drizzle applique les migrations en une transaction. Retour arrière : restaurer cette archive avec la version précédente (docs/sauvegarde.md). Fonctions et déclencheurs restent posés à chaque démarrage (`openDb`, commentaire mis à jour). `npm run db:check` (`drizzle-kit check`) ajouté à la CI ; tests/integration/migrations.test.ts vérifie que le schéma a sa migration (diff vide avec le dernier instantané) et qu'une base créée par la chaîne de migrations a exactement la structure d'une base créée d'un coup depuis le schéma (colonnes, contraintes, index lus dans le catalogue Postgres), et le refus d'une base d'un autre schéma ; tests/unit/migrations.test.ts couvre les règles. Essayé dans une copie : migration factice `0001_factice` (colonne ajoutée), démarrage sur la base de démo existante (sauvegarde, migration, journal), tests verts, détection d'un schéma modifié sans migration et d'une migration retouchée, restauration de l'archive. CLAUDE.md, README et docs/sauvegarde.md décrivent la procédure.
+
 
 - **Effort** : faible
 
@@ -756,6 +758,8 @@ Vérifié : la règle de CLAUDE.md (« rm -rf drizzle && npx drizzle-kit generat
 </details>
 
 #### 42. Le build dépend de Google Fonts
+- **Fait le 17 octobre 2026** : Inter est dans le dépôt (`src/fonts/inter/`, licence OFL 1.1 dans `OFL.txt`) : les sept sous-ensembles woff2 que `next/font/google` téléchargeait, identiques à l'octet (SHA-1 comparés avec ceux de `.next/static/media`), servis par `next/font/local` (`src/fonts/inter.ts`) avec les plages Unicode de Google, le latin seul préchargé, la même variable `--font-inter` et la même police de secours (« Inter Fallback », Arial ajustée aux valeurs de `next/font/google`, déclarée dans `src/app/globals.css`) : rendu inchangé. `layout.tsx` et `global-error.tsx` l'importent ; `npm run build` passe avec le proxy réseau coupé. L'app Mac (`desktop/build-app.sh`) n'a plus besoin du réseau pour construire.
+
 
 - **Effort** : faible
 
@@ -798,6 +802,8 @@ Constaté dans le code. Seul src/app/error.tsx existe : il n'y a ni global-error
 </details>
 
 #### 45. Séparer l'amorçage du référentiel et les données de démonstration
+- **Fait le 17 octobre 2026** : `CODEX_SEED=demo|minimal` (`src/lib/seed-mode.ts`, `.env.example`), **demo par défaut partout** pour ne rien changer (l'app Mac tourne en production). `seed()` (`src/db/seed.ts`) pose d'abord le référentiel commun (départements et sites provisoires, acteurs système, familles, 69 types, fonctions, matrice des droits), puis soit la démonstration (personnes, titulaires, projets, programmes, recherches enregistrées, documents…), soit un administrateur initial `admin` (« Administrateur Codex », gestionnaire documentaire, droit Administrer), pour que `getCtx` ait une personne. La base n'est amorcée que si elle n'a ni personne ni type ; une valeur inconnue est une erreur du contrôle de configuration et laisse la base vide. Vérifié : démarrage réel dans les deux modes (écrans principaux en 200, administration comprise), tests/integration/registry-apply.test.ts (contenu du mode minimal, ouverture sur l'administrateur). Reste : `none` n'existe pas (une base vide ne s'ouvre pas) ; départements, sites et personnes réels attendent l'organigramme (O-04) et l'authentification (O-02).
+
 
 - **Effort** : faible · **Références** : D-02, D-19
 
@@ -942,6 +948,7 @@ Vérifié :
 #### 52. Intégration continue
 
 - **Fait en partie le 10 octobre 2026** : `.github/workflows/ci.yml` (GitHub Actions, Node 22) lance `npm ci`, `npm run typecheck`, `npm run lint`, `npm test` et `npm run build` à chaque push et pull request, sur toutes les branches. Restent `drizzle-kit check` et `npm audit` (`npm ci` signale 9 vulnérabilités le 10 octobre : 4 modérées, 5 élevées).
+- **Complété le 17 octobre 2026** : `npm run db:check` (`drizzle-kit check`) dans la CI, après `npm ci` (point 41) ; le build n'a plus besoin de Google Fonts (point 42). Reste `npm audit`.
 - **Effort** : faible
 
 Il faut un workflow GitHub Actions sur les pull requests vers main : npm ci, `next typegen` puis tsc (voir le point suivant), eslint, tests (dès que le point « Tests automatisés » existe), next build, `drizzle-kit check`, npm audit.
@@ -1078,6 +1085,8 @@ La recherche plein texte couvre bien ces champs (src/lib/search.ts:32), mais il 
 </details>
 
 #### 60. Appliquer les évolutions du registre à une base existante
+- **Fait le 17 octobre 2026** : `npm run registry:apply` (`scripts/codex-registry.mts`, lancé par `tsx`, ajouté aux devDependencies ; règles dans `src/lib/registry-apply.ts`), serveur arrêté (verrou `codex.lock`, type « registry ») : simulation par défaut (la même transaction, annulée, donc exactement ce que l'écriture ferait), `-- --apply` pour écrire après une sauvegarde (`--no-backup` pour s'en passer). Familles et types de `src/db/registry.ts`, fonctions de `src/db/seed-org.ts`. Ce que l'Administration a réglé, d'après le journal (entrées écrites par une personne), l'emporte : champ modifié conservé, entrée créée, renommée (le registre s'applique sous le nouveau code) ou supprimée laissée telle quelle. Règles de l'administration : aucun code renommé ni supprimé, type absent du registre désactivé (famille ou fonction absente seulement signalée), nouveau code en collision refusé (`typeCodeIssue`), documents qui suivent la famille de leur type, réglage plus étroit que des documents existants retenu (à confirmer dans l'administration), portée d'une fonction à titulaires conservée, conservation des documents inchangée. Chaque changement est journalisé comme ceux de l'administration (acteur Codex, détail « npm run registry:apply ») ; les valeurs de journal sont partagées avec les Server Actions (`src/lib/journal-values.ts`). Refusée tant que la base n'a pas les migrations du code. Tests : tests/integration/registry-apply.test.ts ; essayé dans une copie de la base de démo (libellé changé, type ajouté, type retiré désactivé, refus serveur en marche, idempotence). Reste : départements et sites (organigramme, O-04) ne sont pas couverts ; pas d'import/export JSON du registre dans l'administration.
+
 
 - **Effort** : moyen · **Références** : O-05, O-07, D-07
 

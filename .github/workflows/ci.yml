@@ -1,4 +1,4 @@
-# Checks run on every branch push and pull request: clean install, types, lint, tests, production build.
+# Checks run on every branch push and pull request: clean install, migrations, types, lint, tests, production build.
 name: CI
 
 on:
@@ -32,8 +32,11 @@ jobs:
           cache: npm
 
       - run: npm ci
+      # The migrations folder (drizzle/): snapshots chained, no two migrations at the same place. That the schema has its
+      # migration, and that the chain gives its structure, is tested by tests/integration/migrations.test.ts.
+      - run: npm run db:check
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test
-      # Downloads the Inter font from Google Fonts (next/font/google): needs network access, available on GitHub runners.
+      # Inter is served from the repository (src/fonts, next/font/local): the build needs no network.
       - run: npm run build

@@ -1,13 +1,11 @@
 'use client';
 
-import { Inter } from 'next/font/google';
 import { useEffect } from 'react';
+import { interClassName } from '@/fonts/inter';
 import { errorRef } from '@/lib/errors';
 import { ERROR_EN as en, ERROR_FR as fr } from '@/lib/i18n-errors';
 import './nocturne.css';
 import './globals.css';
-
-const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' });
 
 /**
  * An error of the root layout itself (src/app/layout.tsx: the database out of reach, a failed migration), which error.tsx
@@ -20,7 +18,7 @@ export default function GlobalError({ error, retry }: { error: Error & { digest?
   useEffect(() => { console.error(error); }, [error]);
   const both = (a: string, b: string) => (a === b ? a : `${a} · ${b}`);
   return (
-    <html lang="fr" className={inter.variable}>
+    <html lang="fr" className={interClassName}>
       <body>
         <title>{both(fr.error, en.error)}</title>
         <main role="alert" style={{ height: '100vh', display: 'grid', placeItems: 'center', padding: 'var(--space-8)', fontSize: 13 }}>

@@ -5,6 +5,7 @@ import { backupDirOf } from './backup-core.mjs';
 import { admittedExtensions, DENIED_EXTENSIONS, SHAREPOINT_MAX_FILE_MB } from './filetypes';
 import { LOG_LEVELS, write } from './log';
 import { parseRule, RATE_LIMITS } from './ratelimit';
+import { seedModeOf } from './seed-mode';
 import { appVersion } from './version';
 
 // Configuration checked when the server starts (point 37 of docs/reste-a-faire.md), from src/instrumentation.ts: the
@@ -168,6 +169,12 @@ export function checkConfig(env: Env, { production }: { production: boolean }): 
   const keep = env.CODEX_BACKUP_KEEP?.trim();
   if (keep && (!/^\d{1,4}$/.test(keep) || Number(keep) < 1)) add('warn', 'backup_keep_invalid', `CODEX_BACKUP_KEEP="${keep}" is not a whole number from 1: 7 applies`);
   if (env.CODEX_DATA_DIR !== undefined && !env.CODEX_DATA_DIR.trim()) add('warn', 'data_dir_empty', 'CODEX_DATA_DIR is empty: the database and the files go straight into the folder the server runs in');
+
+  // ── New database and migrations (lib/seed-mode.ts, src/db/index.ts) ──
+  if (!seedModeOf(env)) add('error', 'seed_unknown', `CODEX_SEED="${env.CODEX_SEED!.trim().slice(0, 40)}" is neither demo nor minimal: a new database would be left empty and the server would not start`);
+  const migBackup = env.CODEX_MIGRATION_BACKUP?.trim();
+  if (migBackup && !ON.test(migBackup) && !OFF.test(migBackup)) add('warn', 'flag_invalid', `CODEX_MIGRATION_BACKUP="${migBackup}" is neither 1 nor 0: read as on (a backup before each migration)`);
+  else if (migBackup && OFF.test(migBackup)) add('warn', 'migration_backup_off', 'CODEX_MIGRATION_BACKUP is off: the database is migrated without a backup first');
 
   // ── Technical log (lib/log.ts) and this check ──
   const level = env.CODEX_LOG_LEVEL?.trim().toLowerCase();

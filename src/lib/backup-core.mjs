@@ -143,7 +143,7 @@ function inside(child, parent) {
 // writes codex.lock when it opens the database; the commands refuse to run while that process lives, and write their
 // own lock, which the server respects and which they refresh while they run.
 
-/** @typedef {{ pid: number, kind: 'server' | 'backup' | 'restore' | 'export' | 'integrity', since: string, beat?: string }} DataDirLock */
+/** @typedef {{ pid: number, kind: 'server' | 'backup' | 'restore' | 'export' | 'integrity' | 'registry', since: string, beat?: string }} DataDirLock */
 
 /**
  * @param {string} dataDir
@@ -152,7 +152,7 @@ function inside(child, parent) {
 export async function readLock(dataDir) {
   try {
     const v = JSON.parse(await readFile(path.join(dataDir, LOCK_FILE), 'utf8'));
-    return v && Number.isInteger(v.pid) && v.pid > 0 && ['server', 'backup', 'restore', 'export', 'integrity'].includes(v.kind) ? v : null;
+    return v && Number.isInteger(v.pid) && v.pid > 0 && ['server', 'backup', 'restore', 'export', 'integrity', 'registry'].includes(v.kind) ? v : null;
   } catch {
     return null;
   }
@@ -212,7 +212,7 @@ export async function lockForServer(dataDir) {
   const held = await readLock(dataDir);
   if (held && held.kind !== 'server' && lockHeld(held)) {
     const file = path.join(dataDir, LOCK_FILE);
-    throw new BackupError('busy', `a ${held.kind} command (pid ${held.pid}) holds ${file}; if no backup, restore, export or integrity command is running, delete that file`);
+    throw new BackupError('busy', `a ${held.kind} command (pid ${held.pid}) holds ${file}; if no backup, restore, export, integrity or registry command is running, delete that file`);
   }
   try {
     await writeLock(dataDir, 'server', new Date().toISOString());
@@ -223,10 +223,11 @@ export async function lockForServer(dataDir) {
 }
 
 /**
- * A command (backup, restore, export: scripts/codex-export.mjs, integrity: scripts/codex-integrity.mjs): refuses while another live process holds the
+ * A command (backup, restore, export: scripts/codex-export.mjs, integrity: scripts/codex-integrity.mjs, registry:
+ * scripts/codex-registry.mts): refuses while another live process holds the
  * directory (BackupError 'busy', with the lock), then holds it, refreshing the lock every 30 s until unlock().
  * @param {string} dataDir
- * @param {'backup' | 'restore' | 'export' | 'integrity'} kind
+ * @param {'backup' | 'restore' | 'export' | 'integrity' | 'registry'} kind
  */
 export async function lockForCommand(dataDir, kind) {
   const held = await readLock(dataDir);
@@ -717,12 +718,13 @@ async function openStored(filesDir, file) {
  * @param {'backup_created' | 'backup_restored'} action
  * @param {string} archive
  * @param {Record<string, unknown>} backup
+ * @param {string} [detail] why it was made, when not asked for (the server's archive before migrating: src/db/index.ts)
  */
-export async function journal(q, action, archive, backup) {
+export async function journal(q, action, archive, backup, detail = '') {
   if (!(await q.query(`select 1 from users where id = 'codex'`)).rows.length) return false;
   await q.query(
-    `insert into audit_log (at, user_id, action, target_kind, target_id, detail, data) values ($1, 'codex', $2, 'backup', $3, '', $4::jsonb)`,
-    [new Date().toISOString(), action, archive, JSON.stringify({ backup })],
+    `insert into audit_log (at, user_id, action, target_kind, target_id, detail, data) values ($1, 'codex', $2, 'backup', $3, $4, $5::jsonb)`,
+    [new Date().toISOString(), action, archive, detail, JSON.stringify({ backup })],
   );
   return true;
 }

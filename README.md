@@ -12,17 +12,56 @@ npm install
 npm run dev        # http://localhost:3100
 ```
 
-Au premier lancement, la base locale est créée dans `.data/` (migrations `drizzle/`) et remplie avec les
-données de démonstration (registre des types, organisation provisoire, projets Keystone, documents). Les fichiers
-déposés sont stockés dans `.data/files/` (ou dans SharePoint, voir `src/lib/storage.ts`).
+Au premier lancement, la base locale est créée dans `.data/` (migrations `drizzle/`) et remplie selon
+`CODEX_SEED` (lu seulement sur une base vide) :
+- `demo` (défaut, en développement comme dans l'app Mac) : le référentiel et les données de démonstration
+  (personnes fictives, titulaires des fonctions, projets Keystone, programmes, recherches enregistrées, documents,
+  circuits, demandes Vigie, journal) ;
+- `minimal` : le référentiel seul (registre des types et des familles, fonctions de validation, matrice des droits,
+  organisation provisoire, acteurs système Codex, Keystone, Vigie) et un administrateur initial, « Administrateur
+  Codex » (gestionnaire documentaire, droit Administrer), pour se connecter. C'est le mode d'une vraie installation :
+  personnes, titulaires et projets viendront de l'administration, de l'organigramme (O-04) et de l'authentification
+  (O-02). Exemple : `npm run db:reset && CODEX_SEED=minimal npm run dev`.
 
-- Repartir de zéro : arrêter le serveur, `npm run db:reset`, relancer. **Obligatoire après le passage au modèle v2** :
-  une base créée avec l'ancien modèle ne peut pas recevoir la nouvelle migration. `db:reset` n'efface pas les
-  sauvegardes (`.data-backups/`, voir « Sauvegarde et restauration ») ni les exports complets (`.data-exports/`).
-- Après une modification de `src/db/schema.ts` : tant qu'il n'y a pas de base de production, régénérer la migration
-  unique (`rm -rf drizzle && npx drizzle-kit generate --name init`) puis `npm run db:reset`.
-- Contrôles : `npm test`, `npm run typecheck`, `npm run lint`, `npm run build`.
-- Intégration continue GitHub Actions (`.github/workflows/ci.yml`) : `npm ci` puis ces contrôles, sous Node 22, à chaque push et PR.
+Les fichiers déposés sont stockés dans `.data/files/` (ou dans SharePoint, voir `src/lib/storage.ts`).
+
+- Repartir de zéro : arrêter le serveur, `npm run db:reset`, relancer. `db:reset` n'efface pas les sauvegardes
+  (`.data-backups/`, voir « Sauvegarde et restauration ») ni les exports complets (`.data-exports/`). Une base créée
+  par une version de `drizzle/0000_init.sql` antérieure à la version figée (commit `c80d6ae`, lot 8, étape 5) est
+  refusée au démarrage avec un message clair : la réinitialiser une dernière fois.
+- **Schéma : migrations incrémentales** (depuis le 17 octobre 2026). `drizzle/0000_init.sql` est figée ; chaque
+  changement de `src/db/schema.ts` ajoute une migration, jamais n'en réécrit une :
+  1. `npm run db:generate -- --name <sujet>` écrit `drizzle/NNNN_<sujet>.sql` ; la relire (un renommage de colonne
+     est demandé par drizzle-kit ; une reprise de données se complète à la main dans le SQL avant le commit) ;
+  2. `npm run db:check` (dossier `drizzle/` cohérent) et `npm test` (`tests/integration/migrations.test.ts` : le schéma
+     a sa migration, et la chaîne de migrations donne exactement la structure du schéma) ;
+  3. au démarrage suivant, Codex sauvegarde la base et ses fichiers (archive de « Sauvegarde et restauration », entrée
+     « Sauvegarde créée » au journal), puis applique les migrations manquantes en une seule transaction : un échec
+     laisse la base intacte. Une base faite par un autre schéma (migration inconnue, modifiée ou sautée) est refusée
+     avant toute écriture (`src/db/migrations.ts`). Pas de `db:reset`. `CODEX_MIGRATION_BACKUP=off` migre sans
+     sauvegarde (déconseillé).
+  - Retour arrière : arrêter le serveur, revenir à la version précédente de Codex (git), `npm run restore --
+    <archive> --replace` avec l'archive écrite avant la migration.
+  - Les fonctions et déclencheurs de la base (journal en ajout seul, version des documents, termes de recherche)
+    ne passent pas par les migrations : `openDb()` (`src/db/index.ts`) les repose à chaque démarrage.
+- **Registre : appliquer une évolution de `src/db/registry.ts` à une base existante** (serveur arrêté) :
+  ```bash
+  npm run registry:apply                # simulation : écarts entre le registre du code et la base, rien n'est écrit
+  npm run registry:apply -- --apply     # sauvegarde, puis applique et journalise chaque changement (acteur Codex)
+  ```
+  Familles et types de `src/db/registry.ts`, fonctions de validation de `src/db/seed-org.ts`. Ce que
+  l'Administration a réglé, d'après le journal, l'emporte : un champ modifié y garde sa valeur ; une entrée créée,
+  renommée ou supprimée y reste telle quelle. Mêmes règles que l'administration du registre : aucun code n'est
+  renommé ni réutilisé, un type absent du registre est désactivé (jamais supprimé), un nouveau code qui serait déjà un
+  département, un projet, un programme ou `QMS` est refusé, les documents suivent la famille de leur type, un réglage
+  qui exclurait des documents existants (origine, rattachement, confidentialité) est laissé à confirmer dans
+  l'administration, une fonction qui a des titulaires garde sa portée, les documents gardent leur durée de
+  conservation. Refusée tant que la base n'a pas les migrations du code (démarrer Codex une fois). App Mac :
+  `CODEX_DATA_DIR="$HOME/Library/Application Support/Codex/data" npm run registry:apply`, app quittée.
+- Contrôles : `npm test`, `npm run typecheck`, `npm run lint`, `npm run build` (sans accès réseau : la police Inter
+  est dans `src/fonts/`, servie par `next/font/local`, licence OFL dans `src/fonts/inter/OFL.txt`).
+- Intégration continue GitHub Actions (`.github/workflows/ci.yml`) : `npm ci`, `npm run db:check` puis ces contrôles,
+  sous Node 22, à chaque push et PR.
 - Tests : `npm test` lance Vitest une fois (`npm run test:watch` en continu), en une à deux minutes selon la machine,
   sans serveur ni réseau et sans toucher à `.data/`.
   - `tests/unit/` : règles pures (identifiants, révisions, visibilité, conservation, recherche, filtres mis en avant
@@ -86,7 +125,8 @@ Construit `Codex.app` (fenêtre native macOS, sans Electron), l'installe dans `~
 
 L'app pointe vers ce dossier de projet et vers le Node.js présents au moment de la construction : relancer
 `npm run app` après un déplacement du projet ou un changement de Node. Pour repartir d'une base de démo neuve :
-quitter l'app et supprimer `~/Library/Application Support/Codex/data`.
+quitter l'app et supprimer `~/Library/Application Support/Codex/data`. Une mise à jour du code qui apporte une
+migration n'en demande pas : l'app sauvegarde sa base puis la migre au démarrage suivant (voir « Démarrer »).
 
 ## Écrans
 
@@ -464,7 +504,9 @@ src/
     shell/             barre latérale, en-tête, contexte client (dialogues, toasts)
     dialogs/           toutes les boîtes de dialogue
     ui/                icônes de la maquette, contrôle segmenté, steppers, boutons d'action, pages d'une liste
-  db/                  schéma Drizzle, connexion PGlite (déclencheurs, termes de recherche repliés), données de démonstration
+  db/                  schéma Drizzle, connexion PGlite (déclencheurs, termes de recherche repliés), migrations
+                       versionnées (migrations.ts), registre, amorçage (référentiel, démonstration)
+  fonts/               police Inter (woff2, sous-ensembles de Google Fonts, licence OFL), next/font/local
   lib/
     actions.ts         Server Actions (toutes les mutations + contrôles de droits)
     queries.ts         lectures et modèles de vue ; recherche, explorateur et journal filtrés, comptés et paginés par la base
@@ -477,6 +519,9 @@ src/
     codes.ts           identifiants TYPE-CONTEXTE-SEQ et lettres de révision
     registry-rules.ts  administration du registre : formats des codes, collisions entre segments d'un identifiant,
                        lecture des formulaires de type, famille, fonction et programme
+    registry-apply.ts  application du registre du code à une base existante (npm run registry:apply)
+    journal-values.ts  valeurs des changements journalisés (avant → après) du registre et des métadonnées
+    seed-mode.ts       CODEX_SEED : démonstration ou référentiel minimal
     org-rules.ts       administration de l'organisation : libellés, valeurs proposées (actives), un département actif
     retention.ts       fin de conservation
     review.ts          expiration et revue périodique : indicateurs, prochaine date de revue
@@ -508,6 +553,7 @@ scripts/
   codex-backup.mjs     commandes npm run backup, backup:list, backup:check, restore (docs/sauvegarde.md)
   codex-export.mjs     commandes npm run export, export:check (docs/export.md)
   codex-integrity.mjs  commande npm run integrity (empreintes SHA-256 des fichiers)
+  codex-registry.mts   commande npm run registry:apply (TypeScript, lancé par tsx)
 tests/
   unit/                tests unitaires des règles pures de src/lib (Vitest, vitest.config.ts)
   integration/         tests d'intégration sur PGlite en mémoire (règles métier de src/lib, Server Actions, webhook)

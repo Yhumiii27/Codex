@@ -1224,8 +1224,8 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
   les cascades d'un reclassement (détail et mesures dans `docs/reste-a-faire.md`) ; leur coût à l'écriture est accepté
   (journal : environ 9 µs de plus par entrée sur PGlite). Aucun index sur les colonnes que filtrent les listes de
   documents (département, type, statut…) : ces écrans parcourent encore toute la table, et l'index se choisira avec
-  les requêtes qui les remplaceront. Toujours une migration unique régénérée (point 41 : migrations incrémentales à la
-  première base de production).
+  les requêtes qui les remplaceront. Migration unique régénérée à ce moment-là ; migrations incrémentales depuis
+  (point 41, ci-dessous).
 - **Rechargement en boucle en développement** (lot 9, 17 octobre) : le cache disque de Turbopack pour `next dev`
   (`experimental.turbopackFileSystemCacheForDev`, actif par défaut depuis Next.js 16) est **désactivé** dans
   `next.config.ts`. Cause et mesures dans `docs/historique.md` (§18.1). Conséquence : chaque démarrage du serveur de
@@ -1240,6 +1240,46 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
   - l'activité récente garde ses fenêtres : la cloche montre les 5 dernières entrées lisibles parmi les **60** dernières
     entrées sur des documents, l'accueil les 6 dernières parmi les **500** dernières. Une personne qui ne lit presque
     rien peut donc voir moins de 5 ou 6 lignes, comme avant ; élargir ces fenêtres changerait ce qu'elle voit.
+- **Police Inter dans le dépôt** (point 42 de `docs/reste-a-faire.md`, 17 octobre) : les sept fichiers que
+  `next/font/google` téléchargeait (Inter 4.001, Google Fonts v20, axe de graisse variable, sous-ensembles latin,
+  latin étendu, cyrillique, cyrillique étendu, grec, grec étendu, vietnamien), à l'octet près, avec leurs plages
+  Unicode, servis par `next/font/local` (`src/fonts/`, licence OFL 1.1 jointe). Seul le latin est préchargé, comme
+  avant. Police de secours : l'Arial ajustée que déclarait `next/font/google` (mêmes valeurs), pas celle que
+  `next/font/local` calculerait. Rendu identique ; les fichiers ne suivront plus les mises à jour de Google Fonts.
+- **Migrations incrémentales dès maintenant** (point 41, 17 octobre) : sans attendre la première base de production,
+  `drizzle/0000_init.sql` (celle du commit `c80d6ae`, égale au schéma) est figée et chaque changement de schéma ajoute
+  une migration. Choix prudents :
+  - avant d'appliquer des migrations à une base qui a des données, le serveur **sauvegarde** la base et ses fichiers
+    (archive de `npm run backup`) et **ne démarre pas** s'il n'y arrive pas (`CODEX_MIGRATION_BACKUP=off` pour s'en
+    passer) ; le retour arrière est la restauration de cette archive avec la version précédente de Codex (drizzle n'a
+    pas de migration descendante) ;
+  - une base faite par un autre schéma (migration inconnue, modifiée après coup ou sautée, journal hors d'ordre) est
+    **refusée** avant toute écriture, alors que drizzle seul l'aurait migrée de travers ou ignorée ;
+  - fonctions et déclencheurs restent posés à chaque démarrage, hors migrations ;
+  - `npm run db:check` (`drizzle-kit check`) est dans la CI ; l'équivalence « base créée par les migrations = schéma »
+    est un test (catalogue Postgres comparé, `tests/integration/migrations.test.ts`), `drizzle-kit` n'ayant pas de
+    commande qui compare une base PGlite au schéma sans faux écarts.
+- **Amorçage séparé** (point 45, 17 octobre) : `CODEX_SEED=demo|minimal`, **demo par défaut partout** (développement
+  et app Mac, qui tourne en production) pour que rien ne change ; une vraie installation doit poser `minimal`. Le
+  mode minimal garde l'organisation provisoire (départements et sites, D-19), les fonctions sans titulaire, la matrice
+  des droits, les acteurs système, et ajoute un **administrateur initial** fictif (`admin`, « Administrateur Codex »,
+  rôle gestionnaire documentaire) parce que l'application simulée a besoin d'une personne pour s'ouvrir ; il
+  disparaîtra avec l'authentification (O-02). Une base n'est amorcée que si elle n'a ni personne ni type. Une valeur
+  inconnue de `CODEX_SEED` est refusée (erreur du contrôle de configuration, serveur non démarré sur une base vide).
+- **Application du registre à une base existante** (point 60, 17 octobre) : `npm run registry:apply`, simulation par
+  défaut, `-- --apply` pour écrire (serveur arrêté, sauvegarde avant, chaque changement journalisé par Codex avec le
+  détail « npm run registry:apply »). Règles retenues :
+  - **l'Administration l'emporte**, d'après le journal (entrées écrites par une personne, depuis le 15 octobre) : un
+    champ modifié y garde sa valeur, une entrée créée, renommée ou supprimée y reste telle quelle (un réglage fait avant
+    que l'administration ne journalise, s'il y en a, n'est pas connu et serait écrasé : la simulation le montre) ;
+  - **codes figés** : aucun code n'est renommé ni supprimé ; un type que le registre n'a plus est **désactivé**, une
+    famille ou une fonction qu'il n'a plus est seulement signalée ; un nouveau code déjà pris par un département, un
+    projet, un programme ou `QMS` est refusé (O-05) ;
+  - un réglage qui ferait sortir des documents de leur type (origine, rattachement, confidentialité retirés) n'est pas
+    appliqué : à confirmer dans l'administration, qui montre les documents ; les documents suivent la famille de leur
+    type ; une fonction qui a des titulaires garde sa portée ; les documents gardent leur classe de conservation ;
+  - les fonctions de validation viennent de `src/db/seed-org.ts` (le registre n'en a pas) ; l'ordre d'affichage et la
+    périodicité de revue ne sont pas touchés ; départements et sites (organigramme, O-04) ne sont pas concernés.
 - **Git** (D-23) : premier commit sur une branche `codex-ged-v2` plutôt que sur `main`.
 
 ## Ce qui est explicitement hors périmètre

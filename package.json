@@ -15,6 +15,8 @@
     "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",
     "db:reset": "rm -rf .data",
+    "db:check": "drizzle-kit check",
+    "registry:apply": "tsx scripts/codex-registry.mts",
     "backup": "node scripts/codex-backup.mjs create",
     "backup:list": "node scripts/codex-backup.mjs list",
     "backup:check": "node scripts/codex-backup.mjs check",
@@ -39,6 +41,7 @@
     "drizzle-kit": "^0.31.11",
     "eslint": "^9",
     "eslint-config-next": "16.4.0",
+    "tsx": "^4.23.15",
     "typescript": "^5",
     "vite": "7.3.6",
     "vitest": "4.1.11"

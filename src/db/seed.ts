@@ -3,6 +3,7 @@ import { contextOf, formatId, lettersUpTo, nextLetter } from '@/lib/codes';
 import { parisToUtc } from '@/lib/format';
 import { relOf } from '@/lib/links';
 import { MATRIX_ROLE, type SimRole } from '@/lib/i18n';
+import type { SeedMode } from '@/lib/seed-mode';
 import type { Db } from './index';
 import * as s from './schema';
 import type { Attachment, Conf, Origin, RevStatus } from './schema';
@@ -35,7 +36,49 @@ const later = (a: string, b: string) => (a > b ? a : b);
 
 const stamp = (date: string, seed: string) => `${date} ${String(8 + (hash(seed) % 10)).padStart(2, '0')}:${String(hash(`${seed}m`) % 60).padStart(2, '0')}:00`;
 
-export async function seed(db: Db) {
+type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
+
+/**
+ * The initial administrator of a minimal database (CODEX_SEED=minimal): the one person to log in with, a records
+ * manager (permission « Administrer » in the matrix), until the org chart (O-04) and the authentication (O-02) bring the
+ * real people. Not a system actor: the simulated session needs a person (lib/context.ts getCtx).
+ */
+export const INITIAL_ADMIN = { id: 'admin', name: 'Administrateur Codex', role: 'gestionnaire', initials: 'AC', title: { fr: 'Administrateur initial', en: 'Initial administrator' } };
+
+const initialsOf = (name: string) => name.split(/[\s-]+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+
+/**
+ * The reference data, the same in every mode: the provisional organisation (departments and sites, D-19, O-04), the
+ * system actors (Codex, Keystone, Vigie: the journal's automatic entries), the register of families and types
+ * (src/db/registry.ts), the approval functions and the permission matrix. No holder of a function: they are people.
+ */
+async function seedReference(tx: Tx) {
+  await tx.insert(s.departments).values(DEPARTMENTS.map(([code, labelFr, labelEn], sort) => ({ code, labelFr, labelEn, sort })));
+  await tx.insert(s.sites).values(SITES.map(([key, labelFr, labelEn], sort) => ({ key, labelFr, labelEn, sort })));
+  await tx.insert(s.users).values(USERS.filter((u) => u.system).map((u) => ({ id: u.id, name: u.name, role: u.role, isSystem: true, initials: initialsOf(u.name) })));
+  await tx.insert(s.families).values(FAMILIES.map((f, sort) => ({ key: f.key, labelFr: f.label_fr, labelEn: f.label_en, grp: f.group, sort })));
+  await tx.insert(s.docTypes).values(TYPES.map((t, sort) => ({
+    code: t.code, labelFr: t.label_fr, labelEn: t.label_en, family: t.family, origins: t.origins, attachments: t.attachments,
+    subtypes: t.subtypes, circuit: t.circuit, retentionYears: t.retention.years, retentionTrigger: t.retention.trigger,
+    retentionDisposition: t.retention.disposition, retentionBasis: t.retention.basis, confAllowed: t.confAllowed, confDefault: t.confDefault,
+    iso: t.iso ?? null, clientDeliverable: !!t.clientDeliverable, source: t.source, sort,
+  })));
+  await tx.insert(s.functions).values(FUNCTIONS.map(([key, labelFr, labelEn, scope], sort) => ({ key, labelFr, labelEn, scope, sort })));
+  await tx.insert(s.rolePermissions).values(ROLE_KEYS.flatMap((role, i) => PERM_KEYS.map((perm, j) => ({ role, perm, granted: !!MATRIX[i][j] }))));
+}
+
+/**
+ * Fills a new database (src/db/index.ts, when it holds neither a person nor a type): the reference data, then the
+ * demonstration (`demo`, the default) or the initial administrator alone (`minimal`). One transaction: all or nothing.
+ */
+export async function seed(db: Db, mode: SeedMode = 'demo') {
+  if (mode === 'minimal') {
+    await db.transaction(async (tx) => {
+      await seedReference(tx);
+      await tx.insert(s.users).values({ ...INITIAL_ADMIN, isSystem: false, department: null, site: null });
+    });
+    return;
+  }
   const typeBy = new Map(TYPES.map((t) => [t.code, t]));
   const projectBy = new Map(PROJECTS.map((p) => [p.code, p]));
   const programBy = new Map(PROGRAMS.map((p) => [p.code, p]));
@@ -86,25 +129,15 @@ export async function seed(db: Db) {
   }
 
   await db.transaction(async (tx) => {
-    await tx.insert(s.departments).values(DEPARTMENTS.map(([code, labelFr, labelEn], sort) => ({ code, labelFr, labelEn, sort })));
-    await tx.insert(s.sites).values(SITES.map(([key, labelFr, labelEn], sort) => ({ key, labelFr, labelEn, sort })));
-    await tx.insert(s.users).values(USERS.map((u) => ({
-      id: u.id, name: u.name, role: u.role, isSystem: !!u.system, department: u.dept ?? null, site: u.site ?? null,
-      title: u.title ? loc(u.title) : null,
-      initials: u.name.split(/[\s-]+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase(),
+    await seedReference(tx);
+    // ── Demonstration: fictitious people, holders, projects, programmes, searches, documents ──
+    await tx.insert(s.users).values(USERS.filter((u) => !u.system).map((u) => ({
+      id: u.id, name: u.name, role: u.role, isSystem: false, department: u.dept ?? null, site: u.site ?? null,
+      title: u.title ? loc(u.title) : null, initials: initialsOf(u.name),
     })));
-    await tx.insert(s.families).values(FAMILIES.map((f, sort) => ({ key: f.key, labelFr: f.label_fr, labelEn: f.label_en, grp: f.group, sort })));
-    await tx.insert(s.docTypes).values(TYPES.map((t, sort) => ({
-      code: t.code, labelFr: t.label_fr, labelEn: t.label_en, family: t.family, origins: t.origins, attachments: t.attachments,
-      subtypes: t.subtypes, circuit: t.circuit, retentionYears: t.retention.years, retentionTrigger: t.retention.trigger,
-      retentionDisposition: t.retention.disposition, retentionBasis: t.retention.basis, confAllowed: t.confAllowed, confDefault: t.confDefault,
-      iso: t.iso ?? null, clientDeliverable: !!t.clientDeliverable, source: t.source, sort,
-    })));
-    await tx.insert(s.functions).values(FUNCTIONS.map(([key, labelFr, labelEn, scope], sort) => ({ key, labelFr, labelEn, scope, sort })));
     await tx.insert(s.functionHolders).values(HOLDERS.map(([functionKey, scopeValue, userId]) => ({ functionKey, scopeValue, userId })));
     await tx.insert(s.projects).values(PROJECTS.map((p) => ({ code: p.code, name: p.name, client: p.client, stage: p.stage, managerId: p.manager, site: p.site, tiers: p.tiers, syncedAt: `${p.synced}:00` })));
     await tx.insert(s.researchPrograms).values(PROGRAMS.map((p) => ({ code: p.code, name: p.name, managerId: p.manager })));
-    await tx.insert(s.rolePermissions).values(ROLE_KEYS.flatMap((role, i) => PERM_KEYS.map((perm, j) => ({ role, perm, granted: !!MATRIX[i][j] }))));
     await tx.insert(s.savedSearches).values(SAVED.map((x, i) => ({ label: loc(x.label), q: x.q, facets: x.facets, ownerId: x.owner, scope: 'group' as const, sort: i })));
 
     // ── Documents ──

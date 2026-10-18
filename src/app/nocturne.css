@@ -1,5 +1,5 @@
 /* Nocturne design system — copied from design/_ds/nocturne-…/styles.css (source of truth for tokens and component classes).
-   Only change: Inter is loaded with next/font (see src/app/layout.tsx) instead of a Google Fonts @import. */
+   Only change: Inter is served from the repository by next/font/local (src/fonts/inter.ts) instead of a Google Fonts @import. */
 
 :root {
   --color-bg: #161826;

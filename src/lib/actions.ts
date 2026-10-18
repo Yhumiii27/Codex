@@ -15,6 +15,7 @@ import { COOKIE_LANG, COOKIE_ROLE, COOKIE_USER, getCtx, type Ctx } from './conte
 import { addDays, fmtDate, fmtDateTime, fmtSize, loc, nowStamp, parisStamp, parseIsoDay, todayIso } from './format';
 import { ATTACHMENTS, CONF_LEVELS, ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLES, ORIGINS, PERMS, SEARCH_SCOPES, SIM_ROLES, SIMULATED_MATRIX_ROLES, type Perm, type SimRole, type TKey } from './i18n';
 import { addLink, applyChangeDecision, applyPendingDecision, approveRevision, audit, catchUpEffectiveDates, journalConsultation, journalLink, linkBetween, lockOf, refreshHeadline, type ModifierSwap, type Tx } from './lifecycle';
+import { changes, entryChanges, familyJournal, functionJournal, retentionValue, typeJournal } from './journal-values';
 import { isLinkRel, linkIssue, otherEnd, replacementIssue, storedLink } from './links';
 import { logger, traceAction } from './log';
 import { limitWrite } from './ratelimit';
@@ -26,7 +27,7 @@ import { fileIssueReason, fileIssueText, fileRules } from './filetypes';
 import { MAX_PER_RUN, purgeOrphans } from './orphans';
 import {
   builtInScopeIssue, builtInTypeIssue, departmentCodeIssue, keyIssue, outsideType, parseFamilyForm, parseFunctionForm, parseProgramForm, parseRetentionRule, parseTypeForm, programCodeIssue, PROJECT_MANAGER_FUNCTIONS,
-  subtypesJournal, typeCodeIssue, type CodeSpace, type FamilyValues, type FormIssue, type FunctionValues, type ProgramValues, type TypeValues,
+  typeCodeIssue, type CodeSpace, type FormIssue, type ProgramValues, type TypeValues,
 } from './registry-rules';
 import { isEventTrigger, parseEventDate, sameRule } from './retention';
 import { nextReviewDate } from './review';
@@ -75,23 +76,6 @@ function throttled(ctx: Ctx): ActionResult | null {
   if (!wait) return null;
   log.warn('write rate limited', { user: ctx.user.id, retryAfter: wait });
   return { ok: false, error: ctx.t.rate_limited.replace('{n}', String(wait)) };
-}
-
-/** A journal value with nothing in it (null, empty text or list) stored as null, so that "" and null are no change. */
-function auditValue(v: AuditValue | undefined): AuditValue {
-  return v == null || v === '' || (Array.isArray(v) && !v.length) ? null : v;
-}
-
-/** Journal changes, before → after, of the values that differ; stored as keys and codes (lib/queries.ts renders them). */
-function changes(parts: [field: string, before: AuditValue, after: AuditValue][]): AuditChange[] {
-  return parts
-    .map(([field, b, a]) => ({ field, before: auditValue(b), after: auditValue(a) }))
-    .filter((c) => JSON.stringify(c.before) !== JSON.stringify(c.after));
-}
-
-/** Retention class of a type or a document, as the journal stores it. */
-function retentionValue(x: { retentionYears: number | null; retentionTrigger: string; retentionDisposition: string }): AuditValue {
-  return { years: x.retentionYears, trigger: x.retentionTrigger, disposition: x.retentionDisposition };
 }
 
 /**
@@ -1929,28 +1913,6 @@ function formIssue(ctx: Ctx, p: FormIssue): ActionResult {
   return { ok: false, error: ctx.t[p.key], ...(p.field ? { field: p.field } : {}) };
 }
 
-/** Changes from `before` to `after`, each a list of [field, value] in the same order; null for an entry added or removed. */
-function entryChanges(before: [string, AuditValue][] | null, after: [string, AuditValue][] | null): AuditChange[] {
-  const fields = (before ?? after ?? []).map(([k]) => k);
-  const value = (xs: [string, AuditValue][] | null, k: string) => xs?.find(([f]) => f === k)?.[1] ?? null;
-  return changes(fields.map((k): [string, AuditValue, AuditValue] => [k, value(before, k), value(after, k)]));
-}
-
-/** Months as the journal stores them: text (an AuditValue), rendered with their unit (lib/queries.ts). */
-const monthsValue = (n: number | null): AuditValue => (n == null ? null : String(n));
-
-type TypeRow = typeof s.docTypes.$inferSelect;
-
-/** A type as the journal stores it, field by field. */
-function typeJournal(x: TypeValues | TypeRow): [string, AuditValue][] {
-  return [
-    ['code', x.code], ['labelFr', x.labelFr], ['labelEn', x.labelEn], ['family', x.family], ['origins', x.origins], ['attachments', x.attachments],
-    ['subtypes', subtypesJournal(x.subtypes)], ['circuit', x.circuit], ['confAllowed', x.confAllowed], ['confDefault', x.confDefault],
-    ['retention', retentionValue(x)], ['retentionBasis', x.retentionBasis], ['reviewMonths', monthsValue(x.reviewMonths)], ['iso', x.iso],
-    ['clientDeliverable', x.clientDeliverable], ['active', x.active],
-  ];
-}
-
 const typeRefs = (ctx: Ctx) => ({ families: ctx.families.map((f) => f.key), functions: ctx.functions.map((f) => f.key) });
 
 /**
@@ -2118,8 +2080,6 @@ async function deleteTypeNow(code: string): Promise<ActionResult> {
   return res;
 }
 
-const familyJournal = (x: FamilyValues | typeof s.families.$inferSelect): [string, AuditValue][] => [['key', x.key], ['labelFr', x.labelFr], ['labelEn', x.labelEn], ['grp', x.grp]];
-
 /** Adds a family of types: key, labels, deck group (D-08). */
 export async function createFamily(...args: Parameters<typeof createFamilyNow>): Promise<ActionResult> {
   return traceAction('createFamily', () => createFamilyNow(...args));
@@ -2195,8 +2155,6 @@ async function deleteFamilyNow(key: string): Promise<ActionResult> {
   if (res.ok) refresh();
   return res;
 }
-
-const functionJournal = (x: FunctionValues | typeof s.functions.$inferSelect): [string, AuditValue][] => [['key', x.key], ['labelFr', x.labelFr], ['labelEn', x.labelEn], ['scope', x.scope]];
 
 /** Adds a function that circuits may be made of: key, labels, scope its holders are looked up in. */
 export async function createFunction(...args: Parameters<typeof createFunctionNow>): Promise<ActionResult> {
