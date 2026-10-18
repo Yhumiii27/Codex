@@ -2258,6 +2258,7 @@ de [decisions.md](decisions.md).
 | 6. Reprise des documents d'une personne qui part et vocabulaires contrôlés | commit « Lot 9, étape 6 », qui suit `5f92467` | 19, 59 | Administration › Reprise (départ) : simulation puis transfert journalisé, à un remplaçant choisi, des documents et processus possédés, révisions à rédiger, étapes en attente, titulariats et lectures désignées ; réassignation d'une étape par un gestionnaire ; langue contrôlée ; référentiels des organismes sources et des mots-clés (tables `source_orgs`, `keyword_terms`, migration `0003_vocabulaires` avec reprise), autocomplétion et ajout confirmé, Administration › Vocabulaires (ajout, renommage, fusion, sous-types hors liste) | Aucun remplaçant proposé, aucun compte désactivé ; gestionnaires documentaires seulement ; simulation = transfert annulé, empreinte exigée ; documents verrouillés repris, étapes figées par un verrou laissées ; documents gardant le nom du terme en texte ; nouveau terme confirmé dans les formulaires, ajouté à l'import ; termes proposés selon la lecture (D-14) ; sous-types non fermés ; gel juridique respecté au renommage |
 | 7. Finitions de l'interface : phases, Restaurer, compteur des modèles, écarts avec la maquette, bilinguisme | commit « Lot 9, étape 7 », qui suit `2d36d97` | 63, 64 (vérifié), 65, 66, 67, 68 | Phases Keystone en frise compacte ; « Restaurer » une version de travail du brouillon (`restoreWorkingVersion`) ; `documents.template_id` et compteur d'utilisations (migration `0004_modele_source` avec reprise sûre) ; onglet Projet toujours présent et « Rattacher à un projet » ; « Déposer » dans l'explorateur prérempli par l'arbre ; fondement de conservation en anglais, phases en anglais, détail du journal structuré et traduit, titres de page par écran et par fiche | Frise sans libellés sauf la phase courante, libellés EN des phases provisoires ; restauration limitée au brouillon ouvert, journalisée comme une version de travail ; compte limité aux documents lisibles, reprise seulement sur trois indices concordants ; projet non prérempli depuis l'arbre ; aucun fondement traduit, français suivi de « (FR) » ; anciennes entrées du journal non réécrites ; titre générique pour une fiche illisible ou introuvable |
 | 8. Accessibilité, aide aux utilisateurs et documentation alignée sur le code | commit « Lot 9, étape 8 », qui suit `65af2e6` | 55, 69, 53, 54 | Lien « Aller au contenu » ; contrôle axe-core `npm run a11y` (30 écrans, 20 dialogues, base de démo jetable) ajouté à la CI ; contrastes et violations corrigés (82 éléments sérieux et 52 modérés ou mineurs → 0, FR et EN) ; page `/aide` bilingue et aides contextuelles des dialogues ; README, avancement, audit, décisions et modèle cible relus contre le code | WCAG 2.2 AA comme démarche de qualité, sans RGAA ; seules les couleurs qui échouaient changent, d'un cran, Nocturne intact ; titres `<h1>`/`<h2>` au même rendu ; aide limitée à ce que l'application fait, simulations signalées, liens selon le rôle ; notes de conception gardées (O-02) ; formation et pilote laissés à M14 |
+| 9. Restes développables sans décision | commits « Lot 9, étape 9 », qui suivent `d0ed61e` | 43, 52, 36, 51, 47, 50, 46, 57 (restes) | Version de Node et audit des dépendances dans la CI | Version de référence 22 et tests sous Node 20.19 ; exception d'audit écrite et motivée, seulement pour un outil sans correction publiée |
 
 ### 18.1 Rechargement en boucle en développement et lectures ciblées
 
@@ -2658,6 +2659,21 @@ d'administration journalisées), les autres restaient, avec de nouveaux écarts 
   document » et « Déléguer » ; 19 écrans capturés avant et après, différents seulement sur les éléments corrigés.
 - **Reste** : test manuel avec un lecteur d'écran, zoom et affichage étroit, PDF générés non balisés, app Mac
   (macOS) ; formation, utilisateurs clés et pilote (M14) ; retrait des notes de conception en production (O-02).
+
+### 18.9 Restes développables sans décision
+
+Restes des points 36, 43, 46, 47, 50, 51, 52 et 57 de [reste-a-faire.md](reste-a-faire.md), ceux que l'état
+récapitulatif classait « Rien : développable dans une session cloud », vérifiés au commit `d0ed61e`. Un commit par
+groupe de points, chacun vérifié.
+
+- **Version de Node et audit des dépendances (points 43 et 52).** Constats exacts : ni `.nvmrc` ni contrôle de version
+  dans `desktop/build-app.sh`, `@types/node` en `^20` ; `npm audit` hors de la CI, 9 alertes (5 élevées, 4 modérées).
+  `.nvmrc` (22) et `@types/node` `^22.12.0` ; la CI lit `.nvmrc` et lance en plus `npm test` sous Node 20.19 (la plus
+  basse version d'`engines`, que les types 22 ne protègent plus ; toute la suite y passe, 95 fichiers).
+  `scripts/codex-node-check.mjs`, appelé par `desktop/build-app.sh` (une ligne, non essayée sous macOS).
+  `npm run deps:audit` (`scripts/codex-audit.mjs`) après `npm ci` : les 9 alertes viennent de deux avis, `braces`
+  (élevé, lint, aucune version corrigée publiée : accepté avec sa raison) et `esbuild` (modéré, par `drizzle-kit`,
+  signalé) ; aucun avis sur les dépendances de l'application.
 
 ### Bilan du lot 9
 

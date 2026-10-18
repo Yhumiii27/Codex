@@ -28,11 +28,15 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          # Must satisfy "engines" in package.json (Vite 7, used by Vitest, needs Node 20.19+ or 22.12+).
-          node-version: 22
+          # The reference version (.nvmrc), which satisfies "engines" in package.json (Vite 7, used by Vitest, needs Node
+          # 20.19+ or 22.12+); the job "node-minimum" below runs the tests on the lowest version engines admits.
+          node-version-file: .nvmrc
           cache: npm
 
       - run: npm ci
+      # Known vulnerabilities (scripts/codex-audit.mjs): high or critical in the application's dependencies fail, and in
+      # the development tools unless accepted there with why (no fixed version published).
+      - run: npm run deps:audit
       # The migrations folder (drizzle/): snapshots chained, no two migrations at the same place. That the schema has its
       # migration, and that the chain gives its structure, is tested by tests/integration/migrations.test.ts.
       - run: npm run db:check
@@ -69,8 +73,28 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: npm
 
       - run: npm ci
       - run: npm run test:pg
+
+  # The lowest Node.js that "engines" admits: @types/node follows the reference version (.nvmrc), so the types would not
+  # catch an API that Node 20.19 lacks; the tests run there.
+  node-minimum:
+    name: Tests on Node 20.19
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.0
+          cache: npm
+
+      - run: npm ci
+      - run: node scripts/codex-node-check.mjs
+      - run: npm test

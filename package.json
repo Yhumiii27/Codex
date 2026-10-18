@@ -28,7 +28,8 @@
     "export": "node scripts/codex-export.mjs create",
     "export:check": "node scripts/codex-export.mjs check",
     "integrity": "node scripts/codex-integrity.mjs check",
-    "app": "bash desktop/build-app.sh"
+    "app": "bash desktop/build-app.sh",
+    "deps:audit": "node scripts/codex-audit.mjs"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",
@@ -41,7 +42,7 @@
     "unpdf": "1.7.0"
   },
   "devDependencies": {
-    "@types/node": "^20",
+    "@types/node": "^22.12.0",
     "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",

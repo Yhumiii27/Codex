@@ -1497,6 +1497,16 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     accès ; formation, utilisateurs clés, pilote et date d'interdiction des dépôts hors GED restent ouverts (M14) ;
   - **aides contextuelles** ajoutées aux dialogues (origine, rattachement, version de travail, circuit, délégation) :
     des rappels du modèle, sans nouvelle règle.
+- **Restes développables sans décision** (lot 9, étape 9, 18 octobre ; points 36, 43, 46, 47, 50, 51, 52 et 57 de
+  `docs/reste-a-faire.md`) :
+  - **version de Node** (point 43) : version de référence 22 (`.nvmrc`, celle de la CI), `@types/node` en `^22.12.0` ;
+    `engines` inchangé (`^20.19.0 || >=22.12.0`, alors que Node 20 n'est plus maintenu depuis avril 2026 : le retirer
+    est à l'utilisateur), d'où un job de la CI qui lance les tests sous Node 20.19 ; l'app Mac vérifie la version
+    (`scripts/codex-node-check.mjs`), sans essai sous macOS ;
+  - **audit des dépendances** (point 52) : échec de la CI sur un avis élevé ou critique, sans exception pour les
+    dépendances de l'application ; pour les outils de développement, une exception écrite dans
+    `scripts/codex-audit.mjs` avec sa raison, seulement sans version corrigée publiée (`braces`, lint) ; avis modérés
+    signalés sans échec (`esbuild` par `drizzle-kit`, dont la seule « correction » serait une version très antérieure) ;
 - **Git** (D-23) : premier commit sur une branche `codex-ged-v2` plutôt que sur `main`.
 
 ## Ce qui est explicitement hors périmètre

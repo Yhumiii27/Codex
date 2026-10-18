@@ -76,9 +76,16 @@ Les fichiers déposés sont stockés dans `.data/files/` (ou dans SharePoint, vo
   est dans `src/fonts/`, servie par `next/font/local`, licence OFL dans `src/fonts/inter/OFL.txt`), puis
   `npm run a11y` (accessibilité : axe-core dans Chromium sur les écrans et dialogues principaux du build, base de démo
   jetable ; `docs/accessibilite.md`).
-- Intégration continue GitHub Actions (`.github/workflows/ci.yml`) : `npm ci`, `npm run db:check` puis ces contrôles,
-  `npm run a11y` compris (après `npx playwright-core install --with-deps chromium`), sous Node 22, à chaque push et PR ;
-  et `npm run test:pg` sur un service PostgreSQL 18.
+- Intégration continue GitHub Actions (`.github/workflows/ci.yml`) : `npm ci`, `npm run deps:audit`, `npm run db:check`
+  puis ces contrôles, `npm run a11y` compris (après `npx playwright-core install --with-deps chromium`), sous la version
+  de référence de Node (`.nvmrc` : 22), à chaque push et PR ; `npm run test:pg` sur un service PostgreSQL 18 ; et
+  `npm test` sous Node 20.19, la plus basse que `engines` admet (`@types/node` suit la version de référence).
+- Version de Node : `engines` de package.json (`^20.19.0 || >=22.12.0`), version de référence dans `.nvmrc` (22),
+  `@types/node` en `^22.12.0` ; `node scripts/codex-node-check.mjs` dit si le Node lancé convient (l'app Mac le vérifie).
+- Vulnérabilités connues : `npm run deps:audit` (`scripts/codex-audit.mjs`, deux passages de `npm audit`) échoue sur un
+  avis de gravité élevée ou critique dans les dépendances de l'application, et dans les outils de développement sauf
+  avis accepté dans le script, avec sa raison (aujourd'hui `braces`, outil de lint sans version corrigée publiée) ; les
+  avis modérés sont listés sans échec.
 - Tests : `npm test` lance Vitest une fois (`npm run test:watch` en continu), en une à deux minutes selon la machine,
   sans serveur ni réseau et sans toucher à `.data/`.
   - `tests/unit/` : règles pures (identifiants, révisions, visibilité, conservation, recherche, filtres mis en avant
