@@ -39,6 +39,11 @@ select.input option { background: var(--color-surface); color: var(--color-text)
 .ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Read by screen readers only (a column of buttons, for instance). */
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+/* A column heading read by screen readers only stays in the flow of its cell: positioned against the screen instead,
+   past the right edge of a wide table that scrolls sideways, it made the page itself overflow the window (4 px on the
+   register at 1 440 px, hundreds at 200 % zoom), with nothing visible there. One pixel with a margin of -1 px: no room
+   taken, and the cell is not positioned (it would paint over the line under the headings). */
+th > .sr-only { position: static; display: block; }
 .tabnum { font-variant-numeric: tabular-nums; }
 .nowrap { white-space: nowrap; }
 .plain-btn { border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; text-align: left; padding: 0; }
@@ -63,6 +68,9 @@ select.input option { background: var(--color-surface); color: var(--color-text)
 .table tbody tr:has(a:focus-visible) { box-shadow: inset 2px 0 0 var(--color-accent); }
 .btn-sm { font-size: 12px; }
 .btn[aria-disabled='true'] { opacity: 0.45; cursor: not-allowed; }
+/* A screen's tab bar (Seg wrap) wider than its row (narrow window, zoom: WCAG 1.4.10) goes on to a second row instead
+   of pushing the screen past the window's edge; on a desktop window it fits, unchanged. */
+.seg-wrap { flex-wrap: wrap; max-width: 100%; }
 /* v2 statuses ("En vigueur", "En révision") are two words: a tag never breaks across lines. */
 .tag { white-space: nowrap; }
 

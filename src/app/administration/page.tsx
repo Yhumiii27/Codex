@@ -55,6 +55,7 @@ export default async function AdminPage({ searchParams }: PageProps<'/administra
         <Seg
           name="adminTab"
           value={tab}
+          wrap
           style={{ flex: 'none' }}
           optStyle={{ padding: '6px 12px', fontSize: 12.5 }}
           // The handover is for records managers only (access.ts mayTransferHoldings): the tab is not shown to others.

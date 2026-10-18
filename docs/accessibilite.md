@@ -94,13 +94,111 @@ conception ») et, sur la page d'un département, un décalage de 3 px sous « N
 - **Cibles** (WCAG 2.5.8) : « N de plus » des pages de département et le sommaire de l'Aide font 24 px de haut ; les
   cases des niveaux de confidentialité du dialogue de type sont espacées de 6 px.
 
+## Affichage étroit et zoom : `npm run a11y -- --narrow`
+
+Lot 10, étape 6 (18 octobre 2026 ; points 79 et 55 de [reste-a-faire.md](reste-a-faire.md)). WCAG 1.4.10 (redistribution :
+320 px de large sans défilement dans les deux sens) et 1.4.4 (texte agrandi à 200 % sans perte de contenu).
+
+```bash
+npm run build && npm run a11y -- --narrow                       # ~190 s en français
+npm run a11y -- --narrow --json etroit.json --shots captures/   # chaque constat, une capture par écran et taille
+```
+
+- **Tailles** (`scripts/codex-narrow.mts`) : chaque écran et chaque dialogue du contrôle ordinaire (30 et 20), rendus à
+  **1 440 × 900** (référence, le bureau), **320 × 256** px CSS (l'équivalent WCAG de 1 280 × 1 024 à 400 %) et
+  **640 × 400** px CSS à deux pixels par px CSS (**1 280 × 800 zoomé à 200 %**, ce que fait le zoom du navigateur).
+  axe tourne à chaque taille.
+- **Relevés**, dans la page :
+  - **page** : débordement horizontal de la page, en px ; pour un dialogue, de combien sa boîte sort de la fenêtre.
+    `html` et `body` cachent leur débordement, donc ce qui dépasse le bord droit est inatteignable : aucune barre ne
+    l'amène ;
+  - **hors fenêtre** : textes et contrôles au-delà d'un bord de la fenêtre ;
+  - **masqués** : coupés par un bloc qui cache son débordement (`overflow: hidden`) ;
+  - **tronqués** : textes coupés par des points de suspension ;
+  - **blocs à défilement horizontal** : leur contenu s'atteint, mais en deux dimensions, ce que 1.4.10 admet pour un
+    tableau ;
+  - **superpositions** : deux textes ou contrôles dessinés l'un sur l'autre.
+- Un texte compte par la boîte de son texte, un contrôle par la sienne ; ce qui est caché ou réservé aux lecteurs
+  d'écran est ignoré. Les nombres au bureau font partie de la maquette (titres longs en points de suspension, loupe
+  dans le champ de recherche). Ce qu'ajoutent les tailles étroites est la différence.
+- Le script affiche une ligne par écran et taille, puis les totaux. Le détail est dans `--json` : éléments, textes,
+  px, et pour chaque page trop large les éléments les plus extérieurs qui la font déborder.
+- **Constats non bloquants** : avec `--narrow`, ni la mise en page ni une violation axe trouvée aux tailles étroites
+  ne font échouer la commande. Seuls comptent, comme d'habitude, le bureau et les contrôles. L'option n'est pas
+  dans la CI.
+- `--shots <dossier>` (aussi sans `--narrow`) garde une capture de chaque écran et dialogue. C'est ainsi qu'on vérifie
+  qu'une correction ne change pas le bureau.
+
+### Résultats (français, build de production, base de démonstration neuve)
+
+| | 1 280 px à 200 %, avant | après | 320 px, avant | après |
+|---|---|---|---|---|
+| Écrans ou dialogues plus larges que la fenêtre (sur 50) | 15 | **3** | 30 | 30 |
+| Débordement de la page (px) | jusqu'à 804 (Administration), 541 sur ses autres onglets, 357 (Archivage) | 132 (Explorateur avec aperçu), 64 (Recherche ×2) | 305 à 1 124 | 305 partout |
+| Textes et contrôles hors fenêtre | 252 | **28** | 1 162 | 529 |
+| Masqués par un bloc | 59 | 59 | 114 | 188 (contrôles passés de « hors fenêtre » à « masqués » dans les onglets qui vont à la ligne) |
+| Tronqués (bureau : 183) | 205 | 205 | 233 | 237 |
+| Blocs à défilement horizontal (bureau : 2) | 27 | 27 | 32 | 31 |
+| Superpositions (bureau : 40, maquette) | 40 | 40 | 0 | 0 |
+| Violations axe sérieuses | 1 | 1 | 14 | 14 |
+
+Au bureau (1 440 px) : 0 violation avant comme après. Le débordement de 4 px (invisible) de l'onglet Registre
+d'Administration a disparu.
+
+**Corrections, sans effet sur le bureau** (à 1 440 px, 30 écrans et 20 dialogues capturés avant et après :
+49 captures identiques au pixel près ; la cinquantième, Administration › Journal, ne diffère que par les heures du
+planificateur) :
+
+- **Barre latérale** : elle défile quand la fenêtre est trop basse (`overflow-y: auto`, `Sidebar.module.css`). À 200 %, l'Aide,
+  les notes de conception et le profil (simulation de l'utilisateur) étaient sous le bord de la fenêtre sur les
+  30 écrans, inatteignables.
+- **Onglets d'Administration et d'Archivage, filtres des échéances** : ils vont à la ligne quand leur rangée est trop
+  étroite (`<Seg wrap>`, classe `.seg-wrap`). Les huit onglets d'Administration faisaient déborder la page de 541 px.
+  Les autres contrôles segmentés (langue de l'en-tête, Explorateur, fiche, dialogues) n'ont pas changé : leur
+  passage à la ligne déformait l'en-tête.
+- **En-têtes de colonne réservés aux lecteurs d'écran** (« Actions », « Attribut ») : ils restent dans le flux de leur
+  cellule (`th > .sr-only`). Positionnés jusqu'ici par rapport à l'écran, ils prolongeaient la page jusqu'au bord
+  droit d'un tableau large qui défile pourtant dans son bloc : 182 à 804 px de débordement invisible à 200 %. La
+  cellule elle-même n'est pas positionnée, sinon elle couvrirait le trait sous les en-têtes (vu sur les captures).
+- **Dialogue « Nouveau document », liste des modèles** : la ligne de référence d'un modèle se termine par des points de
+  suspension au lieu de sortir du dialogue.
+
+### Ce qui reste : dépend de M23 (accès terrain et mobile)
+
+Ces constats demandent une autre mise en page sur écran étroit. Ce choix appartient à la réponse à M23 (point 79 de
+[reste-a-faire.md](reste-a-faire.md)), avec la maquette, qui ne prévoit que le bureau. Rien n'a été refondu : ni
+barre latérale repliable, ni PWA.
+
+- **320 px** : la barre latérale fixe de 224 px laisse 96 px aux écrans, et l'en-tête (titre d'au moins 200 px,
+  recherche, langue, cloche) fait déborder chaque écran de 305 px. Viennent ensuite les tableaux, les colonnes de
+  l'Explorateur et de la Recherche, et le panneau de fiche. Tous les écrans sont concernés, aucun dialogue (ils
+  prennent la largeur de la fenêtre et défilent).
+- **Fiche document, à 320 px** : la zone d'aperçu, écrasée par le panneau de 400 px, défile sans pouvoir recevoir le
+  focus (axe `scrollable-region-focusable`, sérieux, 14 écrans de fiche). Lui donner le focus ajouterait un arrêt de
+  tabulation au bureau.
+- **Fiche document, à 200 %** : le panneau latéral garde 400 px. La colonne d'aperçu tombe à 16 px et « Aucun fichier
+  joint » déborde sur la barre latérale. Sur une fiche en brouillon, les onglets du panneau sortent de la fenêtre
+  (1 à 9 éléments hors fenêtre).
+- **Explorateur avec aperçu rapide, à 200 %** : les trois colonnes (plan de classement, liste, aperçu) dépassent de
+  132 px ; 57 éléments de la liste sont masqués.
+- **Recherche, à 200 %** : la colonne des filtres est fixe et « Trier par » sort de 64 px.
+- **Tableaux** (Archivage, Administration, Validations, journal) : ils défilent dans leur bloc, en deux dimensions,
+  comme 1.4.10 l'admet pour un tableau ; une présentation en liste relèverait de M23.
+- **Titres en points de suspension** dans les listes (205 à 200 %, dont 183 déjà au bureau) : le titre entier est dans
+  la fiche.
+- **Contraste au survol** (trouvé par `--narrow`, présent aussi au bureau) : dans « Nouveau document », la référence
+  d'un modèle (texte atténué à 55 %, 11 px) sur une ligne survolée (`hover-tint`) donne 4,38:1, sous les 4,5:1. Ce
+  n'est pas un débordement : laissé tel quel, à corriger avec la teinte de survol de Nocturne.
+- **Anglais** : `--narrow --lang all` n'a pas été mesuré, seulement le français.
+
 ## Ce qui reste
 
 - **Test manuel avec un lecteur d'écran** (NVDA ou JAWS sous Windows, VoiceOver sous macOS) sur les parcours de l'Aide :
   création, dépôt, demande de validation, décision, demande à Vigie. axe ne vérifie qu'une partie des critères (pas la
   pertinence des libellés, l'ordre de lecture, les annonces des messages ni la compréhension).
-- **Zoom et redimensionnement** : la mise en page vise un écran de bureau ; l'agrandissement à 200 % et l'affichage à
-  320 px de large (WCAG 1.4.4, 1.4.10) n'ont pas été vérifiés.
+- **Zoom et redimensionnement** (WCAG 1.4.4, 1.4.10) : mesurés le 18 octobre 2026 (`npm run a11y -- --narrow`,
+  ci-dessus). Les débordements sans effet sur le bureau sont corrigés. Le reste demande une mise en page sur écran
+  étroit, qui dépend de M23.
 - **Contenus produits par Codex** : les PDF générés (fiche de visa, page de démonstration téléchargée) ne sont pas
   balisés ; le contenu des fichiers déposés relève de leurs auteurs.
 - **App Mac** (WebKit) : non vérifiée, faute de session macOS.

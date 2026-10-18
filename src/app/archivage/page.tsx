@@ -33,6 +33,7 @@ export default async function RetentionPage({ searchParams }: PageProps<'/archiv
     <Seg
       name="retTab"
       value={tab}
+      wrap
       style={{ flex: 'none' }}
       optStyle={{ padding: '6px 14px', fontSize: 12.5 }}
       options={TABS.map((k) => ({ key: k, label: t[`ret_${k}`], href: `/archivage${k === 'due' ? '' : `?tab=${k}`}` }))}
@@ -60,6 +61,7 @@ export default async function RetentionPage({ searchParams }: PageProps<'/archiv
       <Seg
         name="dueF"
         value={filter}
+        wrap
         ariaLabel={t.ret_due}
         style={{ flex: 'none' }}
         optStyle={{ padding: '6px 12px', fontSize: 12.5 }}

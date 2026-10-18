@@ -538,7 +538,7 @@ function NewDocument({ preset }: { preset: NewPreset }) {
     <label key={x.id} className="radio hover-tint" style={{ padding: '7px 8px', borderRadius: 'var(--radius-md)', gap: 10 }}>
       <input type="radio" name="tpl" checked={tplId === x.id} onChange={() => pickTemplate(x)} /><span className="dot" />
       <span className="ellipsis" style={{ flex: 1, fontSize: 13 }}>{x.label}</span>
-      <span className="text-muted nowrap" style={{ fontSize: 11 }} title={t.tpl_uses_hint}>{x.id} · {t.revision} {x.rev} · {x.owner} · {x.uses} {t.tpl_uses}{other && x.types.length > 0 ? ` · ${t.tpl_other_types} ${x.types.join(', ')}` : ''}</span>
+      <span className="text-muted ellipsis" style={{ fontSize: 11, minWidth: 0 }} title={t.tpl_uses_hint}>{x.id} · {t.revision} {x.rev} · {x.owner} · {x.uses} {t.tpl_uses}{other && x.types.length > 0 ? ` · ${t.tpl_other_types} ${x.types.join(', ')}` : ''}</span>
     </label>
   );
   const tplHead = (label: string) => <div className="text-muted" style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '.06em', padding: '6px 8px 2px' }}>{label}</div>;
