@@ -88,9 +88,10 @@ X-Codex-Signature: v1=<hex de HMAC-SHA256(secret, "<horodatage>." + corps)>
 
 - L'horodatage doit être à moins de `CODEX_SIGNATURE_WINDOW_S` secondes (300 par défaut) de l'heure de Codex, avant
   ou après : au-delà, **401** `signature_expired`. Les horloges doivent être synchronisées (NTP).
-- **Anti-rejeu** : une signature n'est acceptée qu'une fois dans la fenêtre ; la même requête renvoyée telle quelle
-  reçoit **401** `signature_replayed`, quel que soit le processus Codex qui la reçoit (table `integration_signatures`,
-  vidée de ce qui sort de la fenêtre). **Un nouvel essai doit donc être signé à nouveau**, avec un nouvel horodatage ;
+- **Anti-rejeu** : une requête signée (son horodatage et son corps brut) n'est acceptée qu'une fois dans la fenêtre ; la
+  même requête renvoyée, telle quelle ou avec une seule de ses signatures (rotation), reçoit **401**
+  `signature_replayed`, quel que soit le processus Codex qui la reçoit (table `integration_signatures`, vidée de ce qui
+  sort de la fenêtre). **Un nouvel essai doit donc être signé à nouveau**, avec un nouvel horodatage ;
   le webhook Vigie et l'import restent idempotents (même décision : 200 `alreadyApplied` ou 202 `alreadyRecorded` ;
   même référence : 409 `duplicate`).
 - Les autres refus : `signature_missing` (en-tête absent), `signature_invalid` (signature fausse, horodatage mal formé,
@@ -602,6 +603,7 @@ les personnes qui peuvent rédiger le document, et un refus y est affiché comme
 | **400** | `invalid_json`, `{"error":"invalid","field":"…"}`, `{"error":"unknown_user","field":"modifierId"}` (utilisateur inconnu ou compte système, quelle que soit la décision), `{"error":"modifier_not_allowed","field":"modifierId","docId"}` (le modificateur désigné ne peut pas rédiger le document : pas de droit Déposer avec son rôle, ou pas d'accès au document ; rien n'est enregistré) |
 | **401** / **503** | jeton absent ou faux, signature absente, fausse, hors fenêtre ou déjà reçue (`reason`, voir « Authentification ») / webhook désactivé |
 | **404** | `{"error":"not_found"}` : demande inconnue de Codex |
+| **413** | `{"error":"too_large"}` : corps de plus de 64 Kio, refusé avant toute vérification de la signature (`Content-Length` ou lecture coupée) |
 | **409** | `already_decided` (décision contraire déjà appliquée ou enregistrée ; `status` donne l'état de la demande). Une révision déjà ouverte ne donne plus de 409 (`revision_in_progress` a disparu) : 202 `revision_open`. |
 | **429** | `{"error":"rate_limited","retryAfter"}` : trop de requêtes depuis cette adresse, ou trop de jetons refusés (même règle que l'import) ; la décision n'est pas lue, Vigie la renvoie après `Retry-After` |
 | **500** | `{"error":"internal","requestId":"…"}` : erreur interne ; rien n'est enregistré, Vigie renvoie la décision plus tard. Ici `requestId` n'est pas la référence de la demande : c'est l'identifiant de la requête HTTP (le même que l'en-tête `X-Request-Id`), qui retrouve la cause dans le journal technique de Codex |

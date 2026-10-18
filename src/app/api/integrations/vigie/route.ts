@@ -30,14 +30,48 @@ function parse(body: unknown): Decision | { field: string } {
   return { requestId, accepted: b.accepted, ecoRef, modifierId, note };
 }
 
+/**
+ * Largest body taken: a decision is a few hundred bytes (identifiers of 64 characters, a note of 2 000), escaped
+ * characters included. Beyond, 413 before the signature is checked.
+ */
+const MAX_BODY_BYTES = 64 * 1024;
+
+/** The request's raw body, read up to `cap` bytes; 'too_large' beyond (announced by Content-Length, or once read). */
+async function readBounded(req: Request, cap: number): Promise<Uint8Array | 'too_large'> {
+  if (Number(req.headers.get('content-length') ?? 0) > cap) return 'too_large';
+  if (!req.body) return new Uint8Array(0);
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  const reader = req.body.getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > cap) {
+      await reader.cancel().catch(() => {});
+      return 'too_large';
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(size);
+  let at = 0;
+  for (const c of chunks) {
+    out.set(c, at);
+    at += c.byteLength;
+  }
+  return out;
+}
+
 async function handlePost(req: Request) {
   const denied = checkBearer(req, 'vigie');
   if (denied) return denied;
   // Counted once the token is checked: a client without it cannot spend the budget of the one holding it.
   const limited = limitRequest(req, 'vigie');
   if (limited) return limited;
-  // The raw bytes: the signature covers them as sent.
-  const raw = new Uint8Array(await req.arrayBuffer());
+  // The raw bytes: the signature covers them as sent. Bounded before anything is read whole: with a secret alone (no
+  // token), nothing has authenticated the sender yet (revue du lot 9).
+  const raw = await readBounded(req, MAX_BODY_BYTES);
+  if (raw === 'too_large') return json({ error: 'too_large' }, 413);
   const unsigned = await checkSignature(req, 'vigie', raw);
   if (unsigned) return unsigned;
   let body: unknown;

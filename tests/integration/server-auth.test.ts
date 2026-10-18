@@ -97,6 +97,38 @@ describe('POST /api/integrations/vigie, signed', () => {
     expect((await vigie(body, signRequest(NEXT_SECRET, body))).status).toBe(200);
   });
 
+  it('refuses as a replay a request signed with both secrets of a rotation, sent again with either signature alone', async () => {
+    // Revue du lot 9 : la clé anti-rejeu portait sur la signature reconnue ; renvoyée avec l'autre signature seule (celle
+    // du secret _NEXT), la même requête passait une seconde fois.
+    vi.stubEnv('VIGIE_WEBHOOK_SECRET_NEXT', NEXT_SECRET);
+    await addDoc(db(), { id: ID });
+    const requestId = await ask();
+    const body = JSON.stringify({ requestId, accepted: false });
+    const both = signRequest([SECRET, NEXT_SECRET], body);
+    expect((await vigie(body, both)).status).toBe(200);
+    const [first, second] = both['X-Codex-Signature'].split(',');
+    const replayed = { status: 401, body: { error: 'unauthorized', reason: 'signature_replayed' } };
+    expect(await vigie(body, { ...both, 'X-Codex-Signature': second })).toEqual(replayed);
+    expect(await vigie(body, { ...both, 'X-Codex-Signature': `${second},${first}` })).toEqual(replayed);
+    expect(await vigie(body, { ...both, 'X-Codex-Signature': first.toUpperCase().replace('V1=', 'v1=') })).toEqual(replayed);
+  });
+
+  it('refuses a body beyond its bound before reading it whole (413), signed or not', async () => {
+    // Revue du lot 9 : avec un secret seul (sans jeton), le corps était lu entier en mémoire avant toute vérification.
+    const big = JSON.stringify({ requestId: 'ECR-1', accepted: false, note: 'x'.repeat(200_000) });
+    expect(await vigie(big, {})).toEqual({ status: 413, body: { error: 'too_large' } });
+    expect(await vigie(big, signRequest(SECRET, big))).toEqual({ status: 413, body: { error: 'too_large' } });
+    // Sent in chunks, without Content-Length.
+    const chunked = new ReadableStream<Uint8Array>({
+      start(c) {
+        for (let i = 0; i < 20; i++) c.enqueue(new TextEncoder().encode('x'.repeat(10_000)));
+        c.close();
+      },
+    });
+    const res = await vigiePOST(new Request(`${BASE}/api/integrations/vigie`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: chunked, duplex: 'half' } as RequestInit));
+    expect(res.status).toBe(413);
+  });
+
   it('requires both the token and the signature when both are set', async () => {
     vi.stubEnv('VIGIE_WEBHOOK_TOKEN', TOKEN);
     await addDoc(db(), { id: ID });

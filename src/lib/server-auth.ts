@@ -14,8 +14,9 @@ export { credentialsOf, type Endpoint } from './integration-credentials';
 // - a bearer token (`Authorization: Bearer <token>`), compared in constant time;
 // - an HMAC-SHA256 signature of the request: `X-Codex-Timestamp: <Unix seconds>` and
 //   `X-Codex-Signature: v1=<hex of HMAC-SHA256(secret, "<timestamp>." + raw body)>`. The timestamp must be within the
-//   window (CODEX_SIGNATURE_WINDOW_S, 300 s by default, either way), and a signature is accepted once: sent again within
-//   the window, it is refused as a replay (table integration_signatures, shared by every Codex process on the database).
+//   window (CODEX_SIGNATURE_WINDOW_S, 300 s by default, either way), and a signed request (its timestamp and raw body) is
+//   accepted once: sent again within the window, with any of its signatures, it is refused as a replay (table
+//   integration_signatures, shared by every Codex process on the database).
 // Rotation: each variable has a second one, <NAME>_NEXT, accepted beside it; the new value is set there, the client
 // moves to it, then it becomes the value and _NEXT is removed. A sender may sign with both secrets during the change
 // (several "v1=" values, comma-separated).
@@ -139,7 +140,10 @@ export async function checkSignature(req: Request, endpoint: Endpoint, body: Uin
   const deny = (reason: Refusal) => refused(req, endpoint, reason, countTokenFailure(req) ?? json({ error: 'unauthorized', reason }, 401));
   if (!v.ok) return deny(v.reason);
   const db = await getDb();
-  const key = createHash('sha256').update(`${endpoint}:${v.timestamp}:${v.signature}`).digest('hex');
+  // Remembered by what is signed (timestamp and raw body), not by the signature recognised: a request signed with both
+  // secrets of a rotation, sent again with the other signature alone, is the same request (revue du lot 9).
+  const bodyDigest = createHash('sha256').update(body).digest('hex');
+  const key = createHash('sha256').update(`${endpoint}:${v.timestamp}:${bodyDigest}`).digest('hex');
   await db.delete(s.integrationSignatures).where(lt(s.integrationSignatures.expiresAt, new Date(now).toISOString()));
   const [fresh] = await db.insert(s.integrationSignatures)
     .values({ digest: key, endpoint, expiresAt: new Date((v.timestamp + windowS) * 1000).toISOString() })
