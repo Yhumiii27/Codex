@@ -72,12 +72,21 @@ export function classify(store: StoreName, files: ListedFile[], referenced: Read
   return out;
 }
 
-/** Keys the working versions of a store point to (no storage recorded: the local store). */
+/**
+ * Keys the working versions of a store point to (no storage recorded: the local store), and, for the local store, the
+ * PDF renderings of the preview (version_previews, lib/office-preview.ts), which are always kept there.
+ */
 async function referencedKeys(store: StoreName, keys?: string[]): Promise<Set<string>> {
   const db = await getDb();
   const rows = await db.select({ storage: s.workingVersions.storage, fileKey: s.workingVersions.fileKey }).from(s.workingVersions)
     .where(keys ? sql`${s.workingVersions.fileKey} = any(${sql.param(keys)}::text[])` : isNotNull(s.workingVersions.fileKey));
-  return new Set(rows.filter((r) => (r.storage === 'sharepoint') === (store === 'sharepoint')).map((r) => r.fileKey!));
+  const out = new Set(rows.filter((r) => (r.storage === 'sharepoint') === (store === 'sharepoint')).map((r) => r.fileKey!));
+  if (store === 'local') {
+    const renders = await db.select({ fileKey: s.versionPreviews.fileKey }).from(s.versionPreviews)
+      .where(keys ? sql`${s.versionPreviews.fileKey} = any(${sql.param(keys)}::text[])` : isNotNull(s.versionPreviews.fileKey));
+    for (const r of renders) out.add(r.fileKey!);
+  }
+  return out;
 }
 
 /** Lists a store, then reads which files the records name: a file listed before a record that names it is committed is younger than the grace period. */

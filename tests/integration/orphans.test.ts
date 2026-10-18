@@ -74,6 +74,19 @@ describe('the dry run', () => {
     expect(await purges()).toEqual([]);
   });
 
+  it('counts the PDF rendering of a preview (version_previews) as named, and its file as an orphan once the row is gone', async () => {
+    await referenced('PRO-QUA-0001', key(1, 'PRO-QUA-0001_A.1.docx'));
+    const render = key(2, 'PRO-QUA-0001_A.apercu.pdf');
+    put(render, '%PDF-render');
+    const [v] = await db().select().from(s.workingVersions).where(eq(s.workingVersions.docId, 'PRO-QUA-0001'));
+    await db().insert(s.versionPreviews).values({ workingVersionId: v.id, status: 'ready', fileKey: render, size: 11, pages: 1, sha256: 'a'.repeat(64), converter: 'soffice', at: new Date().toISOString() });
+    expect((await orphanReport({ now: later(), env: {} })).local.orphans).toEqual([]);
+    expect(await purgeOrphans('manager', { now: later(), env: {} })).toMatchObject({ removed: [] });
+    expect(stored()).toContain(render);
+    await db().delete(s.versionPreviews);
+    expect((await orphanReport({ now: later(), env: {} })).local.orphans.map((f) => f.key)).toEqual([render]);
+  });
+
   it('counts a file younger than the grace period as recent, not as an orphan', async () => {
     put(key(2, 'upload.pdf'));
     // Written now: an upload whose record is not committed yet.

@@ -12,6 +12,8 @@ import { simplePdf } from '@/lib/pdf';
 import { verifiedStream } from '@/lib/integrity-core.mjs';
 import { getDoc, type DocView } from '@/lib/queries';
 import { fileAnswer, type FileAnswer } from '@/lib/ranges';
+import { dropRendering, ensureRendering, previewRow, type PreviewFailure } from '@/lib/office-preview';
+import { convertible } from '@/lib/preview-config';
 import { limitReader } from '@/lib/ratelimit';
 import { FileNotFoundError, normalizeMime, openStored, storedExt, type FileSource } from '@/lib/storage';
 
@@ -20,6 +22,9 @@ import { FileNotFoundError, normalizeMime, openStored, storedExt, type FileSourc
 // docs/reste-a-faire.md. A whole file is checked against its recorded SHA-256 as it is sent (point 31): an altered one
 // is cut short before its last bytes and journaled, never delivered as if whole. A range is sent unchecked: checking it
 // would mean reading the whole file; the integrity check of Administration (npm run integrity) covers every file.
+// ?preview=pdf serves, under the same rights, the PDF rendering of an Office file (lib/office-preview.ts, point 15),
+// made on the first request when a conversion service is configured; without one, or when the conversion fails, a
+// one-page PDF saying that the preview is unavailable and that the file can be downloaded.
 
 const WORKING = new Set(['draft', 'in_review', 'approved']);
 /** Suffix of the proposed name for a document withdrawn or archived; the file itself is served unchanged. */
@@ -36,8 +41,11 @@ function safeDecode(x: string): string {
 }
 
 type Version = typeof s.workingVersions.$inferSelect;
-/** `keep`: the browser may keep the file and revalidate it (lib/access.ts browserMayKeep). */
-type Target = { ctx: Ctx; doc: DocView; version: Version; label: string; mime: string; ext: string; download: boolean; keep: boolean };
+/**
+ * `keep`: the browser may keep the file and revalidate it (lib/access.ts browserMayKeep). `render`: the PDF rendering of
+ * the file is asked for (?preview=pdf), `sourceExt` being the extension of the file converted.
+ */
+type Target = { ctx: Ctx; doc: DocView; version: Version; label: string; mime: string; ext: string; download: boolean; keep: boolean; render?: { sourceExt: string } };
 
 /**
  * The working version a request asks for, once the user may have it: ?v=<working version id>, otherwise the file of the
@@ -50,7 +58,10 @@ async function resolve(req: Request, id: string): Promise<Target | Response> {
   const limited = limitReader(req, 'files', ctx.user.id, ctx.t);
   if (limited) return limited;
   const url = new URL(req.url);
-  const download = url.searchParams.get('download') === '1';
+  const preview = url.searchParams.get('preview');
+  if (preview !== null && preview !== 'pdf') return notFound();
+  // A rendering is shown, never downloaded: the download is the file itself.
+  const download = preview === null && url.searchParams.get('download') === '1';
   const rawV = url.searchParams.get('v');
   const vid = rawV === null ? null : Number(rawV);
   if (vid !== null && !(Number.isInteger(vid) && vid > 0 && vid <= 2 ** 31 - 1)) return notFound();
@@ -80,6 +91,12 @@ async function resolve(req: Request, id: string): Promise<Target | Response> {
   const label = isFinalStatus(rev.status) && isFinal ? rev.letter : `${rev.letter}.${version.n}`;
   // An explicit download is never answered from the browser's copy: it is how downloads are journaled.
   const keep = !download && browserMayKeep(rev.status, isFinal, doc.conf);
+  if (preview !== null) {
+    const name = version.fileName ?? '';
+    const sourceExt = version.fileKey ? storedExt(name, normalizeMime(version.mime, name)) : '';
+    if (!convertible(sourceExt)) return notFound();
+    return { ctx, doc, version, label, mime: 'application/pdf', ext: '.pdf', download: false, keep, render: { sourceExt } };
+  }
   if (!version.fileKey) return { ctx, doc, version, label, mime: 'application/pdf', ext: '.pdf', download, keep };
   const name = version.fileName ?? '';
   // Rows imported before the type was normalised (text/plain for a PDF…) are corrected from the file name.
@@ -90,8 +107,73 @@ async function resolve(req: Request, id: string): Promise<Target | Response> {
   return { ctx, doc, version, label, mime, ext, download, keep };
 }
 
-/** The file to serve and its strong validator (ETag), with its last change when the store gives it (Last-Modified). */
-type Source = { src: FileSource; etag: string };
+/**
+ * The file to serve and its strong validator (ETag), with its last change when the store gives it (Last-Modified).
+ * `sha256`: what a whole answer is checked against (the recorded fingerprint of the file or of its rendering);
+ * `onAltered`: what a mismatch does besides cutting the answer short. `stand`: a stand-in, never kept by the browser.
+ */
+type Source = { src: FileSource; etag: string; sha256?: string | null; onAltered?: () => Promise<void>; stand?: boolean };
+
+/** A PDF made here (a version without file, a preview unavailable): served from memory, identified by its bytes. */
+function memorySource(body: Uint8Array, naming: unknown[]): Source {
+  const src: FileSource = {
+    size: body.length,
+    modified: null,
+    read: async (range) => new Blob([new Uint8Array(range ? body.subarray(range.start, range.end + 1) : body)]).stream(),
+  };
+  return { src, etag: tagOf([createHash('sha256').update(body).digest('base64url'), ...naming]) };
+}
+
+/** Text of the stand-in of an unavailable preview, by reason. */
+function unavailableLine(t: Ctx['t'], reason: PreviewFailure): string {
+  if (reason === 'busy') return t.preview_busy;
+  if (reason === 'too_large') return t.preview_too_large;
+  if (reason === 'off') return t.preview_off;
+  return t.preview_failed;
+}
+
+/**
+ * The rendering of the file (made now if needed, lib/office-preview.ts), from the local store, checked against its
+ * fingerprint when sent whole; a rendering found missing is forgotten and made again once. `convert`: false for HEAD,
+ * which never starts a conversion. Without one, a stand-in saying why.
+ */
+async function renderSource(x: Target, naming: unknown[], convert: boolean): Promise<Source> {
+  const { ctx, doc, version } = x;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const r = convert
+      ? await ensureRendering(version, x.render!.sourceExt, doc.id, x.label)
+      : await previewRow(version.id).then((row) => (row?.status === 'ready' && row.fileKey ? { ok: true as const, row: row as typeof row & { fileKey: string } } : { ok: false as const, reason: 'off' as const }));
+    if (!r.ok) {
+      const body = simplePdf([
+        { text: `${doc.id} · ${x.label}`, size: 9, grey: true, gap: 0 },
+        { text: doc.title, size: 16, gap: 40 },
+        { text: ctx.t.preview_unavailable_short, gap: 36 },
+        { text: unavailableLine(ctx.t, r.reason), size: 10, grey: true, gap: 20 },
+        { text: ctx.t.preview_download_hint, size: 10, grey: true, gap: 20 },
+      ]);
+      return { ...memorySource(body, ['stand-in', r.reason, ...naming]), stand: true };
+    }
+    const { row } = r;
+    try {
+      const src = await openStored('local', row.fileKey, row.size);
+      return {
+        src,
+        etag: tagOf(['preview', row.fileKey, row.sha256, ...naming]),
+        sha256: row.sha256,
+        onAltered: async () => {
+          logger('storage').error('rendering altered', { doc: doc.id, version: version.id, key: row.fileKey });
+          await dropRendering(version.id, row.fileKey);
+        },
+      };
+    } catch (err) {
+      if (!(err instanceof FileNotFoundError)) throw err;
+      logger('storage').warn('rendering missing: made again', { doc: doc.id, version: version.id, key: row.fileKey });
+      await dropRendering(version.id, row.fileKey);
+      if (!convert) break;
+    }
+  }
+  throw new FileNotFoundError(`rendering of ${version.id}`);
+}
 
 /** Hashed: nothing of the record shows in the tag. */
 const tagOf = (parts: unknown[]) => `"${createHash('sha256').update(JSON.stringify(parts)).digest('base64url').slice(0, 32)}"`;
@@ -102,12 +184,22 @@ const tagOf = (parts: unknown[]) => `"${createHash('sha256').update(JSON.stringi
  * identify the bytes; a stand-in is identified by its bytes. The record's ID, version label and state name the file
  * (Content-Disposition) and change the tag too. The store is not read here: a local file is only looked up.
  */
-async function source(x: Target): Promise<Source> {
+async function source(x: Target, convert = true): Promise<Source> {
   const { ctx, doc, version } = x;
   const naming = [doc.id, x.label, doc.state, x.mime, x.ext];
+  if (x.render) return renderSource(x, naming, convert);
   if (version.fileKey) {
     const src = await openStored(version.storage, version.fileKey, version.size);
-    return { src, etag: tagOf([version.id, src.size, src.modified?.getTime() ?? null, ...naming]) };
+    return {
+      src,
+      etag: tagOf([version.id, src.size, src.modified?.getTime() ?? null, ...naming]),
+      sha256: version.sha256,
+      onAltered: async () => {
+        logger('storage').error('stored file altered', { doc: doc.id, version: version.id, key: version.fileKey });
+        const db = await getDb();
+        await audit(db, ctx.user.id, 'file_altered', doc.id, x.label, version.revisionId);
+      },
+    };
   }
   const body = simplePdf([
     { text: `${doc.id} · ${x.label}`, size: 9, grey: true, gap: 0 },
@@ -118,19 +210,14 @@ async function source(x: Target): Promise<Source> {
     { text: `${ctx.t.conf} : ${doc.confL}` },
     { text: ctx.t.no_file, size: 9, grey: true, gap: 40 },
   ]);
-  const src: FileSource = {
-    size: body.length,
-    modified: null,
-    read: async (range) => new Blob([new Uint8Array(range ? body.subarray(range.start, range.end + 1) : body)]).stream(),
-  };
-  return { src, etag: tagOf([createHash('sha256').update(body).digest('base64url'), ...naming]) };
+  return memorySource(body, naming);
 }
 
-function headers(x: Target, { src, etag }: Source, a: FileAnswer): Headers {
+function headers(x: Target, { src, etag, stand }: Source, a: FileAnswer): Headers {
   const size = src.size;
   const inline = !x.download && INLINE_SAFE.has(x.mime);
   const h = new Headers({
-    'Cache-Control': x.keep ? 'private, no-cache, no-transform' : 'private, no-store, no-transform',
+    'Cache-Control': x.keep && !stand ? 'private, no-cache, no-transform' : 'private, no-store, no-transform',
     ETag: etag,
     'X-Content-Type-Options': 'nosniff',
   });
@@ -144,7 +231,8 @@ function headers(x: Target, { src, etag }: Source, a: FileAnswer): Headers {
     return h;
   }
   h.set('Content-Type', inline || x.download ? x.mime : 'application/octet-stream');
-  h.set('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(`${x.doc.id}_${x.label}${STATE_SUFFIX[x.doc.state] ?? ''}${x.ext}`)}`);
+  // A rendering is named as such ({ID}_{label}_APERCU.pdf): saved from the viewer, it is not taken for the file itself.
+  h.set('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(`${x.doc.id}_${x.label}${STATE_SUFFIX[x.doc.state] ?? ''}${x.render ? '_APERCU' : ''}${x.ext}`)}`);
   if (a.status === 206) {
     h.set('Content-Range', `bytes ${a.range.start}-${a.range.end}/${size}`);
     h.set('Content-Length', String(a.range.end - a.range.start + 1));
@@ -161,8 +249,13 @@ function storeFailure(err: unknown): Response {
   return new Response('Storage unavailable', { status: 502, headers: { 'Retry-After': '30' } });
 }
 
-/** Detail of a download or view entry: the version label and the format ("B · PDF"). */
-const fileDetail = (x: Target) => `${x.label} · ${x.mime === 'application/pdf' ? 'PDF' : x.ext.slice(1).toUpperCase() || 'Fichier'}`;
+/**
+ * Detail of a download or view entry: the version label and the format ("B · PDF"); for the rendering of an Office
+ * file, the format converted ("B · DOCX → PDF").
+ */
+const fileDetail = (x: Target) => x.render
+  ? `${x.label} · ${x.render.sourceExt.slice(1).toUpperCase()} → PDF`
+  : `${x.label} · ${x.mime === 'application/pdf' ? 'PDF' : x.ext.slice(1).toUpperCase() || 'Fichier'}`;
 
 /**
  * Serves the file, streamed; ?download=1 forces a download and is logged. A Range gets 206 (or 416); a copy the browser
@@ -183,7 +276,7 @@ async function handleGet(req: Request, { params }: RouteContext<'/api/documents/
     return storeFailure(err);
   }
   const { src, etag } = file;
-  const a = fileAnswer(req.headers, { method: 'GET', size: src.size, etag, modified: src.modified, conditional: x.keep });
+  const a = fileAnswer(req.headers, { method: 'GET', size: src.size, etag, modified: src.modified, conditional: x.keep && !file.stand });
   const view = () => getDb().then((db) => journalConsultation(db, ctx.user.id, 'view', doc.id, fileDetail(x), version.revisionId));
   if (a.status === 304) {
     // Not answered unless journaled, as a download.
@@ -197,15 +290,9 @@ async function handleGet(req: Request, { params }: RouteContext<'/api/documents/
   } catch (err) {
     return storeFailure(err);
   }
-  // A whole stored file whose fingerprint is recorded: checked on the way (lib/integrity-core.mjs verifiedStream).
-  if (a.status === 200 && version.fileKey && version.sha256) {
-    const label = x.label;
-    body = verifiedStream(body, version.sha256, async () => {
-      logger('storage').error('stored file altered', { doc: doc.id, version: version.id, key: version.fileKey });
-      const db = await getDb();
-      await audit(db, ctx.user.id, 'file_altered', doc.id, label, version.revisionId);
-    });
-  }
+  // A whole stored file (or rendering) whose fingerprint is recorded: checked on the way (lib/integrity-core.mjs
+  // verifiedStream).
+  if (a.status === 200 && file.sha256 && file.onAltered) body = verifiedStream(body, file.sha256, file.onAltered);
   if (a.status === 200 || a.range.start === 0) {
     try {
       if (x.download) await audit(await getDb(), ctx.user.id, 'download', doc.id, fileDetail(x), version.revisionId);
@@ -228,12 +315,13 @@ async function handleHead(req: Request, { params }: RouteContext<'/api/documents
   if (x instanceof Response) return new Response(null, { status: x.status, headers: x.headers });
   let file: Source;
   try {
-    file = await source(x);
+    // HEAD never starts a conversion: without a rendering made, it answers as for the stand-in.
+    file = await source(x, false);
   } catch (err) {
     const res = storeFailure(err);
     return new Response(null, { status: res.status, headers: res.headers });
   }
-  const a = fileAnswer(req.headers, { method: 'HEAD', size: file.src.size, etag: file.etag, modified: file.src.modified, conditional: x.keep });
+  const a = fileAnswer(req.headers, { method: 'HEAD', size: file.src.size, etag: file.etag, modified: file.src.modified, conditional: x.keep && !file.stand });
   return new Response(null, { status: a.status, headers: headers(x, file, a) });
 }
 

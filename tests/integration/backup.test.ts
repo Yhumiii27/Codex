@@ -125,6 +125,17 @@ describe('createBackup', () => {
     expect(readdirSync(BACKUPS)).toEqual([res.name]);
   });
 
+  it('archives the PDF renderings of the preview (version_previews) with the files', async () => {
+    await withFile('PRO-QUA-0001', key(1, 'PRO-QUA-0001_A.1.pdf'), '%PDF-one');
+    const render = key(5, 'PRO-QUA-0001_A.apercu.pdf');
+    put(render, '%PDF-render');
+    const [v] = await db().select().from(s.workingVersions).where(eq(s.workingVersions.docId, 'PRO-QUA-0001'));
+    await db().insert(s.versionPreviews).values({ workingVersionId: v.id, status: 'ready', fileKey: render, size: 11, pages: 1, sha256: 'b'.repeat(64), converter: 'gotenberg', at: '2026-10-15T08:00:00Z' });
+    const res = await backup();
+    expect(res.manifest.files).toMatchObject({ count: 2, missing: [] });
+    expect(res.manifest.entries.map((e) => e.name)).toContain(`files/${render}`);
+  });
+
   it('records a referenced file the store does not have, and still writes the archive', async () => {
     await withFile('PRO-QUA-0001', key(1, 'PRO-QUA-0001_A.1.pdf'), '%PDF-one');
     rmSync(path.join(FILES_DIR, key(1, 'PRO-QUA-0001_A.1.pdf')));

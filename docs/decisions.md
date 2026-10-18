@@ -1350,6 +1350,36 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     `Cache-Control: private` ; pas de signature sur ce `GET` ;
   - Codex n'appelle pas encore Vigie : la même signature servira à ses envois (`signRequest`), sans file d'envoi tant
     que les branchements réels ne sont pas faits (T-01).
+- **Comparaison du contenu des versions** (point 14 de `docs/reste-a-faire.md`, G05, 18 octobre) : ni le deck ni la
+  maquette ne fixent le niveau attendu ; choix prudents, à confirmer :
+  - comparaison du **texte**, ligne à ligne, pas de comparaison visuelle (elle demanderait deux aperçus côte à côte,
+    donc l'outil de conversion du point 15) ; de la version choisie (−) vers la version courante (+) ; blancs
+    regroupés et lignes vides ignorés, la mise en page n'est pas comparée ; deux lignes de contexte ;
+  - formats lus : PDF (couche texte, par la bibliothèque `unpdf` 1.7.0, licence MIT, qui embarque pdf.js), Word,
+    Excel, PowerPoint et OpenDocument (ZIP et XML lus par Codex, sans bibliothèque), texte ; pas les fichiers Office
+    97-2003, ni les images ou plans : le dialogue dit pourquoi, sans deviner ;
+  - bornes : fichier de 20 Mo (`CODEX_COMPARE_MAX_MB`), 15 s d'extraction, 20 000 lignes et 2 millions de caractères
+    par texte, 3 000 lignes ajoutées ou supprimées au plus, 2 000 lignes affichées ; trois comparaisons à la fois par
+    processus ; limite de débit propre (`CODEX_RATE_COMPARE`, 30 par minute) ;
+  - mêmes droits que la route fichier (D-14) : hors du cercle de rédaction, seule la révision en vigueur se lit, donc
+    rien d'autre ne se compare (404) ; chaque version comparée est journalisée comme une consultation ; un fichier
+    dont l'empreinte ne correspond plus à celle du dépôt n'est pas comparé.
+- **Aperçu des fichiers Office** (point 15, M12, 18 octobre) : choix prudents, à confirmer :
+  - **désactivé par défaut** : aucune conversion tant que ni LibreOffice (`CODEX_PREVIEW_SOFFICE`) ni Gotenberg
+    (`CODEX_PREVIEW_GOTENBERG_URL`) n'est configuré ; les deux à la fois : aucun ; le choix de l'outil relève de
+    l'hébergement ;
+  - conversion **à la première consultation**, puis gardée, plutôt qu'au dépôt : un dépôt n'attend pas la conversion,
+    et un fichier que personne n'ouvre n'est pas envoyé à l'outil ; deux conversions à la fois par processus ; 60 s et
+    20 Mo au plus ; un échec n'est retenté qu'une heure plus tard ;
+  - le rendu est gardé dans le **stockage local**, même quand les fichiers d'origine sont dans SharePoint : SharePoint
+    ne reçoit que le fichier, son nom et sa version (D-06) ; table `version_previews` (clé, pages, empreinte),
+    sauvegardée, laissée hors de l'export complet (donnée dérivée), comptée par le nettoyage des orphelins ; le
+    contrôle d'intégrité ne porte que sur les fichiers d'origine, le rendu étant vérifié à chaque envoi entier et
+    refait s'il est altéré ou manquant ;
+  - mêmes droits que le fichier ; rendu nommé `{ID}_{version}_APERCU.pdf` pour ne pas le confondre avec l'original ;
+    nombre de pages de la pagination calculé sur le rendu ; LibreOffice lancé sans les variables de Codex ; Gotenberg
+    appelé sans authentification, sur un réseau privé ;
+  - ni PDF/A, ni filigrane « Brouillon », ni en-têtes générés : ce sont les questions restées ouvertes de M12.
 - **Git** (D-23) : premier commit sur une branche `codex-ged-v2` plutôt que sur `main`.
 
 ## Ce qui est explicitement hors périmètre

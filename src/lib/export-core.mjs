@@ -34,8 +34,12 @@ export const SUMS_ENTRY = 'SHA256SUMS';
 export const README_ENTRY = 'LISEZMOI.txt';
 export const DOCUMENTS_CSV = 'data/documents.csv';
 export const IMPORT_ENTRY = 'import/documents.json';
-/** The search index, which the database writes from the documents (src/db/index.ts, documents_terms). */
-export const DERIVED_TABLES = ['document_terms'];
+/**
+ * Derived tables, left out: the search index, which the database writes from the documents (src/db/index.ts,
+ * documents_terms), and the PDF renderings of the preview (version_previews, lib/office-preview.ts), whose files the
+ * archive does not carry either: both are made again from what the export holds.
+ */
+export const DERIVED_TABLES = ['document_terms', 'version_previews'];
 const JOURNAL = 'audit_log';
 const BATCH = 1000;
 const FILE_BATCH = 200;

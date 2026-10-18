@@ -160,8 +160,9 @@ d'un coup autant que sa limite, puis en regagne une à intervalle régulier (une
   puis renvoyer le même document (le 409 `duplicate` rend le renvoi sûr), ou relever `CODEX_RATE_IMPORT` le temps de la
   reprise.
 
-Les routes du navigateur ont aussi leurs limites (fichiers et fiches de visa, exports CSV, actions qui écrivent ; voir
-le README) ; elles répondent 429 avec `Retry-After` et une phrase en texte dans la langue du lecteur.
+Les routes du navigateur ont aussi leurs limites (fichiers et fiches de visa, comparaison du contenu, exports CSV,
+actions qui écrivent ; voir le README) ; elles répondent 429 avec `Retry-After` et une phrase en texte dans la langue
+du lecteur. Les deux routes de la fiche ajoutées pour les points 14 et 15 sont décrites à la fin de ce fichier.
 
 ---
 
@@ -633,3 +634,59 @@ curl -s -X POST http://localhost:3100/api/integrations/vigie \
 # → 202 {"ok":true,"pending":true,"reason":"locked","requestId":"ECR-2026-001","kind":"modification","docId":"PRO-QUA-0001","status":"accepted","state":"active","legalHold":true,"revision":null}
 # Le même envoi, rejoué avant la levée du gel : même réponse, avec "alreadyRecorded":true, sans effet.
 ```
+
+---
+
+## Routes de la fiche document (navigateur)
+
+Ces routes ne sont pas des points d'intégration : elles servent l'écran de la fiche, sous la session simulée de
+l'utilisateur (cookie), avec les droits de lecture de `src/lib/access.ts`. Elles sont décrites ici parce qu'elles
+répondent en dehors des pages.
+
+### `GET /api/documents/{id}/compare?a={version}&b={version}` — comparer le contenu de deux versions
+
+Point 14 de `docs/reste-a-faire.md` (`src/lib/compare.ts`). `a` et `b` sont des identifiants de versions de travail
+du document (ceux de `?v=` de la route fichier) ; `a` est la version choisie, `b` la version courante.
+
+- **Droits** : ceux de la route fichier (D-14). Un document illisible, une version d'un autre document, ou une version
+  que l'utilisateur ne voit pas (hors du cercle de rédaction : tout sauf le fichier final de la révision en vigueur)
+  donnent **404**, sans rien lire ni journaliser.
+- **Réponse 200** (`application/json`, `Cache-Control: private, no-store`) :
+
+```json
+{
+  "a": { "id": 166, "label": "A.4", "lines": 4, "truncated": false, "failure": null },
+  "b": { "id": 167, "label": "A.5", "lines": 5, "truncated": false, "failure": null },
+  "sameFile": false,
+  "diff": {
+    "kind": "diff", "added": 2, "removed": 1, "truncated": false, "trailing": 0,
+    "hunks": [{ "skipped": 0, "lines": [
+      { "op": " ", "text": "Contrat de prestation", "a": 1, "b": 1 },
+      { "op": "-", "text": "Article 2 : durée de 12 mois", "a": 3, "b": null },
+      { "op": "+", "text": "Article 2 : durée de 24 mois", "a": null, "b": 3 }
+    ] }]
+  }
+}
+```
+
+  - `failure` dit pourquoi le texte d'une version n'a pas pu être lu : `unsupported` (format), `too_large`
+    (`CODEX_COMPARE_MAX_MB`), `timeout` (15 s), `unreadable`, `encrypted`, `empty` (pas de texte, PDF numérisé),
+    `no_file`, `unavailable` (absent du stockage), `altered` (empreinte différente de celle du dépôt). `diff` est alors
+    `null`.
+  - `diff.kind` : `same` (avec `lines`), `diff`, ou `too_different` (plus de 3 000 lignes ajoutées ou supprimées).
+    `skipped` : lignes identiques non montrées avant un bloc ; `trailing` : après le dernier ; `truncated` : affichage
+    coupé à 2 000 lignes. `truncated` d'un côté : texte coupé à 20 000 lignes ou 2 millions de caractères.
+- **503** avec `Retry-After: 5` quand trois comparaisons tournent déjà dans le processus ; **429** au-delà de
+  `CODEX_RATE_COMPARE` (30 par minute et par utilisateur).
+- **Journal** : chaque version comparée est une consultation (`view`, « B.2 · Comparaison »), regroupée comme les
+  autres consultations (une par personne, version et période de 30 minutes).
+
+### `GET /api/documents/{id}/file?v={version}&preview=pdf` — aperçu PDF d'un fichier Office
+
+Point 15 (`src/lib/office-preview.ts`). Mêmes droits, limite (`CODEX_RATE_FILES`), validateurs (ETag, 304) et plages
+que le fichier lui-même ; `download` est ignoré. Pour un fichier Word, Excel, PowerPoint ou OpenDocument, le rendu PDF
+(`{ID}_{version}_APERCU.pdf`, `inline`), fait à la première demande quand un outil de conversion est configuré
+(`docs/exploitation.md` §6), puis gardé. Sans outil, ou si la conversion a échoué, un PDF d'une page qui le dit et
+renvoie au téléchargement (`no-store`). **404** pour un autre format ou une autre valeur de `preview`. `HEAD` ne lance
+jamais de conversion. Une consultation est journalisée comme pour le fichier (« A · DOCX → PDF »).
+

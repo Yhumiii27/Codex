@@ -685,6 +685,12 @@ async function readDbMeta(q) {
     if (r.storage === 'sharepoint') sharepoint++;
     else local.add(path.basename(String(r.file_key)));
   }
+  // PDF renderings of the preview (lib/office-preview.ts), always in the local store. Looked up only when the table
+  // exists: the backup taken before a migration reads a database of an earlier schema.
+  const [{ renders }] = (await q.query(`select to_regclass('public.version_previews') is not null as renders`)).rows;
+  if (renders) {
+    for (const r of (await q.query(`select file_key from version_previews where file_key is not null`)).rows) local.add(path.basename(String(r.file_key)));
+  }
   return {
     counts: { documents: c.documents, revisions: c.revisions, workingVersions: c.working_versions, auditEntries: c.audit_entries, people: c.people },
     postgres: /^PostgreSQL \S+(?: \(PGlite [^)]+\))?/.exec(String(c.postgres))?.[0] ?? String(c.postgres),

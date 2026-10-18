@@ -135,7 +135,10 @@ dans l'ordre de la clé primaire (le journal par identifiant croissant).
 | `id_counters` | Dernier numéro attribué par séquence (identifiants, circuits, demandes) : pour reprendre la numérotation |
 | `audit_log` | Journal d'audit : instant, utilisateur, action, document (sous son identifiant de l'époque) ou cible, détail, données structurées (avant → après, export, lien…), révision |
 
-N'est pas exportée : `document_terms`, l'index de la recherche, que la base recalcule à partir des documents.
+Ne sont pas exportées, parce qu'elles se refont à partir de ce que l'archive contient :
+- `document_terms`, l'index de la recherche, que la base recalcule à partir des documents ;
+- `version_previews`, les rendus PDF de l'aperçu des fichiers Office (point 15 de `docs/reste-a-faire.md`), dont
+  l'archive ne contient pas non plus les fichiers : seuls les fichiers d'origine des versions y sont.
 
 Valeurs : texte et nombres tels quels ; dates `AAAA-MM-JJ` ; `audit_log.at` en UTC avec son décalage
 (`2026-10-15T16:53:07.587+00:00`) ; les horodatages sans fuseau (`change_requests.createdAt` et `decidedAt`,

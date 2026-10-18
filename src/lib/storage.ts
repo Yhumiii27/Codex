@@ -500,6 +500,25 @@ export async function openStored(storage: string | null, fileKey: string, size: 
   return stores(storage).open(fileKey, size);
 }
 
+/**
+ * Stores the PDF rendering of a working version's file (lib/office-preview.ts) in the local store, whatever the active
+ * store: it is derived data, made again at will, which SharePoint (O-01) is not given. Returns its key
+ * (`<uuid>-<ID>_<version>.apercu.pdf`), which the orphan check and the backup count as named once a row of
+ * version_previews holds it.
+ */
+export async function storeRendering(buf: Buffer, docId: string, label: string): Promise<string> {
+  return local.put(buf, `${docId}_${label}.apercu.pdf`);
+}
+
+/** Removes a rendering from the local store. Best effort: one left behind is an orphan, which the orphan check removes. */
+export async function removeRendering(fileKey: string): Promise<void> {
+  try {
+    await local.remove(fileKey);
+  } catch (err) {
+    log.error('rendering not removed', { key: fileKey, err });
+  }
+}
+
 /** Store whose files the orphan check lists (lib/orphans.ts). */
 export type StoreName = 'local' | 'sharepoint';
 

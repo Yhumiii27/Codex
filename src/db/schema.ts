@@ -395,6 +395,39 @@ export const workingVersions = pgTable(
   ],
 );
 
+/** Outcome of a conversion to PDF for the preview (lib/office-preview.ts). */
+export type PreviewStatus = 'ready' | 'failed';
+
+/**
+ * PDF rendering of an Office file for its preview (point 15 of docs/reste-a-faire.md, M12), made by the conversion
+ * service the first time someone may see it (lib/office-preview.ts) and kept in the local store beside the files. Derived
+ * data: it can always be made again from the working version's file, so the full export leaves it out (like
+ * document_terms); a backup keeps its file; the orphan check counts its key as named. `failed`: the last attempt failed
+ * (`error`: timeout, failed, invalid), tried again an hour later at the earliest.
+ */
+export const versionPreviews = pgTable(
+  'version_previews',
+  {
+    workingVersionId: integer('working_version_id').primaryKey().references(() => workingVersions.id, { onDelete: 'cascade' }),
+    status: text('status').$type<PreviewStatus>().notNull(),
+    /** Key of the PDF in the local store (`<uuid>-<ID>_<version>.apercu.pdf`); null when the conversion failed. */
+    fileKey: text('file_key'),
+    size: integer('size'),
+    /** Page count of the rendering (lib/storage.ts countPdfPages), shown by the preview's pager. */
+    pages: integer('pages'),
+    /** SHA-256 of the rendering as it was stored: checked whenever it is served whole. */
+    sha256: text('sha256'),
+    error: text('error'),
+    /** Converter that made it or failed: soffice or gotenberg. */
+    converter: text('converter').notNull(),
+    at: timestamp('at', { mode: 'string', withTimezone: true }).notNull(),
+  },
+  (t) => [
+    check('version_previews_status', sql`(${t.status} = 'ready' and ${t.fileKey} is not null) or (${t.status} = 'failed' and ${t.fileKey} is null)`),
+    index('version_previews_file_key').on(t.fileKey),
+  ],
+);
+
 // ── Approval workflows ──────────────────────────────────────────────────
 
 export const workflows = pgTable(

@@ -22,27 +22,34 @@ export function RecordConsultation({ docId }: { docId: string }) {
   return null;
 }
 
+/** PDF rendering of an Office file (lib/office-preview.ts): its address, and its page count once it is made. */
+type PreviewRender = { url: string; pages: number | null };
+
 /**
- * Centre pane: the stored file when the file route serves it inline (PDF, PNG/JPEG/GIF/WebP image, plain text); a
- * download panel for any other stored file (no conversion exists); the design's paper mock-up only for a version without
- * a file. `pages` is null when the PDF's page count is unknown: the browser's own viewer then pages through it.
+ * Centre pane: the stored file when the file route serves it inline (PDF, PNG/JPEG/GIF/WebP image, plain text); the PDF
+ * rendering of an Office file when a conversion service is configured (`render`, point 15), with the design's note
+ * `preview_note` under it; a download panel for any other stored file, or one whose conversion failed lately or that
+ * is too large to convert (`renderNote` says so); the design's paper mock-up only for a version without a file. `pages` is null when the PDF's page
+ * count is unknown: the browser's own viewer then pages through it.
  */
-export function Preview({ doc, file, pages, hasVersion }: { doc: PreviewDoc; file: PreviewFile | null; pages: number | null; hasVersion: boolean }) {
+export function Preview({ doc, file, pages, render, renderNote, hasVersion }: { doc: PreviewDoc; file: PreviewFile | null; pages: number | null; render?: PreviewRender | null; renderNote?: string | null; hasVersion: boolean }) {
   const { t } = useApp();
   const [page, setPage] = useState(1);
   // Only what the file route serves inline: any other image (image/vnd.dwg, image/tiff…) would show as a broken one.
   const kind = previewKind(file?.mime);
-  const isPdf = kind === 'pdf';
+  const rendered = !kind && !!file && !!render;
+  const pageCount = rendered ? render.pages : pages;
+  const isPdf = kind === 'pdf' || rendered;
   const isImage = kind === 'image';
   const isText = kind === 'text';
   const shown = isPdf || isImage || isText;
-  const paged = isPdf && pages != null;
+  const paged = isPdf && pageCount != null;
   const rev = doc.revLabel ? `${t.rev_short} ${doc.revLabel}` : '';
   return (
     <div className={styles.previewCol}>
       <div className={styles.previewScroll}>
         {isPdf ? (
-          <iframe key={page} title={doc.title} src={paged ? `${file!.url}#page=${page}&toolbar=0` : file!.url} className={styles.pdf} />
+          <iframe key={page} title={doc.title} src={(rendered ? render.url : file!.url) + (paged ? `#page=${page}&toolbar=0` : '')} className={styles.pdf} />
         ) : isImage ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={file!.url} alt={doc.title} className={styles.image} />
@@ -52,7 +59,7 @@ export function Preview({ doc, file, pages, hasVersion }: { doc: PreviewDoc; fil
           <div className={styles.unavailable}>
             <div style={{ fontSize: 14, wordBreak: 'break-all' }}>{file.name}</div>
             <div className="text-muted" style={{ fontSize: 12 }}>{file.sizeF}</div>
-            <div style={{ fontSize: 13 }}>{t.preview_unavailable}</div>
+            <div style={{ fontSize: 13 }}>{renderNote ?? t.preview_unavailable}</div>
             <a href={`${file.url}&download=1`} className="btn btn-secondary"><Icon name="download" size={14} />{t.download}</a>
           </div>
         ) : (
@@ -73,11 +80,11 @@ export function Preview({ doc, file, pages, hasVersion }: { doc: PreviewDoc; fil
         {paged && (
           <>
             <button type="button" className="btn btn-ghost btn-icon" style={{ width: 28, height: 28 }} aria-label={t.prev_page} disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}><Icon name="chevronLeft" size={13} sw={1.8} /></button>
-            <span className="tabnum" style={{ fontSize: 12 }}>{t.page} {page} {t.of} {pages}</span>
-            <button type="button" className="btn btn-ghost btn-icon" style={{ width: 28, height: 28 }} aria-label={t.next_page} disabled={page >= pages!} onClick={() => setPage((p) => Math.min(pages!, p + 1))}><Icon name="chevronRight" size={13} sw={1.8} /></button>
+            <span className="tabnum" style={{ fontSize: 12 }}>{t.page} {page} {t.of} {pageCount}</span>
+            <button type="button" className="btn btn-ghost btn-icon" style={{ width: 28, height: 28 }} aria-label={t.next_page} disabled={page >= pageCount!} onClick={() => setPage((p) => Math.min(pageCount!, p + 1))}><Icon name="chevronRight" size={13} sw={1.8} /></button>
           </>
         )}
-        <span className="text-muted" style={{ fontSize: 11, marginLeft: paged ? 12 : 0 }}>{shown ? t.original_file : file ? file.name : hasVersion ? t.no_file : t.no_version}</span>
+        <span className="text-muted" style={{ fontSize: 11, marginLeft: paged ? 12 : 0 }}>{rendered ? t.preview_note : shown ? t.original_file : file ? file.name : hasVersion ? t.no_file : t.no_version}</span>
       </div>
     </div>
   );
@@ -156,7 +163,7 @@ export function RevisionsTab({ docId, revisions, current }: { docId: string; rev
         ))}
       </div>
       <div style={{ display: 'flex', gap: 8, marginTop: 14, alignItems: 'center', flexWrap: 'wrap' }}>
-        <button type="button" className="btn btn-secondary" disabled={!current || !other} onClick={() => current && other && open({ kind: 'compare', current, other })}>{t.compare}</button>
+        <button type="button" className="btn btn-secondary" disabled={!current || !other} onClick={() => current && other && open({ kind: 'compare', docId, current, other })}>{t.compare}</button>
       </div>
     </>
   );

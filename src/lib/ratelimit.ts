@@ -36,6 +36,8 @@ export const RATE_LIMITS = {
   registry: { env: 'CODEX_RATE_REGISTRY', def: '300/1m' },
   /** Stored files and approval records (/api/documents/[id]/file and /approval), per user (and address). */
   files: { env: 'CODEX_RATE_FILES', def: '600/1m' },
+  /** Content comparisons of two versions (/api/documents/[id]/compare): text extraction is costly; per user (and address). */
+  compare: { env: 'CODEX_RATE_COMPARE', def: '30/1m' },
   /** CSV exports (/api/export/search, /api/export/audit), per user (and address). */
   exports: { env: 'CODEX_RATE_EXPORTS', def: '30/1m' },
   /** Server Actions that write (lib/actions.ts), per user. */
@@ -201,7 +203,7 @@ export function limitRequest(req: Request, family: 'import' | 'vigie' | 'registr
  * the raw cookie) has used up its bucket of `family`, or, behind a trusted proxy, the client's address has; otherwise
  * null, the request counted in both.
  */
-export function limitReader(req: Request, family: 'files' | 'exports', userId: string, t: T): Response | null {
+export function limitReader(req: Request, family: 'files' | 'exports' | 'compare', userId: string, t: T): Response | null {
   const rule = ruleFor(family);
   if (!rule) return null;
   const keys = [`user:${userId}`, ...(trustProxy() ? [`address:${clientAddress(req.headers)}`] : [])];

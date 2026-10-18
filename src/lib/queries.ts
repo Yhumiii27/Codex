@@ -598,6 +598,37 @@ export async function getDoc(ctx: Ctx, id: string): Promise<{ doc: DocView; circ
   return { doc: docView(ctx, d, wl.get(d.id), circle, vm.get(d.id)), circle, ix };
 }
 
+/** A working version the user may have, as the file route serves it: the row and its label ("B", "B.2"). */
+export type ReadableVersion = { version: typeof s.workingVersions.$inferSelect; label: string };
+
+/**
+ * Those of the working versions `ids` of a document that the user may have, under the rules of the file route
+ * (src/app/api/documents/[id]/file/route.ts): a document they read, and, outside its drafting circle, only the final
+ * file of the revision in force (readerMaySeeVersion, D-14). A version of another document, unknown or withheld is
+ * simply absent. Null when the document is unknown or hidden from them. Used by the comparison of versions
+ * (lib/compare.ts).
+ */
+export async function readableVersions(ctx: Ctx, docId: string, ids: readonly number[]): Promise<{ doc: DocView; circle: boolean; versions: Map<number, ReadableVersion> } | null> {
+  const res = await getDoc(ctx, docId);
+  if (!res || res === 'hidden') return null;
+  const { doc, circle } = res;
+  const db = await getDb();
+  const [revs, versions] = await Promise.all([
+    db.select().from(s.revisions).where(eq(s.revisions.docId, doc.id)),
+    db.select().from(s.workingVersions).where(eq(s.workingVersions.docId, doc.id)).orderBy(asc(s.workingVersions.n)),
+  ]);
+  const out = new Map<number, ReadableVersion>();
+  for (const id of ids) {
+    const version = versions.find((v) => v.id === id);
+    const rev = version && revs.find((r) => r.id === version.revisionId);
+    if (!version || !rev) continue;
+    const isFinal = versions.findLast((v) => v.revisionId === rev.id)?.id === version.id;
+    if (!readerMaySeeVersion(circle, rev.status, isFinal)) continue;
+    out.set(id, { version, label: isFinalStatus(rev.status) && isFinal ? rev.letter : `${rev.letter}.${version.n}` });
+  }
+  return { doc, circle, versions: out };
+}
+
 /** A working version whose file has a given SHA-256, as sameFiles gives it: its document, label and title. */
 export type SameFile = { docId: string; label: string; title: string };
 

@@ -122,7 +122,8 @@ export type DialogSpec =
    * recall the request, with an optional one. `step` is the step shown: the circuit may have moved on since.
    */
   | { kind: 'reject' | 'recall'; workflowId: string; step: number; stepName: string; docId: string; title: string; letter: string }
-  | { kind: 'compare'; current: VersionLite; other: VersionLite }
+  /** Compares the attributes and the text (GET /api/documents/[id]/compare) of two versions of `docId`. */
+  | { kind: 'compare'; docId: string; current: VersionLite; other: VersionLite }
   /** Named readers of a confidential or "très confidentiel" document; `version`: of the record shown (lib/concurrency.ts). */
   | { kind: 'readers'; docId: string; readers: string[]; version: number }
   /** Types a template is meant for (lib/actions.ts setTemplateTypes); `version`: of the record shown. */

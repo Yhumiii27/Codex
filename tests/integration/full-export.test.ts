@@ -135,9 +135,10 @@ describe('GET /api/export/full', () => {
     expect(names[0]).toBe('LISEZMOI.txt');
     expect(names.slice(-2)).toEqual(['SHA256SUMS', 'manifest.json']);
 
-    // Every table of the application but the search index, each with as many rows as the database holds.
+    // Every table of the application but the derived ones (search index, preview renderings), each with as many rows as
+    // the database holds.
     const { rows: tables } = await db().$client.query<{ name: string }>(`select tablename as name from pg_tables where schemaname = 'public' order by 1`);
-    const exported = tables.map((t) => t.name).filter((t) => t !== 'document_terms');
+    const exported = tables.map((t) => t.name).filter((t) => t !== 'document_terms' && t !== 'version_previews');
     expect(Object.keys(manifest.tables).sort()).toEqual(exported);
     for (const t of exported) {
       const rows = json(manifest.tables[t]);
@@ -155,6 +156,7 @@ describe('GET /api/export/full', () => {
     expect(json('data/document_links.json')).toMatchObject([{ sourceId: 'PRO-QUA-0001', targetId: 'PID-HLT-026-001', kind: 'see_also' }]);
     expect(json('data/document_readers.json')).toEqual([{ docId: 'PID-HLT-026-001', userId: 'writer' }]);
     expect(manifest.tables).not.toHaveProperty('document_terms');
+    expect(manifest.tables).not.toHaveProperty('version_previews');
     expect(json('data/users.json')).toHaveLength(15);
 
     // The journal, its start entry included (written in the snapshot), its end entry not.

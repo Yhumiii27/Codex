@@ -13,12 +13,14 @@ import { releaseHold, removeDocLink } from '@/lib/actions';
 import { isFinalStatus, TEMPLATE_TYPE } from '@/lib/codes';
 import { getCtx } from '@/lib/context';
 import { addDays, fmtDate, todayIso } from '@/lib/format';
+import { previewKind } from '@/lib/filetypes';
 import { ECR_TAGCLS } from '@/lib/i18n';
 import { getProject } from '@/lib/keystone';
 import { CONSULT_WINDOW_MINUTES, decisionWait, defaultModifier, draftersOf } from '@/lib/lifecycle';
 import { decisionWaitL, getDoc, listAudit, templateTypesOf, METADATA_ACTIONS, RETENTION_ACTIONS, listChangeRequests, listDocLinks, listRevisions, projectDocs as projectDocsOf, readableBriefs, stateNotice, typeView, docWorkflows, type RevisionView } from '@/lib/queries';
 import { sameRule } from '@/lib/retention';
-import { normalizeMime } from '@/lib/storage';
+import { previewPlan } from '@/lib/office-preview';
+import { normalizeMime, storedExt } from '@/lib/storage';
 import { vigieSimulated, vigieUrl } from '@/lib/vigie';
 import { Preview, RecordConsultation, RevisionsTab, type RevItem } from './DocClient';
 import styles from './document.module.css';
@@ -284,6 +286,11 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
   })));
   const canRelease = doc.legalHold && ctx.can('archive') && ctx.screens.retention;
   const previewMime = current?.fileKey && current.mime ? normalizeMime(current.mime, current.fileName ?? '') : null;
+  // An Office file the browser cannot show: its PDF rendering, when a conversion service is configured (point 15,
+  // lib/office-preview.ts), served by the file route under the same rights as the file.
+  const plan = current?.fileKey && previewMime && !previewKind(previewMime)
+    ? await previewPlan(current, storedExt(current.fileName ?? '', previewMime))
+    : null;
 
   return (
     <div className="screen" style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }} data-screen-label="Fiche document">
@@ -363,6 +370,8 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
           doc={{ id: doc.id, title: doc.title, revLabel: currentLabel, departmentL: doc.departmentL, owner: doc.owner, dateF: current?.dateF ?? doc.modifiedF }}
           file={current && previewMime ? { url: `${fileUrl}?v=${current.id}`, mime: previewMime, name: current.fileName ?? `${doc.id}_${currentLabel}`, sizeF: current.sizeF } : null}
           pages={current?.pages ?? null}
+          render={plan?.kind === 'render' ? { url: `${fileUrl}?v=${current!.id}&preview=pdf`, pages: plan.pages } : null}
+          renderNote={plan?.kind === 'failed' ? (plan.reason === 'too_large' ? `${t.preview_too_large} ${t.preview_download_hint}` : t.preview_failed_note) : null}
           hasVersion={!!current}
         />
         <aside className={styles.side}>

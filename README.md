@@ -138,6 +138,9 @@ Construit `Codex.app` (fenêtre native macOS, sans Electron), l'installe dans `~
   par ligne comme tout serveur de production (`CODEX_LOG_FORMAT=pretty` dans `.env.local` du projet pour des lignes lisibles) ; un refus de la
   configuration au démarrage (« Le serveur s'est arrêté au démarrage. ») y est expliqué (voir « Exploitation ») ;
 - ouvre les liens Keystone / Vigie dans le navigateur, enregistre les téléchargements dans `~/Téléchargements`.
+- n'embarque pas d'outil de conversion : pour l'aperçu des fichiers Office, installer LibreOffice sur le Mac et écrire
+  `CODEX_PREVIEW_SOFFICE=/Applications/LibreOffice.app/Contents/MacOS/soffice` dans `.env.local` (`docs/exploitation.md`
+  §6).
 
 L'app pointe vers ce dossier de projet et vers le Node.js présents au moment de la construction : relancer
 `npm run app` après un déplacement du projet ou un changement de Node. Pour repartir d'une base de démo neuve :
@@ -205,7 +208,11 @@ Tout l'état d'écran est dans l'URL (onglets, filtres, sélection) : les liens 
   Le webhook `/api/integrations/vigie` applique les décisions réelles.
 - **Aperçu** : un PDF, une image PNG, JPEG, GIF ou WebP, ou un fichier texte déposés s'affichent dans la fiche ; les
   autres formats se téléchargent. Les documents de démonstration (sans fichier) gardent la page maquette et se
-  téléchargent sous forme d'un PDF généré.
+  téléchargent sous forme d'un PDF généré. Les fichiers Word, Excel, PowerPoint et OpenDocument s'affichent en PDF
+  quand un service de conversion est configuré (voir « Aperçu des fichiers Office et comparaison des versions ») ;
+  sans lui, « Aperçu indisponible » et le téléchargement, comme avant.
+- **Comparer** (onglet Révisions) : attributs des deux versions, puis leur texte comparé ligne à ligne (PDF, Word,
+  Excel, PowerPoint, OpenDocument, texte), sans service externe.
 
 ## Sécurité HTTP et limites de débit
 
@@ -244,6 +251,7 @@ secondes), sans rien exécuter (ni import, ni lecture de fichier, ni export jour
 | `GET /api/registry` | `CODEX_RATE_REGISTRY` | 300 par minute | adresse du client, derrière un proxy de confiance seulement |
 | Fichiers et fiches de visa (`/api/documents/[id]/file`, `/approval`) | `CODEX_RATE_FILES` | 600 par minute | utilisateur résolu ; et adresse derrière un proxy de confiance |
 | Exports CSV et export complet (`/api/export/*`, GET et HEAD) | `CODEX_RATE_EXPORTS` | 30 par minute | utilisateur résolu ; et adresse derrière un proxy de confiance |
+| Comparaison du contenu de deux versions (`/api/documents/[id]/compare`) | `CODEX_RATE_COMPARE` | 30 par minute | utilisateur résolu ; et adresse derrière un proxy de confiance |
 | Server Actions qui écrivent (`src/lib/actions.ts`) | `CODEX_RATE_WRITES` | 120 par minute | utilisateur résolu |
 
 - Valeur `N` (par minute) ou `N/<durée>` (`30s`, `1m`, `15m`, `1h`) ; `0` ou `off` lève une limite,
@@ -516,6 +524,41 @@ supervision, codes du contrôle de configuration et leur correction).
   exécution à la fois par tâche, même à plusieurs processus sur une base (bail en base). État dans Administration ›
   Journal d'audit › Planificateur ; détail dans `docs/exploitation.md` §4.
 
+## Aperçu des fichiers Office et comparaison des versions
+
+Points 14 et 15 de `docs/reste-a-faire.md` (G05, M12). Installation de l'outil de conversion : `docs/exploitation.md`
+§6.
+
+- **Comparer** (`src/lib/compare.ts`, `GET /api/documents/[id]/compare?a=&b=`) : le texte des deux fichiers est extrait
+  sur le serveur (`src/lib/text-extract.ts`) : PDF par pdf.js (bibliothèque `unpdf`, couche texte seulement : un scan
+  sans texte ne donne rien), Word, Excel, PowerPoint et OpenDocument lus dans leur ZIP, formats texte ; les fichiers
+  Office 97-2003, images et plans ne sont pas lus, et le dialogue le dit. Les écarts sont calculés ligne à ligne
+  (`src/lib/line-diff.ts`, algorithme de Myers), blancs et lignes vides ignorés, et affichés sous les attributs, avec
+  deux lignes de contexte. Bornes : fichier de `CODEX_COMPARE_MAX_MB` (20 Mo par défaut), 15 s d'extraction, 20 000
+  lignes et 2 millions de caractères par texte, 3 000 lignes ajoutées ou supprimées au plus (au-delà : « Les textes
+  diffèrent trop »), 2 000 lignes affichées. Mêmes droits que la route fichier (D-14) : hors du cercle de rédaction,
+  seule la révision en vigueur se lit, donc rien d'autre ne se compare ; une version refusée répond 404. Chaque
+  version comparée est journalisée comme une consultation (« B.2 · Comparaison »). Un fichier dont l'empreinte ne
+  correspond plus à celle du dépôt n'est pas comparé.
+- **Aperçu des fichiers Office** (`src/lib/office-preview.ts`, `src/lib/preview-config.ts`) : désactivé tant que ni
+  `CODEX_PREVIEW_SOFFICE` (chemin de LibreOffice, lancé sans interface) ni `CODEX_PREVIEW_GOTENBERG_URL` (service
+  Gotenberg) n'est défini. Sinon, le fichier est converti en PDF la première fois que quelqu'un qui a le droit de le
+  voir ouvre la fiche (`/api/documents/[id]/file?v=…&preview=pdf`, mêmes droits que le fichier), hors transaction ;
+  le rendu est gardé dans le stockage local (table `version_previews` : clé, nombre de pages, empreinte) et resservi
+  sans nouvelle conversion. La fiche l'affiche avec sa pagination et la mention « Aperçu PDF généré par le service de
+  conversion » de la maquette. Un échec (délai `CODEX_PREVIEW_TIMEOUT_S`, 60 s par défaut ; fichier au-delà de
+  `CODEX_PREVIEW_MAX_MB`, 20 Mo ; résultat qui n'est pas un PDF) donne « Aperçu indisponible » et le téléchargement,
+  et n'est retenté qu'une heure plus tard. Deux conversions au plus en même temps par processus. LibreOffice reçoit un
+  environnement à lui (aucune variable de Codex) et un profil temporaire.
+- **Cohérence** : les rendus sont des données dérivées. Le nettoyage des orphelins compte leurs clés comme référencées
+  (un rendu dont la ligne a disparu devient un orphelin ordinaire), la sauvegarde les archive avec les fichiers,
+  l'export complet les laisse de côté (table et fichiers, refaits à partir des fichiers d'origine), et le contrôle
+  d'intégrité ne porte que sur les fichiers d'origine ; un rendu est vérifié contre son empreinte à chaque envoi
+  entier, et un rendu altéré ou manquant est oublié puis refait.
+- **Tests** : `tests/integration/office-preview.test.ts` remplace LibreOffice par un faux `soffice` (script shell) et
+  Gotenberg par un faux serveur HTTP ; avec `CODEX_TEST_SOFFICE=/usr/bin/soffice`, un dernier test convertit un vrai
+  fichier Word.
+
 ## Organisation du code
 
 ```
@@ -569,6 +612,12 @@ src/
     filetypes.ts       formats, contenu (signatures, ZIP, OLE2, macros) et taille admis au dépôt ; types servis en
                        ligne et affichés en aperçu
     antivirus.ts       analyse antivirus des fichiers déposés (clamd, commande INSTREAM)
+    compare.ts         comparaison du contenu de deux versions (droits, extraction, écarts, journal)
+    text-extract.ts    texte d'un fichier : PDF (unpdf), Word, Excel, PowerPoint, OpenDocument, texte ; bornes
+    zip-read.ts        lecture bornée des entrées d'un ZIP (Office Open XML, OpenDocument)
+    line-diff.ts       écarts ligne à ligne (Myers), regroupés avec leur contexte
+    office-preview.ts  aperçu PDF des fichiers Office : conversion (LibreOffice ou Gotenberg), rendu gardé
+    preview-config.ts  réglages de la conversion (variables, formats convertis)
     keystone.ts, vigie.ts  frontières d'intégration
     importer.ts        API d'import (outil de migration)
     server-auth.ts     authentification entre serveurs : jetons, signature HMAC, anti-rejeu, rotation
@@ -592,7 +641,7 @@ tests/
   unit/                tests unitaires des règles pures de src/lib (Vitest, vitest.config.ts)
   integration/         tests d'intégration sur PGlite en mémoire, ou sur un serveur PostgreSQL (npm run test:pg)
   support/             base de test et données minimales, session simulée, remplacement de server-only, lecture des PDF,
-                       faux clamd, ZIP et fichiers composés (OLE2) minimaux
+                       faux clamd, ZIP et fichiers composés (OLE2) minimaux, fichiers Office minimaux (office.ts)
 ```
 
 ## Décisions et points ouverts

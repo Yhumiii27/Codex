@@ -5,6 +5,7 @@ import { backupDirOf } from './backup-core.mjs';
 import { admittedExtensions, DENIED_EXTENSIONS, SHAREPOINT_MAX_FILE_MB } from './filetypes';
 import { ENDPOINTS, type Endpoint } from './integration-credentials';
 import { LOG_LEVELS, write } from './log';
+import { converterOf, previewMaxInvalid, previewTimeoutInvalid } from './preview-config';
 import { parseRule, RATE_LIMITS } from './ratelimit';
 import { parseInterval, SCHEDULE, TASK_NAMES } from './scheduler-state';
 import { seedModeOf } from './seed-mode';
@@ -167,6 +168,21 @@ export function checkConfig(env: Env, { production }: { production: boolean }): 
   const onError = env.CODEX_CLAMD_ON_ERROR?.trim().toLowerCase();
   if (onError && onError !== 'accept' && onError !== 'refuse') add('warn', 'clamd_on_error_invalid', `CODEX_CLAMD_ON_ERROR="${onError}" is neither refuse nor accept: refuse applies`);
 
+  // ── PDF preview of Office files (lib/preview-config.ts, lib/office-preview.ts) ──
+  const converter = converterOf(env);
+  if (converter.kind === 'invalid') {
+    const why = converter.reason === 'both'
+      ? 'CODEX_PREVIEW_SOFFICE and CODEX_PREVIEW_GOTENBERG_URL are both set'
+      : converter.reason === 'soffice_path'
+        ? 'CODEX_PREVIEW_SOFFICE is not an absolute path'
+        : `CODEX_PREVIEW_GOTENBERG_URL="${withoutCredentials(env.CODEX_PREVIEW_GOTENBERG_URL ?? '')}" is not an http(s) address without credentials nor query`;
+    add('warn', 'preview_invalid', `${why}: Office files get no preview (download only)`);
+  }
+  if (previewTimeoutInvalid(env)) add('warn', 'preview_timeout_invalid', `CODEX_PREVIEW_TIMEOUT_S="${env.CODEX_PREVIEW_TIMEOUT_S!.trim()}" is not a number of seconds from 5 to 600: 60 applies`);
+  if (previewMaxInvalid(env)) add('warn', 'preview_max_invalid', `CODEX_PREVIEW_MAX_MB="${env.CODEX_PREVIEW_MAX_MB!.trim()}" is not a number of megabytes from 1 to 200: 20 applies`);
+  const compareMax = env.CODEX_COMPARE_MAX_MB?.trim();
+  if (compareMax && !(Number(compareMax) >= 1 && Number(compareMax) <= 200)) add('warn', 'compare_max_invalid', `CODEX_COMPARE_MAX_MB="${compareMax}" is not a number of megabytes from 1 to 200: 20 applies`);
+
   // ── Files entering Codex (lib/filetypes.ts) ──
   const mb = env.CODEX_MAX_FILE_MB?.trim();
   if (mb) {
@@ -287,6 +303,11 @@ export async function checkDirectories(env: Env, cwd: string): Promise<Finding[]
       out.push({ severity: 'error', code: 'data_dir_unwritable', message: `${files}: not a folder Codex can read and write` });
     }
   }
+  // LibreOffice for the preview of Office files: a program the server can run.
+  const soffice = converterOf(env);
+  if (soffice.kind === 'soffice' && !(await access(/*turbopackIgnore: true*/ soffice.path, fsc.X_OK).then(() => true, () => false))) {
+    out.push({ severity: 'warn', code: 'preview_soffice_missing', message: `CODEX_PREVIEW_SOFFICE ${soffice.path}: no program Codex can run there; Office files get no preview (download only)` });
+  }
   const backupDir = backupDirOf(dataDir, env);
   for (const inner of [path.join(dataDir, 'pglite'), path.join(dataDir, 'files')]) {
     if (within(backupDir, inner) || within(inner, backupDir)) {
@@ -333,6 +354,7 @@ export async function startupCheck(env: Env = process.env, opts: { cwd?: string;
     storage: env.CODEX_STORAGE === 'sharepoint' ? 'sharepoint' : 'local',
     dataDir: dataDirOf(env, cwd),
     antivirus: env.CODEX_CLAMD?.trim() ? 'clamd' : 'off',
+    preview: converterOf(env).kind,
     errors: errors.length,
     warnings: findings.filter((f) => f.severity === 'warn').length,
   };

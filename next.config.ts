@@ -13,7 +13,8 @@ import { SECURITY_HEADERS } from './src/lib/security-headers';
 const ACTION_BODY_LIMIT = maxFileBytes(process.env) + 1024 * 1024;
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ['@electric-sql/pglite'],
+  // unpdf (pdf.js, text of PDF files for the comparison of versions, src/lib/text-extract.ts) is loaded by Node as is.
+  serverExternalPackages: ['@electric-sql/pglite', 'unpdf'],
   poweredByHeader: false,
   experimental: {
     // No Turbopack cache on disk for next dev (on by default since Next.js 16, .next/dev/cache/turbopack). Restored on a

@@ -1,0 +1,18 @@
+/* Comparison of two versions (dialog Compare, src/components/dialogs/Dialogs.tsx): Nocturne tokens only. The design
+   has no colour for additions and removals: an addition takes the accent, a removal the neutral greys, struck through. */
+.section { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--color-neutral-500); padding-top: 4px; }
+.summary { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; font-size: 12.5px; }
+.legend { font-size: 11.5px; color: var(--color-neutral-500); font-variant-numeric: tabular-nums; }
+.note { margin: 0; font-size: 12px; color: var(--color-neutral-500); }
+.failure { margin: 0; font-size: 12.5px; }
+.diff { max-height: min(46vh, 440px); overflow: auto; border: 1px solid var(--color-divider); border-radius: var(--radius-md); font-size: 12px; line-height: 1.5; }
+.row { display: grid; grid-template-columns: 3.2em 3.2em 1.4em minmax(0, 1fr); align-items: start; }
+.num { color: var(--color-neutral-600); text-align: right; padding-right: 6px; font-variant-numeric: tabular-nums; user-select: none; }
+.op { text-align: center; user-select: none; color: var(--color-neutral-500); }
+.text { white-space: pre-wrap; overflow-wrap: anywhere; padding-right: 8px; }
+.row[data-op='+'] { background: color-mix(in srgb, var(--color-accent) 18%, transparent); }
+.row[data-op='+'] .op, .row[data-op='+'] .text { color: var(--color-accent-200); }
+.row[data-op='-'] { background: color-mix(in srgb, var(--color-neutral-500) 14%, transparent); }
+.row[data-op='-'] .text { color: var(--color-neutral-400); text-decoration: line-through; text-decoration-color: var(--color-neutral-600); }
+.skip { padding: 3px 10px; font-size: 11px; color: var(--color-neutral-500); background: color-mix(in srgb, var(--color-neutral-800) 40%, transparent); border-block: 1px solid var(--color-divider); }
+.skip:first-child { border-top: 0; }

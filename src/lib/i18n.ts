@@ -380,6 +380,21 @@ const fr = {
   retention_event_title:'Date de l’événement déclencheur', retention_event_hint:'La conservation de ce document se compte à partir de cet événement. La date est journalisée ; elle ne fait ni archiver ni détruire le document.', retention_event_clear:'Effacer la date',
   retention_class_edit:'Classe de conservation', retention_class_hint:'Une classe différente de la règle du type est une dérogation : elle est journalisée, et une modification ultérieure de la règle du type ne la change pas. Rien n’est archivé ni détruit.', retention_back_to_type:'Revenir à la règle du type',
   retention_apply:'Documents de ce type', retention_apply_n:'Appliquer cette règle aux documents qui suivent la règle du type ({n} à mettre à jour)',
+  // Added: comparison of the content of versions (point 14) and PDF preview of Office files (point 15).
+  compare_attributes:'Attributs', compare_content:'Contenu', compare_loading:'Extraction et comparaison du texte…', compare_error:'La comparaison du contenu a échoué. Réessayez plus tard.',
+  compare_same:'Texte identique ({n} lignes comparées).', compare_counts:'{added} ligne(s) ajoutée(s), {removed} ligne(s) supprimée(s)', compare_legend:'− {a} · + {b}',
+  compare_skipped:'{n} ligne(s) identique(s)', compare_truncated:'Affichage limité aux premières différences.', compare_text_truncated:'Texte trop long : seul le début de {label} est comparé.',
+  compare_too_different:'Les textes diffèrent trop pour être montrés ligne à ligne.', compare_hint:'Texte courant comparé ligne à ligne, sans la mise en page ; les espaces et lignes vides sont ignorés.',
+  compare_sheet:'Feuille', compare_slide:'Diapositive', compare_same_file:'Mêmes fichiers (empreintes SHA-256 identiques).',
+  compare_fail_unsupported:'{label} : format non pris en charge pour la comparaison du texte (PDF, Word, Excel, PowerPoint, OpenDocument et texte).',
+  compare_fail_too_large:'{label} : fichier trop volumineux pour en extraire le texte.', compare_fail_timeout:'{label} : extraction du texte trop longue, abandonnée.',
+  compare_fail_unreadable:'{label} : texte illisible (fichier endommagé ou structure inattendue).', compare_fail_encrypted:'{label} : fichier protégé par un mot de passe.',
+  compare_fail_empty:'{label} : aucun texte trouvé (document numérisé sans couche texte ?).', compare_fail_no_file:'{label} : aucun fichier pour cette version.',
+  compare_fail_unavailable:'{label} : fichier introuvable dans le stockage.', compare_fail_altered:'{label} : fichier altéré (empreinte SHA-256 différente de celle du dépôt), non comparé.',
+  compare_busy:'Trop de comparaisons en cours : réessayez dans un instant.',
+  preview_unavailable_short:'Aperçu indisponible', preview_download_hint:'Téléchargez le fichier pour le consulter.', preview_off:'Aucun service de conversion n’est configuré.',
+  preview_failed:'La conversion en PDF a échoué.', preview_too_large:'Fichier trop volumineux pour être converti.', preview_busy:'Service de conversion occupé : rouvrez la fiche dans un instant.',
+  preview_failed_note:'La conversion en PDF de ce fichier a échoué — téléchargez-le pour le consulter.',
 };
 
 type Dict = Record<keyof typeof fr, string>;
@@ -759,6 +774,20 @@ const en: Dict = {
   retention_event_title:'Date of the trigger event', retention_event_hint:'The retention of this document counts from this event. The date is journaled; it neither archives nor destroys the document.', retention_event_clear:'Clear the date',
   retention_class_edit:'Retention class', retention_class_hint:'A class other than the type rule is a derogation: it is journaled, and a later change of the type rule leaves it unchanged. Nothing is archived or destroyed.', retention_back_to_type:'Back to the type rule',
   retention_apply:'Documents of this type', retention_apply_n:'Apply this rule to the documents that follow the type rule ({n} to update)',
+  compare_attributes:'Attributes', compare_content:'Content', compare_loading:'Extracting and comparing the text…', compare_error:'The content comparison failed. Try again later.',
+  compare_same:'Identical text ({n} lines compared).', compare_counts:'{added} line(s) added, {removed} line(s) removed', compare_legend:'− {a} · + {b}',
+  compare_skipped:'{n} identical line(s)', compare_truncated:'Display limited to the first differences.', compare_text_truncated:'Text too long: only the beginning of {label} is compared.',
+  compare_too_different:'The texts differ too much to be shown line by line.', compare_hint:'Running text compared line by line, without the layout; blanks and empty lines are ignored.',
+  compare_sheet:'Sheet', compare_slide:'Slide', compare_same_file:'Same files (identical SHA-256 fingerprints).',
+  compare_fail_unsupported:'{label}: format not supported for the text comparison (PDF, Word, Excel, PowerPoint, OpenDocument and text).',
+  compare_fail_too_large:'{label}: file too large to extract its text.', compare_fail_timeout:'{label}: text extraction took too long and was stopped.',
+  compare_fail_unreadable:'{label}: text cannot be read (damaged file or unexpected structure).', compare_fail_encrypted:'{label}: file protected by a password.',
+  compare_fail_empty:'{label}: no text found (scanned document without a text layer?).', compare_fail_no_file:'{label}: no file for this version.',
+  compare_fail_unavailable:'{label}: file not found in the store.', compare_fail_altered:'{label}: file altered (SHA-256 fingerprint differs from the one recorded at upload), not compared.',
+  compare_busy:'Too many comparisons in progress: try again in a moment.',
+  preview_unavailable_short:'Preview unavailable', preview_download_hint:'Download the file to read it.', preview_off:'No conversion service is configured.',
+  preview_failed:'The conversion to PDF failed.', preview_too_large:'File too large to be converted.', preview_busy:'Conversion service busy: open the record again in a moment.',
+  preview_failed_note:'The conversion of this file to PDF failed — download it to read it.',
 };
 
 export const DICT: Record<Lang, Dict> = { fr, en };

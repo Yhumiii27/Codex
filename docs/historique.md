@@ -2253,6 +2253,7 @@ de [decisions.md](decisions.md).
 | 2. Police locale, migrations incrémentales, amorçage séparé et application du registre | commit « Lot 9, étape 2 », qui suit `7d3db2e` | 42, 41, 45, 60 (et 52 en partie) | Inter servie depuis le dépôt (build sans réseau) ; migrations versionnées à partir de `0000_init`, contrôlées et précédées d'une sauvegarde ; `CODEX_SEED=demo|minimal` ; `npm run registry:apply` | Mêmes fichiers de police que Google, à l'octet ; refus d'une base d'un autre schéma, sauvegarde obligatoire avant migration ; démo par défaut partout, administrateur initial fictif en minimal ; simulation par défaut, l'administration l'emporte, codes figés, types retirés désactivés |
 | 3. Postgres serveur en option et mesures sur gros volume | commit « Lot 9, étape 3 », qui suit `98b45db` | 51 (en partie), 56 | `DATABASE_URL` : serveur PostgreSQL 18 par node-postgres, mêmes migrations et compléments sous verrou consultatif ; suite de tests rejouée sur un serveur (`npm run test:pg`, CI) ; `npm run seed:large` et `npm run perf`, mesures dans `docs/performances.md` | PGlite par défaut ; PostgreSQL 18 exigé ; référentiel minimal par défaut sur un serveur ; sauvegarde, restauration, `export` et `integrity` en ligne de commande refusés sur un serveur ; migration d'une base serveur seulement avec `CODEX_MIGRATION_BACKUP=off` ; `READ COMMITTED` ; volume dans une base à part |
 | 4. Planificateur interne et signature des échanges entre serveurs | commit « Lot 9, étape 4 », qui suit `ccf5940` | 38 (en partie), 23 | Mise en vigueur différée lancée par le serveur toutes les 5 minutes, tâches d'exploitation réglables ; signature HMAC avec fenêtre et anti-rejeu sur le webhook Vigie et l'import, rotation par `…_NEXT`, registre protégeable par jeton | Tâches d'exploitation désactivées par défaut ; pages qui ne mettent plus en vigueur tant que le planificateur le fait ; aucune relance ni envoi sortant ; registre ouvert par défaut ; tout ce qui est défini est exigé ; fenêtre de 5 minutes |
+| 5. Comparaison du contenu des versions et aperçu des fichiers Office | commit « Lot 9, étape 5 », qui suit `3586ab8` | 14, 15 | « Comparer » montre, sous les attributs, le texte des deux versions comparé ligne à ligne (PDF, Word, Excel, PowerPoint, OpenDocument, texte), lu sur le serveur sous les droits du fichier ; aperçu PDF des fichiers Office par LibreOffice sans interface ou Gotenberg, converti à la première consultation, gardé (table `version_previews`, migration `0002_apercu_office`) et servi par la route fichier (`?preview=pdf`) | Texte et non visuel ; formats Office 97-2003 non lus ; bornes de taille, de temps et de lignes ; aperçu désactivé sans outil configuré, conversion à la demande plutôt qu'au dépôt, échec retenté après une heure, rendus dans le stockage local même avec SharePoint, sauvegardés mais hors de l'export complet ; ni PDF/A ni filigrane (M12) |
 
 ### 18.1 Rechargement en boucle en développement et lectures ciblées
 
@@ -2479,3 +2480,41 @@ Seule différence : `src/instrumentation.ts` existait déjà (point 37).
 - **Reste** : relances et notifications (M19, canal), envois vers Vigie et Keystone (T-01, O-03, O-10), reprise des
   noms provisoires (point 36), fréquences d'exploitation et heure fixe éventuelle (M22), alignement du contrat de
   signature avec Vigie et Keystone, identifiants OAuth (O-02).
+
+### 18.5 Comparaison du contenu des versions et aperçu des fichiers Office
+
+Points 14 et 15 de [reste-a-faire.md](reste-a-faire.md) (G05, M12), vérifiés au commit `3586ab8` : le dialogue
+`Compare` ne montrait que les attributs, aucune bibliothèque d'extraction n'était installée ; un fichier Office
+n'avait que « Aperçu indisponible » et le téléchargement, `preview_note` n'était affiché nulle part, et
+`working_versions` n'avait pas de place pour un rendu.
+
+- **Comparer (point 14).** `GET /api/documents/[id]/compare?a=&b=` (`src/lib/compare.ts`) relit les deux versions sous
+  les règles de la route fichier (`readableVersions`, `src/lib/queries.ts`, D-14), extrait leur texte
+  (`src/lib/text-extract.ts`) et le compare ligne à ligne (`src/lib/line-diff.ts`, algorithme de Myers, borné). PDF
+  par `unpdf` 1.7.0 (pdf.js ; la 1.9.0, publiée trois jours plus tôt, et la 1.8 exigent Node 22, alors que Codex
+  admet Node 20.19) ; Office Open XML et OpenDocument par un lecteur de ZIP borné écrit pour l'occasion
+  (`src/lib/zip-read.ts`), Excel feuille par feuille et PowerPoint diapositive par diapositive. Le dialogue garde le
+  tableau des attributs et ajoute le contenu (CSS module `compare.module.css`, couleurs de Nocturne : la maquette ne
+  prévoit ni rouge ni vert). Nouvelle limite de débit `CODEX_RATE_COMPARE`. Chaque version comparée est journalisée
+  comme une consultation.
+- **Aperçu des fichiers Office (point 15 ; [exploitation.md](exploitation.md) §6).** `src/lib/office-preview.ts` :
+  `soffice --headless --convert-to pdf` (chemin dans `CODEX_PREVIEW_SOFFICE`, dossier, profil et environnement à lui,
+  tué au-delà du délai) ou Gotenberg (`CODEX_PREVIEW_GOTENBERG_URL`), désactivé sans réglage. Conversion à la première
+  demande de la route fichier avec `?preview=pdf`, hors transaction, une par version, deux par processus ; rendu dans
+  le stockage local et dans `version_previews` (migration incrémentale `0002_apercu_office`, `0000` et `0001`
+  inchangées), avec son nombre de pages (`countPdfPages`) et son empreinte, vérifiée à chaque envoi ; échec noté et
+  retenté une heure plus tard. La fiche montre le rendu avec sa pagination et `preview_note` comme la maquette.
+  Orphelins, sauvegarde (y compris celle d'avant migration, sur une base sans la table), export complet
+  (`DERIVED_TABLES`) et contrôle de configuration suivent.
+- **Vérifié** : `npm test` (88 fichiers, 1 260 tests passés, 10 ignorés), `npm run typecheck`, `npm run lint`,
+  `npm run db:check`, `npm run build` ; avec `CODEX_TEST_SOFFICE=/usr/bin/soffice`, conversion réelle par le
+  LibreOffice 24.2 du conteneur. `npm run dev` puis `npm start` sur une copie de la base de démonstration (migrations
+  `0001` et `0002` appliquées après sauvegarde) : deux versions Word déposées sur `CTR-JUR-0001`, aperçu converti
+  (« Page 1 sur 1 · Aperçu PDF généré par le service de conversion »), comparaison A.4 → A.5 dans le dialogue (« 2
+  ligne(s) ajoutée(s), 1 ligne(s) supprimée(s) »), comparaison Word contre PDF par l'API ; pour deux personnes hors du
+  cercle de rédaction, comparaison, aperçu et fichier répondent 404 ; sans outil configuré, « Aperçu indisponible »
+  et le PDF de remplacement.
+- **Reste** : comparaison visuelle côte à côte, fichiers Office 97-2003, PDF numérisés (reconnaissance de
+  caractères) ; choix de l'outil de conversion avec l'hébergement et essai sur macOS (app Mac, D-22) ; conversion par
+  Microsoft Graph si SharePoint est activé (O-01) ; PDF/A, filigrane et en-têtes générés (M12).
+

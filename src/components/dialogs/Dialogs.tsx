@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { useApp } from '@/components/shell/AppProvider';
 import { Icon } from '@/components/ui/Icon';
 import { Seg } from '@/components/ui/Seg';
@@ -11,6 +11,7 @@ import {
   saveSearch, setDepartmentFeatured, setReaders, setRetentionClass, setRetentionEvent, setTemplateTypes, simulateUser, simulateVigieDecision, updateFamily, updateFunction, updateMeta, updateOrgValue, updateProgram, updateType,
 } from '@/lib/actions';
 import { contextOf, idMatches, seqWidth, TEMPLATE_TYPE } from '@/lib/codes';
+import type { CompareResult } from '@/lib/compare';
 import { DEFAULT_FEATURED, FEATURABLE, MAX_FEATURED } from '@/lib/departments';
 import { fmtDate } from '@/lib/format';
 import { ATTACHMENTS, CONF_LEVELS, ORIGINS, PROJECT_PHASES, SEARCH_SCOPES, SIM_ROLES, type T, type TKey } from '@/lib/i18n';
@@ -21,6 +22,7 @@ import { BUILT_IN_SCOPES, DISPOSITIONS, FAMILY_GROUPS, FUNCTION_SCOPES, RETENTIO
 import { FACET_LABEL, type FacetKey } from '@/lib/search';
 import { FilePicker, Modal, Select, useSubmit, type SelectOption } from './Modal';
 import type { DialogData, DialogSpec, MetaDoc, TypeSettings, VersionLite } from './types';
+import cmp from './compare.module.css';
 
 export function Dialogs({ spec }: { spec: DialogSpec }) {
   switch (spec.kind) {
@@ -34,7 +36,7 @@ export function Dialogs({ spec }: { spec: DialogSpec }) {
     case 'link': return <LinkDocument spec={spec} />;
     case 'delegate': return <Delegate workflowId={spec.workflowId} stepName={spec.stepName} step={spec.step} excluded={spec.excluded} />;
     case 'reject': case 'recall': return <CloseWorkflow spec={spec} />;
-    case 'compare': return <Compare current={spec.current} other={spec.other} />;
+    case 'compare': return <Compare docId={spec.docId} current={spec.current} other={spec.other} />;
     case 'readers': return <Readers docId={spec.docId} readers={spec.readers} version={spec.version} />;
     case 'templateTypes': return <TemplateTypes spec={spec} />;
     case 'vigie': return <VigieDecision requestId={spec.requestId} docTitle={spec.docTitle} change={spec.change} modifierId={spec.modifierId} drafters={spec.drafters} deferred={spec.deferred} />;
@@ -726,8 +728,28 @@ function CloseWorkflow({ spec }: { spec: Extract<DialogSpec, { kind: 'reject' | 
   );
 }
 
-function Compare({ current, other }: { current: VersionLite; other: VersionLite }) {
+/** What GET /api/documents/[id]/compare answers. */
+type CompareAnswer = CompareResult;
+
+/**
+ * Two versions side by side: their attributes, then their text compared line by line (GET /api/documents/[id]/compare,
+ * lib/compare.ts), from the selected version (−) to the current one (+). The server decides what may be compared (D-14).
+ */
+function Compare({ docId, current, other }: { docId: string; current: VersionLite; other: VersionLite }) {
   const { t, close } = useApp();
+  const [answer, setAnswer] = useState<CompareAnswer | { error: string } | null>(null);
+  useEffect(() => {
+    const ctl = new AbortController();
+    fetch(`/api/documents/${encodeURIComponent(docId)}/compare?a=${other.id}&b=${current.id}`, { signal: ctl.signal, cache: 'no-store' })
+      .then(async (res) => {
+        if (res.ok) setAnswer((await res.json()) as CompareAnswer);
+        else setAnswer({ error: res.status === 429 || res.status === 503 ? (await res.text()) || t.compare_error : t.compare_error });
+      })
+      .catch((err: unknown) => {
+        if ((err as Error)?.name !== 'AbortError') setAnswer({ error: t.compare_error });
+      });
+    return () => ctl.abort();
+  }, [docId, other.id, current.id, t]);
   const rows: [string, (v: VersionLite) => string][] = [
     [t.working_version, (v) => v.label], [t.date, (v) => v.dateF], [t.author, (v) => v.author], [t.version_comment, (v) => v.commentL],
     [t.file, (v) => v.fileName ?? '—'], [t.size, (v) => v.sizeF], [t.pages, (v) => (v.pages ? String(v.pages) : '—')],
@@ -735,7 +757,8 @@ function Compare({ current, other }: { current: VersionLite; other: VersionLite 
     ['SHA-256', (v) => (v.sha256 ? `${v.sha256.slice(0, 16)}…` : '—')],
   ];
   return (
-    <Modal title={t.compare_title} width={620} actions={<button type="button" className="btn btn-primary" onClick={close}>{t.close}</button>}>
+    <Modal title={t.compare_title} width={820} actions={<button type="button" className="btn btn-primary" onClick={close}>{t.close}</button>}>
+      <div className={cmp.section}>{t.compare_attributes}</div>
       <table className="table" style={{ fontSize: 13 }}>
         <thead><tr><th /><th>{t.selected_version}</th><th>{t.current_version}</th></tr></thead>
         <tbody>
@@ -745,7 +768,53 @@ function Compare({ current, other }: { current: VersionLite; other: VersionLite 
           })}
         </tbody>
       </table>
+      <div className={cmp.section}>{t.compare_content}</div>
+      <CompareContent answer={answer} />
     </Modal>
+  );
+}
+
+function CompareContent({ answer }: { answer: CompareAnswer | { error: string } | null }) {
+  const { t } = useApp();
+  if (!answer) return <p className={cmp.note} role="status">{t.compare_loading}</p>;
+  if ('error' in answer) return <p className="form-error" role="alert">{answer.error}</p>;
+  const { a, b, diff } = answer;
+  const failures = [a, b].filter((x, i) => x.failure && (i === 0 || b.id !== a.id));
+  const truncated = [a, b].filter((x) => x.truncated);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }} aria-live="polite">
+      {failures.map((x) => <p key={`f${x.id}`} className={cmp.failure}>{t[`compare_fail_${x.failure}` as TKey].replace('{label}', x.label)}</p>)}
+      {answer.sameFile && <p className={cmp.note}>{t.compare_same_file}</p>}
+      {diff?.kind === 'same' && <p className={cmp.failure}>{t.compare_same.replace('{n}', String(diff.lines))}</p>}
+      {diff?.kind === 'too_different' && <p className={cmp.failure}>{t.compare_too_different}</p>}
+      {diff?.kind === 'diff' && (
+        <>
+          <div className={cmp.summary}>
+            <span>{t.compare_counts.replace('{added}', String(diff.added)).replace('{removed}', String(diff.removed))}</span>
+            <span className={cmp.legend}>{t.compare_legend.replace('{a}', a.label).replace('{b}', b.label)}</span>
+          </div>
+          <div className={cmp.diff} tabIndex={0} aria-label={t.compare_content}>
+            {diff.hunks.map((h, i) => (
+              <Fragment key={i}>
+                {h.skipped > 0 && <div className={cmp.skip}>{t.compare_skipped.replace('{n}', String(h.skipped))}</div>}
+                {h.lines.map((l, j) => (
+                  <div key={j} className={cmp.row} data-op={l.op}>
+                    <span className={cmp.num}>{l.a ?? ''}</span>
+                    <span className={cmp.num}>{l.b ?? ''}</span>
+                    <span className={cmp.op} aria-hidden>{l.op === ' ' ? '' : l.op === '-' ? '−' : '+'}</span>
+                    <span className={cmp.text}>{l.op === '-' ? <del>{l.text}</del> : l.op === '+' ? <ins style={{ textDecoration: 'none' }}>{l.text}</ins> : l.text}</span>
+                  </div>
+                ))}
+              </Fragment>
+            ))}
+            {diff.trailing > 0 && <div className={cmp.skip}>{t.compare_skipped.replace('{n}', String(diff.trailing))}</div>}
+          </div>
+          {diff.truncated && <p className={cmp.note}>{t.compare_truncated}</p>}
+        </>
+      )}
+      {truncated.map((x) => <p key={`t${x.id}`} className={cmp.note}>{t.compare_text_truncated.replace('{label}', x.label)}</p>)}
+      <p className={cmp.note}>{t.compare_hint}</p>
+    </div>
   );
 }
 

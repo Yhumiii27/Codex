@@ -15,6 +15,13 @@
       "when": 1792287567764,
       "tag": "0001_planificateur_signatures",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792289677284,
+      "tag": "0002_apercu_office",
+      "breakpoints": true
     }
   ]
 }
