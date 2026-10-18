@@ -173,7 +173,14 @@ describe('the file route', () => {
     await recorded('PRO-QUA-0001', f);
     g.fail(/\/content$/, 503, { retryAfter: '1', times: 3 });
     const pending = get('PRO-QUA-0001');
-    await vi.advanceTimersByTimeAsync(5_000);
+    // The route reads the database before Graph: on a PostgreSQL server that takes real time, so the waits between
+    // attempts are scheduled later. Move the clock a second at a time, letting real I/O run, until the answer comes.
+    let settled = false;
+    void pending.finally(() => (settled = true));
+    for (let i = 0; i < 100 && !settled; i++) {
+      await vi.advanceTimersByTimeAsync(1_000);
+      await new Promise((r) => setImmediate(r));
+    }
     expect((await pending).status).toBe(502);
     g.items.delete(f.fileKey);
     const res = await get('PRO-QUA-0001');
