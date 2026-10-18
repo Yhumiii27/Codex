@@ -12,7 +12,16 @@ import { SECURITY_HEADERS } from './src/lib/security-headers';
  */
 const ACTION_BODY_LIMIT = maxFileBytes(process.env) + 1024 * 1024;
 
+/**
+ * Generic container image (Dockerfile, docs/exploitation.md « Image générique »): `CODEX_STANDALONE=1 next build` writes
+ * the self-contained server of .next/standalone (output: 'standalone', node_modules/next/dist/docs/01-app/03-api-reference/
+ * 05-config/01-next-config-js/output.md). Unset (npm run build, the Mac app's desktop/build-app.sh), nothing is added:
+ * the build is the same as before.
+ */
+const STANDALONE: Partial<NextConfig> = process.env.CODEX_STANDALONE === '1' ? { output: 'standalone' } : {};
+
 const nextConfig: NextConfig = {
+  ...STANDALONE,
   // unpdf (pdf.js, text of PDF files for the comparison of versions, src/lib/text-extract.ts) is loaded by Node as is.
   serverExternalPackages: ['@electric-sql/pglite', 'unpdf'],
   poweredByHeader: false,

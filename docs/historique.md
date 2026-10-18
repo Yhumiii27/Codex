@@ -2814,6 +2814,7 @@ présentent l'état du code et recueillent les réponses ; rien n'est prérégl�
 | 3. SharePoint sans tenant | commits « Lot 10, étape 3 » (deux) | 36, 103 (préparation, O-01 toujours ouverte) | Faux Microsoft Graph et 26 tests du pilote ; quatre défauts corrigés (délai d'envoi non entier, jeton refusé gardé en cache, `Retry-After`, corps des réponses de limitation) ; `npm run storage:check` ; procédure d'essai sur un tenant (`docs/exploitation.md` §8) | `CODEX_STORAGE` reste `local` par défaut ; aucune suppression sur SharePoint ; pas de session d'envoi ; plafond de 250 Mo inchangé |
 | 4. Constats remis à jour et corrections neutres | commit « Lot 10, étape 4 » | 70 à 120 (constats), 87, 88, 94 (avancés, toujours bloqués) | 50 constats revérifiés ; état récapitulatif recompté par question (O-01 : 5 points au lieu de 11, O-11 : 2 au lieu de 9) et annexe B des fiches alignée ; vocabulaires : un terme non proposé est traité comme inconnu, comptes réservés aux gestionnaires (D-14) ; indicateur « En retard » des circuits ; chiffrement au repos documenté ; bouton « Copier le lien du document » ; JUR dans la question 1 du registre | Aucune question tranchée ; délai de 7 jours, relances et « À traiter » inchangés ; rien de chiffré par Codex |
 | 5. Parcours de bout en bout et simulation d'import | commit « Lot 10, étape 5 » | 57 (avancé), 106 (préparé, toujours bloqué) | `npm run e2e` : cinq parcours indépendants (approbation, rejet avec motif puis nouvelle demande, rappel, demande Vigie acceptée puis greffe ou attente, import simulé puis réel), chacun avec le contrôle D-14 hors du cercle de rédaction ; `POST /api/import?dryRun=1` | Simulation : transaction annulée, aucun fichier stocké, rien au journal d'audit, aucun champ ni limite de plus ; paramètre d'adresse inconnu refusé ; identifiant prévu non réservé ; parcours lancés tous dans la CI (stables sur trois passages) |
+| 6. Affichage étroit et image générique | commits « Lot 10, étape 6 » (deux) | 79 (avancé), 112 (préparé), toujours bloqués | `npm run a11y -- --narrow` (320 px, 1 280 px à 200 %) ; quatre débordements corrigés sans effet sur le bureau ; `Dockerfile` et `.dockerignore`, sortie autonome seulement avec `CODEX_STANDALONE=1` ; image construite et essayée | Captures du bureau identiques avant et après ; ni mise en page mobile, ni barre repliable, ni PWA (M23) ; ni hébergeur, ni proxy, ni TLS, `CODEX_SEED` non posé (M22) ; build par défaut inchangé |
 
 ### 19.1 Cahiers de validation du registre et de l'organigramme
 
@@ -3004,3 +3005,82 @@ Rien de ce qui suit ne tranche une question ouverte ; aucun point bloqué ne cha
 - **Vérifié** : `npm run typecheck`, `npm run lint`, `npm run db:check`, `npm test` (106 fichiers dont 1 sauté, 1 431
   tests passés, 13 sautés, aussi avec `.data` déplacé), `npm run build`, `npm run a11y` (30 écrans et 20 dialogues, 0
   violation), `npm run e2e` trois fois (5 parcours sur 5, 32 étapes, 72 à 73 s).
+
+### 19.5 Affichage étroit et image générique (lot 10, étape 6)
+
+Rien de ce qui suit ne tranche une question ouverte : M22 (hébergement), M23 (accès terrain et mobile) et O-02
+(authentification) restent ouvertes ; les points 79 et 112 restent bloqués.
+
+- **Affichage étroit** (`npm run a11y -- --narrow`, `scripts/codex-narrow.mts`, [accessibilite.md](accessibilite.md)
+  « Affichage étroit et zoom ») : les 30 écrans et 20 dialogues du contrôle d'accessibilité rendus à 1 440 × 900
+  (référence), 320 × 256 (WCAG 1.4.10) et 640 × 400 px CSS à deux pixels par px (1 280 px zoomé à 200 %, WCAG 1.4.4) ;
+  axe à chaque taille, puis débordement horizontal de la page, textes et contrôles hors fenêtre, masqués par un bloc,
+  tronqués par des points de suspension, blocs à défilement horizontal et superpositions. Constats listés sans faire
+  échouer la commande ; `--json` pour le détail, `--shots <dossier>` (aussi sans `--narrow`) pour une capture de chaque
+  écran et dialogue.
+  - **Mesures** (français) : à 200 %, écrans ou dialogues plus larges que la fenêtre 15 → 3 sur 50, éléments hors
+    fenêtre 252 → 28 ; à 320 px, 30 écrans sur 30 restent plus larges (305 px de trop au lieu de 305 à 1 124), éléments
+    hors fenêtre 1 162 → 529 ; au bureau, débordement invisible de 4 px du Registre supprimé, 0 violation.
+  - **Corrections** (sans effet sur le bureau) : barre latérale qui défile (Aide, notes, profil étaient sous le bord à
+    200 %) ; `Seg` prend `wrap` (`.seg-wrap`) pour les onglets d'Administration et d'Archivage et les filtres des
+    échéances, qui vont à la ligne au lieu de pousser l'écran (une règle sur tous les contrôles segmentés déformait
+    l'en-tête : écartée) ; en-têtes de colonne réservés aux lecteurs d'écran gardés dans le flux de leur cellule
+    (`th > .sr-only`, ils prolongeaient la page jusqu'au bord d'un tableau large ; la cellule positionnée, essayée
+    d'abord, couvrait le trait sous les en-têtes) ; référence d'un modèle tronquée dans « Nouveau document ».
+  - **Bureau inchangé** : 30 écrans et 20 dialogues capturés à 1 440 px sur le code d'avant et d'après, 49 captures
+    identiques au pixel près, la cinquantième ne différant que par les heures du planificateur.
+  - **Reste, selon M23** : 320 px (barre latérale de 224 px et en-tête), panneau de fiche de 400 px, trois colonnes de
+    l'Explorateur, colonne des filtres de la Recherche, tableaux qui défilent dans leur bloc, zone d'aperçu de la fiche
+    sans focus à 320 px (axe, 14 écrans). Constat hors débordement : la référence d'un modèle sur une ligne survolée
+    donne 4,38:1 (présent au bureau ; non corrigé).
+- **Image générique** ([exploitation.md](exploitation.md) §10, `Dockerfile`, `.dockerignore`) : trois étapes (`npm ci`,
+  build avec `CODEX_STANDALONE=1`, exécution sur `node:22-bookworm-slim`) ; l'image ne garde que `server.js`,
+  `package.json`, `node_modules` réduit, `.next` et ses fichiers statiques, `drizzle/` et les commandes de sauvegarde,
+  d'export et d'intégrité ; utilisateur `node` non root, `/app` à root ; volume `/var/lib/codex` (`CODEX_DATA_DIR`,
+  sauvegardes et exports à côté) ; `HEALTHCHECK` sur `/api/health` par Node ; `CODEX_SEED` non posé ; aucun secret,
+  `.env` ni donnée dans le contexte ; proxy TLS d'entreprise pris en charge au build (`HTTPS_PROXY`, secret `npm_ca`).
+  - **`next.config.ts`** : `output: 'standalone'` seulement quand `CODEX_STANDALONE=1`. Deux builds par défaut, avant et
+    après, ont les mêmes 560 fichiers et la même configuration serveur ; les écarts sont ceux de deux builds du même code
+    (identifiant de build, noms de morceaux), plus l'empreinte de `next.config.ts` dans deux traces.
+  - **Piège relevé** : Next.js trace tout le projet (le serveur lit `drizzle/` et `package.json` dans son dossier), donc
+    `.next/standalone` reprend `.data/` en local ; `outputFileTracingExcludes` n'atteint pas la trace d'`instrumentation`
+    (essayé, retiré). D'où la copie explicite dans le `Dockerfile` et l'avertissement dans la documentation.
+  - **Limite relevée** : le verrou `codex.lock` compare des numéros de processus, qui ne traversent pas les conteneurs ;
+    une commande lancée dans un autre conteneur, numéro 1 comme le serveur, prend son verrou pour le sien (vérifié).
+    Documenté : arrêter le conteneur du serveur avant toute commande, jamais deux conteneurs sur un volume, sauvegarde
+    depuis l'Administration pendant que le serveur tourne. Non corrigé (le verrou est partagé par toutes les commandes).
+  - **Essayé** : le démon Docker de la session lancé à la main, l'image de base prise sur `mirror.gcr.io` (quota de
+    Docker Hub épuisé), build par le proxy de la session ; image de 436 Mo sur disque (106 Mo compressés), conteneur
+    `healthy` en 15 s, `npm run a11y -- --url` sur le conteneur sans violation ni erreur au journal, arrêt en 0,3 s avec
+    le verrou libéré, base conservée au redémarrage, redémarrage après `docker kill`, sauvegarde créée et listée depuis
+    un autre conteneur, ni `.env` ni secret dans l'image ; hors Docker, sortie autonome copiée comme dans l'image,
+    `/api/health` 200, `npm run a11y -- --url` sans violation, sauvegarde, vérification, restauration, export et
+    intégrité.
+- **Documentation** : [accessibilite.md](accessibilite.md), [exploitation.md](exploitation.md) §2 et §10, README
+  (contrôles, exploitation, organisation du code), `.env.example` (`CODEX_STANDALONE`),
+  [reste-a-faire.md](reste-a-faire.md) (lignes « Avancé » du point 79 et « Préparé » du point 112, état récapitulatif).
+- **Vérifié** : `npm run typecheck`, `npm run lint`, `npm run db:check`, `npm test` (106 fichiers dont 1 sauté, 1 431
+  tests passés, 13 sautés, aussi avec `.data` déplacé), `npm run build` (sans `.next/standalone`), `npm run a11y`
+  (30 écrans et 20 dialogues, 0 violation), `npm run a11y -- --narrow` (190 s), `npm run e2e` (5 parcours sur 5,
+  32 étapes, 73 s), `docker build` et le conteneur comme ci-dessus.
+
+### Bilan du lot 10
+
+Le lot 10 a préparé, sans en trancher aucune, les réponses que Codex attend de l'utilisateur, et fait ce qui pouvait
+l'être sans elles.
+
+- **Pour décider** : une fiche par question O-01 à O-11 ([fiches-decision.md](fiches-decision.md)) ; cahiers de
+  validation du registre et de l'organigramme (`npm run registry:review`, `npm run org:check`) ; procédure d'essai de
+  SharePoint sur un tenant et `npm run storage:check` ; simulation d'import (`POST /api/import?dryRun=1`) ; image
+  générique pour l'hébergement (M22).
+- **Vérifié sans décision** : pilote SharePoint contre un faux Microsoft Graph (quatre défauts corrigés) ; constats
+  des points 70 à 120 revérifiés et état récapitulatif recompté ; cinq parcours de bout en bout dans la CI ; affichage
+  étroit et zoom mesurés, débordements neutres corrigés.
+- **Corrections neutres** : vocabulaires et D-14, indicateur « En retard », bouton de copie du lien, chiffrement au
+  repos documenté, barre latérale, onglets et en-têtes de colonne à l'écran étroit.
+- **Points** : aucun ne change d'état. Préparés : 36 (reste), 103, 106, 112, 113 à 118 ; avancés : 57, 79, 87, 88, 94.
+- **Toujours ouvert** : O-01 à O-11 ; M22 (hébergement, exploitation) ; M23 (accès terrain et mobile) ; les autres
+  questions de l'audit listées en tête de [reste-a-faire.md](reste-a-faire.md).
+- **Suites possibles sans décision** : verrou du dossier de données valable d'un conteneur à l'autre (§19.5) ;
+  contraste de la référence d'un modèle sur une ligne survolée ; `--narrow --lang en`.
+

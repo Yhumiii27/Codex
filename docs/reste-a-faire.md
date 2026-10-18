@@ -1,10 +1,10 @@
 # Reste à faire sur Codex
 
 Inventaire du 9 octobre 2026, sur la branche `codex-ged-v2-vkmf4l`, tenu à jour jusqu'au 18 octobre 2026 (lot 10,
-étape 4 comprise). Chaque point fait porte sa ligne « Fait le … » ; le détail de chaque lot est dans
+étape 6 comprise). Chaque point fait porte sa ligne « Fait le … » ; le détail de chaque lot est dans
 `docs/historique.md` (§11 à §19).
 
-## État au 18 octobre 2026 (lot 10, étape 4)
+## État au 18 octobre 2026 (lot 10, étape 6)
 
 | Ce qui bloque (classement du 9 octobre) | Points | Faits | Faits en partie | Pas commencés |
 |---|---|---|---|---|
@@ -13,8 +13,8 @@ Inventaire du 9 octobre 2026, sur la branche `codex-ged-v2-vkmf4l`, tenu à jour
 | Attend des données de l'utilisateur | 2 | 0 | 0 | 2 |
 | Demande une session sur macOS | 9 | 0 | 0 | 9 |
 
-Les lignes « Préparé » (103, 106, 113 à 118 ; 36 pour son reste) et « Avancé » (87, 88, 94) du lot 10 ne changent pas
-ce compte : ces points attendent toujours leur décision.
+Les lignes « Préparé » (103, 106, 112, 113 à 118 ; 36 pour son reste) et « Avancé » (79, 87, 88, 94) du lot 10 ne
+changent pas ce compte : ces points attendent toujours leur décision.
 
 Le lot 10 (18 octobre) prépare les réponses de l'utilisateur sans rien trancher : fiches de décision
 (`docs/fiches-decision.md`), cahiers de validation du registre et de l'organigramme (`npm run registry:review`,
@@ -24,7 +24,10 @@ SharePoint essayé sans tenant (points 36 et 103). L'étape 4 a revérifié les 
 points par question, et fait sans décision ce que les points 87, 88 et 94 permettaient (ligne « Avancé le 18 octobre
 2026 ») : aucun point bloqué ne change d'état. L'étape 5 a ajouté quatre parcours de bout en bout (rejet, rappel,
 demande Vigie, import ; point 57, déjà fait, « Avancé ») et la simulation d'import `POST /api/import?dryRun=1` (point
-106, « Préparé », toujours bloqué).
+106, « Préparé », toujours bloqué). L'étape 6 a mesuré l'affichage étroit et le zoom (`npm run a11y -- --narrow`,
+WCAG 1.4.10 et 1.4.4) et corrigé les débordements sans effet sur le bureau (point 79, « Avancé », toujours bloqué par
+M23), et préparé une image générique (`Dockerfile`, sortie autonome de Next.js seulement avec `CODEX_STANDALONE=1` ;
+point 112, « Préparé », toujours bloqué par M22).
 
 Les 69 points développables sans décision ont tous été traités (lots 1 à 9, du 10 au 18 octobre). L'étape 9 du lot 9 a
 repris les restes qui ne dépendaient de rien (points 36, 43, 46, 47, 50, 51, 52 et 57) : 43, 52 et 57 sont faits, les
@@ -1497,6 +1500,7 @@ Le manque est réel. Le registre ne distingue pas un document maîtrisé d'un en
 #### 79. Accès terrain et mobile
 
 - **Effort** : moyen · **Références** : M23 (question de l'audit restée sans réponse, hors O-01..O-11)
+- **Avancé le 18 octobre 2026** (lot 10, étape 6) : `npm run a11y -- --narrow` rend les 30 écrans et 20 dialogues à 320 px et à 1 280 px zoomé à 200 % (WCAG 1.4.10, 1.4.4) et relève débordement de la page, contenus hors fenêtre, masqués, tronqués, superposés et violations axe (docs/accessibilite.md, « Affichage étroit et zoom »). Corrigé sans effet sur le bureau (captures à 1 440 px identiques) : barre latérale qui défile, onglets d'Administration et d'Archivage qui vont à la ligne, en-têtes de colonne réservés aux lecteurs d'écran gardés dans leur cellule, ligne d'un modèle tronquée ; à 200 %, 3 écrans sur 50 restent plus larges que la fenêtre au lieu de 15, 28 éléments hors fenêtre au lieu de 252. Reste, selon M23 : à 320 px tout écran (barre latérale de 224 px, en-tête), le panneau de fiche de 400 px, les trois colonnes de l'Explorateur, la colonne des filtres de la Recherche, les tableaux en défilement horizontal. Aucune mise en page mobile, ni barre repliable, ni PWA : le point attend toujours M23.
 - **Revérifié le 18 octobre 2026** : constat inchangé, avec des nuances : quatre media queries existent désormais (administration, aide, pages de département), mais la grille de l'application garde sa barre latérale de 224 px (src/app/globals.css:22) et le panneau de la fiche ses 400 px (src/app/documents/[id]/document.module.css:45) ; ni manifeste ni service worker. Le point cite M23 et O-02 (hébergement : M22), ni O-01 ni O-11 (état récapitulatif corrigé le même jour).
 
 Il faut d'abord la réponse de l'utilisateur à M23 : faut-il un accès en chantier ou en dépôt, la consultation hors ligne des révisions en vigueur, le dépôt d'une photo depuis le terrain ? Selon cette réponse : (1) adaptation à largeur mobile : barre latérale repliable, panneau de fiche en pleine largeur, tableaux en liste (effort moyen) ; (2) hors ligne éventuel : PWA avec un cache des révisions en vigueur, en respectant canRead et la confidentialité (effort important) ; (3) dépôt depuis le terrain : capture photo dans FilePicker (accept/capture). L'accès au réseau depuis un chantier dépend aussi de l'hébergement et de l'authentification (O-02).
@@ -2094,6 +2098,7 @@ Constaté : src/app/api/ ne contient que registry, import, integrations/vigie, d
 #### 112. Hébergement et déploiement
 
 - **Effort** : moyen · **Références** : M22, audit §6.6 q3
+- **Préparé le 18 octobre 2026** (lot 10, étape 6) : image générique (`Dockerfile` en trois étapes, `.dockerignore` limité à ce que lit le build), sortie `standalone` de Next.js seulement avec `CODEX_STANDALONE=1` (build par défaut, `npm start` et app Mac inchangés), utilisateur non root, volume `/var/lib/codex` (données, sauvegardes, exports), `HEALTHCHECK` sur `/api/health`, variables au lancement seulement, `CODEX_SEED` non posé, commandes de sauvegarde, d'export et d'intégrité incluses ; construite et essayée dans la session (docs/exploitation.md §10). Rien de choisi pour l'exploitant : ni hébergeur, ni reverse proxy, ni TLS, ni procédure propre à une plateforme ; le verrou du dossier de données ne traverse pas les conteneurs (documenté). Le point attend toujours M22.
 - **Revérifié le 18 octobre 2026** : constat en partie périmé : `.github/workflows/ci.yml` existe (intégration continue, point 52) ; la santé (`GET /api/health`), le journal technique en JSON, le contrôle de la configuration, HSTS (`CODEX_HTTPS`) et les migrations au déploiement sont faits et documentés (docs/exploitation.md §1 à §7). Toujours ni Dockerfile, ni compose, ni proxy ou TLS, ni gestionnaire de processus (`next start --port 3100`, package.json:11). Le point cite M22 et §6.6 q3, ni O-01 ni O-11 (état récapitulatif corrigé le même jour).
 
 Qui héberge, qui exploite et où sont les données n'a pas été décidé. Ce choix ne figure pas parmi O-01..O-11 : c'est la question §6.6 q3 de l'audit. Une fois le choix fait : une image (sortie `standalone` de Next), la procédure de déploiement avec migrations, le reverse proxy et TLS, la supervision (journaux, santé) et le plan de reprise. Seule une image générique pourrait être préparée avant.

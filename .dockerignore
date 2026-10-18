@@ -1,0 +1,17 @@
+# Contexte de l'image (Dockerfile) : tout est exclu, sauf ce que le build lit. Ni .env*, ni clés, ni données locales
+# (.data, sauvegardes, exports), ni node_modules ou .next de la machine, ni documentation, tests, maquette ou app Mac.
+*
+!package.json
+!package-lock.json
+!next.config.ts
+!tsconfig.json
+!src/
+!drizzle/
+!scripts/codex-backup.mjs
+!scripts/codex-export.mjs
+!scripts/codex-integrity.mjs
+# Même sous src/ : jamais de fichier d'environnement ni de clé.
+**/.env*
+**/*.pem
+**/*.key
+**/.DS_Store

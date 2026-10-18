@@ -86,7 +86,8 @@ Les fichiers déposés sont stockés dans `.data/files/` (ou dans SharePoint, vo
 - Contrôles : `npm test`, `npm run typecheck`, `npm run lint`, `npm run build` (sans accès réseau : la police Inter
   est dans `src/fonts/`, servie par `next/font/local`, licence OFL dans `src/fonts/inter/OFL.txt`), puis
   `npm run a11y` (accessibilité : axe-core dans Chromium sur les écrans et dialogues principaux du build, base de démo
-  jetable ; `docs/accessibilite.md`) et `npm run e2e` (parcours de bout en bout dans Chromium, même build, base de démo
+  jetable ; `-- --narrow` les rend aussi à 320 px et à 1 280 px zoomé à 200 % et relève débordements, contenus
+  inatteignables, tronqués ou superposés, sans faire échouer ; `docs/accessibilite.md`) et `npm run e2e` (parcours de bout en bout dans Chromium, même build, base de démo
   jetable, jeton d'import tiré pour ce serveur seul ; cinq parcours indépendants : **approbation** (document créé avec
   son PDF, aperçu paginé téléchargé une fois, chaque étape approuvée par son titulaire, document en vigueur),
   **rejet** (étape rejetée avec son motif, nouvelle version de travail, nouvelle demande), **rappel** (demande rappelée
@@ -574,6 +575,12 @@ supervision, codes du contrôle de configuration et leur correction).
   illisible, dossier de données non inscriptible) **arrête le serveur en production** (code de sortie 1) ; en
   développement, elle est seulement écrite. `CODEX_CONFIG_CHECK=warn` ou `strict` change ce comportement. Sans
   aucune variable, il n'y a aucune erreur : `npm run dev`, `npm run start` et l'app Mac démarrent comme avant.
+- **Image générique** (`Dockerfile`, `.dockerignore` ; `docs/exploitation.md` §10) : `docker build -t codex .` puis
+  `docker run -p 3100:3100 -v codex:/var/lib/codex codex`. Serveur autonome de Next.js (`output: 'standalone'`
+  seulement quand `CODEX_STANDALONE=1` : `npm run build` et l'app Mac sont inchangés), utilisateur non root, volume des
+  données, `HEALTHCHECK` sur `/api/health`, variables au lancement seulement, aucun secret ni donnée dans l'image ; ni
+  hébergeur, ni proxy, ni TLS choisis (M22). Commandes de sauvegarde, d'export et d'intégrité dans l'image, conteneur du
+  serveur arrêté (le verrou du dossier de données ne traverse pas les conteneurs).
 - **Planificateur** (`src/lib/scheduler.ts`, démarré par `register`) : toutes les 5 minutes par défaut, met en vigueur
   les révisions approuvées dont la date d'effet est venue (les pages ne le font plus elles-mêmes) et applique une
   acceptation de Vigie que plus rien ne retient. Nettoyage des orphelins, vérification d'intégrité, sauvegarde et
@@ -619,6 +626,7 @@ Points 14 et 15 de `docs/reste-a-faire.md` (G05, M12). Installation de l'outil d
 ## Organisation du code
 
 ```
+Dockerfile             image générique (docs/exploitation.md §10) ; .dockerignore : contexte limité au build
 src/
   proxy.ts             politique de sécurité du contenu des pages (nonce par requête), HSTS si CODEX_HTTPS
   instrumentation.ts   au démarrage, contrôle de la configuration ; erreurs serveur au journal technique
@@ -714,6 +722,7 @@ scripts/
   codex-perf.mjs       commande npm run perf : temps des écrans et routes principaux d'un serveur lancé
   codex-a11y.mts       commande npm run a11y : contrôle d'accessibilité (axe-core, Chromium), docs/accessibilite.md
   codex-e2e.mts        commande npm run e2e : parcours de bout en bout (approbation, rejet, rappel, Vigie, import)
+  codex-narrow.mts     relevés de npm run a11y -- --narrow : 320 px, zoom 200 %, débordements (WCAG 1.4.10, 1.4.4)
   codex-browser.mts    serveur jetable et Chromium, communs à a11y et e2e
   codex-migrate.mts    commande npm run db:migrate : migrations au déploiement (docs/exploitation.md §7)
   codex-audit.mjs      commande npm run deps:audit : vulnérabilités connues des dépendances (CI)
