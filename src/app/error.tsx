@@ -21,7 +21,7 @@ export default function ErrorScreen({ error, retry }: { error: Error & { digest?
     <div className="screen" role="alert" style={{ padding: 'var(--space-8)', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
       <Icon name="info" size={16} style={{ color: 'var(--color-accent)', marginTop: 2 }} />
       <div style={{ maxWidth: 560 }}>
-        <h5 style={{ margin: '0 0 6px' }}>{t.error}</h5>
+        <h2 style={{ margin: '0 0 6px', fontSize: 16 }}>{t.error}</h2>
         <p className="text-muted" style={{ margin: '0 0 6px', fontSize: 12.5 }}>{ref ? t.error_hint : t.error_browser}</p>
         {ref && <p style={{ margin: '0 0 14px', fontSize: 12.5 }}><code className="tabnum" style={{ userSelect: 'all' }}>{t.error_ref.replace('{ref}', ref)}</code></p>}
         <div style={{ display: 'flex', gap: 8, marginTop: ref ? 0 : 8 }}>

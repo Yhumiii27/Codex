@@ -314,8 +314,9 @@ Constats confirmés, dans la numérotation du workflow :
 30. Les libellés des dialogues n'étaient pas associés aux champs. Corrigé : dialogues nommés, focus gardé à l'intérieur.
 31. Un dialogue se fermait quand on relâchait la souris sur le fond. Corrigé.
 32. Un fichier non prévisualisable affichait une page factice. Corrigé : un panneau de téléchargement la remplace.
-33. La pagination restait sur « Page 1 sur 1 » quand le nombre de pages était inconnu. **Partiel** : les PDF déjà
-    stockés ne sont pas recomptés, ce qui est sans objet après une remise à zéro de la base.
+33. La pagination restait sur « Page 1 sur 1 » quand le nombre de pages était inconnu. **Corrigé (sans objet sur
+    base neuve)** : les PDF déjà stockés ne sont pas recomptés, ce qui est sans objet après une remise à zéro de la
+    base.
 34. Le dialogue « Déléguer » proposait le demandeur. Corrigé.
 35. Des textes n'étaient pas traduits. Corrigé.
 36. Le rôle en lecture seule pouvait faire des demandes de modification ou de retrait. Corrigé côté serveur.
@@ -2256,6 +2257,7 @@ de [decisions.md](decisions.md).
 | 5. Comparaison du contenu des versions et aperçu des fichiers Office | commit « Lot 9, étape 5 », qui suit `3586ab8` | 14, 15 | « Comparer » montre, sous les attributs, le texte des deux versions comparé ligne à ligne (PDF, Word, Excel, PowerPoint, OpenDocument, texte), lu sur le serveur sous les droits du fichier ; aperçu PDF des fichiers Office par LibreOffice sans interface ou Gotenberg, converti à la première consultation, gardé (table `version_previews`, migration `0002_apercu_office`) et servi par la route fichier (`?preview=pdf`) | Texte et non visuel ; formats Office 97-2003 non lus ; bornes de taille, de temps et de lignes ; aperçu désactivé sans outil configuré, conversion à la demande plutôt qu'au dépôt, échec retenté après une heure, rendus dans le stockage local même avec SharePoint, sauvegardés mais hors de l'export complet ; ni PDF/A ni filigrane (M12) |
 | 6. Reprise des documents d'une personne qui part et vocabulaires contrôlés | commit « Lot 9, étape 6 », qui suit `5f92467` | 19, 59 | Administration › Reprise (départ) : simulation puis transfert journalisé, à un remplaçant choisi, des documents et processus possédés, révisions à rédiger, étapes en attente, titulariats et lectures désignées ; réassignation d'une étape par un gestionnaire ; langue contrôlée ; référentiels des organismes sources et des mots-clés (tables `source_orgs`, `keyword_terms`, migration `0003_vocabulaires` avec reprise), autocomplétion et ajout confirmé, Administration › Vocabulaires (ajout, renommage, fusion, sous-types hors liste) | Aucun remplaçant proposé, aucun compte désactivé ; gestionnaires documentaires seulement ; simulation = transfert annulé, empreinte exigée ; documents verrouillés repris, étapes figées par un verrou laissées ; documents gardant le nom du terme en texte ; nouveau terme confirmé dans les formulaires, ajouté à l'import ; termes proposés selon la lecture (D-14) ; sous-types non fermés ; gel juridique respecté au renommage |
 | 7. Finitions de l'interface : phases, Restaurer, compteur des modèles, écarts avec la maquette, bilinguisme | commit « Lot 9, étape 7 », qui suit `2d36d97` | 63, 64 (vérifié), 65, 66, 67, 68 | Phases Keystone en frise compacte ; « Restaurer » une version de travail du brouillon (`restoreWorkingVersion`) ; `documents.template_id` et compteur d'utilisations (migration `0004_modele_source` avec reprise sûre) ; onglet Projet toujours présent et « Rattacher à un projet » ; « Déposer » dans l'explorateur prérempli par l'arbre ; fondement de conservation en anglais, phases en anglais, détail du journal structuré et traduit, titres de page par écran et par fiche | Frise sans libellés sauf la phase courante, libellés EN des phases provisoires ; restauration limitée au brouillon ouvert, journalisée comme une version de travail ; compte limité aux documents lisibles, reprise seulement sur trois indices concordants ; projet non prérempli depuis l'arbre ; aucun fondement traduit, français suivi de « (FR) » ; anciennes entrées du journal non réécrites ; titre générique pour une fiche illisible ou introuvable |
+| 8. Accessibilité, aide aux utilisateurs et documentation alignée sur le code | commit « Lot 9, étape 8 », qui suit `65af2e6` | 55, 69, 53, 54 | Lien « Aller au contenu » ; contrôle axe-core `npm run a11y` (30 écrans, 20 dialogues, base de démo jetable) ajouté à la CI ; contrastes et violations corrigés (82 éléments sérieux et 52 modérés ou mineurs → 0, FR et EN) ; page `/aide` bilingue et aides contextuelles des dialogues ; README, avancement, audit, décisions et modèle cible relus contre le code | WCAG 2.2 AA comme démarche de qualité, sans RGAA ; seules les couleurs qui échouaient changent, d'un cran, Nocturne intact ; titres `<h1>`/`<h2>` au même rendu ; aide limitée à ce que l'application fait, simulations signalées, liens selon le rôle ; notes de conception gardées (O-02) ; formation et pilote laissés à M14 |
 
 ### 18.1 Rechargement en boucle en développement et lectures ciblées
 
@@ -2612,3 +2614,61 @@ Le point 64 était déjà fait (15 octobre) : rien de changé.
   des fondations — Codex », « Fiche document — Codex » pour un brouillon illisible comme pour un identifiant inconnu.
 - **Reste** : libellés anglais réels des phases et liste des phases avec Keystone (O-03) ; traduction des fondements
   après leur revue (O-07) ; titre des pages 404.
+
+### 18.8 Accessibilité, aide aux utilisateurs et documentation alignée sur le code
+
+Points 55, 69, 53 et 54 de [reste-a-faire.md](reste-a-faire.md), vérifiés au commit `65af2e6` : aucun lien
+d'évitement, `<main>` sans id ; aucun contrôle d'accessibilité automatisé (Vitest existait, sans navigateur) ; aucune
+aide hors des notes de conception ; les constats de documentation du 9 octobre étaient en partie déjà corrigés (T-03
+local « à plat avec un préfixe unique », mentions d'Entra ID retirées d'`api.md` et d'`avancement-v2.md`, actions
+d'administration journalisées), les autres restaient, avec de nouveaux écarts nés des lots 6 à 9.
+
+- **Contrôle automatisé (point 55).** `scripts/codex-a11y.mts` (`npm run a11y`, dépendances `axe-core` 4.14.0 et
+  `playwright-core` 1.56.1) : `next start` du build (ou `next dev` avec `--dev`, ou un serveur existant avec `--url`)
+  sur une base de démo neuve dans un dossier temporaire ; axe (WCAG 2.0 à 2.2 A et AA, bonnes pratiques) sur 30 écrans
+  et onglets et 20 dialogues, ouverts puis fermés par Échap sans rien envoyer ; contrôle du lien d'évitement, du focus
+  des dialogues, des statuts HTTP et des erreurs JavaScript ; échec sur une violation sérieuse ou critique. Environ 70 s
+  en français, 125 s avec l'anglais ; trois passages identiques ; ajouté à la CI après le build. Mesure au commit
+  `65af2e6` (même script) : 82 éléments en violation sérieuse ou critique (contraste 65, contrôles imbriqués 8, cibles
+  6, attribut ARIA interdit 3) et 52 modérés ou mineurs (pas de `<h1>` 30, en-têtes de tableau vides 14, ordre des
+  titres 7, repère 1). Après : 0 et 0, en français et en anglais.
+- **Corrections.** « Aller au contenu » vers `<main id="contenu" tabindex="-1">` ; nom de l'écran en `<h1>` et titres de
+  section en `<h2>` (`.sec-title` reprend le dessin du `h6` de Nocturne : captures identiques) ; navigation et colonnes
+  de l'Explorateur nommées ; étiquette de version de travail en bouton à bascule au lieu d'une ligne-bouton contenant
+  un lien ; « page précédente » inactive en lien désactivé ; en-têtes « Actions » et « Attribut » lus seulement par les
+  lecteurs d'écran ; cibles de 24 px. Contrastes mesurés sur les fonds Nocturne (`docs/accessibilite.md`) :
+  `.text-muted` passe (5,19 et 4,83) ; corrigés au plus près : `.card-meta` 4,25 → 4,83 (dans `globals.css`, la copie
+  de Nocturne intacte), portée des titulaires et usages des termes 4,47 → 5,47, nombre de termes dans un titre 3,18 →
+  7,64, petites mentions de la page maquette 3,96 → 4,9.
+- **Aide (point 69).** `/aide` (`src/app/aide/page.tsx`, `aide.module.css`, textes `HELP` de `src/lib/i18n.ts`) : dix
+  parcours, en français et en anglais, de « ce qui est simulé » à la recherche, dont la demande à Vigie avec l'attente
+  ou la greffe de D-26 ; chaque parcours ne décrit que ce que l'application fait et mène à son écran si le rôle y a
+  accès ; lien « Aide » au-dessus de « Notes de conception ». Aides contextuelles : origine, rattachement, version de
+  travail, circuit, délégation et réassignation.
+- **Documentation (points 53 et 54).** README (recherche dans les métadonnées et non « plein texte », ce qui n'est pas
+  journalisé, « Nouveau » de l'Explorateur, `/aide`, `npm run a11y`, organisation du code), `docs/avancement-v2.md`
+  réécrit au 18 octobre, audit (G04, M16, M14, sauvegarde et PostgreSQL, conservation par document, consultations,
+  historique des métadonnées, lectures ciblées), `docs/decisions.md` (Entra ID, déclencheur du journal),
+  `docs/modele-cible.md` §3 (nom stocké en local), commentaires de `matches` et de `FileStore.rename`, constat 33 de ce
+  fichier, « reste » des points 36 et 50 ; `docs/api.md` n'avait pas d'écart. Nouveau : `docs/accessibilite.md`.
+- **Vérifié** : `npm test` (95 fichiers dont 1 ignoré, 1 319 tests passés, 10 ignorés, aussi avec `.data` déplacé ; nouveaux :
+  `tests/integration/help-page.test.ts`, `shell-a11y.test.ts`), `npm run typecheck`, `npm run lint`, `npm run db:check`,
+  `npm run build`, `npm run a11y` (0 violation). `npm run dev` sur une base de démo du scratchpad : `/aide` en français
+  (« Aide — Codex ») et en anglais (« Help — Codex »), lien d'évitement au premier Tab, aides des dialogues « Nouveau
+  document » et « Déléguer » ; 19 écrans capturés avant et après, différents seulement sur les éléments corrigés.
+- **Reste** : test manuel avec un lecteur d'écran, zoom et affichage étroit, PDF générés non balisés, app Mac
+  (macOS) ; formation, utilisateurs clés et pilote (M14) ; retrait des notes de conception en production (O-02).
+
+### Bilan du lot 9
+
+Huit étapes, 24 points de [reste-a-faire.md](reste-a-faire.md) (47, 42, 41, 45, 60, 52 en partie, 51 en partie, 56, 38 en
+partie, 23, 14, 15, 19, 59, 63 à 68, 55, 69, 53, 54) et un bogue (rechargement en boucle de `next dev`), tous
+développables sans décision. Avec ce lot, les 69 points « développables maintenant » de l'inventaire du 9 octobre sont
+traités : 55 entièrement, 14 en partie, leurs restes listés en tête de reste-a-faire.md avec ce qui les bloque. Le lot
+a rendu Codex plus rapide (lectures ciblées), déployable sur une vraie base (migrations incrémentales, PostgreSQL
+serveur, amorçage minimal, planificateur, signatures entre serveurs), plus complet pour les utilisateurs (comparaison
+du contenu, aperçu Office, reprise d'une personne qui part, vocabulaires, finitions de la maquette, bilinguisme, aide)
+et vérifié pour l'accessibilité. Aucune question ouverte n'a été tranchée ; chaque choix qui en dépend (O-01 à O-11,
+M14, M22, A05) prend l'option la plus prudente et figure dans « Choix de l'assistant non validés explicitement » de
+[decisions.md](decisions.md). Ce qui reste attend une décision de l'utilisateur (49 points), ses données (2) ou une
+session sur macOS (9).

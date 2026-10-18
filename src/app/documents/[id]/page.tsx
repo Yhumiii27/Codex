@@ -333,7 +333,7 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
           <div className="text-muted" style={{ fontSize: 11 }}>
             {doc.id}{doc.aliases.length > 0 && ` · ${t.aliases} : ${doc.aliases.join(', ')}`} · {doc.path}
           </div>
-          <h3 className={styles.title}>{doc.title}</h3>
+          <h2 className={styles.title}>{doc.title}</h2>
           <div className={styles.tags}>
             {doc.attachment === 'project' && doc.projectCode && <span className="tag tag-accent">{doc.projectCode}</span>}
             {doc.attachment === 'research' && doc.programCode && <span className="tag tag-accent">{doc.programCode}</span>}
@@ -463,7 +463,7 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
                   <Link href={`/recherche?project=${encodeURIComponent(project.code)}`} className="btn btn-secondary">{t.project_docs}</Link>
                 </div>
                 <section>
-                  <div className="sec-head" style={{ marginBottom: 6 }}><h6 className="sec-title">{t.expected_pieces}</h6><span className="text-muted tabnum" style={{ fontSize: 11 }}>{pieces.filter((p) => p.d).length}/{project.expected.length}</span></div>
+                  <div className="sec-head" style={{ marginBottom: 6 }}><h2 className="sec-title">{t.expected_pieces}</h2><span className="text-muted tabnum" style={{ fontSize: 11 }}>{pieces.filter((p) => p.d).length}/{project.expected.length}</span></div>
                   <div style={{ display: 'flex', flexDirection: 'column' }}>
                     {pieces.map((p) => {
                       const ring = p.st === 'ok' || p.st === 'wip' ? 'var(--color-accent)' : p.st === 'missing' ? 'var(--color-neutral-400)' : 'var(--color-neutral-700)';
@@ -490,7 +490,7 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
                   </div>
                 </section>
                 <section>
-                  <h6 className="sec-title" style={{ marginBottom: 10 }}>{t.ks_feed}</h6>
+                  <h2 className="sec-title" style={{ marginBottom: 10 }}>{t.ks_feed}</h2>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     {project.events.map((e) => <div key={e.id} className="feed"><span className="text-muted feed-when">{e.when}</span><span style={{ fontSize: 12.5 }}>{e.text}</span></div>)}
                   </div>
@@ -534,31 +534,31 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
 
                 {doc.origin === 'externe' && (
                   <section style={{ marginTop: 18 }}>
-                    <h6 className="sec-title" style={{ marginBottom: 10 }}>{t.origin} · {doc.originL}</h6>
+                    <h2 className="sec-title" style={{ marginBottom: 10 }}>{t.origin} · {doc.originL}</h2>
                     <Dl rows={[[t.source_org, doc.sourceOrg ?? '—'], [t.external_ref, doc.externalRef ?? '—'], [t.received_at, fmtDate(doc.receivedAt, lang)]]} />
                   </section>
                 )}
                 {doc.origin === 'interne' && (
                   <section style={{ marginTop: 18 }}>
-                    <h6 className="sec-title" style={{ marginBottom: 10 }}>{t.origin} · {doc.originL}</h6>
+                    <h2 className="sec-title" style={{ marginBottom: 10 }}>{t.origin} · {doc.originL}</h2>
                     <Dl rows={[[t.process_owner, doc.processOwnerId ? ctx.userName(doc.processOwnerId) : '—']]} />
                   </section>
                 )}
                 {doc.attachment === 'project' && (
                   <section style={{ marginTop: 18 }}>
-                    <h6 className="sec-title" style={{ marginBottom: 10 }}>{t.attachment} · {doc.attachmentL}</h6>
+                    <h2 className="sec-title" style={{ marginBottom: 10 }}>{t.attachment} · {doc.attachmentL}</h2>
                     <Dl rows={[[t.project, doc.contextL], [t.project_phase, doc.projectPhase ? phaseLabel(doc.projectPhase, lang) : '—'], [t.work_package, doc.workPackage ?? '—'], [t.discipline, doc.discipline ?? '—']]} />
                   </section>
                 )}
                 {doc.attachment === 'research' && (
                   <section style={{ marginTop: 18 }}>
-                    <h6 className="sec-title" style={{ marginBottom: 10 }}>{t.attachment} · {doc.attachmentL}</h6>
+                    <h2 className="sec-title" style={{ marginBottom: 10 }}>{t.attachment} · {doc.attachmentL}</h2>
                     <Dl rows={[[t.program, doc.contextL], [t.research_theme, doc.researchTheme ?? '—'], [t.study_id, doc.studyId ?? '—'], [t.ip_status, doc.ipStatus ?? '—']]} />
                   </section>
                 )}
                 {tplTypes && (
                   <section style={{ marginTop: 18 }} aria-labelledby="doc-template-types">
-                    <div className="sec-head" style={{ marginBottom: 8 }}><h6 className="sec-title" id="doc-template-types">{t.template_types}</h6><span className="text-muted tabnum" style={{ fontSize: 11 }}>{tplTypes.length}</span></div>
+                    <div className="sec-head" style={{ marginBottom: 8 }}><h2 className="sec-title" id="doc-template-types">{t.template_types}</h2><span className="text-muted tabnum" style={{ fontSize: 11 }}>{tplTypes.length}</span></div>
                     <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', fontSize: 12.5 }}>
                       {tplTypes.length
                         ? tplTypes.map((c) => <span key={c} className="tag tag-neutral" style={{ fontSize: 10.5, padding: '2px 8px' }} title={ctx.label('type', c)}>{c} · {ctx.label('type', c)}</span>)
@@ -568,14 +568,14 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
                 )}
                 {showReaders && (
                   <section style={{ marginTop: 18 }}>
-                    <div className="sec-head" style={{ marginBottom: 8 }}><h6 className="sec-title">{t.readers}</h6><span className="text-muted tabnum" style={{ fontSize: 11 }}>{readerIds.length}</span></div>
+                    <div className="sec-head" style={{ marginBottom: 8 }}><h2 className="sec-title">{t.readers}</h2><span className="text-muted tabnum" style={{ fontSize: 11 }}>{readerIds.length}</span></div>
                     <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', fontSize: 12.5 }}>
                       {readerIds.length ? readerIds.map((u) => <span key={u} className="tag tag-neutral" style={{ fontSize: 10.5, padding: '2px 8px' }}>{ctx.userName(u)}</span>) : '—'}
                     </div>
                   </section>
                 )}
                 <section style={{ marginTop: 18 }} aria-labelledby="doc-links">
-                  <div className="sec-head" style={{ marginBottom: 4 }}><h6 className="sec-title" id="doc-links">{t.links}</h6><span className="text-muted tabnum" style={{ fontSize: 11 }}>{links.length}</span></div>
+                  <div className="sec-head" style={{ marginBottom: 4 }}><h2 className="sec-title" id="doc-links">{t.links}</h2><span className="text-muted tabnum" style={{ fontSize: 11 }}>{links.length}</span></div>
                   {links.length ? (
                     <div style={{ display: 'flex', flexDirection: 'column' }}>
                       {links.map((l) => (
@@ -661,7 +661,7 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
                 )}
                 {finished.length > 0 && (
                   <section style={{ marginTop: 22 }}>
-                    <h6 className="sec-title" style={{ marginBottom: 6 }}>{t.wf_done}</h6>
+                    <h2 className="sec-title" style={{ marginBottom: 6 }}>{t.wf_done}</h2>
                     <div style={{ display: 'flex', flexDirection: 'column' }}>
                       {finished.map((w) => (
                         <div key={w.id} className={`hairline ${styles.pieceRow}`}>

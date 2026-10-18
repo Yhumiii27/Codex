@@ -28,10 +28,12 @@
   border-radius: 2px; box-shadow: 0 20px 50px rgba(0,0,0,.55); padding: 52px 56px;
   display: flex; flex-direction: column; gap: 14px; flex: none;
 }
-.paperHead { display: flex; justify-content: space-between; font-size: 9px; letter-spacing: .08em; text-transform: uppercase; color: var(--color-neutral-600); }
+/* Small print of the mock page, between neutral-600 and -700: 4.9:1 on its paper (neutral-600 alone gave 3.96, WCAG AA). */
+.paper { --paper-muted: color-mix(in srgb, var(--color-neutral-600) 50%, var(--color-neutral-700)); }
+.paperHead { display: flex; justify-content: space-between; font-size: 9px; letter-spacing: .08em; text-transform: uppercase; color: var(--paper-muted); }
 .lines { display: flex; flex-direction: column; gap: 7px; }
 .bar { height: 6px; background: var(--color-neutral-300); border-radius: 2px; }
-.cartouche { margin-top: 10px; border: 1px solid var(--color-neutral-300); border-radius: 2px; display: grid; grid-template-columns: 1fr 1fr 1fr; font-size: 8px; color: var(--color-neutral-600); }
+.cartouche { margin-top: 10px; border: 1px solid var(--color-neutral-300); border-radius: 2px; display: grid; grid-template-columns: 1fr 1fr 1fr; font-size: 8px; color: var(--paper-muted); }
 .cartouche > div { padding: 6px 8px; }
 .cartouche > div + div { border-left: 1px solid var(--color-neutral-300); }
 .pdf { width: min(100%, 760px); height: 100%; min-height: 70vh; border: 0; border-radius: 2px; box-shadow: 0 20px 50px rgba(0,0,0,.55); background: var(--color-neutral-100); }
@@ -53,10 +55,11 @@
 .pieceDot { width: 16px; height: 16px; flex: none; border-radius: 50%; display: grid; place-items: center; color: var(--color-bg); }
 
 .versionRow { display: flex; gap: 12px; padding: 11px 0; }
-.versionRow[role='button'] { cursor: pointer; }
-.versionRow[role='button']:hover .versionBox { border-color: color-mix(in srgb, var(--color-text) 45%, transparent); }
+.versionRow[data-selectable='true'] { cursor: pointer; }
+.versionRow[data-selectable='true']:hover .versionBox { border-color: color-mix(in srgb, var(--color-text) 45%, transparent); }
 .versionRow[data-selected='true'] .versionBox { border-color: var(--color-accent); color: var(--color-accent); box-shadow: 0 0 10px color-mix(in srgb, var(--color-accent) 35%, transparent); }
 .versionBox { width: 40px; height: 40px; flex: none; border-radius: var(--radius-md); border: 1px solid var(--color-divider); display: grid; place-items: center; font-size: 11px; font-weight: 500; }
+button.versionBox { background: transparent; color: inherit; font-family: inherit; cursor: pointer; padding: 0; }
 /* Fingerprint of a version's file: whole, so that it can be compared; one click selects it. */
 .sha { font-size: 10.5px; margin-top: 2px; overflow-wrap: anywhere; }
 .shaValue { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; user-select: all; }

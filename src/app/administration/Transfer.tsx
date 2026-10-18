@@ -92,7 +92,7 @@ export async function Transfer({ ctx, person, replacement }: { ctx: Ctx; person:
             if (!rows.length) return null;
             return (
               <section key={k} aria-label={t[`transfer_kind_${k}` as TKey]}>
-                <h6 className="sec-title" style={{ marginBottom: 8 }}>{t[`transfer_kind_${k}` as TKey]} <span className="text-muted tabnum">({rows.length})</span></h6>
+                <h2 className="sec-title" style={{ marginBottom: 8 }}>{t[`transfer_kind_${k}` as TKey]} <span className="text-muted tabnum">({rows.length})</span></h2>
                 <table className={`table ${styles.transferTable}`}>
                   <tbody>
                     {rows.map((i) => (
@@ -110,7 +110,7 @@ export async function Transfer({ ctx, person, replacement }: { ctx: Ctx; person:
       )}
       {plan && plan.notes.length > 0 && (
         <section aria-label={t.transfer_notes}>
-          <h6 className="sec-title" style={{ marginBottom: 8 }}>{t.transfer_notes}</h6>
+          <h2 className="sec-title" style={{ marginBottom: 8 }}>{t.transfer_notes}</h2>
           <ul className={styles.transferNotes}>{plan.notes.map((n) => <li key={`${n.kind}:${n.ref}`}>{note(n)}</li>)}</ul>
         </section>
       )}

@@ -141,16 +141,18 @@ export function RevisionsTab({ docId, revisions, current, restore }: { docId: st
             {r.versions && r.versions.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', marginTop: 4 }}>
                 {r.versions.map((v) => (
+                  // The whole row selects the version with the mouse; the keyboard reaches its label, a toggle button (a row
+                  // with role="button" would hold the download link: nested controls).
                   <div
                     key={v.id}
                     className={`hairline ${styles.versionRow}`}
                     data-selected={v.id === selected && !v.current ? 'true' : undefined}
+                    data-selectable={v.current ? undefined : 'true'}
                     onClick={() => !v.current && setSelected(v.id)}
-                    role={v.current ? undefined : 'button'}
-                    tabIndex={v.current ? undefined : 0}
-                    onKeyDown={(e) => { if (!v.current && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setSelected(v.id); } }}
                   >
-                    <div className={styles.versionBox}>{v.label}</div>
+                    {v.current
+                      ? <div className={styles.versionBox}>{v.label}</div>
+                      : <button type="button" className={styles.versionBox} aria-pressed={v.id === selected} aria-label={t.version_select.replace('{v}', v.label)}>{v.label}</button>}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 13 }}>{v.commentL}</div>
                       <div className="text-muted" style={{ fontSize: 11 }}>{v.author} · {v.dateF}{v.fileName ? ` · ${v.fileName}` : ''}{v.fileName && v.sizeF !== '—' ? ` · ${v.sizeF}` : ''}</div>

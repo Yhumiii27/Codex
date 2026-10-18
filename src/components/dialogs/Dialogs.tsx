@@ -218,10 +218,10 @@ function DocFields({ types, st, set, doc, preset, withOwner, locked, lockType, f
       {locked && <p className="text-muted span-2" role="note" style={{ margin: 0, fontSize: 12 }}>{locked}</p>}
       <input type="hidden" name="origin" value={st.origin} />
       <input type="hidden" name="attachment" value={st.attachment} />
-      <Field label={t.origin}>
+      <Field label={t.origin} hint={locked ? undefined : t.origin_hint}>
         {locked ? frozen(t[`or_${st.origin}`]) : <Seg name="originSeg" ariaLabel={t.origin} value={st.origin} optStyle={segOpt} options={origins.map((o) => ({ key: o, label: t[`or_${o}`] }))} onPick={(k) => set({ origin: k as Origin })} />}
       </Field>
-      <Field label={t.attachment}>
+      <Field label={t.attachment} hint={lockProject || locked ? undefined : t.attachment_hint}>
         {lockProject
           ? <div style={{ minHeight: 34, display: 'flex', alignItems: 'center' }}><span className="tag tag-accent">{t.att_project}</span></div>
           : locked ? frozen(t[`att_${st.attachment}`])
@@ -655,7 +655,7 @@ function WorkingVersion({ docId, nextLabel, base }: { docId: string; nextLabel: 
           <span className="text-muted" style={{ marginLeft: 'auto' }}>{t.working_version} → <span style={{ color: 'var(--color-accent-300)' }}>{nextLabel}</span></span>
         </div>
         <FilePicker label={t.choose_file} required />
-        <Field label={t.version_comment}>{(id) => <textarea id={id} className="input" name="comment" rows={3} />}</Field>
+        <Field label={t.version_comment} hint={t.working_hint}>{(id) => <textarea id={id} className="input" name="comment" rows={3} />}</Field>
         <ErrorLine error={error} onReload={reload} />
       </form>
     </Modal>
@@ -678,7 +678,7 @@ function RequestValidation({ docId, title, revLabel, circuitL, minDate, base }: 
         <div style={{ fontSize: 13 }}>{title}</div>
         <div className="text-muted sub tabnum">{docId} · {t.revision} {revLabel}</div>
       </div>
-      <Field label={t.circuit}>
+      <Field label={t.circuit} hint={t.circuit_hint}>
         <div style={{ fontSize: 13 }}>{t.step_author} → {circuitL}</div>
       </Field>
       <Field label={t.effective_at} hint={t.effective_hint}>
@@ -804,7 +804,7 @@ function Delegate({ workflowId, stepName, step, excluded, holder }: { workflowId
     >
       <div className="text-muted" style={{ fontSize: 12.5 }}>{t.step} : {stepName}</div>
       {holder && <div className="text-muted" style={{ fontSize: 12.5 }}>{t.reassign_hint.replace('{who}', holder.name)}</div>}
-      <Field label={holder ? t.reassign_to : t.delegate_to}>{(id) => <Select id={id} name="to" value={to} onChange={setTo} options={others} />}</Field>
+      <Field label={holder ? t.reassign_to : t.delegate_to} hint={t.delegate_hint}>{(id) => <Select id={id} name="to" value={to} onChange={setTo} options={others} />}</Field>
       <ErrorLine error={error} />
     </Modal>
   );
@@ -875,7 +875,7 @@ function Compare({ docId, current, other }: { docId: string; current: VersionLit
     <Modal title={t.compare_title} width={820} actions={<button type="button" className="btn btn-primary" onClick={close}>{t.close}</button>}>
       <div className={cmp.section}>{t.compare_attributes}</div>
       <table className="table" style={{ fontSize: 13 }}>
-        <thead><tr><th /><th>{t.selected_version}</th><th>{t.current_version}</th></tr></thead>
+        <thead><tr><th><span className="sr-only">{t.col_attribute}</span></th><th>{t.selected_version}</th><th>{t.current_version}</th></tr></thead>
         <tbody>
           {rows.map(([label, get]) => {
             const a = get(other), b = get(current);
@@ -1498,7 +1498,7 @@ function TypeEditor({ type, family }: { type?: TypeSettings; family?: string }) 
 
         <div className="form-grid">
           <Field label={t.conf_allowed}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {CONF_LEVELS.map((c) => (
                 <label key={c} style={checkRow}>
                   <input type="checkbox" name="confAllowed" value={c} checked={allowed.includes(c)} onChange={() => toggleConf(c)} style={{ margin: 0 }} />{t[`conf_${c}`]}

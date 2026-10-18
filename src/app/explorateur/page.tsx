@@ -107,9 +107,9 @@ export default async function ExplorerPage({ searchParams }: PageProps<'/explora
 
   return (
     <div className="screen" style={{ display: 'flex', minWidth: 0 }} data-screen-label="Explorateur">
-      <aside className={styles.tree}>
+      <aside className={styles.tree} aria-label={t.classification}>
         <div style={{ padding: '14px 14px 10px' }}>
-          <h6 className="sec-title" style={{ marginBottom: 8 }}>{t.classification}</h6>
+          <h2 className="sec-title" style={{ marginBottom: 8 }}>{t.classification}</h2>
           <Seg
             name="axis"
             value={axis}
@@ -146,7 +146,7 @@ export default async function ExplorerPage({ searchParams }: PageProps<'/explora
           ))}
         </div>
         <div className={styles.due}>
-          <h6 className="sec-title" style={{ padding: '0 6px', marginBottom: 6 }}>{t.facet_overdue}</h6>
+          <h2 className="sec-title" style={{ padding: '0 6px', marginBottom: 6 }}>{t.facet_overdue}</h2>
           {DUES.map((k) => {
             const on = due === k;
             return (
@@ -221,9 +221,9 @@ export default async function ExplorerPage({ searchParams }: PageProps<'/explora
       </section>
 
       {selDoc && (
-        <aside className={styles.quick}>
+        <aside className={styles.quick} aria-label={t.quick_view}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h6 className="sec-title">{t.quick_view}</h6>
+            <h2 className="sec-title">{t.quick_view}</h2>
             <Link href={href(atPage)} className="btn btn-ghost btn-icon" style={{ width: 28, height: 28 }} aria-label={t.close} scroll={false}><Icon name="close" size={14} /></Link>
           </div>
           <div>

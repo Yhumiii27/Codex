@@ -1,6 +1,51 @@
 # Reste à faire sur Codex
 
-Inventaire du 9 octobre 2026, sur la branche `codex-ged-v2-vkmf4l`.
+Inventaire du 9 octobre 2026, sur la branche `codex-ged-v2-vkmf4l`, tenu à jour jusqu'au 18 octobre 2026 (fin du
+lot 9). Chaque point fait porte sa ligne « Fait le … » ; le détail de chaque lot est dans `docs/historique.md` (§11 à
+§18).
+
+## État au 18 octobre 2026 (fin du lot 9)
+
+| Ce qui bloque (classement du 9 octobre) | Points | Faits | Faits en partie | Pas commencés |
+|---|---|---|---|---|
+| Développable maintenant | 69 | 55 | 14 | 0 |
+| Attend une décision de l'utilisateur | 49 | 0 | 0 | 49 |
+| Attend des données de l'utilisateur | 2 | 0 | 0 | 2 |
+| Demande une session sur macOS | 9 | 0 | 0 | 9 |
+
+Les 69 points développables sans décision ont tous été traités (lots 1 à 9, du 10 au 18 octobre). Ce qui reste, selon
+ce qui le bloque (un point peut dépendre de plusieurs questions ; aucune n'a été tranchée à la place de l'utilisateur) :
+
+- **Rien : développable dans une session cloud**, les restes de points faits en partie :
+  - 36 : reprise de `nameStoredFile` sur les clés restées sous leur nom provisoire ;
+  - 43 : `.nvmrc` et `@types/node` alignés sur `engines` (la vérification dans `desktop/build-app.sh` demande macOS) ;
+  - 46 : aperçu paginé d'un brouillon ou d'un document confidentiel sans retélécharger le fichier à chaque page ;
+  - 47 et 50 : Validations lit tous les circuits et n'est pas paginé ; l'index d'accès relit à chaque requête les
+    lecteurs désignés, les révisions ouvertes et les titulaires ;
+  - 51 : migrations au déploiement plutôt qu'au premier accès, revue des transactions en `READ COMMITTED`, plusieurs
+    processus (limites de débit, fichiers locaux, verrou) ;
+  - 52 : `npm audit` dans la CI ;
+  - 57 : réponses d'erreur des routes d'import et de fichier testées par leurs handlers, parcours de bout en bout.
+- **Une décision de l'utilisateur** (questions O-01 à O-11 de `docs/decisions.md`, ou questions de l'audit) :
+  - O-01, SharePoint : 73, 78, 79, 82, 84, 86, 88, 98, 103, 107, 112, et les restes de 36 et 48 ;
+  - O-02, authentification : 79, 89, 93, 94, 104, 107, 117, et le retrait des notes de conception en production (69) ;
+  - O-03, liaison avec Keystone : 80, 97, 101, 102, 105, 110, 111, et les restes de 38 et 51 ;
+  - O-04, organigramme : 89, 92, 96, 116, 117, 120, et le reste de 62 ;
+  - O-05, arbitrages du registre : 78, 80, 96, 105, 117, 118, et le reste de 58 ;
+  - O-06, circuits et titulaires : 87, 102, 114, 118 ;
+  - O-07, durées de conservation : 90, 96, 105, 113, 118, 120 ;
+  - O-08, types admettant « Public » : 115 ;
+  - O-09, propositions de l'assistant (dont celles de `docs/decisions.md`, « Choix de l'assistant non validés
+    explicitement ») : 72, 73, 76, 114, et les restes de 6 (refus d'un modèle prévu pour d'autres types), 20
+    (réservation d'un brouillon) et 62 (fusion de départements) ;
+  - O-10, ECR/ECO dans Vigie : 100, 109, et le reste de 38 ;
+  - O-11, migration et volumes : 73, 78, 79, 82, 86, 99, 106, 107, 112 ;
+  - questions de l'audit sans numéro O : 70 et 71 (C11, G43, A17), 74 (A24), 75 (M06), 77 (M13), 81 (A18), 83 (A22,
+    M12), 85 (M09, M10), 91 (M05), 95 (M04), 108 (P04, Q06) ; hébergement (M22) pour les restes de 38, 48, 49 et 51 ;
+    formation, utilisateurs clés et pilote (M14) pour le reste de 69.
+- **Des données de l'utilisateur** : 119 (vrais modèles EPC2I, aussi le reste de 6), 120 (date de clôture de
+  l'exercice).
+- **Une session sur macOS** : 121 à 129 (app Mac, T-02).
 
 ## Méthode
 
@@ -10,7 +55,8 @@ Inventaire du 9 octobre 2026, sur la branche `codex-ged-v2-vkmf4l`.
 - Une critique de complétude a ajouté 20 points, vérifiés de la même façon.
 - Les points écartés par une décision de l'utilisateur (`docs/decisions.md`) n'y figurent pas.
 
-Ce fichier complète `docs/avancement-v2.md`. Il compte **129 points ouverts**, regroupés selon ce qui les bloque :
+Ce fichier complète `docs/avancement-v2.md`. Le 9 octobre, il comptait **129 points ouverts**, regroupés selon ce qui
+les bloque :
 
 | Ce qui bloque | Points |
 |---|---|
@@ -667,6 +713,7 @@ Constaté : src/lib/lifecycle.ts:141-149 (retour d'erreur sans écriture pour un
 
 #### 36. Nettoyage des fichiers orphelins
 - **Fait en partie le 15 octobre 2026** : dans Administration › Journal d'audit, un gestionnaire documentaire ayant l'accès Administration (`mayCleanStorage`, src/lib/access.ts : les noms stockés portent l'ID et la version des brouillons, D-14) lance une simulation qui liste sans rien supprimer les fichiers orphelins (`src/lib/orphans.ts` : fichiers nommés par Codex qu'aucun `working_versions.file_key` ne référence et touchés il y a plus que le délai de grâce `CODEX_ORPHAN_GRACE_HOURS`, 24 h par défaut, date la plus récente de `mtime` et `ctime` ; stockage local et, quand SharePoint sert, `_staging/`), puis, sur confirmation, supprime du stockage local les seuls fichiers listés qui sont encore orphelins, chacun revérifié juste avant, 200 au plus par passage, avec une entrée « Fichiers orphelins supprimés » au journal (noms montrés aux seuls gestionnaires) et une ligne par fichier au journal du serveur. Reste : le lancement par le planificateur (point 38), qui appellera `purgeOrphans` (pas de commande npm : PGlite n'ouvre la base que dans le processus du serveur) ; la reprise de `nameStoredFile` sur les clés restées sous leur nom provisoire ; la suppression sur SharePoint après un essai sur un vrai tenant (O-01). Tests : tests/unit/orphans.test.ts, tests/integration/orphans.test.ts.
+- **Complété le 18 octobre 2026** (point 38, lot 9, étape 4) : le planificateur lance la même suppression quand `CODEX_SCHEDULE_ORPHANS` en donne la fréquence (désactivée par défaut, `docs/exploitation.md` §4). Restent la reprise de `nameStoredFile` sur les clés restées sous leur nom provisoire et la suppression sur SharePoint (O-01).
 
 - **Effort** : faible · **Références** : T-01 (partie SharePoint)
 
@@ -906,6 +953,7 @@ Constaté dans le code. Il n'y a que cinq console.error côté serveur, tous non
 
 #### 50. Recherche, facettes et listes : filtrer et paginer en SQL plutôt qu'en mémoire
 - **Fait en partie le 12 octobre 2026** : visibilité traduite en conditions SQL (`readableSql`, `draftingCircleSql`, src/lib/access.ts), `canRead` gardé comme référence et comparé pour chaque personne sous chaque rôle sur des documents variés et sur la base de démo (`tests/integration/access-sql.test.ts`, `seed-sql.test.ts`). Recherche (`searchDocs`, src/lib/queries.ts) : une requête calcule visibilité, texte sans accents ni casse (table `document_terms` tenue par un déclencheur, index trigrammes `pg_trgm`, repli `codex_fold` de la base appliqué aux valeurs comme à la requête), période, comptes des facettes (`GROUP BY`/`GROUPING SETS`, sans compter l'invisible), tri (collation ICU `codex_fr` pour le titre et l'ID) et page (50 résultats, `?page=`) ; seules les lignes affichées sont lues entières ; l'export CSV passe par la même requête. Explorateur (`explorerDocs`) : comptes et liste paginée (50, `?page=`). Onglet Journal (`auditPage`) : filtres document ou cible, personne, action, période ; 100 entrées par page, curseur. Mêmes résultats, comptes et ordre que la version en mémoire (`runSearch` sur `listDocs`), qui reste la référence des tests (`tests/integration/search-sql.test.ts`, `seed-sql.test.ts`) ; mesures dans docs/historique.md §15.6. **Reste** : l'en-tête commun (src/app/layout.tsx : activité récente, modèles, « À traiter ») et l'Accueil, Archivage, les pages de département et la fiche lisent encore tous les documents visibles (`listDocs`), et `listWorkflows` tous les circuits ; Validations n'est pas paginé ; contenu des fichiers non indexé (G15) ; Postgres serveur (point 51).
+- **Mis à jour le 18 octobre 2026** : le reste ci-dessus est en partie fait par le point 47 (17 octobre) : l'en-tête commun, l'Accueil, Archivage, les pages de département et la fiche ne lisent plus tous les documents. Restent : Validations lit tous les circuits et n'est pas paginé, l'index d'accès lit à chaque requête les lecteurs désignés, révisions ouvertes et titulaires (point 47), le contenu des fichiers n'est pas indexé (point 82, O-01, O-11).
 
 - **Effort** : important · **Références** : G15, M18, FON-04, ARC-01
 
@@ -972,6 +1020,7 @@ Aucun dossier `.github/`, ni dans l'arbre de travail ni dans origin/main (`git l
 </details>
 
 #### 53. Docs en retard sur le code
+- **Fait le 18 octobre 2026** (lot 9, étape 8) : (1) G04 de l'audit dit « corrigé le 9 octobre » (`renameDocFiles`, commit `44bd1b8`, T-03) au lieu de la réserve ; (2) `docs/avancement-v2.md` est daté du 18 octobre et réécrit à la fin du lot 9 : fait par thème avec renvoi aux points, reste classé selon ce qui le bloque ; T-03 y figure dans « Fait », sauf la conservation par révision remplacée (O-09, point 72) ; la mention de `next typegen` est sans objet, `npm run typecheck` le lance ; (3) `docs/decisions.md` (« Authentification cible Entra ID » et réponse « Fournisseur d'authentification ») ne cite plus que `docs/modele-cible.md`, qui présente Entra ID comme « proposé, non confirmé » ; M16 de l'audit cite cette formule ; O-02 n'est pas tranché ; (4) le constat 33 de `docs/historique.md` est « Corrigé (sans objet sur base neuve) ». Les autres écarts trouvés en relisant les documents sont au point 54.
 
 - **Effort** : faible · **Références** : T-03, O-02
 
@@ -991,6 +1040,7 @@ Ce ne sont que des corrections de documentation, sans développement :
 </details>
 
 #### 54. Incohérences entre documentation et code, non relevées ailleurs
+- **Fait le 18 octobre 2026** (lot 9, étape 8) : (1) les actions d'administration, les commentaires et les exports sont journalisés depuis le 10 octobre (point 33) ; le README nomme ce qui ne l'est pas : le changement d'utilisateur ou de langue simulé, la création et la suppression d'une recherche enregistrée ; (2) le détail de T-03 (`docs/decisions.md`) disait déjà « en local, à plat avec un préfixe unique » ; `docs/modele-cible.md` §3 et le commentaire de `FileStore.rename` (`src/lib/storage.ts`) le disent aussi ; (3) « plein texte » est remplacé, dans le README et l'audit, par la liste des métadonnées cherchées (identifiant et anciens identifiants, titre, mots-clés, référence externe, ID d'étude, type, sous-type, organisme source, propriétaire, auteur ; pas le contenu des fichiers), et le commentaire de `matches` (`src/lib/search.ts`) est corrigé. Autres écarts trouvés en relisant README, `docs/avancement-v2.md`, `docs/api.md`, `docs/modele-cible.md`, l'audit et `docs/decisions.md` contre le code, et corrigés : bouton « Nouveau » de l'Explorateur (README), organisation du code (codification, dates, format, csv, errors, titles, intégrité, aide, `npm run a11y`), déclencheur du journal « pas dans la migration, que l'on régénère » (`docs/decisions.md`), exemple `PRO-QHS-0012` (`docs/modele-cible.md` §3), statuts de l'audit en retard (sauvegarde et PostgreSQL serveur, classe de conservation par document et dates d'événement, consultations journalisées, historique des métadonnées, lectures ciblées, M14), « reste » des points 36 et 50 déjà fait par les points 38 et 47. `docs/api.md` n'avait pas d'écart.
 
 - **Effort** : faible
 
@@ -1009,6 +1059,7 @@ Constaté.
 </details>
 
 #### 55. Accessibilité : audit systématique
+- **Fait le 18 octobre 2026** (lot 9, étape 8 ; bilan dans `docs/accessibilite.md`) : (1) « Aller au contenu » (« Skip to content »), premier élément de la page, visible quand il a le focus, vers `<main id="contenu" tabindex="-1">` (`src/app/layout.tsx`) ; (2) `npm run a11y` (`scripts/codex-a11y.mts`, dépendances `axe-core` et `playwright-core`) : le build de production servi sur une base de démo jetable (dossier temporaire, jamais `.data/`), 30 écrans et onglets et 20 dialogues en français (`--lang all` : aussi en anglais), règles WCAG 2.0 à 2.2 A et AA et bonnes pratiques d'axe ; échec sur une violation sérieuse ou critique ; contrôle du lien d'évitement et du focus des dialogues ; 70 s environ, même résultat sur trois passages : ajouté à la CI après le build ; (3) contrastes mesurés sur les fonds Nocturne : `.text-muted` passe (5,19 sur le fond, 4,83 sur une surface), comme les textes de 10 à 11 px qui l'utilisent ; échouaient et sont corrigés au plus près de la maquette : ligne d'information des cartes (4,25 → 4,83), portée des titulaires et usages des termes (4,47 → 5,47), nombre de termes dans un titre de section (3,18 → 7,64), petites mentions de la page maquette de l'aperçu (3,96 → 4,9) ; (4) violations corrigées : contrôles imbriqués (lignes des versions de travail), attribut ARIA interdit (pagination), cibles de moins de 24 px, titres (le nom de l'écran en `<h1>`, sections en `<h2>`, même rendu), repères sans nom, en-têtes de tableau vides. axe : 82 éléments en violation sérieuse ou critique et 52 en violation modérée ou mineure au commit `65af2e6`, 0 et 0 après, en français et en anglais. Tests : `tests/integration/shell-a11y.test.ts`. Reste : test manuel avec un lecteur d'écran, zoom à 200 % et affichage étroit, PDF générés non balisés, app Mac (macOS) ; le RGAA n'est pas exigé.
 
 - **Effort** : moyen
 
@@ -1231,6 +1282,7 @@ Constaté. Les sites n'ont qu'un `label` (src/db/schema.ts:30), recopié tel que
 </details>
 
 #### 69. Pas d'aide pour les utilisateurs
+- **Fait le 18 octobre 2026** (lot 9, étape 8) : page `/aide` (`src/app/aide/page.tsx`, `aide.module.css`, textes `HELP` de `src/lib/i18n.ts`, en français et en anglais), ouverte à tous les rôles, liée dans la barre latérale au-dessus de « Notes de conception » : sommaire et dix parcours tirés de `docs/modele-cible.md` et `docs/decisions.md`, limités à ce que l'application fait (ce qui est simulé d'abord : utilisateur, Vigie, Keystone ; créer un document, avec origine, rattachement, type et modèle ; déposer, puis restaurer une version de travail ; demander une validation et la rappeler ; valider, rejeter, déléguer ; demander une modification ou un retrait à Vigie, attente ou greffe quand une révision est ouverte (D-26) ; comparer ; confidentialité et cercle de rédaction ; recherche dans les métadonnées), avec un lien vers l'écran où chacun commence si le rôle y a accès. Aides contextuelles ajoutées aux dialogues : origine, rattachement, version de travail, circuit de validation, délégation et réassignation. Tests : `tests/integration/help-page.test.ts` (rendu dans les deux langues, liens selon le rôle, titre de la page, chaque libellé cité entre guillemets présent dans le dictionnaire). Reste, à décider (M14) : formation, utilisateurs clés, pilote, date d'interdiction des dépôts hors GED ; retrait des notes de conception en production (O-02).
 
 - **Effort** : moyen · **Références** : M14, O-02
 

@@ -451,6 +451,14 @@ const fr = {
   retention_basis_fr:'Fondement (FR)', retention_basis_en:'Fondement (EN)', retention_basis_en_hint:'Vide : le texte français est affiché en anglais, suivi de « (FR) ».',
   audit_from_template:'depuis le modèle {id}', audit_restored_from:'restaurée depuis {from}',
   app_description:'Gestion électronique des documents du groupe', title_suffix:'Codex',
+  // Added (lot 9, step 8): accessibility and help.
+  skip_to_content:'Aller au contenu', nav_label:'Navigation principale', nav_help:'Aide', sc_help:'Aide', help_title:'Aide à l’utilisation',
+  help_sub:'Les parcours courants, pas à pas.', col_actions:'Actions', col_attribute:'Attribut', version_select:'Sélectionner la version {v}',
+  origin_hint:'Interne : émis par le groupe. Externe : reçu d’un organisme (norme, certificat, document d’un client ou d’un fournisseur).',
+  attachment_hint:'Il donne le contexte de l’identifiant : le code du projet ou du programme ; sans rattachement, le département propriétaire (QMS pour un modèle).',
+  working_hint:'Les versions précédentes restent dans l’onglet Révisions. Tant que la révision n’est pas en vigueur, seul le cercle de rédaction la voit.',
+  circuit_hint:'Les titulaires des fonctions sont désignés au lancement. Ni l’auteur de la révision ni vous ne pourrez la valider.',
+  delegate_hint:'Seules les personnes dont le rôle permet de valider sont proposées, jamais l’auteur ni le demandeur de la révision.',
 };
 
 type Dict = Record<keyof typeof fr, string>;
@@ -898,6 +906,13 @@ const en: Dict = {
   retention_basis_fr:'Basis (FR)', retention_basis_en:'Basis (EN)', retention_basis_en_hint:'Empty: the French text is shown in English, followed by “(FR)”.',
   audit_from_template:'from template {id}', audit_restored_from:'restored from {from}',
   app_description:'Document management for the group', title_suffix:'Codex',
+  skip_to_content:'Skip to content', nav_label:'Main navigation', nav_help:'Help', sc_help:'Help', help_title:'Using Codex',
+  help_sub:'The common tasks, step by step.', col_actions:'Actions', col_attribute:'Attribute', version_select:'Select version {v}',
+  origin_hint:'Internal: issued by the group. External: received from an organisation (standard, certificate, client or supplier document).',
+  attachment_hint:'It gives the identifier its context: the project or programme code; without attachment, the owning department (QMS for a template).',
+  working_hint:'Earlier versions stay in the Revisions tab. Until the revision is in force, only the drafting circle sees it.',
+  circuit_hint:'The holders of the functions are named at launch. Neither the revision’s author nor you will be able to approve it.',
+  delegate_hint:'Only people whose role may approve are offered, never the revision’s author or requester.',
 };
 
 export const DICT: Record<Lang, Dict> = { fr, en };
@@ -954,3 +969,257 @@ export type Perm = (typeof PERMS)[number];
 export const ENFORCED_PERMS: readonly Perm[] = ['read', 'upload', 'edit', 'approve', 'publish', 'archive', 'admin'];
 /** Rows of the matrix that a simulated role reads (the others have no simulated equivalent yet). */
 export const SIMULATED_MATRIX_ROLES: readonly string[] = Object.values(MATRIX_ROLE);
+
+/**
+ * A topic of the help page (/aide): what the app does today, step by step, drawn from docs/modele-cible.md and
+ * docs/decisions.md. `href` leads to the screen where it starts (shown only when the user has that screen), `simulated`
+ * says what stands in for another system or for the sign-in. Same ids in both languages (anchors of the page).
+ */
+export type HelpTopic = {
+  id: string; title: string; intro: string; steps: string[]; notes?: string[]; simulated?: string;
+  href?: { url: string; screen: 'home' | 'explorer' | 'search' | 'workflow' | 'admin' };
+};
+export type Help = { lead: string; contents: string; simulatedLabel: string; open: string; notesHint: string; topics: HelpTopic[] };
+
+export const HELP: Record<Lang, Help> = {
+  fr: {
+    lead: 'Les parcours ci-dessous décrivent ce que Codex fait aujourd’hui. Un bouton grisé dit, au survol, ce qui manque : un droit du rôle, un verrou, une étape du cycle de vie.',
+    contents: 'Sommaire',
+    simulatedLabel: 'Simulé',
+    open: 'Ouvrir',
+    notesHint: 'Le modèle documentaire (classement, identifiant, révisions, confidentialité) est résumé dans « Notes de conception », en bas de la barre latérale.',
+    topics: [
+      {
+        id: 'simulation', title: 'Avant de commencer : ce qui est simulé',
+        intro: 'Codex fonctionne seul, mais trois choses n’y sont pas encore réelles.',
+        steps: [
+          'Utilisateur et rôle : il n’y a pas encore de connexion. Cliquez sur le profil en bas de la barre latérale pour choisir la personne et le rôle simulés ; les écrans, les droits et ce que vous voyez suivent.',
+          'Vigie : les demandes de modification et de retrait y sont envoyées, mais tant que Vigie n’est pas branché, un gestionnaire documentaire simule sa décision (bouton « Simulation Vigie » dans l’onglet Demandes de la fiche).',
+          'Keystone : les projets, leurs phases, leurs pièces attendues et leurs événements sont des données de démonstration gardées dans Codex ; « Ouvrir dans Keystone » mène à l’adresse configurée.',
+        ],
+        notes: ['La langue de l’interface (FR / EN) se choisit en haut à droite ; le titre d’un document reste dans sa langue.', 'Codex ne prévient que dans l’application : la cloche et « À traiter » sur l’Accueil. Aucun e-mail n’est envoyé.'],
+      },
+      {
+        id: 'create', title: 'Créer un document',
+        intro: 'Il faut le droit « Déposer ». Le document reçoit son identifiant dès la création et commence en révision A, brouillon.',
+        steps: [
+          'Depuis l’Accueil (« Nouveau depuis un modèle », « Déposer un fichier ») ou l’Explorateur (« Nouveau », « Déposer un fichier », prérempli par le plan de classement choisi).',
+          'Contenu initial : depuis un modèle (son fichier devient la version de travail A.1), depuis un fichier, ou sans fichier pour l’instant.',
+          'Origine (interne ou externe) puis rattachement (aucun, projet ou programme de recherche) : ils déterminent les types proposés et les champs à remplir (organisme source pour un document externe, projet et phase pour un projet…).',
+          'Famille, type et sous-type ; département ; confidentialité, que le type limite et propose par défaut.',
+          'Le dialogue montre l’identifiant attribué, TYPE-CONTEXTE-SEQ : PID-HLT-026-001 pour un projet, PRT-R2601-004 pour un programme, FRM-QMS-012 pour un modèle, PRO-QUA-0012 sinon (département propriétaire). « Créer le document » ouvre sa fiche.',
+        ],
+        notes: [
+          'Un modèle est un document de type FRM (contexte QMS) : il se crée depuis Administration › Modèles (QMS), « Nouveau modèle ». « Nouveau depuis un modèle » propose d’abord les modèles prévus pour le type choisi.',
+          'Avant la première approbation, un reclassement (« Modifier les métadonnées ») peut changer l’identifiant, l’ancien restant reconnu ; ensuite il ne change plus.',
+        ],
+        href: { url: '/', screen: 'home' },
+      },
+      {
+        id: 'working', title: 'Déposer une version de travail',
+        intro: 'Pendant la rédaction, chaque fichier déposé est une version de travail : A.1, A.2… Toutes sont conservées.',
+        steps: [
+          'Sur la fiche du document, « Nouvelle version de travail » : choisissez le fichier et, si utile, un commentaire.',
+          'Le fichier est contrôlé (format admis, taille, antivirus s’il est configuré) ; il se télécharge sous le nom {ID}_{lettre}.{n}, par exemple PRO-QUA-0012_A.2.pdf.',
+          'L’onglet Révisions liste les versions, leur auteur, leur date et leur empreinte SHA-256.',
+        ],
+        notes: ['Il faut le droit « Déposer » et faire partie du cercle de rédaction : propriétaire, modificateur désigné, gestionnaires documentaires. Si quelqu’un a déposé entre-temps, le dépôt est refusé : rechargez la fiche.'],
+      },
+      {
+        id: 'restore', title: 'Restaurer une version de travail',
+        intro: 'Revenir au contenu d’une version antérieure du brouillon, sans rien effacer.',
+        steps: [
+          'Onglet Révisions : cliquez sur une version antérieure de la révision en brouillon.',
+          '« Restaurer », puis confirmez : son fichier devient la version suivante (par exemple A.3, « Restaurée depuis A.1 »).',
+        ],
+        notes: ['Une révision en vigueur ne se restaure pas : revenir en arrière passe par une demande de modification dans Vigie.'],
+      },
+      {
+        id: 'approval', title: 'Demander une validation',
+        intro: 'Toute révision passe par le circuit de son type, fait de fonctions (responsable qualité, chef de projet…) résolues au lancement.',
+        steps: [
+          'Il faut au moins une version de travail. Sur la fiche, « Demander la validation » montre le circuit.',
+          'Date d’effet facultative : vide, la révision entre en vigueur dès l’approbation ; sinon, à cette date.',
+          'La révision passe « En révision » ; les valideurs la voient dans Validations › À valider.',
+          'Pour arrêter le circuit avant la dernière approbation : « Rappeler la demande » (le demandeur ou un gestionnaire documentaire) ; la révision revient en rédaction.',
+        ],
+        notes: ['Ni l’auteur de la révision ni le demandeur ne la valident. Un type sans étape d’approbation est approuvé aussitôt, avec le droit « Publier ».'],
+      },
+      {
+        id: 'decide', title: 'Valider, rejeter ou déléguer',
+        intro: 'L’écran Validations liste les circuits ; « À valider » ceux qui attendent votre décision.',
+        steps: [
+          '« Approuver » : l’étape suivante commence ; la dernière approbation demande aussi le droit « Publier ». La révision devient Approuvée, puis En vigueur à sa date d’effet (aussitôt sans date), et la précédente passe Remplacée.',
+          '« Rejeter » : un motif est obligatoire ; la révision repart en rédaction et l’auteur retrouve le motif sur la fiche et dans « À traiter ».',
+          '« Déléguer » : l’étape passe à une autre personne dont le rôle permet de valider, jamais à l’auteur ni au demandeur. Un gestionnaire documentaire peut aussi « Réassigner » l’étape de quelqu’un d’autre.',
+          'Les commentaires du circuit se lisent et s’ajoutent sous ses étapes.',
+        ],
+        notes: ['Une révision approuvée a une fiche de visa (PDF) dans l’onglet Révisions : un extrait du journal, sans signature électronique.'],
+        href: { url: '/validations', screen: 'workflow' },
+      },
+      {
+        id: 'vigie', title: 'Demander une modification ou un retrait',
+        intro: 'Un document en vigueur ne se modifie pas directement : la demande part vers Vigie, qui décide.',
+        steps: [
+          'Sur la fiche, « Demander une modification » (motif, description) : la demande (ECR) est transmise à Vigie. Si l’ECO est accepté, Codex ouvre la révision suivante en brouillon pour le modificateur désigné.',
+          'Si une révision est déjà ouverte, la demande reste possible : acceptée, elle attend la mise en vigueur de cette révision pour ouvrir la suivante ; tant que la révision ouverte est en rédaction, elle peut aussi y être greffée (« Greffer sur la révision », par le modificateur de cette révision, à défaut son propriétaire, ou un gestionnaire documentaire).',
+          '« Demander le retrait » : vous pouvez proposer un document de remplacement. Accepté, le retrait rend le document obsolète, signalé par un bandeau, et le relie au remplaçant proposé.',
+          'Suivi : Validations › « Mes demandes Vigie ».',
+        ],
+        notes: ['Un document sous gel juridique, archivé ou obsolète ne change plus : une acceptation reçue entre-temps attend la levée du verrou.'],
+        simulated: 'La décision de Vigie est simulée par un gestionnaire documentaire (« Simulation Vigie », onglet Demandes de la fiche).',
+        href: { url: '/validations?f=vigie', screen: 'workflow' },
+      },
+      {
+        id: 'compare', title: 'Comparer deux versions',
+        intro: 'Voir ce qui a changé entre une version et la version courante.',
+        steps: [
+          'Onglet Révisions : cliquez sur la version à comparer, puis « Comparer ».',
+          'Le dialogue montre leurs attributs côte à côte, puis leur texte comparé ligne à ligne : lignes retirées (−) et ajoutées (+).',
+        ],
+        notes: ['Le texte est lu dans les fichiers PDF, Word, Excel, PowerPoint, OpenDocument et texte ; la mise en page et les images ne sont pas comparées, et les formats Office 97-2003 (.doc, .xls, .ppt) ne sont pas lus.'],
+      },
+      {
+        id: 'confidentiality', title: 'Confidentialité : qui voit quoi',
+        intro: 'Cinq niveaux, du moins au plus protégé : Public < Restreint < Interne < Confidentiel < Très confidentiel.',
+        steps: [
+          'Public n’est admis que par certains types ; ailleurs, le minimum est Restreint (diffusable au client ou partenaire désigné).',
+          'Confidentiel : le département ou l’équipe projet du document. Très confidentiel : les seuls lecteurs désignés.',
+          'Les lecteurs désignés se règlent sur la fiche (« Lecteurs désignés », propriétaire ou gestionnaire documentaire).',
+          'Un brouillon et ses versions de travail ne sont visibles que du cercle de rédaction : propriétaire, modificateur désigné, valideurs du circuit en cours, gestionnaires documentaires. Les autres lecteurs ne voient que la révision en vigueur et celles qu’elle a remplacées.',
+        ],
+      },
+      {
+        id: 'search', title: 'Rechercher',
+        intro: 'Le champ en haut de chaque écran ouvre la Recherche ; elle ne porte que sur les documents que vous pouvez lire.',
+        steps: [
+          'Le texte est cherché dans les métadonnées : identifiant et anciens identifiants, titre, mots-clés, référence externe, ID d’étude, type, sous-type, organisme source, propriétaire et auteur. Le contenu des fichiers n’est pas cherché.',
+          'Les filtres (projet, type, département, statut, confidentialité, mots-clés…) se combinent ; une période porte sur une date au choix ; le tri se choisit au-dessus des résultats.',
+          '« Enregistrer la recherche » garde ses critères (jamais les documents) ; partager une recherche avec un département ou le groupe est réservé aux gestionnaires documentaires et aux administrateurs.',
+          '« Exporter la liste » donne les résultats en CSV, dans le même ordre.',
+        ],
+        href: { url: '/recherche', screen: 'search' },
+      },
+    ],
+  },
+  en: {
+    lead: 'The guides below describe what Codex does today. A greyed-out button tells, on hover, what is missing: a permission of the role, a lock, a step of the lifecycle.',
+    contents: 'Contents',
+    simulatedLabel: 'Simulated',
+    open: 'Open',
+    notesHint: 'The document model (classification, identifier, revisions, confidentiality) is summed up in “Design notes”, at the bottom of the sidebar.',
+    topics: [
+      {
+        id: 'simulation', title: 'Before you start: what is simulated',
+        intro: 'Codex works on its own, but three things are not real yet.',
+        steps: [
+          'User and role: there is no sign-in yet. Click the profile at the bottom of the sidebar to pick the simulated person and role; screens, permissions and what you see follow.',
+          'Vigie: change and withdrawal requests are sent to it, but until Vigie is connected a records manager simulates its decision (“Vigie simulation” button in the record’s Requests tab).',
+          'Keystone: projects, their phases, expected documents and events are demonstration data kept in Codex; “Open in Keystone” leads to the configured address.',
+        ],
+        notes: ['The interface language (FR / EN) is chosen at the top right; a document’s title stays in its own language.', 'Codex only notifies inside the app: the bell and “To do” on Home. No e-mail is sent.'],
+      },
+      {
+        id: 'create', title: 'Create a document',
+        intro: 'You need the “Upload” permission. The document gets its identifier on creation and starts as revision A, draft.',
+        steps: [
+          'From Home (“New from template”, “Upload a file”) or Browse (“New”, “Upload a file”, prefilled from the classification plan selection).',
+          'Initial content: from a template (its file becomes working version A.1), from a file, or no file yet.',
+          'Origin (internal or external), then attachment (none, project or research programme): they decide which types are offered and which fields to fill (source organisation for an external document, project and phase for a project…).',
+          'Family, type and sub-type; department; confidentiality, which the type limits and proposes by default.',
+          'The dialog shows the assigned ID, TYPE-CONTEXT-SEQ: PID-HLT-026-001 for a project, PRT-R2601-004 for a programme, FRM-QMS-012 for a template, PRO-QUA-0012 otherwise (owning department). “Create document” opens its record.',
+        ],
+        notes: [
+          'A template is a document of type FRM (context QMS): create one from Administration › Templates (QMS), “New template”. “New from template” first offers the templates meant for the chosen type.',
+          'Before the first approval, a reclassification (“Edit metadata”) may change the ID, the old one still being recognised; afterwards it never changes.',
+        ],
+        href: { url: '/', screen: 'home' },
+      },
+      {
+        id: 'working', title: 'Upload a working version',
+        intro: 'While drafting, each uploaded file is a working version: A.1, A.2… All of them are kept.',
+        steps: [
+          'On the document’s record, “New working version”: choose the file and, if useful, a comment.',
+          'The file is checked (admitted format, size, virus scan when configured); it downloads as {ID}_{letter}.{n}, for instance PRO-QUA-0012_A.2.pdf.',
+          'The Revisions tab lists the versions, their author, date and SHA-256 fingerprint.',
+        ],
+        notes: ['You need the “Upload” permission and a place in the drafting circle: owner, designated author, records managers. If someone uploaded in the meantime, the upload is refused: reload the record.'],
+      },
+      {
+        id: 'restore', title: 'Restore a working version',
+        intro: 'Go back to the content of an earlier version of the draft, without deleting anything.',
+        steps: [
+          'Revisions tab: click an earlier version of the draft revision.',
+          '“Restore”, then confirm: its file becomes the next version (for instance A.3, “Restored from A.1”).',
+        ],
+        notes: ['A revision in force is not restored: going back is a change request in Vigie.'],
+      },
+      {
+        id: 'approval', title: 'Request approval',
+        intro: 'Every revision goes through its type’s workflow, made of functions (quality manager, project manager…) resolved at launch.',
+        steps: [
+          'At least one working version is needed. On the record, “Request approval” shows the workflow.',
+          'Effective date optional: empty, the revision comes into force on approval; otherwise on that date.',
+          'The revision becomes “In review”; approvers find it in Approvals › For me.',
+          'To stop the workflow before the last approval: “Recall the request” (the requester or a records manager); the revision goes back to drafting.',
+        ],
+        notes: ['Neither the revision’s author nor the requester approves it. A type without an approval step is approved at once, with the “Publish” permission.'],
+      },
+      {
+        id: 'decide', title: 'Approve, reject or delegate',
+        intro: 'The Approvals screen lists the workflows; “For me” those waiting for your decision.',
+        steps: [
+          '“Approve”: the next step starts; the last approval also needs the “Publish” permission. The revision becomes Approved, then In force on its effective date (at once without one), and the previous one is Superseded.',
+          '“Reject”: a reason is required; the revision goes back to drafting and its author finds the reason on the record and in “To do”.',
+          '“Delegate”: the step goes to another person whose role may approve, never the author or the requester. A records manager may also “Reassign” someone else’s step.',
+          'The workflow’s comments are read and added under its steps.',
+        ],
+        notes: ['An approved revision has an approval sheet (PDF) in the Revisions tab: an extract of the audit trail, without electronic signature.'],
+        href: { url: '/validations', screen: 'workflow' },
+      },
+      {
+        id: 'vigie', title: 'Request a change or a withdrawal',
+        intro: 'A document in force is not edited directly: the request goes to Vigie, which decides.',
+        steps: [
+          'On the record, “Request a change” (reason, description): the request (ECR) is sent to Vigie. If the ECO is accepted, Codex opens the next revision as a draft for the designated author.',
+          'If a revision is already open, the request is still possible: once accepted, it waits for that revision to come into force before opening the next one; while the open revision is being drafted, it may also be grafted onto it (“Graft onto revision”, by that revision’s author, failing that its owner, or a records manager).',
+          '“Request withdrawal”: you may propose a replacement document. Once accepted, the withdrawal makes the document obsolete, flagged by a banner, and links it to the proposed replacement.',
+          'Follow-up: Approvals › “My Vigie requests”.',
+        ],
+        notes: ['A document under legal hold, archived or obsolete no longer changes: an acceptance received meanwhile waits for the lock to be lifted.'],
+        simulated: 'Vigie’s decision is simulated by a records manager (“Vigie simulation”, in the record’s Requests tab).',
+        href: { url: '/validations?f=vigie', screen: 'workflow' },
+      },
+      {
+        id: 'compare', title: 'Compare two versions',
+        intro: 'See what changed between a version and the current one.',
+        steps: [
+          'Revisions tab: click the version to compare, then “Compare”.',
+          'The dialog shows their attributes side by side, then their text compared line by line: removed (−) and added (+) lines.',
+        ],
+        notes: ['Text is read from PDF, Word, Excel, PowerPoint, OpenDocument and plain text files; layout and pictures are not compared, and Office 97-2003 formats (.doc, .xls, .ppt) are not read.'],
+      },
+      {
+        id: 'confidentiality', title: 'Confidentiality: who sees what',
+        intro: 'Five levels, from least to most protected: Public < Restricted < Internal < Confidential < Highly confidential.',
+        steps: [
+          'Public is admitted by some types only; elsewhere the minimum is Restricted (may go to the designated client or partner).',
+          'Confidential: the document’s department or project team. Highly confidential: the named readers only.',
+          'Named readers are set on the record (“Named readers”, owner or records manager).',
+          'A draft and its working versions are visible to the drafting circle only: owner, designated author, approvers of the running workflow, records managers. Other readers see only the revision in force and those it superseded.',
+        ],
+      },
+      {
+        id: 'search', title: 'Search',
+        intro: 'The field at the top of every screen opens Search; it only covers the documents you may read.',
+        steps: [
+          'Text is searched in the metadata: identifier and former identifiers, title, keywords, external reference, study ID, type, sub-type, source organisation, owner and author. The files’ content is not searched.',
+          'Filters (project, type, department, status, confidentiality, keywords…) combine; a period applies to a date of your choice; the order is chosen above the results.',
+          '“Save search” keeps its criteria (never the documents); sharing a search with a department or the whole group is for records managers and administrators.',
+          '“Export list” gives the results as CSV, in the same order.',
+        ],
+        href: { url: '/recherche', screen: 'search' },
+      },
+    ],
+  },
+};

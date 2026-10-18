@@ -55,7 +55,7 @@ export function DueTable({ tabs, filters, rows, canArchive }: { tabs: ReactNode;
           <thead>
             <tr>
               <th style={{ width: 36 }}><input type="checkbox" aria-label={t.selected} checked={all} disabled={!docIds.length} onChange={() => setSel(all ? {} : Object.fromEntries(docIds.map((id) => [id, true])))} style={{ margin: 0, display: 'block' }} /></th>
-              <th>{t.document}</th><th>{t.type}</th><th>{t.due_kind}</th><th>{t.due}</th><th>{t.proposed}</th><th />
+              <th>{t.document}</th><th>{t.type}</th><th>{t.due_kind}</th><th>{t.due}</th><th>{t.proposed}</th><th><span className="sr-only">{t.col_actions}</span></th>
             </tr>
           </thead>
           <tbody>

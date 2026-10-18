@@ -21,12 +21,12 @@ export async function Vocabularies({ ctx }: { ctx: Ctx }) {
     return (
       <section aria-label={title} className={styles.vocab}>
         <div className={styles.vocabHead}>
-          <h6 className="sec-title" style={{ margin: 0 }}>{title} <span className="text-muted tabnum">({terms.length})</span></h6>
+          <h2 className="sec-title" style={{ margin: 0 }}>{title} <span className="tabnum">({terms.length})</span></h2>
           <DialogButton spec={{ kind: 'vocabTerm', vocab: kind }} className="btn btn-secondary" icon="plus" iconSw={1.8}>{t.vocab_new}</DialogButton>
         </div>
         <div className={styles.tableScroll}>
           <table className="table" style={{ fontSize: 13 }}>
-            <thead><tr><th>{t.vocab_term}</th><th>{t.vocab_aliases}</th><th style={{ textAlign: 'right' }}>{t.vocab_uses}</th><th>{t.created}</th><th /></tr></thead>
+            <thead><tr><th>{t.vocab_term}</th><th>{t.vocab_aliases}</th><th style={{ textAlign: 'right' }}>{t.vocab_uses}</th><th>{t.created}</th><th><span className="sr-only">{t.col_actions}</span></th></tr></thead>
             <tbody>
               {terms.map((x) => (
                 <tr key={x.id}>
@@ -55,7 +55,7 @@ export async function Vocabularies({ ctx }: { ctx: Ctx }) {
             <span className="text-muted">{t.vocab_unlisted}</span>
             {unlisted.map((v) => (
               <span key={v.value} className={`tag tag-neutral ${styles.holder}`}>
-                {v.value} <span className="tabnum" style={{ opacity: 0.6 }}>· {v.uses}</span>
+                {v.value} <span className="tabnum" style={{ opacity: 0.7 }}>· {v.uses}</span>
                 <ActionButton action={addVocabTerm.bind(null, kind, v.value)} className="btn btn-ghost" style={{ fontSize: 11.5, padding: '0 6px' }}>{t.vocab_add_value}</ActionButton>
               </span>
             ))}
@@ -72,11 +72,11 @@ export async function Vocabularies({ ctx }: { ctx: Ctx }) {
         {one('keyword', t.vocab_keywords)}
       </div>
       <section aria-label={t.vocab_subtypes}>
-        <h6 className="sec-title" style={{ marginBottom: 6 }}>{t.vocab_subtypes}</h6>
+        <h2 className="sec-title" style={{ marginBottom: 6 }}>{t.vocab_subtypes}</h2>
         <p className="text-muted" style={{ margin: '0 0 10px', fontSize: 12.5 }}>{t.vocab_subtypes_hint}</p>
         {o.subtypes.length === 0 ? <p className="text-muted" style={{ fontSize: 12.5 }}>{t.vocab_subtypes_none}</p> : (
           <table className="table" style={{ fontSize: 13 }}>
-            <thead><tr><th>{t.type}</th><th>{t.subtype}</th><th style={{ textAlign: 'right' }}>{t.vocab_uses}</th><th /></tr></thead>
+            <thead><tr><th>{t.type}</th><th>{t.subtype}</th><th style={{ textAlign: 'right' }}>{t.vocab_uses}</th><th><span className="sr-only">{t.col_actions}</span></th></tr></thead>
             <tbody>
               {o.subtypes.map((x) => (
                 <tr key={`${x.typeCode}:${x.value}`}>

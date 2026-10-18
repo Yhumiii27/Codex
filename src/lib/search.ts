@@ -240,7 +240,7 @@ export function wordStartPrefix(): string {
   return `(?<![${wordChars()}])`;
 }
 
-/** Full-text match (see score); an empty query matches everything. */
+/** Match on the metadata score() weighs (IDs, title, keywords, references, type, owner, author…), never on the files' content; an empty query matches everything. */
 export function matches(d: DocView, q: string): boolean {
   return !q.trim() || score(d, q) > 0;
 }

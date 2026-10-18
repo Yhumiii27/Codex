@@ -54,8 +54,9 @@ interface FileStore {
   /** Uploads under a provisional name, never replacing an existing file; returns the key. */
   put(buf: Buffer, name: string): Promise<string>;
   /**
-   * Gives the file its name `storedName` ({ID}_{révision}.{ext}) in the document's folder and returns its key. A new key
-   * leaves the old one readable until it is removed, so a record never points to a missing file.
+   * Gives the file its name `storedName` ({ID}_{révision}.{ext}) and returns its key: in the document's folder on
+   * SharePoint; flat on the local disk, after the key's unique prefix (`folder` unused). A new key leaves the old one
+   * readable until it is removed, so a record never points to a missing file.
    */
   rename(key: string, storedName: string, folder: string): Promise<string>;
   get(key: string): Promise<Buffer>;

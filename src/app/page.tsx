@@ -66,7 +66,7 @@ export default async function HomePage() {
           <div className={styles.col}>
             <section>
               {/* The list is whole: no « Tout voir » towards Validations, which only holds the approval steps. */}
-              <div className="sec-head"><h6 className="sec-title">{t.todo}</h6></div>
+              <div className="sec-head"><h2 className="sec-title">{t.todo}</h2></div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {actions.map((a) => (
                   <div key={a.key} className={`card ${styles.todo}`}>
@@ -89,7 +89,7 @@ export default async function HomePage() {
               </div>
             </section>
             <section>
-              <div className="sec-head" style={{ marginBottom: 6 }}><h6 className="sec-title">{t.recents}</h6><Link href="/explorateur" className="sec-link">{t.see_all}</Link></div>
+              <div className="sec-head" style={{ marginBottom: 6 }}><h2 className="sec-title">{t.recents}</h2><Link href="/explorateur" className="sec-link">{t.see_all}</Link></div>
               <table className="table" style={{ fontSize: 13 }}>
                 <thead><tr><th>{t.title_label}</th><th>{t.type}</th><th>{t.revision}</th><th>{t.status}</th><th>{t.modified}</th></tr></thead>
                 <tbody>
@@ -109,7 +109,7 @@ export default async function HomePage() {
 
           <div className={styles.col}>
             <section>
-              <div className="sec-head"><h6 className="sec-title">{t.ret_due}</h6>{ctx.screens.retention && <Link href="/archivage" className="sec-link">{t.see_all}</Link>}</div>
+              <div className="sec-head"><h2 className="sec-title">{t.ret_due}</h2>{ctx.screens.retention && <Link href="/archivage" className="sec-link">{t.see_all}</Link>}</div>
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 {due.slice(0, 4).map((d) => (
                   <Link key={`${d.id}:${d.kind}`} href={d.href} className={`link-plain hairline ${styles.expRow}`}>
@@ -123,7 +123,7 @@ export default async function HomePage() {
               </div>
             </section>
             <section>
-              <div className="sec-head"><h6 className="sec-title">{t.activity}</h6>{ctx.screens.admin && <Link href="/administration?tab=audit" className="sec-link">{t.see_all}</Link>}</div>
+              <div className="sec-head"><h2 className="sec-title">{t.activity}</h2>{ctx.screens.admin && <Link href="/administration?tab=audit" className="sec-link">{t.see_all}</Link>}</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {activity.map((a) => (
                   <div key={a.id} className="feed">

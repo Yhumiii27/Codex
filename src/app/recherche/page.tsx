@@ -88,7 +88,7 @@ export default async function SearchPage({ searchParams }: PageProps<'/recherche
     <div className="screen" style={{ display: 'flex', minWidth: 0 }} data-screen-label="Recherche">
       <aside className={styles.side}>
         <section>
-          <h6 className="sec-title" style={{ marginBottom: 8 }}>{t.saved}</h6>
+          <h2 className="sec-title" style={{ marginBottom: 8 }}>{t.saved}</h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             {saved.length === 0 && <p className="text-muted" style={{ margin: 0, padding: '6px 8px', fontSize: 12.5 }}>{t.search_none}</p>}
             {saved.map((x) => (
@@ -109,7 +109,7 @@ export default async function SearchPage({ searchParams }: PageProps<'/recherche
         </section>
         <section>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <h6 className="sec-title">{t.filters}</h6>
+            <h2 className="sec-title">{t.filters}</h2>
             {hasActive && <Link href={searchHref({ sort: search.sort })} className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 6px' }}>{t.clear}</Link>}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>

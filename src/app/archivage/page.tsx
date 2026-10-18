@@ -101,7 +101,7 @@ export default async function RetentionPage({ searchParams }: PageProps<'/archiv
             <thead>
               <tr>
                 <th>{t.type}</th><th>{t.retention_basis}</th><th>{t.duration}</th><th>{t.trigger}</th><th>{t.outcome}</th>
-                <th style={{ textAlign: 'right' }}>{t.count}</th>{canEditRules && <th />}
+                <th style={{ textAlign: 'right' }}>{t.count}</th>{canEditRules && <th><span className="sr-only">{t.col_actions}</span></th>}
               </tr>
             </thead>
             <tbody>
@@ -112,7 +112,7 @@ export default async function RetentionPage({ searchParams }: PageProps<'/archiv
                   <Fragment key={f.key}>
                     <tr>
                       <td colSpan={canEditRules ? 7 : 6} style={{ paddingTop: 18 }}>
-                        <h6 className="sec-title" style={{ fontSize: 11 }}>{lang === 'fr' ? f.labelFr : f.labelEn}</h6>
+                        <h2 className="sec-title" style={{ fontSize: 11 }}>{lang === 'fr' ? f.labelFr : f.labelEn}</h2>
                       </td>
                     </tr>
                     {types.map((x) => (
@@ -143,7 +143,7 @@ export default async function RetentionPage({ searchParams }: PageProps<'/archiv
           <>
             <p className="text-muted" style={{ margin: '0 0 10px', fontSize: 12.5, maxWidth: 760 }}>{t.ret_events_hint}</p>
             <table className="table" style={{ fontSize: 13 }}>
-              <thead><tr><th>{t.title_label}</th><th>{t.type}</th><th>{t.trigger}</th><th>{t.owner}</th><th>{t.retention_event_at}</th><th>{t.until}</th><th /></tr></thead>
+              <thead><tr><th>{t.title_label}</th><th>{t.type}</th><th>{t.trigger}</th><th>{t.owner}</th><th>{t.retention_event_at}</th><th>{t.until}</th><th><span className="sr-only">{t.col_actions}</span></th></tr></thead>
               <tbody>
                 {events.map((d) => {
                   const may = maySetRetentionEvent(ctx, d);
@@ -175,7 +175,7 @@ export default async function RetentionPage({ searchParams }: PageProps<'/archiv
         )}
         {tab === 'archives' && (
           <table className="table" style={{ fontSize: 13 }}>
-            <thead><tr><th>{t.title_label}</th><th>{t.type}</th><th>{t.revision}</th><th>{t.archived_on}</th><th>{t.until}</th><th /></tr></thead>
+            <thead><tr><th>{t.title_label}</th><th>{t.type}</th><th>{t.revision}</th><th>{t.archived_on}</th><th>{t.until}</th><th><span className="sr-only">{t.col_actions}</span></th></tr></thead>
             <tbody>
               {archives.map((d) => (
                 <tr key={d.id}>

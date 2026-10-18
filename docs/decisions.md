@@ -734,12 +734,12 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
   - l'export du journal est inscrit à la fin du téléchargement (ou à son interruption, avec le nombre de lignes
     envoyées) : un arrêt brutal du serveur pendant l'export ne laisse pas de trace. Une requête HEAD sur un export
     ne journalise rien ;
-  - le déclencheur qui rend le journal en ajout seul est posé à chaque démarrage (`src/db/index.ts`), pas dans la
-    migration, que l'on régénère tant qu'il n'y a pas de base de production.
+  - le déclencheur qui rend le journal en ajout seul est posé à chaque démarrage (`src/db/index.ts`), pas dans les
+    migrations (régénérées jusqu'au 17 octobre 2026, incrémentales depuis).
 - **Authentification cible Entra ID** : proposée le 7 octobre à 12:40 (« passer à l'authentification Entra ID ») et à
   17:33 (lot 4 « Authentification Entra ID et organigramme »). L'utilisateur n'en a jamais parlé (O-02).
-  `docs/modele-cible.md` §1, `docs/api.md`, `docs/avancement-v2.md` et le commentaire de
-  `src/app/api/registry/route.ts` la présentent pourtant comme la cible.
+  `docs/modele-cible.md` (en tête et §1) la présente comme « proposé, non confirmé » ; `docs/api.md`,
+  `docs/avancement-v2.md` et `src/app/api/registry/route.ts` ne la mentionnent plus.
 - **API d'import** pour l'outil de migration (D-21).
 - **Autres applications** (D-16) : créer un module ECR/ECO dans Vigie, et faire pointer vers Vigie le module ECO de
   Keystone et sa spec.
@@ -1480,6 +1480,23 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
   - **titres des pages** (point 68, WCAG 2.4.2) : « {écran} — Codex » dans la langue choisie ; une fiche lisible
     « {ID} · {titre} — Codex », une fiche illisible ou introuvable « Fiche document — Codex », sans distinguer les deux
     (D-14).
+- **Accessibilité, aide et documentation** (lot 9, étape 8, 18 octobre ; points 53, 54, 55 et 69 de
+  `docs/reste-a-faire.md`, `docs/accessibilite.md`) :
+  - **cible** : WCAG 2.2 niveau AA comme démarche de qualité, contrôlée par axe-core (`npm run a11y`) ; ni RGAA ni
+    déclaration d'accessibilité, que ni le deck ni ce journal ne demandent ; le contrôle échoue sur les violations
+    qu'axe classe sérieuses ou critiques, liste les autres, et tourne dans la CI après le build ;
+  - **contrastes** : seules les couleurs qui échouaient changent, au plus près de la maquette (ligne d'information des
+    cartes à 55 % du texte comme `.text-muted` au lieu de 50 %, opacité 0,7 au lieu de 0,6, petites mentions de la page
+    maquette de l'aperçu entre deux gris de Nocturne) ; la copie de Nocturne (`src/app/nocturne.css`) n'est pas
+    modifiée, la correction est dans `src/app/globals.css` ; aucune taille de texte ne change, aucun thème clair ;
+  - **titres** : le nom de l'écran dans l'en-tête devient le `<h1>` de la page et les titres de section des `<h2>`,
+    dessinés comme avant ;
+  - **aide** (`/aide`) : ouverte à tous les rôles, liée dans la barre latérale au-dessus de « Notes de conception »,
+    qui restent (leur retrait en production attend l'authentification, O-02) ; elle ne décrit que ce que
+    l'application fait, dit ce qui est simulé (utilisateur, Vigie, Keystone) et ne mène à un écran que si le rôle y a
+    accès ; formation, utilisateurs clés, pilote et date d'interdiction des dépôts hors GED restent ouverts (M14) ;
+  - **aides contextuelles** ajoutées aux dialogues (origine, rattachement, version de travail, circuit, délégation) :
+    des rappels du modèle, sans nouvelle règle.
 - **Git** (D-23) : premier commit sur une branche `codex-ged-v2` plutôt que sur `main`.
 
 ## Ce qui est explicitement hors périmètre
@@ -1553,8 +1570,9 @@ Les valeurs de la maquette n'existent plus dans le modèle v2 :
   - Au démarrage, il a écarté « Authentification réelle » au profit de « Rôle simulé (Recommandé) », dont la
     description disait « L'authentification réelle (SSO, etc.) viendra plus tard ».
   - L'assistant a ensuite proposé Entra ID, sans réponse.
-  - Les mentions d'Entra ID dans `docs/modele-cible.md`, `docs/api.md`, `docs/avancement-v2.md` et
-    `src/app/api/registry/route.ts` reflètent cette proposition, pas une décision.
+  - `docs/modele-cible.md` (en tête et §1) mentionne Entra ID comme « proposé, non confirmé » : c'est cette
+    proposition, pas une décision. `docs/api.md`, `docs/avancement-v2.md` et `src/app/api/registry/route.ts` ne le
+    mentionnent plus.
   - Question ouverte O-02.
 
 ### Liaison avec Keystone : API ou base partagée ?

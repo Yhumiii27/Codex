@@ -118,7 +118,7 @@ async function Registry({ ctx, family }: { ctx: Ctx; family: string }) {
         <thead>
           <tr>
             <th>{t.rule_id}</th><th>{t.type}</th><th>{t.family}</th><th>{t.origin}</th><th>{t.attachment}</th><th>{t.circuit}</th>
-            <th>{t.conf}</th><th>{t.retention}</th><th title={t.review_months}>{t.review_short}</th><th>ISO</th><th style={{ textAlign: 'right' }}>{t.count}</th><th />
+            <th>{t.conf}</th><th>{t.retention}</th><th title={t.review_months}>{t.review_short}</th><th>ISO</th><th style={{ textAlign: 'right' }}>{t.count}</th><th><span className="sr-only">{t.col_actions}</span></th>
           </tr>
         </thead>
         <tbody>
@@ -148,9 +148,9 @@ async function Registry({ ctx, family }: { ctx: Ctx; family: string }) {
         </tbody>
       </table>
       <section aria-label={t.families_title}>
-        <h6 className="sec-title" style={{ marginBottom: 10 }}>{t.families_title}</h6>
+        <h2 className="sec-title" style={{ marginBottom: 10 }}>{t.families_title}</h2>
         <table className="table" style={{ fontSize: 13 }}>
-          <thead><tr><th>{t.family}</th><th>{t.key_label}</th><th>{t.family_group}</th><th style={{ textAlign: 'right' }}>{t.types_count}</th><th style={{ textAlign: 'right' }}>{t.count}</th><th /></tr></thead>
+          <thead><tr><th>{t.family}</th><th>{t.key_label}</th><th>{t.family_group}</th><th style={{ textAlign: 'right' }}>{t.types_count}</th><th style={{ textAlign: 'right' }}>{t.count}</th><th><span className="sr-only">{t.col_actions}</span></th></tr></thead>
           <tbody>
             {families.map((f) => {
               const label = lang === 'fr' ? f.labelFr : f.labelEn;
@@ -192,7 +192,7 @@ async function Functions({ ctx }: { ctx: Ctx }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
       <table className="table" style={{ fontSize: 13 }}>
-        <thead><tr><th>{t.function_label}</th><th>{t.scope}</th><th>{t.holders}</th><th style={{ textAlign: 'right' }}>{t.types_covered}</th><th /></tr></thead>
+        <thead><tr><th>{t.function_label}</th><th>{t.scope}</th><th>{t.holders}</th><th style={{ textAlign: 'right' }}>{t.types_covered}</th><th><span className="sr-only">{t.col_actions}</span></th></tr></thead>
         <tbody>
           {fns.map((f) => (
             <tr key={f.key}>
@@ -204,7 +204,7 @@ async function Functions({ ctx }: { ctx: Ctx }) {
                   {f.holders.map((h) => (
                     <span key={h.id} className={`tag tag-neutral ${styles.holder}`} title={h.scopeValue ? scopeTitle(f.scope, h.scopeValue) : undefined}>
                       {h.user}
-                      {f.scope !== 'global' && <span style={{ opacity: 0.6 }}>· {h.scopeL}</span>}
+                      {f.scope !== 'global' && <span style={{ opacity: 0.7 }}>· {h.scopeL}</span>}
                       <ActionButton className={styles.remove} ariaLabel={`${t.remove} · ${h.user}`} title={t.remove} action={removeFunctionHolder.bind(null, h.id)}>
                         <Icon name="close" size={11} sw={2} />
                       </ActionButton>
@@ -230,7 +230,7 @@ async function Functions({ ctx }: { ctx: Ctx }) {
       </table>
       <Programs ctx={ctx} usage={usage} />
       <section>
-        <h6 className="sec-title" style={{ marginBottom: 10 }}>{t.circuit}</h6>
+        <h2 className="sec-title" style={{ marginBottom: 10 }}>{t.circuit}</h2>
         <table className="table" style={{ fontSize: 13 }}>
           <thead><tr><th>{t.circuit_steps}</th><th>{t.types_covered}</th><th style={{ textAlign: 'right' }}>{t.count}</th></tr></thead>
           <tbody>
@@ -257,12 +257,12 @@ function Programs({ ctx, usage }: { ctx: Ctx; usage: RegistryUsage }) {
   return (
     <section aria-label={t.programs_title}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-        <h6 className="sec-title" style={{ margin: 0 }}>{t.programs_title}</h6>
+        <h2 className="sec-title" style={{ margin: 0 }}>{t.programs_title}</h2>
         <span style={{ flex: 1 }} />
         <DialogButton spec={{ kind: 'program' }} className="btn btn-secondary" icon="plus" iconSw={1.8} style={{ fontSize: 12 }}>{t.new_program}</DialogButton>
       </div>
       <table className="table" style={{ fontSize: 13 }}>
-        <thead><tr><th>{t.rule_id}</th><th>{t.program_name}</th><th>{t.manager}</th><th style={{ textAlign: 'right' }}>{t.count}</th><th /></tr></thead>
+        <thead><tr><th>{t.rule_id}</th><th>{t.program_name}</th><th>{t.manager}</th><th style={{ textAlign: 'right' }}>{t.count}</th><th><span className="sr-only">{t.col_actions}</span></th></tr></thead>
         <tbody>
           {ctx.programs.map((p) => (
             <tr key={p.code} style={p.active ? undefined : { opacity: 0.55 }}>
@@ -343,11 +343,11 @@ async function Organisation({ ctx }: { ctx: Ctx }) {
       </p>
       <div className={styles.split}>
         <section>
-          <h6 className="sec-title" style={{ marginBottom: 10 }}>{t.department}</h6>
+          <h2 className="sec-title" style={{ marginBottom: 10 }}>{t.department}</h2>
           {/* The table scrolls within its column rather than spilling over the sites beside it. */}
           <div className={styles.tableScroll}>
             <table className="table" style={{ fontSize: 13 }}>
-              <thead><tr><th>{t.rule_id}</th><th>{t.label_fr}</th><th>{t.label_en}</th><th>{t.manager}</th><th style={{ textAlign: 'right' }}>{t.people}</th><th style={{ textAlign: 'right' }}>{t.count}</th><th>{t.featured_filters}</th><th /></tr></thead>
+              <thead><tr><th>{t.rule_id}</th><th>{t.label_fr}</th><th>{t.label_en}</th><th>{t.manager}</th><th style={{ textAlign: 'right' }}>{t.people}</th><th style={{ textAlign: 'right' }}>{t.count}</th><th>{t.featured_filters}</th><th><span className="sr-only">{t.col_actions}</span></th></tr></thead>
               <tbody>
                 {ctx.departments.map((d) => {
                   const featured = featuredOf(d);
@@ -387,9 +387,9 @@ async function Organisation({ ctx }: { ctx: Ctx }) {
           </div>
         </section>
         <section>
-          <h6 className="sec-title" style={{ marginBottom: 10 }}>{t.site_label}</h6>
+          <h2 className="sec-title" style={{ marginBottom: 10 }}>{t.site_label}</h2>
           <table className="table" style={{ fontSize: 13 }}>
-            <thead><tr><th>{t.site_label}</th><th style={{ textAlign: 'right' }}>{t.people}</th><th style={{ textAlign: 'right' }}>{t.count}</th><th /></tr></thead>
+            <thead><tr><th>{t.site_label}</th><th style={{ textAlign: 'right' }}>{t.people}</th><th style={{ textAlign: 'right' }}>{t.count}</th><th><span className="sr-only">{t.col_actions}</span></th></tr></thead>
             <tbody>
               {ctx.sites.map((x) => {
                 const label = ctx.label('site', x.key);
@@ -429,7 +429,7 @@ async function Templates({ ctx }: { ctx: Ctx }) {
   const tpls = await listTemplates(ctx);
   return (
     <table className="table" style={{ fontSize: 13 }}>
-      <thead><tr><th>{t.ref}</th><th>{t.title_label}</th><th>{t.revision}</th><th>{t.owner}</th><th>{t.department}</th><th>{t.template_types}</th><th style={{ textAlign: 'right' }} title={t.tpl_uses_hint}>{t.uses}</th><th /></tr></thead>
+      <thead><tr><th>{t.ref}</th><th>{t.title_label}</th><th>{t.revision}</th><th>{t.owner}</th><th>{t.department}</th><th>{t.template_types}</th><th style={{ textAlign: 'right' }} title={t.tpl_uses_hint}>{t.uses}</th><th><span className="sr-only">{t.col_actions}</span></th></tr></thead>
       <tbody>
         {tpls.map((x) => {
           const href = `/documents/${encodeURIComponent(x.id)}`;

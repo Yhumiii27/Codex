@@ -60,7 +60,9 @@ autre segment d'identifiant (*proposé, non confirmé*, `docs/decisions.md`).
 
 Compteur par couple (type, contexte). ID attribué à la création du brouillon. Avant la première approbation, un
 reclassement attribue un nouvel ID et conserve l'ancien comme alias ; après, l'ID ne change plus jamais.
-Fichier stocké : `{ID}_{indice}.{ext}` (ex. `PRO-QHS-0012_B.2.pdf`).
+Fichier stocké : `{ID}_{indice}.{ext}` (ex. `PRO-QUA-0012_B.2.pdf`), nom proposé au téléchargement ; avec SharePoint,
+le fichier porte ce nom dans le dossier de l'ID ; sur le disque local, il est rangé à plat sous un préfixe unique
+(`{uuid}-{ID}_{indice}.{ext}`). Un reclassement renomme les fichiers déjà stockés.
 
 ## 4. Révisions et cycle de vie
 

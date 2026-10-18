@@ -12,7 +12,7 @@ import { activeScreen } from './Sidebar';
 import { TODO_ICON } from './todo';
 import styles from './Header.module.css';
 
-const TITLE = { home: 'sc_home', explorer: 'sc_explorer', document: 'sc_document', search: 'sc_search', departments: 'sc_departments', workflow: 'sc_workflow', retention: 'sc_retention', admin: 'sc_admin' } as const;
+const TITLE = { home: 'sc_home', explorer: 'sc_explorer', document: 'sc_document', search: 'sc_search', departments: 'sc_departments', workflow: 'sc_workflow', retention: 'sc_retention', admin: 'sc_admin', help: 'sc_help' } as const;
 
 export type Notif = {
   recent: { id: number; when: string; user: string; actionLabel: string; ref: string; href: string }[];
@@ -63,7 +63,7 @@ export function Header({ notif }: { notif: Notif }) {
 
   return (
     <header className={styles.header}>
-      <h5 className={styles.title}>{t[TITLE[sc]]}</h5>
+      <h1 className={styles.title}>{t[TITLE[sc]]}</h1>
       <div className={styles.search}>
         <Icon name="search" size={15} style={{ position: 'absolute', left: 10, top: 10, opacity: 0.6 }} />
         <input
@@ -92,7 +92,7 @@ export function Header({ notif }: { notif: Notif }) {
           </button>
           {notifOpen && (
             <div className="popover" style={{ right: 0, top: 42 }} role="dialog" aria-label={t.notif}>
-              <h6 className="sec-title">{t.todo}</h6>
+              <h2 className="sec-title">{t.todo}</h2>
               {pending.length === 0 && <div className="text-muted" style={{ fontSize: 12.5 }}>{t.todo_empty}</div>}
               {pending.length > 0 && (
                 <div className={styles.pending}>
@@ -108,7 +108,7 @@ export function Header({ notif }: { notif: Notif }) {
                   ))}
                 </div>
               )}
-              <h6 className="sec-title" style={{ marginTop: 4 }}>{t.notif_recent}</h6>
+              <h2 className="sec-title" style={{ marginTop: 4 }}>{t.notif_recent}</h2>
               {notif.recent.length === 0 && <div className="text-muted" style={{ fontSize: 12.5 }}>{t.notif_empty}</div>}
               {notif.recent.map((a) => (
                 <div key={a.id} className="feed" style={{ fontSize: 12 }}>

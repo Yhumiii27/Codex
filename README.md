@@ -73,9 +73,12 @@ Les fichiers déposés sont stockés dans `.data/files/` (ou dans SharePoint, vo
   déjà des documents est refusée sans `--append`) ; `npm run perf` mesure les écrans et routes principaux d'un serveur
   lancé (`npm run start` avec `CODEX_DATA_DIR=.data-large` ou `DATABASE_URL`, et `CODEX_RATE_LIMIT=off`).
 - Contrôles : `npm test`, `npm run typecheck`, `npm run lint`, `npm run build` (sans accès réseau : la police Inter
-  est dans `src/fonts/`, servie par `next/font/local`, licence OFL dans `src/fonts/inter/OFL.txt`).
+  est dans `src/fonts/`, servie par `next/font/local`, licence OFL dans `src/fonts/inter/OFL.txt`), puis
+  `npm run a11y` (accessibilité : axe-core dans Chromium sur les écrans et dialogues principaux du build, base de démo
+  jetable ; `docs/accessibilite.md`).
 - Intégration continue GitHub Actions (`.github/workflows/ci.yml`) : `npm ci`, `npm run db:check` puis ces contrôles,
-  sous Node 22, à chaque push et PR ; et `npm run test:pg` sur un service PostgreSQL 18.
+  `npm run a11y` compris (après `npx playwright-core install --with-deps chromium`), sous Node 22, à chaque push et PR ;
+  et `npm run test:pg` sur un service PostgreSQL 18.
 - Tests : `npm test` lance Vitest une fois (`npm run test:watch` en continu), en une à deux minutes selon la machine,
   sans serveur ni réseau et sans toucher à `.data/`.
   - `tests/unit/` : règles pures (identifiants, révisions, visibilité, conservation, recherche, filtres mis en avant
@@ -94,7 +97,9 @@ Les fichiers déposés sont stockés dans `.data/files/` (ou dans SharePoint, vo
     en flux (206, 416, 304, HEAD), nettoyage des fichiers orphelins, sauvegarde et restauration (archive écrite,
     relue, altérée, restaurée sur disque puis rouverte, retour arrière, commandes npm lancées comme par l'exploitant),
     export complet (archive relue, empreintes et comptes comparés à la base, instantané, droits, interruption, réimport
-    d'un document par l'import, commande npm), route de santé et journal technique des routes et des actions. La visibilité en SQL, la recherche et l'explorateur lus par la base
+    d'un document par l'import, commande npm), route de santé et journal technique des routes et des actions, rendu
+    de la page d'aide et de la coquille des écrans (lien d'évitement, titre de niveau 1, navigation) en français et en
+    anglais. La visibilité en SQL, la recherche et l'explorateur lus par la base
     sont comparés à leur version en mémoire, qui reste la référence (`access-sql`, `search-sql`, `tests/support/`).
     `tests/integration/dates.test.ts` et `seed-sql.test.ts` chargent aussi les données de démo (`src/db/seed.ts`), en
     mémoire, pour en vérifier toutes les dates et y refaire ces comparaisons.
@@ -152,13 +157,14 @@ migration n'en demande pas : l'app sauvegarde sa base puis la migre au démarrag
 | Route | Écran |
 | --- | --- |
 | `/` | Tableau de bord : « À traiter » (étapes à décider, révisions à rédiger ou à reprendre, greffes possibles, revues et expirations des documents dont on est propriétaire ou propriétaire de processus), documents récents, échéances (conservation, expiration, revue), activité. La pastille d'Accueil et la cloche reprennent la même liste |
-| `/explorateur` | Classement par famille, département, projet / programme, type ou origine ; filtres de statut et d'échéance dépassée (« Expirés », « Revues en retard ») ; 50 documents par page ; aperçu rapide ; « Déposer un fichier » et « Nouveau document » préremplis avec le département, la famille ou le type choisis dans l'arbre |
+| `/explorateur` | Classement par famille, département, projet / programme, type ou origine ; filtres de statut et d'échéance dépassée (« Expirés », « Revues en retard ») ; 50 documents par page ; aperçu rapide ; « Déposer un fichier » et « Nouveau » préremplis avec le département, la famille ou le type choisis dans l'arbre |
 | `/documents/[id]` | Fiche document : aperçu, onglets Projet · Fiche · Révisions · Validation · Demandes · Historique (onglet Projet : phases Keystone en frise compacte, la phase courante nommée ; sans projet, « Rattacher à un projet » pour le propriétaire ou un gestionnaire) ; « Restaurer » une version de travail antérieure du brouillon (onglet Révisions) ; indicateurs « Expiré » (raccourcis vers les demandes de modification et de retrait) et « Revue en retard », « Revue effectuée » ; documents liés (« Remplace », « Remplacé par », « Voir aussi »), remplacement proposé avec une demande de retrait et rappelé dans le bandeau d'un document obsolète ; fiche de visa (PDF) de chaque révision approuvée, dans l'onglet Révisions |
-| `/recherche` | Recherche plein texte classée par pertinence + facettes (projet, famille, type, sous-type, origine, rattachement, département, site, propriétaire, auteur, statut, échéance dépassée, confidentialité, langue, mots-clés, organisme source, phase, lot, discipline, thème), période sur une date (modification, émission, effet, révision, expiration), tri au choix, 50 résultats par page, export CSV de tous les résultats dans le même ordre ; recherches enregistrées (critères, période et tri) personnelles, ou partagées avec un département ou le groupe par un gestionnaire documentaire |
+| `/recherche` | Recherche dans les métadonnées (identifiant et anciens identifiants, titre, mots-clés, référence externe, ID d'étude, type, sous-type, organisme source, propriétaire, auteur ; pas dans le contenu des fichiers), sans accents ni casse, classée par pertinence + facettes (projet, famille, type, sous-type, origine, rattachement, département, site, propriétaire, auteur, statut, échéance dépassée, confidentialité, langue, mots-clés, organisme source, phase, lot, discipline, thème), période sur une date (modification, émission, effet, révision, expiration), tri au choix, 50 résultats par page, export CSV de tous les résultats dans le même ordre ; recherches enregistrées (critères, période et tri) personnelles, ou partagées avec un département ou le groupe par un gestionnaire documentaire |
 | `/departements/[code]` | Page d'un département (`/departements` ouvre celui de l'utilisateur, un sélecteur passe aux autres) : documents en vigueur, échéances, circuits en cours qu'il suit, recherches partagées avec le département et le groupe, filtres mis en avant (valeurs les plus fréquentes, chacune un lien vers la recherche filtrée), le tout limité à ce que l'utilisateur peut lire. Départements provisoires (organigramme attendu) ; filtres par défaut (type, statut, projet), réglables par département dans Administration › Organisation, en attendant le recueil des besoins de chaque métier |
 | `/validations` | Circuits de validation : à valider, mes demandes, en cours, terminées ; approuver / rejeter (motif obligatoire) / déléguer, rappeler sa demande avant la dernière approbation, commentaires ; un gestionnaire documentaire réassigne l'étape en cours détenue par une autre personne (mêmes règles qu'une délégation). Vue « Mes demandes Vigie » : demandes de modification et de retrait envoyées par l'utilisateur, avec leur statut |
 | `/archivage` | Échéances (archivage, gel juridique, revue effectuée ; filtres « Expirés » et « Revues en retard »), règles de conservation du registre, archives |
 | `/administration` | Registre des types (création et modification complète des types et des familles, dont la périodicité de revue), fonctions & circuits (fonctions, titulaires, programmes de recherche), rôles & droits, organisation (départements et sites : ajout, renommage FR/EN, désactivation ou suppression d'une valeur inutilisée ; filtres mis en avant des départements), vocabulaires (organismes sources et mots-clés : ajout, renommage, fusion de doublons, valeurs sans terme ; sous-types hors de la liste de leur type, à ajouter au registre), reprise des responsabilités d'une personne qui part (simulation puis transfert journalisé à un remplaçant choisi : propriété de documents et de processus, auteur désigné, étapes en attente, titulariats, lecteurs désignés ; gestionnaires documentaires), modèles (QMS), leurs types cibles et leurs utilisations (documents créés depuis chacun, parmi ceux que le lecteur peut lire), journal d'audit (filtres par document ou cible, personne, action et période ; 100 entrées par page ; export CSV complet), sauvegardes, planificateur (tâches, dernière et prochaine exécution), export complet de toutes les données et de tous les fichiers (archive ZIP, gestionnaires documentaires) |
+| `/aide` | Aide, en français et en anglais, ouverte à tous les rôles (lien « Aide » au-dessus de « Notes de conception » dans la barre latérale) : les parcours courants pas à pas (créer un document, déposer et restaurer une version de travail, demander une validation, valider, rejeter ou déléguer, demander une modification ou un retrait à Vigie, comparer, confidentialité, recherche), avec ce qui est simulé ; un lien vers l'écran où chaque parcours commence, si le rôle y a accès |
 
 API : `/api/registry` (lu par Keystone), `/api/import` (outil de migration), `/api/integrations/vigie` (décisions
 Vigie), `/api/documents/[id]/file` (fichier d'une version de travail), `/api/documents/[id]/approval?rev=B` (fiche de
@@ -198,7 +204,8 @@ document — Codex » sinon).
   requête HEAD n'en écrivent pas. Elles suivent la révision qu'elles concernent (D-14), restent hors des flux
   d'activité et se lisent à part : onglet Historique de la fiche (« Activité », « Métadonnées » avec l'avant et
   l'après, « Consultations ») et filtre par action de l'onglet Journal. Ne sont pas journalisés : le changement
-  d'utilisateur ou de langue simulé.
+  d'utilisateur ou de langue simulé, la création et la suppression d'une recherche enregistrée (des critères, jamais
+  des documents).
 - **Utilisateur et rôle simulés** (pas d'authentification pour l'instant) : cliquer sur le profil en bas de la
   barre latérale. La navigation suit les règles de la maquette (validations masquées pour l'auditeur, archivage
   masqué pour le collaborateur, administration réservée au gestionnaire), les actions vérifient la matrice des
@@ -580,6 +587,7 @@ src/
     nocturne.css       design system Nocturne (copie de design/_ds/…/styles.css)
     globals.css        règles d'application communes
     api/               fichiers, fiches de visa, exports CSV et complet, registre, import, webhook Vigie, santé (health)
+    aide/              page d'aide (/aide), textes dans lib/i18n.ts
   components/
     shell/             barre latérale, en-tête, contexte client (dialogues, toasts)
     dialogs/           toutes les boîtes de dialogue
@@ -603,6 +611,13 @@ src/
     registry-apply.ts  application du registre du code à une base existante (npm run registry:apply)
     journal-values.ts  valeurs des changements journalisés (avant → après) du registre et des métadonnées
     seed-mode.ts       CODEX_SEED : démonstration ou référentiel minimal
+    codification.ts    attribution des identifiants, numéros de circuit et références ECR (compteurs en base)
+    dates.ts           cohérence des dates d'un document (émission ≤ effet < expiration)
+    format.ts, csv.ts  dates, tailles et textes bilingues affichés ; lignes CSV des exports
+    errors.ts          référence d'une erreur montrée à l'utilisateur, jamais son message (i18n-errors.ts : ses textes)
+    titles.ts          titre de chaque page dans la langue choisie
+    integrity-core.mjs contrôle d'intégrité des fichiers stockés (SHA-256), lancé par Administration (integrity.ts) et
+                       par scripts/codex-integrity.mjs
     org-rules.ts       administration de l'organisation : libellés, valeurs proposées (actives), un département actif
     transfer.ts        reprise des responsabilités d'une personne qui part : simulation (transaction annulée), empreinte,
                        transfert journalisé objet par objet
@@ -645,7 +660,7 @@ src/
     scheduler.ts       planificateur : mise en vigueur différée, tâches d'exploitation, bail en base
                        (réglages et état du processus : scheduler-state.ts)
     version.ts         version de Codex (package.json), pour la santé et les sauvegardes
-    i18n.ts            textes FR / EN
+    i18n.ts            textes FR / EN, dont ceux de l'aide (HELP)
 scripts/
   codex-backup.mjs     commandes npm run backup, backup:list, backup:check, restore (docs/sauvegarde.md)
   codex-export.mjs     commandes npm run export, export:check (docs/export.md)
@@ -653,6 +668,7 @@ scripts/
   codex-registry.mts   commande npm run registry:apply (TypeScript, lancé par tsx)
   codex-seed-large.mts commande npm run seed:large : volume synthétique pour les mesures (docs/performances.md)
   codex-perf.mjs       commande npm run perf : temps des écrans et routes principaux d'un serveur lancé
+  codex-a11y.mts       commande npm run a11y : contrôle d'accessibilité (axe-core, Chromium), docs/accessibilite.md
 tests/
   unit/                tests unitaires des règles pures de src/lib (Vitest, vitest.config.ts)
   integration/         tests d'intégration sur PGlite en mémoire, ou sur un serveur PostgreSQL (npm run test:pg)

@@ -12,7 +12,7 @@ export function Pager({ t, page, pages, href }: { t: T; page: number; pages: num
   const link = (to: number, rel: 'prev' | 'next', label: string) =>
     to >= 1 && to <= pages
       ? <Link href={href(to)} rel={rel} className="btn btn-secondary" style={step} aria-label={label} title={label}>{rel === 'prev' ? <Icon name="chevronLeft" size={14} /> : <Icon name="chevronRight" size={14} />}</Link>
-      : <span className="btn btn-secondary" style={{ ...step, opacity: 0.45, cursor: 'default' }} aria-disabled="true" aria-label={label}>{rel === 'prev' ? <Icon name="chevronLeft" size={14} /> : <Icon name="chevronRight" size={14} />}</span>;
+      : <span className="btn btn-secondary" style={{ ...step, opacity: 0.45, cursor: 'default' }} role="link" aria-disabled="true" aria-label={label}>{rel === 'prev' ? <Icon name="chevronLeft" size={14} /> : <Icon name="chevronRight" size={14} />}</span>;
   return (
     <nav aria-label={t.pages_nav} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
       {link(page - 1, 'prev', t.page_prev)}

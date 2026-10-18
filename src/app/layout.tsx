@@ -55,6 +55,8 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
   return (
     <html lang={ctx.lang} className={interClassName}>
       <body>
+        {/* First stop of the keyboard: jumps over the sidebar and the header to the screen (WCAG 2.4.1). */}
+        <a href="#contenu" className="skip-link">{ctx.t.skip_to_content}</a>
         <AppProvider t={ctx.t} lang={ctx.lang} data={data} todo={todo}>
           <div className="app">
             <Sidebar
@@ -67,7 +69,7 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
               <Header notif={{
                 recent: recent.map((a) => ({ id: a.id, when: a.when, user: a.user, actionLabel: a.actionLabel, ref: a.currentId ?? a.ref, href: a.href })),
               }} />
-              <main className="app-main">{children}</main>
+              <main id="contenu" className="app-main" tabIndex={-1}>{children}</main>
             </div>
           </div>
         </AppProvider>

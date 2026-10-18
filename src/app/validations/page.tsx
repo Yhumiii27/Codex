@@ -168,7 +168,7 @@ export default async function WorkflowPage({ searchParams }: PageProps<'/validat
         <div style={{ maxWidth: 880, display: 'flex', flexDirection: 'column', gap: 24 }}>
           <div>
             <div className="text-muted" style={{ fontSize: 11 }}>{r.docId} · {t.revision} {r.letter} · {t.requested_by} {r.requester}</div>
-            <h3 style={{ fontSize: 20, margin: '2px 0 8px', lineHeight: 1.25 }}>{r.docTitle}</h3>
+            <h2 style={{ fontSize: 20, margin: '2px 0 8px', lineHeight: 1.25 }}>{r.docTitle}</h2>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
               <span className="tag tag-neutral">{doc?.typeLabel ?? ctx.label('type', r.typeCode)}</span>
               <span className="tag tag-neutral">{t.revision} {r.letter}</span>
@@ -178,7 +178,7 @@ export default async function WorkflowPage({ searchParams }: PageProps<'/validat
             </div>
           </div>
           <section>
-            <h6 className="sec-title" style={{ marginBottom: 14 }}>{t.steps}</h6>
+            <h2 className="sec-title" style={{ marginBottom: 14 }}>{t.steps}</h2>
             <HStepper items={steps} />
           </section>
           {canAct && (
@@ -215,7 +215,7 @@ export default async function WorkflowPage({ searchParams }: PageProps<'/validat
             </div>
           )}
           <section>
-            <h6 className="sec-title" style={{ marginBottom: 12 }}>{t.comments}</h6>
+            <h2 className="sec-title" style={{ marginBottom: 12 }}>{t.comments}</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               {r.comments.map((c) => (
                 <div key={c.id} style={{ display: 'flex', gap: 12 }}>

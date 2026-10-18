@@ -1,4 +1,5 @@
-# Checks run on every branch push and pull request: clean install, migrations, types, lint, tests, production build.
+# Checks run on every branch push and pull request: clean install, migrations, types, lint, tests, production build,
+# accessibility of the built app.
 name: CI
 
 on:
@@ -40,6 +41,10 @@ jobs:
       - run: npm test
       # Inter is served from the repository (src/fonts, next/font/local): the build needs no network.
       - run: npm run build
+      # Accessibility (docs/accessibilite.md): axe-core in Chromium on the main screens and dialogs, French interface,
+      # served by the build above on a throwaway demo database; fails on a serious or critical violation (about 1 min).
+      - run: npx playwright-core install --with-deps chromium
+      - run: npm run a11y
 
   # The whole suite again on a PostgreSQL server (option DATABASE_URL, docs/postgres.md): each test file gets a database
   # of its own there (CODEX_TEST_DATABASE_URL), and tests/integration/postgres-server.test.ts races transactions between

@@ -37,6 +37,7 @@ numéro, sans les trancher à la place de l'utilisateur.
 | `docs/reste-a-faire.md` | Inventaire vérifié du 9 octobre 2026 : 129 points ouverts, classés selon ce qui les bloque (rien, décision, données, macOS). |
 | `docs/registre-points-ouverts.md` | Points à arbitrer sur le registre des types (69 types, 23 familles). |
 | `docs/api.md` | API d'intégration : registre, import de migration, webhook Vigie. |
+| `docs/accessibilite.md` | Accessibilité : contrôle automatisé `npm run a11y`, contrastes mesurés, ce qui reste (lecteur d'écran). |
 | `README.md` | Démarrage, écrans, ce qui est réel ou simulé, organisation du code. |
 
 ## Décisions structurantes (détail et citations dans `docs/decisions.md`)
@@ -74,10 +75,11 @@ npm install
 npm run dev          # http://localhost:3100
 npm test             # Vitest : tests/unit et tests/integration (PGlite en mémoire), ~20 s, sans serveur ni .data/
 npm run typecheck && npm run lint && npm run build
+npm run a11y         # après le build : axe-core dans Chromium sur une base de démo jetable (docs/accessibilite.md)
 ```
 
-- **Intégration continue** : `.github/workflows/ci.yml` rejoue `npm ci`, `npm run db:check`, typecheck, lint, tests et
-  build à chaque push et pull request.
+- **Intégration continue** : `.github/workflows/ci.yml` rejoue `npm ci`, `npm run db:check`, typecheck, lint, tests,
+  build et `npm run a11y` à chaque push et pull request.
 
 - **Base de démo.** Au premier lancement, elle est créée dans `.data/` (non versionné) puis remplie par
   `src/db/seed*.ts`. Pour repartir de zéro : arrêter le serveur, `npm run db:reset`, relancer.
