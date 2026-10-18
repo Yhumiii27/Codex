@@ -1,4 +1,4 @@
-import type { PGlite } from '@electric-sql/pglite';
+import type { SqlQueryable } from './sql-client';
 
 // Versioned migrations (drizzle/, point 41 of docs/reste-a-faire.md). Since 17 October 2026 the schema evolves by
 // incremental migrations only: 0000_init is the base, equal to src/db/schema.ts on that day, and each change of the
@@ -50,7 +50,7 @@ export function migrationPlan(applied: AppliedMigration[], code: CodeMigration[]
 }
 
 /** The migrations a database applied, oldest first; none for a database just created. */
-export async function appliedMigrations(client: Pick<PGlite, 'query'>): Promise<AppliedMigration[]> {
+export async function appliedMigrations(client: Pick<SqlQueryable, 'query'>): Promise<AppliedMigration[]> {
   const [{ t }] = (await client.query<{ t: string | null }>(`select to_regclass('drizzle.__drizzle_migrations')::text as t`)).rows;
   if (!t) return [];
   const { rows } = await client.query<{ hash: string; created_at: string }>('select hash, created_at::text as created_at from drizzle.__drizzle_migrations order by created_at');

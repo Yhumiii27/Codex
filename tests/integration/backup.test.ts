@@ -13,7 +13,7 @@ import type { Ctx } from '@/lib/context';
 import { DICT } from '@/lib/i18n';
 import { auditDetailL } from '@/lib/queries';
 import { getCtx } from '@/lib/context';
-import { addDoc, setClock, setupDb } from '../support/db';
+import { addDoc, pgliteOf, setClock, setupDb } from '../support/db';
 import { actAs } from '../support/session';
 
 // Backup and restore (point 48 of docs/reste-a-faire.md, lib/backup-core.mjs): an archive of the test database and of
@@ -42,7 +42,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 });
 const fsError = (code: string, p: string) => Object.assign(new Error(`${code}: simulated, rename '${p}'`), { code });
 
-const db = setupDb();
+const db = setupDb({ engine: 'pglite' });
 const scratch = mkdtempSync(path.join(tmpdir(), 'codex-backup-'));
 const BACKUPS = path.join(scratch, 'backups');
 let migrations: Migration[];
@@ -88,7 +88,7 @@ type Pg = Parameters<typeof createBackup>[0]['pg'];
 function backup(opts: Partial<Parameters<typeof createBackup>[0]> = {}) {
   n++;
   return createBackup({
-    pg: db().$client, filesDir: FILES_DIR, dbDir: null, backupDir: BACKUPS, keep: 7, mode: 'offline', by: 'cli', migrations,
+    pg: pgliteOf(db()), filesDir: FILES_DIR, dbDir: null, backupDir: BACKUPS, keep: 7, mode: 'offline', by: 'cli', migrations,
     now: new Date(Date.UTC(2026, 9, 15, 8, 0, n)), ...opts,
   });
 }
@@ -136,7 +136,7 @@ describe('createBackup', () => {
     const before = key(1, 'upload.pdf');
     const after = key(1, 'PRO-QUA-0001_A.1.pdf');
     await withFile('PRO-QUA-0001', before, '%PDF-renamed');
-    const real = db().$client;
+    const real = pgliteOf(db());
     // What nameStoredFile does once the database is free again: link the new name, point the record to it, remove the old one.
     const pg = {
       transaction: async (cb: Parameters<typeof real.transaction>[0]) => {
@@ -336,7 +336,7 @@ describe('restoreBackup', () => {
 
   it('refuses a database that does not match its manifest, and leaves the target as it was', async () => {
     await fill();
-    const real = db().$client;
+    const real = pgliteOf(db());
     // A manifest that counts one document more than the dump holds.
     const pg = {
       transaction: (cb: Parameters<typeof real.transaction>[0]) => real.transaction((tx) => cb({

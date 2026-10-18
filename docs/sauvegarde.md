@@ -8,6 +8,11 @@ Une sauvegarde sert à remettre Codex dans l'état d'une date. Pour quitter Code
 l'export complet ([export.md](export.md)) : mêmes données, en JSON, CSV et fichiers sous un nom lisible, sans Codex
 pour les lire.
 
+**Base intégrée seulement.** Tout ce qui suit vaut pour PGlite, la base par défaut. Avec un serveur PostgreSQL
+(`DATABASE_URL`, [postgres.md](postgres.md)), `npm run backup` et `npm run restore` refusent avec un message, comme
+« Sauvegarder maintenant » dans l'Administration : le serveur se sauvegarde avec ses propres outils (`pg_dump`,
+instantanés de l'hébergeur), et le dossier des fichiers à part.
+
 **Non décidé** (à fixer par l'utilisateur, voir [decisions.md](decisions.md), « Choix de l'assistant non validés ») :
 la fréquence des sauvegardes, le lieu où les archives sont conservées (hébergement), leur chiffrement, la perte de
 données et le délai de reprise tolérés (M22 de l'audit). Rien n'est programmé : une sauvegarde se lance à la main.

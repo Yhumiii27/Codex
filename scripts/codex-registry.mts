@@ -5,7 +5,8 @@
 //   npm run registry:apply -- --apply   writes it, after a backup of the database and its files (npm run backup)
 //
 // The data directory is CODEX_DATA_DIR (default .data), variables read as Next reads them (@next/env), --dev for those
-// of `next dev`, like the other commands. Refuses a database whose schema this code would still migrate: start Codex
+// of `next dev`, like the other commands. With DATABASE_URL (a PostgreSQL server, docs/postgres.md) it works on that
+// server; Codex cannot back a server up, so --apply there needs --no-backup, said once the server's own backup is made. Refuses a database whose schema this code would still migrate: start Codex
 // once first. Exit status: 0 when done (or nothing to do), 1 on an error, 2 on a wrong usage.
 
 import { stat } from 'node:fs/promises';
@@ -13,9 +14,12 @@ import path from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
 import nextEnv from '@next/env';
+import { drizzle as drizzleServer } from 'drizzle-orm/node-postgres';
 import { drizzle } from 'drizzle-orm/pglite';
+import type { Db } from '../src/db';
 import { appliedMigrations, migrationPlan } from '../src/db/migrations';
 import * as schema from '../src/db/schema';
+import { databaseUrlOf, PgServerClient, redactUrl, serverPool } from '../src/db/sql-client';
 import { BackupError, backupDirOf, createBackup, journal, journalData, keepOf, LOCK_FILE, lockForCommand, readMigrations, unlock } from '../src/lib/backup-core.mjs';
 import { applyRegistry, type RegistryNote, type RegistryStep } from '../src/lib/registry-apply';
 
@@ -70,7 +74,43 @@ function explain(err: unknown): string {
   return `Erreur : ${err instanceof Error ? err.message : String(err)}`;
 }
 
+/** Simulation, then the changes when --apply: on the database `db` (PGlite's or a server's), `backUp` first. */
+async function report(db: Db, backUp: () => Promise<void>) {
+  const report = await applyRegistry(db, { write: false });
+  const lines = [WRITE ? 'Registre du code → base :' : 'Simulation (rien n\'est écrit ; ajoutez -- --apply pour appliquer) :'];
+  lines.push(report.steps.length ? `Changements (${report.steps.length}) :` : 'Aucun changement : la base suit déjà le registre du code.');
+  report.steps.forEach((x) => lines.push(...stepLines(x)));
+  if (report.notes.length) {
+    lines.push(`Non appliqué ou à savoir (${report.notes.length}) :`);
+    report.notes.forEach((n) => lines.push(noteLine(n)));
+  }
+  console.log(lines.join('\n'));
+  if (!WRITE || !report.steps.length) return;
+  await backUp();
+  const done = await applyRegistry(db, { write: true });
+  console.log(`Appliqué : ${done.steps.length} changement(s), chacun journalisé par Codex (« npm run registry:apply »).`);
+}
+
+/** The same on a PostgreSQL server (DATABASE_URL): no lock file, no archive (pg_dump first, then --no-backup). */
+async function runServer(url: string) {
+  console.log(`Base : serveur PostgreSQL ${redactUrl(url)}`);
+  if (WRITE && !NO_BACKUP) throw new Error('Codex ne sait pas sauvegarder un serveur PostgreSQL : sauvegardez la base (pg_dump), puis relancez avec -- --apply --no-backup. Arrêtez Codex pendant l\'application, comme avec la base intégrée.');
+  const pool = serverPool(url, 2);
+  const client = new PgServerClient(pool);
+  try {
+    const plan = migrationPlan(await appliedMigrations(client), await readMigrations(MIGRATIONS));
+    if (plan.fresh) throw new Error('la base du serveur est vide : démarrez Codex une fois pour la créer.');
+    if (plan.pending.length) throw new Error(`la base n'a pas encore les migrations ${plan.pending.join(', ')} : démarrez Codex une fois (il les applique), arrêtez-le, puis relancez la commande.`);
+    const db = drizzleServer(pool, { schema }) as unknown as Db;
+    await report(db, async () => {});
+  } finally {
+    await client.close();
+  }
+}
+
 async function run() {
+  const url = databaseUrlOf(process.env);
+  if (url) return runServer(url);
   if (!(await stat(path.join(DB_DIR, 'PG_VERSION')).then(() => true, () => false))) throw new Error(`aucune base Codex dans ${DATA_DIR} : démarrez Codex une fois pour la créer (elle reçoit alors le registre du code).`);
   await lockForCommand(DATA_DIR, 'registry');
   try {
@@ -81,29 +121,16 @@ async function run() {
       const plan = migrationPlan(await appliedMigrations(pg), code);
       if (plan.fresh) throw new Error(`la base de ${DATA_DIR} est vide : démarrez Codex une fois pour la créer.`);
       if (plan.pending.length) throw new Error(`la base n'a pas encore les migrations ${plan.pending.join(', ')} : démarrez Codex une fois (il les applique, après une sauvegarde), arrêtez-le, puis relancez la commande.`);
-      const db = drizzle(pg, { schema });
-
-      const report = await applyRegistry(db, { write: false });
-      const lines = [WRITE ? 'Registre du code → base :' : 'Simulation (rien n\'est écrit ; ajoutez -- --apply pour appliquer) :'];
-      lines.push(report.steps.length ? `Changements (${report.steps.length}) :` : 'Aucun changement : la base suit déjà le registre du code.');
-      report.steps.forEach((x) => lines.push(...stepLines(x)));
-      if (report.notes.length) {
-        lines.push(`Non appliqué ou à savoir (${report.notes.length}) :`);
-        report.notes.forEach((n) => lines.push(noteLine(n)));
-      }
-      console.log(lines.join('\n'));
-      if (!WRITE || !report.steps.length) return;
-
-      if (!NO_BACKUP) {
+      const db = drizzle(pg, { schema }) as unknown as Db;
+      await report(db, async () => {
+        if (NO_BACKUP) return;
         const res = await createBackup({
           pg, filesDir: path.join(DATA_DIR, 'files'), dbDir: DB_DIR, backupDir: backupDirOf(DATA_DIR, process.env), keep: keepOf(process.env),
           mode: 'offline', by: 'cli', migrations: code, app: null,
         });
         await journal(pg, 'backup_created', res.name, journalData(res.manifest, res), 'npm run registry:apply');
         console.log(`Sauvegarde avant écriture : ${res.path}`);
-      }
-      const done = await applyRegistry(db, { write: true });
-      console.log(`Appliqué : ${done.steps.length} changement(s), chacun journalisé par Codex (« npm run registry:apply »).`);
+      });
     } finally {
       await pg.close();
     }

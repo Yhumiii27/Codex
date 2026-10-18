@@ -1,5 +1,5 @@
 import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm';
-import type { PgliteDatabase } from 'drizzle-orm/pglite';
+import type { Db as CodexDb } from '@/db';
 import * as s from '@/db/schema';
 import { FAMILIES, TYPES, type RegistryType } from '@/db/registry';
 import { FUNCTIONS } from '@/db/seed-org';
@@ -21,8 +21,8 @@ import { BUILT_IN_TYPES, builtInScopeIssue, builtInTypeIssue, keyIssue, outsideT
 // administration; a function with holders keeps its scope; documents keep their retention class (applied, if wanted,
 // from the administration). Each change is journaled like the administration's, by the system actor Codex.
 
-/** A drizzle database on PGlite with Codex's schema: the server's (src/db/index.ts) or the command's. */
-type Db = PgliteDatabase<typeof s>;
+/** A drizzle database with Codex's schema: the server's (src/db/index.ts) or the command's. */
+type Db = CodexDb;
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 export type EntryKind = 'family' | 'function' | 'type';
 

@@ -2251,6 +2251,7 @@ de [decisions.md](decisions.md).
 |---|---|---|---|---|
 | 1. Rechargement en boucle en développement et lectures ciblées par navigation | commit « Lot 9, étape 1 », qui suit `c80d6ae` | bogue, 47 | Cache disque de Turbopack désactivé pour `next dev` ; chaque écran lit ce qu'il montre au lieu de tous les documents et circuits, à l'identique pour chaque utilisateur | Cache de développement désactivé plutôt que montée de version de Next.js ; « Mis en vigueur cette semaine » compté sur toute la semaine ; fenêtres de l'activité récente gardées (60 et 500 entrées) |
 | 2. Police locale, migrations incrémentales, amorçage séparé et application du registre | commit « Lot 9, étape 2 », qui suit `7d3db2e` | 42, 41, 45, 60 (et 52 en partie) | Inter servie depuis le dépôt (build sans réseau) ; migrations versionnées à partir de `0000_init`, contrôlées et précédées d'une sauvegarde ; `CODEX_SEED=demo|minimal` ; `npm run registry:apply` | Mêmes fichiers de police que Google, à l'octet ; refus d'une base d'un autre schéma, sauvegarde obligatoire avant migration ; démo par défaut partout, administrateur initial fictif en minimal ; simulation par défaut, l'administration l'emporte, codes figés, types retirés désactivés |
+| 3. Postgres serveur en option et mesures sur gros volume | commit « Lot 9, étape 3 », qui suit `98b45db` | 51 (en partie), 56 | `DATABASE_URL` : serveur PostgreSQL 18 par node-postgres, mêmes migrations et compléments sous verrou consultatif ; suite de tests rejouée sur un serveur (`npm run test:pg`, CI) ; `npm run seed:large` et `npm run perf`, mesures dans `docs/performances.md` | PGlite par défaut ; PostgreSQL 18 exigé ; référentiel minimal par défaut sur un serveur ; sauvegarde, restauration, `export` et `integrity` en ligne de commande refusés sur un serveur ; migration d'une base serveur seulement avec `CODEX_MIGRATION_BACKUP=off` ; `READ COMMITTED` ; volume dans une base à part |
 
 ### 18.1 Rechargement en boucle en développement et lectures ciblées
 
@@ -2386,3 +2387,57 @@ est vide ; aucune commande pour appliquer `src/db/registry.ts` à une base exist
   le démarrage le lui dit. Ensuite, plus de réinitialisation à chaque changement de schéma.
 - **Vérifié** : `npm test`, `npm run typecheck`, `npm run lint`, `npm run db:check`, `npm run build` (aussi sans
   réseau), démarrages réels en mode démo et en mode minimal.
+
+### 18.3 Postgres serveur en option et mesures sur gros volume
+
+Points 51 et 56 de [reste-a-faire.md](reste-a-faire.md), vérifiés au commit `98b45db` : seul pilote `drizzle-orm/pglite`
+(`src/db/index.ts`), pas de `DATABASE_URL`, aucun générateur de volume ni script de mesure (constats exacts, sauf que les
+recherches et filtres passaient déjà par SQL depuis le point 50).
+
+- **Postgres serveur (point 51, en partie ; [postgres.md](postgres.md)).** `DATABASE_URL` choisit un serveur ; sans
+  elle, rien ne change. `src/db/sql-client.ts` donne aux deux moteurs la même connexion brute (`query`, `exec`,
+  `transaction`, `close` : l'interface de PGlite que le code utilisait), le pool node-postgres et ses réglages de
+  lecture (`int8` en nombre, dates à minuit UTC, marque d'ordre d'octets retirée, comme PGlite), et met en file les
+  requêtes envoyées en même temps sur une connexion (node-postgres 9 les refusera). `openDb` (`src/db/index.ts`) ouvre
+  PGlite ou un serveur : version 18 exigée (`pg_unicode_fast`), `pg_trgm` créée, migrations, fonctions et
+  déclencheurs posés sous `pg_advisory_lock`, amorçage d'une base neuve sous un second verrou. Ce qui suppose PGlite
+  refuse proprement sur un serveur : « Sauvegarder maintenant » (message traduit), `npm run backup`, `restore`,
+  `export`, `integrity` ; la migration d'une base qui a des données attend `CODEX_MIGRATION_BACKUP=off`.
+  `registry:apply` marche sur un serveur (`--apply --no-backup`). L'export complet passe en `REPEATABLE READ` sur une
+  connexion gardée (ses tables temporaires n'existent que sur elle). Le contrôle de la configuration vérifie
+  `DATABASE_URL` et `CODEX_DB_POOL_MAX` ; `CODEX_SEED` vaut `minimal` par défaut sur un serveur.
+- **Serveur dans le conteneur.** Le paquet Ubuntu donne PostgreSQL 16, sans la collation `pg_unicode_fast` ; le dépôt
+  PGDG est inaccessible (proxy). PostgreSQL 18.3 a été lancé depuis les binaires npm `@embedded-postgres/linux-x64`
+  (18.3.0-beta.17, hors du dépôt, dans un dossier temporaire), avec ICU 60 et `pg_trgm`.
+- **Tests sur serveur.** `CODEX_TEST_DATABASE_URL` : `openDb()` sans dossier ouvre une base neuve sur ce serveur,
+  supprimée à la fermeture ; `npm run test:pg` rejoue toute la suite (job « Tests on PostgreSQL 18 » de la CI, service
+  `postgres:18`). Les tests de sauvegarde restent sur PGlite (`setupDb({ engine: 'pglite' })`). Premier passage : 5
+  échecs, tous corrigés à la source : une marque d'ordre d'octets rendue par node-postgres et retirée par PGlite
+  (réglage de lecture ajouté), l'export complet dont les tables temporaires étaient lues par d'autres connexions
+  (connexion gardée), un test d'export qui espionnait la connexion du pool, et le test de tri `codex_fr`, qui
+  diffère avec l'ICU 60 du serveur d'essai sur l'apostrophe droite et typographique (sauté pour un ICU antérieur à
+  Unicode 16, vérifié partout ailleurs). Un second passage a fait apparaître une exception non interceptée de
+  l'adaptateur `Readable.toWeb` (« Controller is already closed ») quand une réponse de fichier était annulée pendant
+  qu'une écriture du journal la retenait : `src/lib/storage.ts` lit maintenant les fichiers locaux par un flux à la
+  demande sur le descripteur ouvert. Résultat : 1 172 tests réussis sur PostgreSQL 18.3 (2 sautés), 1 165 sur PGlite
+  (9 sautés, dont les 8 propres au serveur).
+- **Concurrence réelle.** `tests/integration/postgres-server.test.ts` tient des transactions ouvertes sur des
+  connexions distinctes : second tirage d'un compteur en attente puis numéro suivant, numéro d'une transaction annulée
+  rendu, autres compteurs libres, 60 créations simultanées sans doublon et consécutives, ancien max + 1 en échec sur
+  la clé primaire, huit imports simultanés d'une référence pour un seul document. Mesure : 1 000 créations envoyées
+  ensemble en 3,0 s sur PGlite et 1,15 s sur le serveur (pool de 10), sans doublon ; deux serveurs Codex démarrés en
+  même temps sur une base vide n'ont migré et amorcé qu'une fois.
+- **Volume et mesures (point 56 ; [performances.md](performances.md)).** `npm run seed:large` (`.data-large/` par
+  défaut, refus d'une base qui a des documents sans `--append`) : 10 000 documents, 18 417 révisions, 36 843 versions,
+  8 418 circuits, 109 335 entrées de journal en 27 s (PGlite) ou 22 s (serveur). `npm run perf` sur une build de
+  production : à 10 000 documents, 0,4 à 0,6 s par écran sur PGlite et 0,2 à 0,3 s sur le serveur (70 à 110 ms sur la
+  démo) ; Validations 1,61 s et 0,63 s, export CSV complet 1,13 s et 0,44 s ; 10 requêtes simultanées prennent environ
+  10 fois une requête sur les deux moteurs (le processus Node est le goulot) ; 40 à 55 requêtes SQL et plus de 20 000
+  lignes lues par écran, surtout pour l'en-tête commun (point 50).
+- **Vérifié** : `npm test`, `npm run test:pg` (PostgreSQL 18.3), `npm run typecheck`, `npm run lint`,
+  `npm run db:check`, `npm run build` ; démarrages réels `npm run dev` sur PGlite (base de démo) et sur le serveur
+  (démo et minimal), `npm run start` sur les deux bases de 10 000 documents ; refus des commandes en ligne avec
+  `DATABASE_URL`.
+- **Reste** : sauvegarde du serveur et hébergement (M22, O-03) ; migrations lancées au déploiement ; revue des
+  transactions en `READ COMMITTED` ; plusieurs processus ; mesures avec les volumes réels (M18, O-11) et un serveur
+  distant.

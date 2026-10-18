@@ -17,7 +17,7 @@ import path from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
 import nextEnv from '@next/env';
-import { BackupError, LOCK_FILE, lockForCommand, unlock } from '../src/lib/backup-core.mjs';
+import { BackupError, LOCK_FILE, lockForCommand, serverDatabaseRefusal, unlock } from '../src/lib/backup-core.mjs';
 import { checkIntegrity, INTEGRITY_LIST_MAX } from '../src/lib/integrity-core.mjs';
 
 const DEV = process.argv.includes('--dev') || process.env.NODE_ENV === 'development';
@@ -79,6 +79,8 @@ async function openFile(f) {
 const named = (xs, n) => `${xs.map((x) => `${x.doc} ${x.label}`).join(', ')}${n > xs.length ? ` … et ${n - xs.length} de plus` : ''}`;
 
 async function check() {
+  const refusal = serverDatabaseRefusal(process.env, 'npm run integrity', "Le contrôle se fait serveur en marche : Administration › Journal d'audit › Intégrité des fichiers.");
+  if (refusal) throw new Error(refusal);
   const dbDir = path.join(DATA_DIR, 'pglite');
   if (!(await stat(path.join(dbDir, 'PG_VERSION')).then(() => true, () => false))) throw new Error(`aucune base Codex dans ${DATA_DIR} : rien à vérifier.`);
   await lockForCommand(DATA_DIR, 'integrity');

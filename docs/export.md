@@ -26,7 +26,8 @@ L'export n'est pas une sauvegarde : pour remettre Codex dans l'état d'une date,
   « Sécurité HTTP et limites de débit ») : au-delà, 429 sans rien exporter ni journaliser.
 - Journalisé deux fois (voir « Journal ») : au début, et à la fin avec la taille et le SHA-256 de l'archive.
 
-**En ligne de commande**, serveur arrêté (PGlite n'ouvre la base que dans un processus) :
+**En ligne de commande**, serveur arrêté (PGlite n'ouvre la base que dans un processus ; avec un serveur PostgreSQL,
+`DATABASE_URL`, la commande refuse : l'export se fait alors depuis l'Administration, voir [postgres.md](postgres.md)) :
 
 ```bash
 npm run export                                  # dans <dossier de données>-exports/ (.data-exports/ par défaut)
@@ -73,6 +74,12 @@ sous la clé que sa version de travail porte désormais.
 
 L'entrée de journal « Export complet » est écrite dans cette même transaction : l'archive la contient. L'entrée de
 fin, écrite après, n'y est pas.
+
+Avec un serveur PostgreSQL (`DATABASE_URL`), la transaction de copie est en `REPEATABLE READ` : toutes les tables
+viennent du même instantané, et les écritures continuent pendant la copie. L'export garde une connexion du pool pour
+lui seul, du début à la fin (seule cette connexion voit ses tables temporaires). Une entrée de journal écrite par une
+transaction encore en cours au moment de l'instantané, avec un numéro inférieur à la dernière entrée exportée, peut
+figurer dans l'archive ou non.
 
 ### Format ZIP
 

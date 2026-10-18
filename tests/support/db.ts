@@ -1,6 +1,7 @@
 import { asc, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeEach, vi } from 'vitest';
 import { openDb, schema as s, type Db } from '@/db';
+import { embedded } from '@/db/sql-client';
 import type { Conf, DocState, RevStatus } from '@/db/schema';
 import { refreshHeadline } from '@/lib/lifecycle';
 import { insertFixtures, TYPES, type Person } from './fixtures';
@@ -8,6 +9,9 @@ import { insertFixtures, TYPES, type Person } from './fixtures';
 // In-memory database for the integration tests: the schema of drizzle/ and the append-only journal (openDb in
 // src/db/index.ts), plus the reference data of fixtures.ts. Opening PGlite takes seconds, so each test file opens one
 // database, and every test starts from it emptied and filled with the fixtures again (a few milliseconds).
+// With CODEX_TEST_DATABASE_URL (npm run test:pg, docs/postgres.md), the database of a test file is a new database on that
+// PostgreSQL server instead, dropped after its last test; a file that tests what only PGlite does (the backups) asks
+// for PGlite with setupDb({ engine: 'pglite' }).
 
 let opened: Promise<Db> | null = null;
 let current: Db | null = null;
@@ -26,8 +30,8 @@ export async function reset(db: Db): Promise<void> {
 }
 
 /** The test file's database, emptied and filled with the fixtures: migrated, with the journal trigger, no document. */
-async function freshDb(): Promise<Db> {
-  opened ??= openDb();
+async function freshDb(engine?: 'pglite'): Promise<Db> {
+  opened ??= openDb(engine === 'pglite' ? 'memory://' : undefined);
   const db = await opened;
   await reset(db);
   return db;
@@ -37,9 +41,9 @@ async function freshDb(): Promise<Db> {
  * Gives every test of the file a fresh database (freshDb), returned by the getter and by currentDb(), which a test
  * file that mocks getDb() hands to the code under test. Closed after the last test of the file.
  */
-export function setupDb(): () => Db {
+export function setupDb(opts: { engine?: 'pglite' } = {}): () => Db {
   beforeEach(async () => {
-    current = await freshDb();
+    current = await freshDb(opts.engine);
   });
   afterEach(() => {
     current = null;
@@ -54,6 +58,13 @@ export function setupDb(): () => Db {
 /** Hands `db` to currentDb() (a database the test file opened and filled itself, the demo seed for one), or none. */
 export function useDb(db: Db | null): void {
   current = db;
+}
+
+/** The PGlite behind a test database opened with setupDb({ engine: 'pglite' }) (the backups copy its data directory). */
+export function pgliteOf(db: Db) {
+  const pg = embedded(db.$client);
+  if (!pg) throw new Error('not a PGlite database: setupDb({ engine: \'pglite\' })');
+  return pg;
 }
 
 /** The database of the running test, for a mocked getDb(). */

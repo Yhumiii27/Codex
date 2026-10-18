@@ -40,3 +40,32 @@ jobs:
       - run: npm test
       # Inter is served from the repository (src/fonts, next/font/local): the build needs no network.
       - run: npm run build
+
+  # The whole suite again on a PostgreSQL server (option DATABASE_URL, docs/postgres.md): each test file gets a database
+  # of its own there (CODEX_TEST_DATABASE_URL), and tests/integration/postgres-server.test.ts races transactions between
+  # connections, which PGlite cannot. PostgreSQL 18, as PGlite 0.5 (codex_fold needs the pg_unicode_fast collation).
+  postgres:
+    name: Tests on PostgreSQL 18
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: codex-ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      CODEX_TEST_DATABASE_URL: postgres://postgres:codex-ci@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run test:pg

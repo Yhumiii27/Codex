@@ -68,6 +68,8 @@ next-env.d.ts
 /.data-backups
 # full exports (npm run export without --out)
 /.data-exports
+# synthetic volume for the measurements (npm run seed:large, docs/performances.md)
+/.data-large
 # design source archives (extracted in design/)
 /*.zip
 

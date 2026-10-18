@@ -21,7 +21,7 @@ import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
 import nextEnv from '@next/env';
 import {
   BackupError, LOCK_FILE, backupDirOf, createBackup, journal, journalData, keepOf, listBackups, lockForCommand, pendingMigrations,
-  readMigrations, restoreBackup, unlock, verifyArchive,
+  readMigrations, restoreBackup, serverDatabaseRefusal, unlock, verifyArchive,
 } from '../src/lib/backup-core.mjs';
 
 const DEV = process.argv.includes('--dev') || process.env.NODE_ENV === 'development';
@@ -144,6 +144,8 @@ async function appVersion() {
 }
 
 async function create() {
+  const refusal = serverDatabaseRefusal(process.env, 'npm run backup', "Sauvegardez la base avec les outils du serveur (pg_dump, instantanés de l'hébergeur) et le dossier des fichiers à part.");
+  if (refusal) throw new Error(refusal);
   const dbDir = path.join(DATA_DIR, 'pglite');
   if (!(await stat(path.join(dbDir, 'PG_VERSION')).then(() => true, () => false))) throw new BackupError('no_database');
   await lockForCommand(DATA_DIR, 'backup');
@@ -180,6 +182,8 @@ async function check(arg) {
  * @param {boolean} replace
  */
 async function restore(arg, replace) {
+  const refusal = serverDatabaseRefusal(process.env, 'npm run restore', 'Une archive de Codex contient une base PGlite : elle ne se restaure pas dans un serveur. Restaurez la sauvegarde du serveur (pg_restore).');
+  if (refusal) throw new Error(refusal);
   const file = await archivePath(arg);
   await lockForCommand(DATA_DIR, 'restore');
   try {

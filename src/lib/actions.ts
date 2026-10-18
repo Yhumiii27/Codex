@@ -1603,6 +1603,7 @@ async function backUpDataNow(): Promise<ActionResult> {
     return fail(ctx, 'backup_failed');
   }
   if (res === 'busy') return fail(ctx, 'backup_busy');
+  if (res === 'server') return fail(ctx, 'backup_server');
   const { t, lang } = ctx;
   if ('recent' in res) {
     const at = (iso: string) => fmtDateTime(parisStamp(iso), lang);

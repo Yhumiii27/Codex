@@ -4,7 +4,8 @@ import path from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
 import { afterAll, describe, expect, it } from 'vitest';
-import { openDb, schema } from '@/db';
+import { openDb, schema, type SqlClient } from '@/db';
+import type { SqlQueryable } from '@/db/sql-client';
 
 // Versioned migrations (point 41 of docs/reste-a-faire.md, src/db/migrations.ts):
 // - every change of src/db/schema.ts has its migration: the schema equals the last snapshot of drizzle/meta;
@@ -23,7 +24,7 @@ async function lastSnapshot() {
 }
 
 /** Tables, columns, constraints and indexes of the public schema, as the catalogue writes them. */
-async function structure(pg: Pick<PGlite, 'query'>) {
+async function structure(pg: Pick<SqlQueryable, 'query'>) {
   const q = async (sql: string) => (await pg.query<Record<string, unknown>>(sql)).rows.map((r) => Object.values(r).join(' | '));
   return {
     columns: await q(`select table_name, column_name, data_type, udt_name, is_nullable, coalesce(column_default, '') from information_schema.columns where table_schema = 'public' order by 1, 2`),
@@ -32,7 +33,7 @@ async function structure(pg: Pick<PGlite, 'query'>) {
   };
 }
 
-const opened: PGlite[] = [];
+const opened: (PGlite | SqlClient)[] = [];
 const dirs: string[] = [];
 afterAll(async () => {
   await Promise.all(opened.map((pg) => pg.close().catch(() => {})));

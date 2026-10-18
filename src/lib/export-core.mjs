@@ -16,10 +16,13 @@
 // (lib/access.ts mayExportAll) and journals it (actions 'export_full' and 'export_full_end').
 //
 // Consistency: every table but the journal is copied into temporary tables in one transaction (seconds; writes wait
-// meanwhile, as for a backup), and read from them afterwards in batches. The journal, append-only and written one
-// transaction at a time (PGlite has one connection), is read up to the last entry of that transaction. Files are read
-// as the export goes: a stored file is never written again, and one renamed meanwhile (a reclassification) is looked up
-// again under the key its working version now records.
+// meanwhile on PGlite, as for a backup), and read from them afterwards in batches. The journal, append-only, is read up
+// to the last entry of that transaction. On a PostgreSQL server (DATABASE_URL) the transaction is REPEATABLE READ, so
+// that every table is copied from the same snapshot while writes go on, and the whole export runs on one connection
+// (`session()` of src/db/sql-client.ts), the only one that sees its temporary tables. There, a journal entry written by
+// a transaction still running at the snapshot, with a lower number than its last entry, may be in the export or not.
+// Files are read as the export goes: a stored file is never written again, and one renamed meanwhile (a
+// reclassification) is looked up again under the key its working version now records.
 
 import { createHash, randomBytes } from 'node:crypto';
 import { crc32 } from 'node:zlib';
@@ -395,7 +398,10 @@ export async function verifyExport(fh) {
 // ── Reading the database ────────────────────────────────────────────────
 
 /** @typedef {{ query: (sql: string, params?: any[]) => Promise<{ rows: any[] }>, exec: (sql: string) => Promise<unknown> }} Queryable */
-/** @typedef {Queryable & { transaction: <T>(fn: (tx: Queryable) => Promise<T>) => Promise<T> }} Database */
+/**
+ * @typedef {Queryable & { transaction: <T>(fn: (tx: Queryable) => Promise<T>) => Promise<T>,
+ *   session?: () => Promise<Queryable & { transaction: <T>(fn: (tx: Queryable) => Promise<T>) => Promise<T>, release: () => void }> }} Database
+ */
 /** @typedef {{ name: string, columns: string[], order: string[] }} TableInfo */
 /** @typedef {{ tag: string, hash: string, createdAt: number }} Migration */
 
@@ -460,6 +466,8 @@ function aliased(columns, alias) {
 async function takeSnapshot(pg, onStart) {
   const tag = `codex_export_${randomBytes(6).toString('hex')}`;
   return pg.transaction(async (tx) => {
+    // First statement of the transaction: one snapshot for every table (a no-op for PGlite's one connection).
+    await tx.exec('set transaction isolation level repeatable read');
     const all = await listTables(tx);
     const journal = all.find((t) => t.name === JOURNAL);
     if (!journal) throw new ExportError('format', 'no audit_log table');
@@ -811,8 +819,12 @@ export async function* exportArchive(o) {
   let outcome = null;
   /** @type {Manifest['files']} */
   const files = { count: 0, bytes: 0, missing: [], skipped: [], altered: [] };
+  // A server's pool hands each query any connection: the export keeps one, which alone sees its temporary tables.
+  const pinned = o.pg.session ? await o.pg.session() : null;
+  /** @type {Database} */
+  const pg = pinned ?? o.pg;
   try {
-    snap = await takeSnapshot(o.pg, async (tx, s) => {
+    snap = await takeSnapshot(pg, async (tx, s) => {
       if (o.actor) await journalExport(tx, o.actor, 'export_full', { documents: s.rows.documents ?? 0, files: s.files.count, bytes: s.files.bytes });
     });
     const s = snap;
@@ -823,18 +835,18 @@ export async function* exportArchive(o) {
     const tables = {};
     for (const t of s.tables) {
       tables[t.name] = `data/${t.name}.json`;
-      entries.push(yield* zip.entry(tables[t.name], jsonArray(snapshotRows(o.pg, s, t))));
+      entries.push(yield* zip.entry(tables[t.name], jsonArray(snapshotRows(pg, s, t))));
     }
     const tally = { count: 0 };
     tables[JOURNAL] = `data/${JOURNAL}.json`;
-    entries.push(yield* zip.entry(tables[JOURNAL], jsonArray(journalRows(o.pg, s), tally)));
+    entries.push(yield* zip.entry(tables[JOURNAL], jsonArray(journalRows(pg, s), tally)));
     s.rows[JOURNAL] = tally.count;
     const docs = s.tables.find((t) => t.name === 'documents');
-    if (docs) entries.push(yield* zip.entry(DOCUMENTS_CSV, documentsCsv(o.pg, s, docs)));
+    if (docs) entries.push(yield* zip.entry(DOCUMENTS_CSV, documentsCsv(pg, s, docs)));
 
     /** @type {Map<number, string>} */
     const archived = new Map();
-    for await (const batch of storedFiles(o.pg, s)) {
+    for await (const batch of storedFiles(pg, s)) {
       for (const f of batch) {
         let where = filePath(f.docId, f.letter, f.n, fileExt(f.fileName, f.fileKey));
         // Two IDs that read the same once made safe for a path (none of Codex's format do): the second is told apart.
@@ -842,7 +854,7 @@ export async function* exportArchive(o) {
         let data = await o.openFile(f);
         if (data === null) {
           // Renamed since the snapshot (a reclassification): the working version records its new key.
-          const [cur] = (await o.pg.query(`select coalesce(storage, 'local') as storage, file_key from working_versions where id = $1`, [f.workingVersion])).rows;
+          const [cur] = (await pg.query(`select coalesce(storage, 'local') as storage, file_key from working_versions where id = $1`, [f.workingVersion])).rows;
           if (cur?.file_key && cur.file_key !== f.fileKey) data = await o.openFile({ ...f, storage: cur.storage, fileKey: cur.file_key });
         }
         if (data === null) {
@@ -862,7 +874,7 @@ export async function* exportArchive(o) {
         if (f.sha256 && f.sha256 !== e.sha256) files.altered?.push({ workingVersion: f.workingVersion, path: where, recorded: f.sha256 });
       }
     }
-    if (docs) entries.push(yield* zip.entry(IMPORT_ENTRY, jsonArray(importView(o.pg, s, docs, archived))));
+    if (docs) entries.push(yield* zip.entry(IMPORT_ENTRY, jsonArray(importView(pg, s, docs, archived))));
 
     entries.push(yield* zip.entry(SUMS_ENTRY, [entries.map((x) => `${x.sha256}  ${x.name}\n`).join('')]));
     const tag = s.migration ? o.migrations.find((x) => x.hash === s.migration?.hash && x.createdAt === s.migration?.createdAt)?.tag ?? null : null;
@@ -887,12 +899,13 @@ export async function* exportArchive(o) {
     throw err;
   } finally {
     if (snap) {
-      await dropSnapshot(o.pg, snap).catch((err) => warn('temporary tables not dropped', err));
+      await dropSnapshot(pg, snap).catch((err) => warn('temporary tables not dropped', err));
       // Neither done nor failed: the reader stopped before the end.
       if (o.actor) {
-        await journalExport(o.pg, o.actor, 'export_full_end', outcome ?? { interrupted: true, size: zip.offset })
+        await journalExport(pg, o.actor, 'export_full_end', outcome ?? { interrupted: true, size: zip.offset })
           .catch((err) => warn('end of the export not journaled', err));
       }
     }
+    pinned?.release();
   }
 }

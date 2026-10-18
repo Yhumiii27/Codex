@@ -2,6 +2,7 @@ import { desc, eq, sql } from 'drizzle-orm';
 import { describe, expect, it, vi } from 'vitest';
 import { GET } from '@/app/api/export/search/route';
 import { schema as s } from '@/db';
+import { engineOf } from '@/db/sql-client';
 import { COOKIE_LANG, getCtx } from '@/lib/context';
 import type { SimRole } from '@/lib/i18n';
 import { listDocs, PAGE_SIZE, searchDocs, wordStartSql } from '@/lib/queries';
@@ -215,7 +216,12 @@ describe('what the database search rests on', () => {
     expect(rows.filter((x) => !x.m).length).toBeGreaterThan(500);
   });
 
-  it('codex_fr orders titles and IDs as the search sorted them (Intl.Collator, French, numeric, base sensitivity)', async () => {
+  it('codex_fr orders titles and IDs as the search sorted them (Intl.Collator, French, numeric, base sensitivity)', async (ctx) => {
+    // The order is ICU's. A PostgreSQL server (npm run test:pg, docs/postgres.md) built with an ICU older than PGlite's
+    // may order a few characters otherwise: ICU 60 (Unicode 10.0) tells ' from ’, which the ICU of PGlite 0.5 and of
+    // Node 22 (Unicode 16.0) find equal. Skipped on such a server only, said in the report; PGlite is always checked.
+    const { rows: [icu] } = await db().$client.query<{ v: string }>('select icu_unicode_version() as v');
+    if (engineOf(db().$client) === 'postgres' && Number.parseFloat(icu.v) < 16) ctx.skip(`ICU of the server on Unicode ${icu.v}, older than PGlite's (16.0)`);
     const collator = new Intl.Collator('fr', { numeric: true, sensitivity: 'base' });
     const r = random(3);
     const alphabet = [...'aAbBeEéÉèêzZœŒæÆçÇ0123456789 -_.,\'’()/«»:ñßøØ', '\ufeff'];

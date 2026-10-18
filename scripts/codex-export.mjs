@@ -17,7 +17,7 @@ import path from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
 import nextEnv from '@next/env';
-import { BackupError, LOCK_FILE, lockForCommand, readMigrations, unlock } from '../src/lib/backup-core.mjs';
+import { BackupError, LOCK_FILE, lockForCommand, readMigrations, serverDatabaseRefusal, unlock } from '../src/lib/backup-core.mjs';
 import { ExportError, exportArchive, exportName, verifyExport } from '../src/lib/export-core.mjs';
 
 const DEV = process.argv.includes('--dev') || process.env.NODE_ENV === 'development';
@@ -116,6 +116,8 @@ async function target(out, name) {
 
 /** @param {string | undefined} out */
 async function create(out) {
+  const refusal = serverDatabaseRefusal(process.env, 'npm run export', "L'export complet se fait serveur en marche : Administration › Journal d'audit › Export complet.");
+  if (refusal) throw new Error(refusal);
   const dbDir = path.join(DATA_DIR, 'pglite');
   if (!(await stat(path.join(dbDir, 'PG_VERSION')).then(() => true, () => false))) throw new Error(`aucune base Codex dans ${DATA_DIR} : rien à exporter.`);
   const now = new Date();

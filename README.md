@@ -3,7 +3,8 @@
 Gestion électronique des documents du groupe, construite d'après la maquette Claude Design
 (`design/GED Groupe.dc.html`, design system Nocturne dans `design/_ds/`).
 
-Même socle que Keystone : **Next.js 16 (App Router) · React 19 · PGlite (Postgres embarqué) + Drizzle**.
+Même socle que Keystone : **Next.js 16 (App Router) · React 19 · PGlite (Postgres embarqué) + Drizzle**. Un serveur
+PostgreSQL 18 peut remplacer PGlite, en option (`DATABASE_URL`, `docs/postgres.md`).
 
 ## Démarrer
 
@@ -56,12 +57,25 @@ Les fichiers déposés sont stockés dans `.data/files/` (ou dans SharePoint, vo
   département, un projet, un programme ou `QMS` est refusé, les documents suivent la famille de leur type, un réglage
   qui exclurait des documents existants (origine, rattachement, confidentialité) est laissé à confirmer dans
   l'administration, une fonction qui a des titulaires garde sa portée, les documents gardent leur durée de
-  conservation. Refusée tant que la base n'a pas les migrations du code (démarrer Codex une fois). App Mac :
+  conservation. Refusée tant que la base n'a pas les migrations du code (démarrer Codex une fois). Avec
+  `DATABASE_URL`, elle travaille sur le serveur PostgreSQL ; Codex ne sachant pas le sauvegarder, `--apply` y demande
+  `--no-backup`, à donner une fois la sauvegarde du serveur faite (`pg_dump`). App Mac :
   `CODEX_DATA_DIR="$HOME/Library/Application Support/Codex/data" npm run registry:apply`, app quittée.
+- **Serveur PostgreSQL en option** (`docs/postgres.md`) : `DATABASE_URL=postgres://…` fait travailler Codex sur ce
+  serveur (PostgreSQL 18 au moins, ICU, `pg_trgm`) au lieu de PGlite, avec les mêmes migrations, fonctions et
+  déclencheurs. Sans cette variable, rien ne change (développement, démonstration, app Mac). Une base serveur neuve
+  reçoit le référentiel minimal (`CODEX_SEED=demo` pour la démonstration). La sauvegarde et la restauration de Codex,
+  et les commandes `npm run export` et `integrity`, ne travaillent que sur PGlite et refusent avec un message ; l'export
+  complet et le contrôle d'intégrité restent possibles depuis l'Administration ; le serveur se sauvegarde avec ses
+  outils (`pg_dump`). `npm run test:pg` rejoue toute la suite sur un serveur (`CODEX_TEST_DATABASE_URL`).
+- **Volume et mesures** (`docs/performances.md`) : `npm run seed:large -- --docs 10000` remplit une base de test à
+  part (`.data-large/` par défaut, ou `--data-dir`, ou `--database-url` ; jamais la base de démo, et une base qui a
+  déjà des documents est refusée sans `--append`) ; `npm run perf` mesure les écrans et routes principaux d'un serveur
+  lancé (`npm run start` avec `CODEX_DATA_DIR=.data-large` ou `DATABASE_URL`, et `CODEX_RATE_LIMIT=off`).
 - Contrôles : `npm test`, `npm run typecheck`, `npm run lint`, `npm run build` (sans accès réseau : la police Inter
   est dans `src/fonts/`, servie par `next/font/local`, licence OFL dans `src/fonts/inter/OFL.txt`).
 - Intégration continue GitHub Actions (`.github/workflows/ci.yml`) : `npm ci`, `npm run db:check` puis ces contrôles,
-  sous Node 22, à chaque push et PR.
+  sous Node 22, à chaque push et PR ; et `npm run test:pg` sur un service PostgreSQL 18.
 - Tests : `npm test` lance Vitest une fois (`npm run test:watch` en continu), en une à deux minutes selon la machine,
   sans serveur ni réseau et sans toucher à `.data/`.
   - `tests/unit/` : règles pures (identifiants, révisions, visibilité, conservation, recherche, filtres mis en avant
@@ -88,9 +102,11 @@ Les fichiers déposés sont stockés dans `.data/files/` (ou dans SharePoint, vo
     l'horloge est figée au 10 octobre 2026. Les compteurs de débit sont vidés avant chaque test
     (`tests/support/setup.ts`).
   - Limite : PGlite n'a qu'une connexion et exécute les transactions l'une après l'autre. Les tests d'attributions
-    « simultanées » (`Promise.all`) vérifient l'absence de doublon sous cet entrelacement, pas l'atomicité des
-    compteurs entre connexions d'un vrai serveur Postgres (étape 5, O-03) : il faudra un Postgres serveur pour la
-    vérifier.
+    « simultanées » (`Promise.all`) y vérifient l'absence de doublon sous cet entrelacement. `npm run test:pg`
+    (`CODEX_TEST_DATABASE_URL`, une base neuve par fichier de test sur un serveur PostgreSQL 18) rejoue toute la suite
+    sur un serveur, où ces tests deviennent de vraies courses entre connexions, et `postgres-server.test.ts` y tient
+    des transactions ouvertes en même temps : compteur attendu, numéro rendu par une transaction annulée, max + 1
+    pris en défaut, imports un par un. Sur PGlite, ce fichier est sauté.
   - Version de Node : la recherche en base replie les textes (accents, casse) et trie les titres avec les tables
     Unicode et ICU de PGlite (Unicode 16.0, ICU 76), la version en mémoire qui lui sert de référence avec celles de
     Node (Node 22 : Unicode 16.0, ICU 77 ; Node 26 : Unicode 17.0, ICU 78). La base replie la requête comme les
@@ -251,7 +267,8 @@ secondes), sans rien exécuter (ni import, ni lecture de fichier, ni export jour
     plusieurs comptes. Tant qu'il n'y a pas d'authentification (O-02), un client peut toujours se faire passer pour un
     autre utilisateur, et donc dépenser son budget.
 - **Une seule instance** : les compteurs sont en mémoire, dans le processus du serveur ; PGlite impose déjà un seul
-  processus. Un redémarrage les remet à zéro. Avec plusieurs instances, chacune compterait de son côté (jusqu'à n fois
+  processus (avec un serveur PostgreSQL, plusieurs processus pourraient partager la base, mais chacun aurait ses
+  compteurs ; le verrou `codex.lock` du dossier de données en refuse un second sur le même dossier). Un redémarrage les remet à zéro. Avec plusieurs instances, chacune compterait de son côté (jusqu'à n fois
   la limite) : il faudrait alors un magasin partagé (Redis, ou une table de la base Postgres serveur, point 51) ou
   limiter au proxy inverse (`limit_req` de nginx, par exemple). Chaque famille garde au plus 10 000 clés, dans sa propre
   table : seuls les seaux redevenus pleins sont oubliés, et tant qu'aucun ne l'est, une clé nouvelle attend (429) plutôt
@@ -504,8 +521,9 @@ src/
     shell/             barre latérale, en-tête, contexte client (dialogues, toasts)
     dialogs/           toutes les boîtes de dialogue
     ui/                icônes de la maquette, contrôle segmenté, steppers, boutons d'action, pages d'une liste
-  db/                  schéma Drizzle, connexion PGlite (déclencheurs, termes de recherche repliés), migrations
-                       versionnées (migrations.ts), registre, amorçage (référentiel, démonstration)
+  db/                  schéma Drizzle, connexion PGlite ou serveur PostgreSQL (sql-client.ts), déclencheurs, termes de
+                       recherche repliés, migrations versionnées (migrations.ts), registre, amorçage (référentiel,
+                       démonstration)
   fonts/               police Inter (woff2, sous-ensembles de Google Fonts, licence OFL), next/font/local
   lib/
     actions.ts         Server Actions (toutes les mutations + contrôles de droits)
@@ -554,9 +572,11 @@ scripts/
   codex-export.mjs     commandes npm run export, export:check (docs/export.md)
   codex-integrity.mjs  commande npm run integrity (empreintes SHA-256 des fichiers)
   codex-registry.mts   commande npm run registry:apply (TypeScript, lancé par tsx)
+  codex-seed-large.mts commande npm run seed:large : volume synthétique pour les mesures (docs/performances.md)
+  codex-perf.mjs       commande npm run perf : temps des écrans et routes principaux d'un serveur lancé
 tests/
   unit/                tests unitaires des règles pures de src/lib (Vitest, vitest.config.ts)
-  integration/         tests d'intégration sur PGlite en mémoire (règles métier de src/lib, Server Actions, webhook)
+  integration/         tests d'intégration sur PGlite en mémoire, ou sur un serveur PostgreSQL (npm run test:pg)
   support/             base de test et données minimales, session simulée, remplacement de server-only, lecture des PDF,
                        faux clamd, ZIP et fichiers composés (OLE2) minimaux
 ```

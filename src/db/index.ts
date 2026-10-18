@@ -3,8 +3,11 @@ import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
-import { drizzle } from 'drizzle-orm/pglite';
+import { drizzle as drizzleServer } from 'drizzle-orm/node-postgres';
+import { migrate as migrateServer } from 'drizzle-orm/node-postgres/migrator';
+import { drizzle, type PgliteDatabase } from 'drizzle-orm/pglite';
 import { migrate } from 'drizzle-orm/pglite/migrator';
+import pg from 'pg';
 import { backupDirOf, createBackup, journal, journalData, keepOf, lockForServer, readMigrations } from '../lib/backup-core.mjs';
 import { logger } from '../lib/log';
 import { seedModeOf } from '../lib/seed-mode';
@@ -12,8 +15,15 @@ import { appVersion } from '../lib/version';
 import { appliedMigrations, migrationPlan, type MigrationPlan } from './migrations';
 import * as schema from './schema';
 import { seed } from './seed';
+import { databaseUrlOf, embedded, PgServerClient, poolMaxOf, redactUrl, serverPool, type SqlClient, type SqlQueryable } from './sql-client';
 
-export type Db = ReturnType<typeof drizzle<typeof schema>>;
+/**
+ * Codex's drizzle database, on PGlite (default) or on a PostgreSQL server (DATABASE_URL): the same schema, migrations,
+ * functions and triggers, and the same query builder. Typed as PGlite's, whose results (`rows`) node-postgres' share;
+ * $client is the raw connection of either (src/db/sql-client.ts), never PGlite's own API (embedded() reaches it).
+ */
+export type Db = Omit<PgliteDatabase<typeof schema>, '$client'> & { $client: SqlClient };
+export type { SqlClient } from './sql-client';
 
 // Runtime data (database, uploaded files) lives outside the build output.
 export const DATA_DIR = path.resolve(/*turbopackIgnore: true*/ process.env.CODEX_DATA_DIR ?? path.join(process.cwd(), '.data'));
@@ -111,30 +121,125 @@ create or replace trigger documents_terms after insert or update on documents fo
 create collation if not exists codex_fr (provider = icu, locale = 'fr@colNumeric=yes;colStrength=primary', deterministic = false);
 `;
 
+type OpenOptions = {
+  /** Runs before the pending migrations are applied, when there are some (the backup of init()). */
+  beforeMigrate?: (client: SqlClient, plan: MigrationPlan) => Promise<void>;
+};
+
+/** Where a database is: a PGlite data directory (undefined: in memory), or a PostgreSQL server. */
+export type DbTarget = string | undefined | { url: string };
+
 /**
  * Opens a database with the schema of drizzle/, the append-only journal, the version of documents and their search
- * terms, but no data: on disk under `dataDir`, or in memory without one. getDb() opens the application's database with
- * it and seeds it; integration tests (tests/integration) open throwaway in-memory databases with it, so they run
- * against the same schema and triggers.
+ * terms, but no data: PGlite on disk under a data directory, or in memory without one; or a PostgreSQL server (`{ url }`).
+ * getDb() opens the application's database with it and seeds it; integration tests (tests/integration) open throwaway
+ * in-memory databases with it, so they run against the same schema and triggers. With CODEX_TEST_DATABASE_URL set (the
+ * address of a PostgreSQL server whose user may create databases), the in-memory database of a test is instead a new
+ * database on that server, dropped when it is closed: `npm run test:pg` runs the whole suite on PostgreSQL that way.
  */
-export async function openDb(dataDir?: string, opts: { beforeMigrate?: (client: PGlite, plan: MigrationPlan) => Promise<void> } = {}): Promise<Db> {
-  const client = new PGlite({ dataDir, extensions: { pg_trgm } });
-  const db = drizzle(client, { schema });
+export async function openDb(target?: DbTarget, opts: OpenOptions = {}): Promise<Db> {
+  if (typeof target === 'object') return openServer(target.url, opts);
+  const testServer = target === undefined ? process.env.CODEX_TEST_DATABASE_URL?.trim() : '';
+  if (testServer) {
+    const t = await throwawayDatabase(testServer);
+    return openServer(t.url, opts, t.drop).catch(async (err) => {
+      await t.drop().catch(() => {});
+      throw err;
+    });
+  }
+  const client = new PGlite({ dataDir: target, extensions: { pg_trgm } });
+  const db = drizzle(client, { schema }) as unknown as Db;
   try {
     await client.exec('create extension if not exists pg_trgm');
     // Refuses a database made by another schema before drizzle replays anything on it (src/db/migrations.ts).
     const plan = migrationPlan(await appliedMigrations(client), await readMigrations(MIGRATIONS_DIR));
     if (plan.pending.length && opts.beforeMigrate) await opts.beforeMigrate(client, plan);
     // All pending migrations in one transaction: a failure leaves the database as it was.
-    await migrate(db, { migrationsFolder: MIGRATIONS_DIR });
+    await migrate(db as unknown as PgliteDatabase<typeof schema>, { migrationsFolder: MIGRATIONS_DIR });
   } catch (err) {
     await client.close().catch(() => {});
     throw err;
   }
-  await client.exec(AUDIT_APPEND_ONLY);
-  await client.exec(DOCUMENT_VERSION);
-  await client.exec(DOCUMENT_SEARCH);
+  await installCompanions(client);
   return db;
+}
+
+/** The functions, triggers and collation every start lays (statements above), in that order. */
+async function installCompanions(q: SqlQueryable): Promise<void> {
+  await q.exec(AUDIT_APPEND_ONLY);
+  await q.exec(DOCUMENT_VERSION);
+  await q.exec(DOCUMENT_SEARCH);
+}
+
+/**
+ * PostgreSQL 18 at least: codex_fold folds case with the pg_unicode_fast collation (built-in provider, PostgreSQL 18),
+ * as PGlite 0.5 (PostgreSQL 18) does; an older server would fold differently from lib/search.ts, or not at all.
+ */
+const SERVER_MIN_VERSION = 180000;
+
+/** Key of the session lock under which one Codex process at a time migrates a server and lays its functions. */
+const MIGRATION_LOCK = `select pg_advisory_lock(hashtext('codex:migrate'))`;
+
+/**
+ * A PostgreSQL server (DATABASE_URL): a pool of connections, the same migrations and the same functions and triggers as
+ * PGlite. Several Codex processes may start on the same database at once: the first takes a session lock (advisory),
+ * checks and migrates the database and lays the functions, the others wait for it, then find nothing left to do.
+ * Needs PostgreSQL 18 or later, ICU (the codex_fr collation) and the pg_trgm extension (contrib), which the user must be
+ * allowed to create (trusted extension: the owner of the database may) unless it is already there.
+ */
+async function openServer(url: string, opts: OpenOptions, onClose?: () => Promise<void>): Promise<Db> {
+  const pool = serverPool(url, poolMaxOf(process.env));
+  // An idle connection the server drops (restart, network) emits 'error' on the pool: logged, the pool opens another.
+  pool.on('error', (err) => log.warn('database connection lost', { err }));
+  const client = new PgServerClient(pool, onClose);
+  const db = drizzleServer(pool, { schema });
+  Object.defineProperty(db, '$client', { value: client, enumerable: true });
+  const conn = await pool.connect().catch(async (err: unknown) => {
+    await client.close().catch(() => {});
+    throw new Error(`the PostgreSQL server of DATABASE_URL (${redactUrl(url)}) cannot be reached: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
+  });
+  let broken = false;
+  try {
+    const [{ v }] = (await conn.query<{ v: number }>(`select current_setting('server_version_num')::int as v`)).rows;
+    if (Number(v) < SERVER_MIN_VERSION) throw new Error(`Codex needs PostgreSQL 18 or later (the server of DATABASE_URL is ${Math.floor(Number(v) / 10000)}): codex_fold uses the pg_unicode_fast collation`);
+    await conn.query(MIGRATION_LOCK);
+    const locked = { query: async <T,>(text: string, params?: unknown[]) => ({ rows: (await conn.query(text, params)).rows as T[] }), exec: (text: string) => conn.query(text) };
+    await locked.exec('create extension if not exists pg_trgm');
+    const plan = migrationPlan(await appliedMigrations(locked), await readMigrations(MIGRATIONS_DIR));
+    if (plan.pending.length && opts.beforeMigrate) await opts.beforeMigrate(client, plan);
+    await migrateServer(db, { migrationsFolder: MIGRATIONS_DIR });
+    await installCompanions(locked);
+    await conn.query(`select pg_advisory_unlock(hashtext('codex:migrate'))`);
+  } catch (err) {
+    broken = true;
+    throw err;
+  } finally {
+    // A connection left with the lock (an error) is closed rather than handed back to the pool, which frees the lock.
+    conn.release(broken);
+    if (broken) await client.close().catch(() => {});
+  }
+  return db as unknown as Db;
+}
+
+/**
+ * A new, empty database on the server of `adminUrl` (CODEX_TEST_DATABASE_URL), for one test file: its address, and
+ * drop() which removes it (WITH (FORCE): connections a failed test left open are closed).
+ */
+async function throwawayDatabase(adminUrl: string): Promise<{ url: string; drop: () => Promise<void> }> {
+  const name = `codex_test_${process.pid}_${Math.random().toString(36).slice(2, 10)}`;
+  const admin = async (statement: string) => {
+    const c = new pg.Client({ connectionString: adminUrl });
+    await c.connect();
+    try {
+      await c.query(statement);
+    } finally {
+      await c.end();
+    }
+  };
+  await admin(`create database ${name}`);
+  const u = new URL(adminUrl);
+  u.pathname = `/${name}`;
+  return { url: u.toString(), drop: () => admin(`drop database if exists ${name} with (force)`) };
 }
 
 /**
@@ -144,14 +249,20 @@ export async function openDb(dataDir?: string, opts: { beforeMigrate?: (client: 
  * needs none: drizzle applies them in one transaction. When the archive cannot be written, the server does not start
  * and the database is left as it was; CODEX_MIGRATION_BACKUP=off migrates without it.
  */
-async function backUpBeforeMigrating(client: PGlite, plan: MigrationPlan): Promise<{ name: string; data: Record<string, unknown> } | null> {
+async function backUpBeforeMigrating(client: SqlClient, plan: MigrationPlan): Promise<{ name: string; data: Record<string, unknown> } | null> {
   if (plan.fresh) return null;
   if (/^(0|false|off|no)$/i.test(process.env.CODEX_MIGRATION_BACKUP?.trim() ?? '')) {
     log.warn('migrating without a backup (CODEX_MIGRATION_BACKUP=off)', { pending: plan.pending });
     return null;
   }
+  // Codex's archives copy PGlite's data directory; a PostgreSQL server is backed up by its own tools (pg_dump, the
+  // host's snapshots: not decided, M22). Its migration waits for whoever runs it to say a backup was made.
+  const pglite = embedded(client);
+  if (!pglite) {
+    throw new Error(`migrations ${plan.pending.join(', ')} are pending on the PostgreSQL server of DATABASE_URL, and Codex cannot back up a server database (docs/postgres.md). The database was not changed. Back it up (pg_dump), then start Codex once with CODEX_MIGRATION_BACKUP=off`);
+  }
   const res = await createBackup({
-    pg: client, filesDir: FILES_DIR, dbDir: path.join(DATA_DIR, 'pglite'), backupDir: backupDirOf(DATA_DIR, process.env), keep: keepOf(process.env),
+    pg: pglite, filesDir: FILES_DIR, dbDir: path.join(DATA_DIR, 'pglite'), backupDir: backupDirOf(DATA_DIR, process.env), keep: keepOf(process.env),
     mode: 'online', by: 'codex', migrations: await readMigrations(MIGRATIONS_DIR), app: await appVersion(),
   }).catch((err: unknown) => {
     throw new Error(`no backup could be written before migrating (${plan.pending.join(', ')}): ${err instanceof Error ? err.message : String(err)}. The database was not changed. Correct CODEX_BACKUP_DIR, or set CODEX_MIGRATION_BACKUP=off to migrate without a backup`, { cause: err });
@@ -167,26 +278,49 @@ async function init(): Promise<Db> {
   await lockForServer(DATA_DIR);
   // The archive written before migrating, journaled once the migrations are applied (the journal's own table may change).
   const before: { archive: { name: string; data: Record<string, unknown> } | null; pending: string[] } = { archive: null, pending: [] };
-  const db = await openDb(path.join(DATA_DIR, 'pglite'), {
+  const url = databaseUrlOf(process.env);
+  if (url) log.info('database: PostgreSQL server', { url: redactUrl(url) });
+  const db = await openDb(url ? { url } : path.join(DATA_DIR, 'pglite'), {
     beforeMigrate: async (client, plan) => {
       before.archive = await backUpBeforeMigrating(client, plan);
       before.pending = plan.pending;
     },
   });
   if (before.archive) await journal(db.$client, 'backup_created', before.archive.name, before.archive.data, `migration ${before.pending.join(', ')}`);
-  // Seeded once, when nothing is there yet: neither a person nor a type (CODEX_SEED, lib/seed-mode.ts).
-  const [{ n }] = (await db.$client.query<{ n: number }>('select ((select count(*) from users) + (select count(*) from doc_types))::int as n')).rows;
-  if (Number(n) === 0) {
+  await seedIfEmpty(db);
+  return db;
+}
+
+/**
+ * Seeded once, when nothing is there yet: neither a person nor a type (CODEX_SEED, lib/seed-mode.ts). On a server,
+ * under a session lock, so that two processes starting on a new database do not both seed it.
+ */
+async function seedIfEmpty(db: Db): Promise<void> {
+  const run = async () => {
+    const [{ n }] = (await db.$client.query<{ n: number }>('select ((select count(*) from users) + (select count(*) from doc_types))::int as n')).rows;
+    if (Number(n) !== 0) return;
     const mode = seedModeOf(process.env);
     if (!mode) throw new Error(`CODEX_SEED="${process.env.CODEX_SEED}" is neither demo nor minimal: the new database was left empty`);
     await seed(db, mode);
     log.info('new database seeded', { mode });
+  };
+  if (!(db.$client instanceof PgServerClient)) return run();
+  const s = await db.$client.session();
+  let failed = true;
+  try {
+    await s.exec(`select pg_advisory_lock(hashtext('codex:seed'))`);
+    await run();
+    await s.exec(`select pg_advisory_unlock(hashtext('codex:seed'))`);
+    failed = false;
+  } finally {
+    // After an error the connection may still hold the lock: closed rather than handed back to the pool.
+    s.release(failed);
   }
-  return db;
 }
 
-// One embedded database per server process; kept on globalThis so dev hot reloads reuse it. Integration tests mock
-// getDb() to hand the code under test their in-memory database from openDb() (tests/support/db.ts, currentDb).
+// One database per server process (PGlite, or a pool of server connections); kept on globalThis so dev hot reloads
+// reuse it. Integration tests mock getDb() to hand the code under test their in-memory database from openDb()
+// (tests/support/db.ts, currentDb).
 const g = globalThis as unknown as { __codexDb?: Promise<Db> };
 
 export function getDb(): Promise<Db> {

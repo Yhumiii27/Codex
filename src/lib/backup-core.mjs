@@ -86,6 +86,20 @@ export class BackupError extends Error {
 // ── Settings ────────────────────────────────────────────────────────────
 
 /**
+ * The refusal of a command that works on PGlite's data directory (npm run backup, restore, export, integrity) when
+ * DATABASE_URL names a PostgreSQL server (docs/postgres.md): it would read or replace a database Codex no longer uses.
+ * Null with the embedded database.
+ * @param {Readonly<Record<string, string | undefined>>} env
+ * @param {string} what the command, as the message names it
+ * @param {string} instead what to do on a server
+ */
+export function serverDatabaseRefusal(env, what, instead) {
+  if (!env.DATABASE_URL?.trim()) return null;
+  return `${what} : DATABASE_URL désigne un serveur PostgreSQL, et cette commande ne travaille que sur la base intégrée (PGlite) du dossier de données.\n${instead}\nVoir docs/postgres.md.`;
+}
+
+
+/**
  * Where archives go: CODEX_BACKUP_DIR, else beside the data directory (`.data` → `.data-backups`), outside it so that
  * `npm run db:reset` (rm -rf .data) leaves them. Where they should live in production is not decided (hosting).
  * @param {string} dataDir
@@ -143,7 +157,7 @@ function inside(child, parent) {
 // writes codex.lock when it opens the database; the commands refuse to run while that process lives, and write their
 // own lock, which the server respects and which they refresh while they run.
 
-/** @typedef {{ pid: number, kind: 'server' | 'backup' | 'restore' | 'export' | 'integrity' | 'registry', since: string, beat?: string }} DataDirLock */
+/** @typedef {{ pid: number, kind: 'server' | 'backup' | 'restore' | 'export' | 'integrity' | 'registry' | 'seed', since: string, beat?: string }} DataDirLock */
 
 /**
  * @param {string} dataDir
@@ -152,7 +166,7 @@ function inside(child, parent) {
 export async function readLock(dataDir) {
   try {
     const v = JSON.parse(await readFile(path.join(dataDir, LOCK_FILE), 'utf8'));
-    return v && Number.isInteger(v.pid) && v.pid > 0 && ['server', 'backup', 'restore', 'export', 'integrity', 'registry'].includes(v.kind) ? v : null;
+    return v && Number.isInteger(v.pid) && v.pid > 0 && ['server', 'backup', 'restore', 'export', 'integrity', 'registry', 'seed'].includes(v.kind) ? v : null;
   } catch {
     return null;
   }
@@ -224,10 +238,10 @@ export async function lockForServer(dataDir) {
 
 /**
  * A command (backup, restore, export: scripts/codex-export.mjs, integrity: scripts/codex-integrity.mjs, registry:
- * scripts/codex-registry.mts): refuses while another live process holds the
+ * scripts/codex-registry.mts, seed: scripts/codex-seed-large.mts): refuses while another live process holds the
  * directory (BackupError 'busy', with the lock), then holds it, refreshing the lock every 30 s until unlock().
  * @param {string} dataDir
- * @param {'backup' | 'restore' | 'export' | 'integrity' | 'registry'} kind
+ * @param {'backup' | 'restore' | 'export' | 'integrity' | 'registry' | 'seed'} kind
  */
 export async function lockForCommand(dataDir, kind) {
   const held = await readLock(dataDir);

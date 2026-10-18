@@ -1280,6 +1280,37 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     type ; une fonction qui a des titulaires garde sa portée ; les documents gardent leur classe de conservation ;
   - les fonctions de validation viennent de `src/db/seed-org.ts` (le registre n'en a pas) ; l'ordre d'affichage et la
     périodicité de revue ne sont pas touchés ; départements et sites (organigramme, O-04) ne sont pas concernés.
+- **Serveur PostgreSQL en option** (point 51, 18 octobre) : l'hébergement n'est pas décidé (M22, O-03 non tranchée),
+  donc **PGlite reste la base par défaut** et rien ne change sans variable (développement, démonstration, app Mac).
+  Choix prudents, à confirmer :
+  - le serveur est choisi par `DATABASE_URL` ; pilote **node-postgres** avec un pool (10 connexions par défaut,
+    `CODEX_DB_POOL_MAX`), plutôt que postgres-js : ses résultats (`rows`) sont ceux de PGlite, ce qui garde le même
+    code ; les entiers `int8` sont lus comme des nombres, les dates à minuit UTC, et une marque d'ordre d'octets en
+    tête de texte est retirée, comme PGlite le fait ;
+  - **PostgreSQL 18 au moins**, refusé sinon (le repli de la recherche utilise la collation `pg_unicode_fast` de
+    PostgreSQL 18, comme PGlite 0.5) ; ICU et l'extension `pg_trgm` sont requis ;
+  - mêmes migrations, et mêmes fonctions et déclencheurs posés au démarrage, sous un **verrou consultatif** : plusieurs
+    processus qui démarrent sur la même base ne migrent pas en même temps, et une base neuve n'est amorcée qu'une fois ;
+  - une base serveur neuve reçoit le **référentiel minimal** par défaut (`CODEX_SEED=demo` pour la démonstration) :
+    une base serveur n'est pas une démonstration ;
+  - **Codex ne sauvegarde pas un serveur** : « Sauvegarder maintenant », `npm run backup` et `npm run restore`
+    refusent avec un message ; le serveur se sauvegarde avec ses outils (`pg_dump`, instantanés), à décider avec
+    l'hébergement. Une migration en attente sur une base serveur qui a des données n'est appliquée qu'avec
+    `CODEX_MIGRATION_BACKUP=off`, posé une fois la sauvegarde du serveur faite ;
+  - `npm run export` et `npm run integrity` refusent (l'export complet et le contrôle d'intégrité se font depuis
+    l'Administration, qui marchent sur un serveur) ; `npm run registry:apply` marche sur un serveur, mais `--apply`
+    y demande `--no-backup` ;
+  - l'export complet sur un serveur copie les tables en `REPEATABLE READ`, sur une connexion gardée pour lui ;
+  - les transactions restent en `READ COMMITTED` (défaut de PostgreSQL) : les compteurs d'identifiants, les verrous
+    de ligne (`FOR UPDATE`) déjà posés et le verrou consultatif de l'import couvrent les écritures concurrentes
+    vérifiées ; les autres transactions qui relisent avant d'écrire n'ont pas été revues une à une ;
+  - les fichiers restent dans le dossier de données (`CODEX_DATA_DIR/files`), et le verrou `codex.lock` y refuse un
+    second serveur sur le même dossier ; les limites de débit restent en mémoire, par processus.
+- **Volume de mesure** (point 56, 18 octobre) : `npm run seed:large` écrit dans une base à part (`.data-large/` par
+  défaut, ou ce que nomment `--data-dir` ou `--database-url`, jamais `DATABASE_URL` ni `CODEX_DATA_DIR`), refuse une
+  base qui a déjà des documents sans `--append`, et charge la démonstration avant le volume synthétique (200
+  personnes fictives de plus par défaut). Les fichiers ne sont pas créés (versions de travail sans fichier). Les
+  volumes cibles restent à fixer (M18, O-11) : 10 000 documents ont servi aux mesures de `docs/performances.md`.
 - **Git** (D-23) : premier commit sur une branche `codex-ged-v2` plutôt que sur `main`.
 
 ## Ce qui est explicitement hors périmètre

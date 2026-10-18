@@ -55,4 +55,10 @@ describe('seedModeOf (CODEX_SEED)', () => {
     expect(seedModeOf({ CODEX_SEED: 'demo' })).toBe('demo');
     expect(seedModeOf({ CODEX_SEED: 'reference' })).toBeNull();
   });
+
+  it('is minimal by default on a PostgreSQL server (DATABASE_URL), demo only when asked', () => {
+    expect(seedModeOf({ DATABASE_URL: 'postgres://codex@db/codex' })).toBe('minimal');
+    expect(seedModeOf({ DATABASE_URL: ' ' })).toBe('demo');
+    expect(seedModeOf({ DATABASE_URL: 'postgres://codex@db/codex', CODEX_SEED: 'demo' })).toBe('demo');
+  });
 });

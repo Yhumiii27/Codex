@@ -1,9 +1,8 @@
 import 'server-only';
 import { createHash, randomUUID } from 'node:crypto';
 import { constants as fsc } from 'node:fs';
-import { access, link, lstat, open as openFile, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { access, link, lstat, open as openFile, readdir, readFile, rm, stat, writeFile, type FileHandle } from 'node:fs/promises';
 import path from 'node:path';
-import { Readable } from 'node:stream';
 import { inflateSync } from 'node:zlib';
 import { eq } from 'drizzle-orm';
 import { FILES_DIR, getDb, schema as s } from '@/db';
@@ -72,6 +71,51 @@ interface FileStore {
 const safeName = (x: string) => x.replace(/[^\w.\-]+/g, '_');
 const UUID_LEN = 36;
 
+/**
+ * Bytes [from, to) of an open file as a web stream, read on demand (64 KiB at a time), the file closed at its end, on
+ * an error or when the reader cancels. Rather than Readable.toWeb of a read stream, whose adapter could still push a
+ * chunk into a stream cancelled meanwhile (« Controller is already closed », an uncaught exception, seen when a response
+ * was cancelled while a database write held the route, as on a PostgreSQL server).
+ */
+function fileStream(fh: FileHandle, from: number, to: number): ReadableStream<Uint8Array> {
+  let pos = from;
+  let closed = false;
+  const close = async () => {
+    if (closed) return;
+    closed = true;
+    await fh.close().catch(() => {});
+  };
+  return new ReadableStream<Uint8Array>({
+    async pull(c) {
+      try {
+        const want = Math.min(64 * 1024, to - pos);
+        if (want <= 0) {
+          await close();
+          c.close();
+          return;
+        }
+        // A buffer of its own (never Node's shared pool): the reader keeps the chunk.
+        const buf = new Uint8Array(want);
+        const { bytesRead } = await fh.read(buf, 0, want, pos);
+        if (closed) return;
+        if (bytesRead === 0) {
+          await close();
+          c.close();
+          return;
+        }
+        pos += bytesRead;
+        c.enqueue(bytesRead === want ? buf : buf.subarray(0, bytesRead));
+      } catch (err) {
+        // A read cut short by a cancel (the file closed under it) is no error for anyone.
+        if (closed) return;
+        await close();
+        c.error(err);
+      }
+    },
+    cancel: close,
+  });
+}
+
 const local: FileStore = {
   name: 'local',
   async put(buf, name) {
@@ -105,8 +149,7 @@ const local: FileStore = {
         const fh = await openFile(file, 'r').catch((err: NodeJS.ErrnoException) => {
           throw err.code === 'ENOENT' ? new FileNotFoundError(key) : err;
         });
-        const stream = fh.createReadStream(range ? { start: range.start, end: range.end } : {});
-        return Readable.toWeb(stream) as unknown as ReadableStream<Uint8Array>;
+        return fileStream(fh, range ? range.start : 0, range ? range.end + 1 : Infinity);
       },
     };
   },

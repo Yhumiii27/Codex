@@ -7,6 +7,7 @@ import { and, asc, eq, inArray } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GET, HEAD } from '@/app/api/export/full/route';
 import { FILES_DIR, schema as s } from '@/db';
+import { PgServerClient, type SqlQueryable } from '@/db/sql-client';
 import { getCtx } from '@/lib/context';
 import { entryBuffer, verifyExport, zipEntries } from '@/lib/export-core.mjs';
 import { fmtSize } from '@/lib/format';
@@ -312,9 +313,18 @@ describe('GET /api/export/full', () => {
     await fill();
     actAs('manager');
     const client = db().$client;
-    const query = client.query.bind(client);
-    const failing = vi.spyOn(client, 'query').mockImplementation(((sql: string, params?: unknown[], ...rest: unknown[]) =>
-      params?.[2] === 'export_full_end' ? Promise.reject(new Error('disk full')) : (query as (...a: unknown[]) => unknown)(sql, params, ...rest)) as typeof client.query);
+    const failingQuery = <Q extends SqlQueryable['query']>(query: Q) => ((sql: string, params?: unknown[], ...rest: unknown[]) =>
+      params?.[2] === 'export_full_end' ? Promise.reject(new Error('disk full')) : (query as (...a: unknown[]) => unknown)(sql, params, ...rest)) as Q;
+    const query = failingQuery(client.query.bind(client));
+    vi.spyOn(client, 'query').mockImplementation(query);
+    // On a PostgreSQL server (npm run test:pg) the export runs on a connection of its own (PgServerClient.session).
+    if (client instanceof PgServerClient) {
+      const session = client.session.bind(client);
+      vi.spyOn(client, 'session').mockImplementation(async () => {
+        const s = await session();
+        return { ...s, query: failingQuery(s.query) };
+      });
+    }
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
       await download();
@@ -322,7 +332,7 @@ describe('GET /api/export/full', () => {
       expect(lines.some((l) => l.includes('[export] end of the export not journaled') && l.includes('disk full'))).toBe(true);
       expect(warn.mock.calls.every((c) => c.length === 1)).toBe(true);
     } finally {
-      failing.mockRestore();
+      vi.restoreAllMocks();
       warn.mockRestore();
     }
     expect((await exportEntries()).map((e) => e.action)).toEqual(['export_full']);

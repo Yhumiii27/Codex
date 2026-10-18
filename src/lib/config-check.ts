@@ -170,6 +170,13 @@ export function checkConfig(env: Env, { production }: { production: boolean }): 
   if (keep && (!/^\d{1,4}$/.test(keep) || Number(keep) < 1)) add('warn', 'backup_keep_invalid', `CODEX_BACKUP_KEEP="${keep}" is not a whole number from 1: 7 applies`);
   if (env.CODEX_DATA_DIR !== undefined && !env.CODEX_DATA_DIR.trim()) add('warn', 'data_dir_empty', 'CODEX_DATA_DIR is empty: the database and the files go straight into the folder the server runs in');
 
+  // ── Database server (src/db/sql-client.ts, docs/postgres.md) ──
+  const dbUrl = env.DATABASE_URL?.trim();
+  if (env.DATABASE_URL !== undefined && !dbUrl) add('warn', 'database_url_empty', 'DATABASE_URL is empty: the embedded database (PGlite) is used');
+  else if (dbUrl && !/^postgres(ql)?:\/\/[^\s]+$/i.test(dbUrl)) add('error', 'database_url_invalid', `DATABASE_URL="${withoutCredentials(dbUrl)}" is no postgres:// or postgresql:// address`);
+  const poolMax = env.CODEX_DB_POOL_MAX?.trim();
+  if (poolMax && (!/^\d{1,3}$/.test(poolMax) || Number(poolMax) < 2 || Number(poolMax) > 200)) add('warn', 'pool_max_invalid', `CODEX_DB_POOL_MAX="${poolMax}" is not a whole number from 2 to 200: 10 applies`);
+
   // ── New database and migrations (lib/seed-mode.ts, src/db/index.ts) ──
   if (!seedModeOf(env)) add('error', 'seed_unknown', `CODEX_SEED="${env.CODEX_SEED!.trim().slice(0, 40)}" is neither demo nor minimal: a new database would be left empty and the server would not start`);
   const migBackup = env.CODEX_MIGRATION_BACKUP?.trim();
