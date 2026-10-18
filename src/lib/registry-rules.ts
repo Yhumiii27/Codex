@@ -130,7 +130,7 @@ export type TypeValues = {
   code: string; labelFr: string; labelEn: string; family: string; origins: Origin[]; attachments: Attachment[];
   subtypes: { fr: string; en: string }[]; circuit: string[]; confAllowed: Conf[]; confDefault: Conf;
   retentionYears: number | null; retentionTrigger: RetentionTrigger; retentionDisposition: Disposition; retentionBasis: string;
-  reviewMonths: number | null; iso: string | null; clientDeliverable: boolean; active: boolean;
+  retentionBasisEn: string; reviewMonths: number | null; iso: string | null; clientDeliverable: boolean; active: boolean;
 };
 
 /** Rows of sub-types read at most: twice as many as a type may keep, so a few empty rows pass and a flood is refused unread. */
@@ -203,13 +203,15 @@ export function parseTypeForm(fd: FormData, refs: { families: readonly string[];
   if (!rule.ok) return rule;
   const retentionBasis = text(fd, 'retentionBasis');
   if (retentionBasis.length > BASIS_MAX) return issue('reg_text_too_long', 'retentionBasis');
+  const retentionBasisEn = text(fd, 'retentionBasisEn');
+  if (retentionBasisEn.length > BASIS_MAX) return issue('reg_text_too_long', 'retentionBasisEn');
   const iso = text(fd, 'iso');
   if (iso.length > ISO_MAX) return issue('reg_text_too_long', 'iso');
   return {
     ok: true,
     value: {
       code, ...names.value, family, origins, attachments, subtypes, circuit, confAllowed, confDefault,
-      ...rule.value, retentionBasis, reviewMonths,
+      ...rule.value, retentionBasis, retentionBasisEn, reviewMonths,
       iso: iso || null, clientDeliverable: fd.get('clientDeliverable') === 'on', active: fd.get('active') !== 'off',
     },
   };

@@ -7,14 +7,20 @@ import { mayRecordReview, maySetRetentionEvent } from '@/lib/access';
 import { restoreArchived } from '@/lib/actions';
 import { getCtx } from '@/lib/context';
 import { addDays, fmtDate, todayIso } from '@/lib/format';
+import { retentionBasisL } from '@/lib/i18n';
 import { archivedDocs, dueDeadlines, eventDocs, registryUsage, retentionByType, typeCounts } from '@/lib/queries';
 import { typeSpec } from '../administration/shared';
 import { DueTable, type DueRow } from './DueTable';
+import { screenTitle } from '@/lib/titles';
 
 /** Deadlines; documents whose retention waits for the date of an event (lib/retention.ts EVENT_TRIGGERS); rules; archives. */
 const TABS = ['due', 'events', 'rules', 'archives'] as const;
 /** Deadlines shown: all of them, or those past due as the record's indicators say (lib/review.ts): expired, review overdue. */
 const DUE_FILTERS = ['all', 'expired', 'review_late'] as const;
+
+export function generateMetadata() {
+  return screenTitle('nav_retention');
+}
 
 export default async function RetentionPage({ searchParams }: PageProps<'/archivage'>) {
   const sp = (await searchParams) as Record<string, string | undefined>;
@@ -112,7 +118,7 @@ export default async function RetentionPage({ searchParams }: PageProps<'/archiv
                     {types.map((x) => (
                       <tr key={x.code} style={x.active ? undefined : { opacity: 0.55 }}>
                         <td><div>{lang === 'fr' ? x.labelFr : x.labelEn}</div><div className="text-muted" style={{ fontSize: 11 }}>{x.code}{x.active ? '' : ` · ${t.inactive}`}</div></td>
-                        <td className="text-muted" style={{ maxWidth: 320, fontSize: 12 }}>{x.retentionBasis || '—'}</td>
+                        <td className="text-muted" style={{ maxWidth: 320, fontSize: 12 }}>{retentionBasisL(x, lang) || '—'}</td>
                         <td className="nowrap">{x.retentionYears != null ? `${x.retentionYears} ${t.years_short}` : '—'}</td>
                         <td className="text-muted">{t[`trig_${x.retentionTrigger}`]}</td>
                         <td className="text-muted">{t[`disp_${x.retentionDisposition}`]}</td>

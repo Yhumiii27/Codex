@@ -226,13 +226,13 @@ type TypeSettings = Omit<TypeRow, 'code' | 'reviewMonths' | 'active' | 'source' 
 function settingsOf(t: RegistryType): TypeSettings {
   return {
     labelFr: t.label_fr, labelEn: t.label_en, family: t.family, origins: t.origins, attachments: t.attachments, subtypes: t.subtypes, circuit: t.circuit,
-    retentionYears: t.retention.years, retentionTrigger: t.retention.trigger, retentionDisposition: t.retention.disposition, retentionBasis: t.retention.basis,
+    retentionYears: t.retention.years, retentionTrigger: t.retention.trigger, retentionDisposition: t.retention.disposition, retentionBasis: t.retention.basis, retentionBasisEn: t.retention.basisEn ?? '',
     confAllowed: t.confAllowed, confDefault: t.confDefault, iso: t.iso ?? null, clientDeliverable: !!t.clientDeliverable,
   };
 }
 
 /** Journal field of a column (lib/journal-values.ts typeJournal): the three retention columns are one field. */
-const typeField = (k: string) => (k.startsWith('retention') && k !== 'retentionBasis' ? 'retention' : k);
+const typeField = (k: string) => (k.startsWith('retention') && k !== 'retentionBasis' && k !== 'retentionBasisEn' ? 'retention' : k);
 
 /** Why these settings are not a valid type, or null. */
 async function typeIssue(tx: Tx, code: string, v: TypeSettings): Promise<string | null> {

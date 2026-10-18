@@ -97,7 +97,7 @@ describe('fingerprint recorded as the file enters Codex', () => {
     expect(await upload('writer', bytes)).toMatchObject({ ok: true });
     const created = await lastVersion();
     expect(created.sha256).toBe(sha(bytes));
-    expect((await journalOf(db(), created.docId)).find((e) => e.action === 'upload')?.data).toEqual({ sha256: sha(bytes) });
+    expect((await journalOf(db(), created.docId)).find((e) => e.action === 'upload')?.data).toEqual({ sha256: sha(bytes), text: { code: 'version', params: { label: 'A.1', size: bytes.length } } });
 
     // A copy of a template: its bytes are the template's, and the copy carries no duplicate warning.
     await addDoc(db(), { id: 'FRM-QMS-0001', typeCode: 'FRM' });

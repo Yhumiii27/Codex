@@ -26,12 +26,17 @@ import { Vocabularies } from './Vocabularies';
 import { FamilyFilter } from './FamilyFilter';
 import { countBy, typeSpec } from './shared';
 import styles from './admin.module.css';
+import { screenTitle } from '@/lib/titles';
 
 const TABS = ['registry', 'functions', 'roles', 'org', 'vocab', 'transfer', 'templates', 'audit'] as const;
 type Tab = (typeof TABS)[number];
 const TAB_LABEL: Record<Tab, TKey> = { registry: 'registry', functions: 'functions_tab', roles: 'ad_roles', org: 'organisation', vocab: 'tab_vocab', transfer: 'tab_transfer', templates: 'templates_qms', audit: 'ad_audit' };
 
 const sub = { fontSize: 11 } as const;
+
+export function generateMetadata() {
+  return screenTitle('nav_admin');
+}
 
 export default async function AdminPage({ searchParams }: PageProps<'/administration'>) {
   // One value per parameter: a repeated one (?doc=a&doc=b) keeps its first.
@@ -130,7 +135,7 @@ async function Registry({ ctx, family }: { ctx: Ctx; family: string }) {
               <td className="text-muted">{x.attachments.map((a) => t[`att_${a}`]).join(', ')}</td>
               <td className="text-muted" style={{ minWidth: 160 }}>{x.circuitL}</td>
               <td><div>{x.confDefaultL}</div><div className="text-muted" style={sub}>{x.confL}</div></td>
-              <td className="text-muted" style={{ minWidth: 150 }} title={x.retentionBasis || undefined}>{x.retentionL}</td>
+              <td className="text-muted" style={{ minWidth: 150 }} title={x.basisL || undefined}>{x.retentionL}</td>
               <td className="text-muted nowrap">{x.reviewL}</td>
               <td className="text-muted">{x.iso ?? '—'}</td>
               <td className="tabnum" style={{ textAlign: 'right' }}>{counts.get(x.code) ?? 0}</td>
@@ -424,7 +429,7 @@ async function Templates({ ctx }: { ctx: Ctx }) {
   const tpls = await listTemplates(ctx);
   return (
     <table className="table" style={{ fontSize: 13 }}>
-      <thead><tr><th>{t.ref}</th><th>{t.title_label}</th><th>{t.revision}</th><th>{t.owner}</th><th>{t.department}</th><th>{t.template_types}</th><th /></tr></thead>
+      <thead><tr><th>{t.ref}</th><th>{t.title_label}</th><th>{t.revision}</th><th>{t.owner}</th><th>{t.department}</th><th>{t.template_types}</th><th style={{ textAlign: 'right' }} title={t.tpl_uses_hint}>{t.uses}</th><th /></tr></thead>
       <tbody>
         {tpls.map((x) => {
           const href = `/documents/${encodeURIComponent(x.id)}`;
@@ -437,6 +442,7 @@ async function Templates({ ctx }: { ctx: Ctx }) {
               <td>{x.owner}</td>
               <td className="text-muted">{ctx.label('department', x.department)}</td>
               <td>{x.types.length ? <span title={x.types.map((c) => `${c} · ${ctx.label('type', c)}`).join('\n')}>{x.types.join(', ')}</span> : <span className="text-muted">—</span>}</td>
+              <td className="tabnum" style={{ textAlign: 'right' }}>{x.uses}</td>
               <td className="nowrap" style={{ textAlign: 'right' }}>
                 {mayLinkTemplate(ctx, x) && (
                   <DialogButton spec={{ kind: 'templateTypes', docId: x.id, title: x.label, types: x.types, version: x.version }} className="btn btn-ghost" style={{ fontSize: 12 }} deniedTitle={lock ? t[lock] : undefined}>{t.template_types}</DialogButton>
@@ -446,7 +452,7 @@ async function Templates({ ctx }: { ctx: Ctx }) {
             </tr>
           );
         })}
-        {tpls.length === 0 && <tr><td colSpan={7} className="text-muted" style={{ padding: '16px 8px' }}>{t.no_results}</td></tr>}
+        {tpls.length === 0 && <tr><td colSpan={8} className="text-muted" style={{ padding: '16px 8px' }}>{t.no_results}</td></tr>}
       </tbody>
     </table>
   );

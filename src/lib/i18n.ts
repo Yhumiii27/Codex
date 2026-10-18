@@ -439,6 +439,18 @@ const fr = {
   vocab_new_term:'nouveau', vocab_confirm_add:'Ajouter « {term} » au référentiel', vocab_did_you_mean:'Terme existant proche :',
   keywords_pick_hint:'Choisissez dans la liste ou saisissez un mot-clé, puis Entrée ou virgule.', keyword_remove:'Retirer le mot-clé {k}',
   subtype_unlisted_hint:'Hors de la liste du type : la valeur est gardée, et proposée aux administrateurs du registre.',
+  // Added (lot 9, step 7): phases, Restaurer, template uses, design gaps, bilingual labels and titles.
+  phase_of:'Phase {n} sur {total}', phase_unknown:'Phase hors de la liste de Keystone',
+  no_aff:'Ce document n’est rattaché à aucun projet.', attach_aff:'Rattacher à un projet', attach_aff_type:'Le type {type} n’admet pas de rattachement à un projet : choisissez un autre type dans le dialogue.', attach_aff_frozen:'L’identifiant ne changera pas : une révision a déjà été approuvée.',
+  restore_pick:'Sélectionnez une version de travail antérieure du brouillon.', restore_confirm:'Restaurer {from} : son fichier devient la version de travail {next}. Les autres versions sont conservées. Continuer ?',
+  restored_version:'Version de travail {label} créée depuis {from}', restore_latest:'C’est déjà la dernière version de travail du brouillon.', restore_no_file:'Cette version de travail n’a pas de fichier à restaurer.',
+  restore_other_revision:'Seule une version de travail de la révision en brouillon se restaure. Revenir à une révision en vigueur passe par une demande de modification dans Vigie.',
+  restore_altered:'Le fichier de cette version ne correspond plus à son empreinte SHA-256 : restauration refusée, prévenez un gestionnaire documentaire',
+  restore_draft_only:'Restaurer ne vaut que pour les versions de travail de la révision en brouillon.',
+  uses:'Utilisations', tpl_uses:'utilisations', tpl_uses_hint:'Documents créés depuis ce modèle, parmi ceux que vous pouvez lire',
+  retention_basis_fr:'Fondement (FR)', retention_basis_en:'Fondement (EN)', retention_basis_en_hint:'Vide : le texte français est affiché en anglais, suivi de « (FR) ».',
+  audit_from_template:'depuis le modèle {id}', audit_restored_from:'restaurée depuis {from}',
+  app_description:'Gestion électronique des documents du groupe', title_suffix:'Codex',
 };
 
 type Dict = Record<keyof typeof fr, string>;
@@ -875,6 +887,17 @@ const en: Dict = {
   vocab_new_term:'new', vocab_confirm_add:'Add “{term}” to the vocabulary', vocab_did_you_mean:'Similar existing term:',
   keywords_pick_hint:'Pick from the list or type a keyword, then Enter or comma.', keyword_remove:'Remove keyword {k}',
   subtype_unlisted_hint:'Outside the type’s list: the value is kept, and offered to the administrators of the register.',
+  phase_of:'Phase {n} of {total}', phase_unknown:'Phase not in Keystone’s list',
+  no_aff:'This document is not linked to a project.', attach_aff:'Link to a project', attach_aff_type:'Type {type} does not allow a project attachment: choose another type in the dialog.', attach_aff_frozen:'The identifier will not change: a revision has already been approved.',
+  restore_pick:'Select an earlier working version of the draft.', restore_confirm:'Restore {from}: its file becomes working version {next}. The other versions are kept. Continue?',
+  restored_version:'Working version {label} created from {from}', restore_latest:'This is already the latest working version of the draft.', restore_no_file:'This working version has no file to restore.',
+  restore_other_revision:'Only a working version of the draft revision can be restored. Going back to a revision in force is a change request in Vigie.',
+  restore_altered:'This version’s file no longer matches its SHA-256 fingerprint: restore refused, tell a records manager',
+  restore_draft_only:'Restore only applies to the working versions of the draft revision.',
+  uses:'Uses', tpl_uses:'uses', tpl_uses_hint:'Documents created from this template, among those you may read',
+  retention_basis_fr:'Basis (FR)', retention_basis_en:'Basis (EN)', retention_basis_en_hint:'Empty: the French text is shown in English, followed by “(FR)”.',
+  audit_from_template:'from template {id}', audit_restored_from:'restored from {from}',
+  app_description:'Document management for the group', title_suffix:'Codex',
 };
 
 export const DICT: Record<Lang, Dict> = { fr, en };
@@ -893,6 +916,32 @@ export const ATTACHMENTS = ['none', 'project', 'research'] as const;
 export const SEARCH_SCOPES = ['personal', 'department', 'group'] as const;
 /** Lifecycle stages of a Keystone project (Keystone's own labels), offered as project phases. */
 export const PROJECT_PHASES = ['Initiative', 'APS', 'APD', 'Etudes', 'Approvisionnements', 'Fabrication & Assemblage', 'FAT', 'Expédition', 'Chantier', 'Mise Service & SAT', 'Garantie', 'Clos'] as const;
+export type ProjectPhase = (typeof PROJECT_PHASES)[number];
+/**
+ * English labels of the phases. PROVISIONAL: written by Codex, to align with Keystone's own English labels once its
+ * API is known (O-03); the stored value stays Keystone's French label, which is the key.
+ */
+export const PROJECT_PHASES_EN: Record<ProjectPhase, string> = {
+  Initiative: 'Initiative', APS: 'Preliminary design (APS)', APD: 'Detailed design (APD)', Etudes: 'Engineering', Approvisionnements: 'Procurement',
+  'Fabrication & Assemblage': 'Manufacturing & assembly', FAT: 'FAT', Expédition: 'Shipping', Chantier: 'Site works', 'Mise Service & SAT': 'Commissioning & SAT',
+  Garantie: 'Warranty', Clos: 'Closed',
+};
+/** Index of a phase in PROJECT_PHASES, -1 for a value Keystone sent that Codex does not know. */
+export const phaseIndex = (v: string | null | undefined): number => (v ? (PROJECT_PHASES as readonly string[]).indexOf(v) : -1);
+/** A phase in the reader's language; an unknown value is shown as it is. */
+export function phaseLabel(v: string | null | undefined, lang: Lang): string {
+  if (!v) return '';
+  const i = phaseIndex(v);
+  return i < 0 || lang === 'fr' ? v : PROJECT_PHASES_EN[PROJECT_PHASES[i]];
+}
+/**
+ * What a type's retention rests on, in the reader's language: in English, its English wording, else the French one
+ * followed by « (FR) » (the register's texts await their legal review, O-07: none is translated by Codex).
+ */
+export function retentionBasisL(x: { retentionBasis: string; retentionBasisEn: string }, lang: Lang): string {
+  if (lang === 'fr' || x.retentionBasisEn.trim()) return lang === 'fr' ? x.retentionBasis : x.retentionBasisEn;
+  return x.retentionBasis ? `${x.retentionBasis} (FR)` : '';
+}
 export const SIM_ROLES = ['collaborateur', 'validateur', 'auditeur', 'gestionnaire'] as const;
 export type SimRole = (typeof SIM_ROLES)[number];
 /** Row of the permission matrix that governs each simulated role. */

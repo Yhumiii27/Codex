@@ -8,6 +8,9 @@ export function loc(v: Localized | null | undefined, lang: Lang): string {
   return typeof v === 'string' ? v : v[lang];
 }
 
+/** Both languages of a text, a text written once standing for both. */
+export const localized = (v: Localized): { fr: string; en: string } => (typeof v === 'string' ? { fr: v, en: v } : v);
+
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /** 2026-10-05 → "05/10/2026" (fr) or "5 Oct 2026" (en), as in the mockup. */

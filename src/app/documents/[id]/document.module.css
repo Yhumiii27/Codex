@@ -43,6 +43,12 @@
 .side { width: 400px; flex: none; border-left: 1px solid var(--color-divider); display: flex; flex-direction: column; min-height: 0; }
 .sideBody { flex: 1; overflow: auto; padding: 16px 18px 20px; }
 
+/* Keystone's phases in the Project tab: twelve dots on one row of the 400 px panel (design: four, named), the current one named below. */
+.phases { display: flex; flex-direction: column; gap: 8px; }
+.phaseNow { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 12px; }
+.phaseNow > span:first-child { color: var(--color-accent-300); }
+.phaseNow > span:last-child { font-size: 11px; }
+
 .pieceRow { display: flex; align-items: center; gap: 10px; padding: 8px 0; }
 .pieceDot { width: 16px; height: 16px; flex: none; border-radius: 50%; display: grid; place-items: center; color: var(--color-bg); }
 

@@ -2,7 +2,7 @@ import 'server-only';
 import { cache } from 'react';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, notInArray, or, sql, type SQL, type SQLWrapper } from 'drizzle-orm';
 import { getDb, schema as s } from '@/db';
-import type { AuditChange, AuditData, AuditTargetKind, AuditValue, Conf, LinkRel, RetentionTrigger, TermField } from '@/db/schema';
+import type { AuditChange, AuditData, AuditTargetKind, AuditText, AuditValue, Conf, LinkRel, RetentionTrigger, TermField } from '@/db/schema';
 import { canRead, changeAsSeen, CONSULT_ACTIONS, deadlineActor, draftingCircleSql, draftTodo, followsCircuit, getAccessIndex, inDraftingCircle, isUsableTemplate, mayDeleteSearch, mayTransferHoldings, mayEditLinks, mayGetApprovalRecord, mayRecall, mayWorkOnDraft, openRevisionView, readableSql, readerMaySeeEntry, readerMaySeeRevision, readerMaySeeVersion, savedSearchesSeenBy, type AccessIndex } from './access';
 import { visaCircuit, type VisaRecord } from './approval';
 import { isFinalStatus, TEMPLATE_TYPE } from './codes';
@@ -10,7 +10,7 @@ import { revLabel } from './codification';
 import type { Ctx } from './context';
 import { extensionOf } from './filetypes';
 import { addDays, clip, daysBetween, fmtDate, fmtDateTime, fmtSize, fmtWhen, loc, nowStamp, parisStamp, parseIsoDay, TIME_ZONE, todayIso } from './format';
-import { CONF_LEVELS, MATRIX_ROLE_LABEL, TAGCLS, type T, type TKey } from './i18n';
+import { CONF_LEVELS, MATRIX_ROLE_LABEL, phaseLabel, retentionBasisL, TAGCLS, type T, type TKey } from './i18n';
 import { decisionWait, lockOf, type DecisionWait, type Tx } from './lifecycle';
 import { LINK_RELS, otherEnd, relOf } from './links';
 import { NO_USAGE, type OrgUsage } from './org-rules';
@@ -1303,7 +1303,7 @@ const CHANGE_LABEL: Record<string, TKey> = {
   typeRetention: 'retention_type_rule', retentionDocs: 'retention_docs',
   // Register and research programmes (Administration).
   code: 'rule_id', key: 'key_label', labelFr: 'label_fr', labelEn: 'label_en', family: 'family', origins: 'origin', attachments: 'attachment',
-  subtypes: 'subtypes_label', retentionBasis: 'retention_basis', iso: 'iso_clause', clientDeliverable: 'client_deliverable', grp: 'family_group',
+  subtypes: 'subtypes_label', retentionBasis: 'retention_basis', retentionBasisEn: 'retention_basis_en', iso: 'iso_clause', clientDeliverable: 'client_deliverable', grp: 'family_group',
   scope: 'scope', name: 'program_name', managerId: 'manager',
   // Holdings handed to a replacement (lib/transfer.ts) and controlled vocabularies (lib/vocab.ts).
   modifierId: 'modifier', assigneeId: 'assignee', reader: 'reader_label', term: 'vocab_term', aliases: 'vocab_aliases',
@@ -1330,6 +1330,7 @@ function changeValueL(ctx: Ctx, field: string, v: AuditValue | undefined): strin
     case 'scope': return key('scope_');
     case 'lang': return key('lang_');
     case 'site': return ctx.label('site', v);
+    case 'projectPhase': return phaseLabel(v, ctx.lang);
     case 'circuit': return ctx.label('function', v);
     // Facets a department page puts forward ('default': those of every department without its own, lib/departments.ts).
     case 'featured': return v === 'default' ? t.featured_default : t[FACET_LABEL[v as FacetKey]] ?? v;
@@ -1362,6 +1363,7 @@ export function facetValueL(ctx: Ctx, k: FacetKey, v: string): string {
     case 'owner': return ctx.userName(v);
     case 'author': return ctx.users.has(v) ? ctx.userName(v) : v;
     case 'lang': return v.toUpperCase();
+    case 'phase': return phaseLabel(v, ctx.lang);
     default: return v;
   }
 }
@@ -1400,11 +1402,40 @@ function exportL(ctx: Ctx, targetId: string | null, x: NonNullable<AuditData['ex
   return [...(what.length ? what : [t.export_unfiltered]), `${x.interrupted ? `${t.export_interrupted} ` : ''}${x.rows} ${t.export_rows}`].join(' · ');
 }
 
-/** Detail of an entry in the reader's language: its free detail, then the link it records, its changes or export figures. */
+/**
+ * A structured detail (AuditData.text, entries since 18 October 2026) in the reader's language: sizes in their units,
+ * a step under its name in their language. A parameter of an unexpected type is left out rather than shown raw.
+ */
+export function auditTextL(ctx: Ctx, x: AuditText): string {
+  const { t, lang } = ctx;
+  const p = x.params;
+  const str = (k: string) => {
+    const v = p[k];
+    return typeof v === 'string' ? v : typeof v === 'number' ? String(v) : v && typeof v === 'object' ? loc(v, lang) : '';
+  };
+  const size = typeof p.size === 'number' ? fmtSize(p.size, lang) : '';
+  const join = (...xs: string[]) => xs.filter(Boolean).join(' · ');
+  switch (x.code) {
+    case 'version': return join(str('label'), size, p.template ? t.audit_from_template.replace('{id}', str('template')) : '');
+    case 'version_restored': return join(str('label'), t.audit_restored_from.replace('{from}', str('from')), size);
+    case 'import': return join(`${str('ref')} → ${str('label')}`, size);
+    case 'readers': return `${t.readers} (${str('n')})`;
+    case 'step_delegated': return join(str('wf'), `${str('step')} → ${str('to')}`);
+    case 'step_reassigned': return join(str('wf'), `${str('step')}${lang === 'fr' ? ' : ' : ': '}${str('from')} → ${str('to')}`);
+    case 'step_transferred': return join(str('wf'), str('step'));
+    case 'modifier_swap': return join(str('ref'), `${str('from')} → ${str('to')}${p.denied === true ? ` (${t.not_allowed}${lang === 'fr' ? ' : ' : ': '}${t.perm_upload})` : ''}`);
+    default: return '';
+  }
+}
+
+/**
+ * Detail of an entry in the reader's language: its free detail (or, since 18 October 2026, its structured detail), then
+ * the link it records, its changes or export figures.
+ */
 export function auditDetailL(ctx: Ctx, a: Pick<AuditRow, 'detail' | 'data' | 'targetId'>): string {
   const x = a.data;
   const link = x?.link ? `${ctx.t[`link_${x.link.rel}`]} ${x.link.other}${x.link.skipped ? ` : ${ctx.t[`link_skip_${x.link.skipped}`]}` : ''}` : '';
-  return [a.detail, link, x?.changes?.length ? x.changes.map((c) => changeL(ctx, c)).join(' ; ') : '', x?.export ? exportL(ctx, a.targetId, x.export) : '', x?.file ? refusedFileL(ctx, a.targetId, x.file) : '', x?.purge ? purgeL(ctx, x.purge) : '', x?.backup ? backupL(ctx, x.backup) : '', x?.archive ? archiveL(ctx, x.archive) : '', x?.integrity ? integrityL(ctx, x.integrity) : '', x?.transfer ? transferL(ctx, x.transfer) : '', x?.sha256 ? `SHA-256 ${x.sha256.slice(0, 16)}…` : ''].filter(Boolean).join(' · ');
+  return [x?.text ? auditTextL(ctx, x.text) || a.detail : a.detail, link, x?.changes?.length ? x.changes.map((c) => changeL(ctx, c)).join(' ; ') : '', x?.export ? exportL(ctx, a.targetId, x.export) : '', x?.file ? refusedFileL(ctx, a.targetId, x.file) : '', x?.purge ? purgeL(ctx, x.purge) : '', x?.backup ? backupL(ctx, x.backup) : '', x?.archive ? archiveL(ctx, x.archive) : '', x?.integrity ? integrityL(ctx, x.integrity) : '', x?.transfer ? transferL(ctx, x.transfer) : '', x?.sha256 ? `SHA-256 ${x.sha256.slice(0, 16)}…` : ''].filter(Boolean).join(' · ');
 }
 
 /**
@@ -1688,6 +1719,8 @@ export function typeView(ctx: Ctx, x: typeof s.docTypes.$inferSelect) {
     retentionL: `${x.retentionYears != null ? `${x.retentionYears} ${ctx.t.years_short} · ` : ''}${ctx.t[`trig_${x.retentionTrigger}` as TKey]} · ${ctx.t[`disp_${x.retentionDisposition}` as TKey]}`,
     /** Periodic review of the type, « 36 mois », or « — » without one. */
     reviewL: x.reviewMonths ? `${x.reviewMonths} ${ctx.t.months_short}` : '—',
+    /** What the retention rests on, in the reader's language (lib/i18n.ts retentionBasisL). */
+    basisL: retentionBasisL(x, ctx.lang),
     confL: x.confAllowed.map((c) => ctx.t[`conf_${c}` as TKey]).join(', '),
     confDefaultL: ctx.t[`conf_${x.confDefault}` as TKey],
   };
@@ -1894,8 +1927,23 @@ export async function templateTypesOf(ctx: Ctx, docIds: string[]): Promise<Map<s
 export async function listTemplates(ctx: Ctx) {
   const [ix, candidates] = await Promise.all([getAccessIndex(), visibleWhere(ctx, is(col(D.typeCode), TEMPLATE_TYPE))]);
   const docs = candidates.filter((d) => isUsableTemplate(ctx, d, ix));
-  const types = await templateTypesOf(ctx, docs.map((d) => d.id));
-  return docs.map((d) => ({ id: d.id, label: d.title, rev: d.revInForce!, owner: d.owner, ownerId: d.ownerId, typeCode: d.typeCode, department: d.department, state: d.state, legalHold: d.legalHold, version: d.version, types: types.get(d.id) ?? [] }));
+  const [types, uses] = await Promise.all([templateTypesOf(ctx, docs.map((d) => d.id)), templateUses(ctx, docs.map((d) => d.id))]);
+  return docs.map((d) => ({ id: d.id, label: d.title, rev: d.revInForce!, owner: d.owner, ownerId: d.ownerId, typeCode: d.typeCode, department: d.department, state: d.state, legalHold: d.legalHold, version: d.version, types: types.get(d.id) ?? [], uses: uses.get(d.id) ?? 0 }));
+}
+
+/**
+ * Uses of each template (documents.template_id, point 66): the documents created from it that the reader may read
+ * (readableSql, D-14: a draft or a confidential document they may not read is not counted, so the figure tells
+ * nothing of documents they cannot see). Records managers count them all. Documents created before 18 October 2026
+ * count only when the migration could tell their template for sure (drizzle/0004_modele_source.sql).
+ */
+async function templateUses(ctx: Ctx, ids: string[]): Promise<Map<string, number>> {
+  if (!ids.length) return new Map();
+  const db = await getDb();
+  const rows = await db.select({ id: s.documents.templateId, n: sql<number>`count(*)::int` }).from(s.documents)
+    .where(and(inArray(s.documents.templateId, ids), readableSql(ctx)))
+    .groupBy(s.documents.templateId);
+  return new Map(rows.map((r) => [r.id!, r.n]));
 }
 
 // ── Controlled vocabularies (point 59 of docs/reste-a-faire.md) ─────────

@@ -1148,6 +1148,7 @@ addOrgValue (src/lib/actions.ts:711-730) ne fait qu'insérer et n'écrit rien au
 ### Interface et maquette (7)
 
 #### 63. Onglet Projet : remettre le stepper des phases de la maquette
+- **Fait le 18 octobre 2026** : l'onglet Projet montre les 12 phases de Keystone en frise compacte (`HStepper` sans titres, `src/components/ui/Stepper.tsx` ; phases passées, courante, à venir), la phase courante nommée sous la frise avec « Phase 9 sur 12 », chaque point nommé au survol et pour les lecteurs d'écran ; une phase inconnue garde son étiquette. Libellés anglais des phases (provisoires, à aligner sur Keystone, O-03) aussi dans la fiche, la recherche, le journal et le choix de la phase. Reste : la liste des phases et leurs libellés réels avec le branchement de Keystone (O-03).
 
 - **Effort** : faible · **Références** : D-04, M15
 
@@ -1160,6 +1161,7 @@ Le manque est confirmé. La maquette dessine le stepper aux lignes design/GED Gr
 </details>
 
 #### 64. Limites de taille incohérentes et message d'erreur générique pour un gros fichier
+- **Vérifié le 18 octobre 2026** : déjà fait le 15 octobre (ligne suivante) ; sélecteur, serveur et README conformes, rien de changé.
 - **Fait le 15 octobre 2026**, avec le point 32 : une seule taille maximale, `CODEX_MAX_FILE_MB` (50 Mo par défaut, 250 Mo au plus avec SharePoint), pour l'écran et l'import, qui remplace `CODEX_IMPORT_MAX_MB` ; `next.config.ts` en tire la limite des Server Actions (plus 1 Mo pour les autres champs). Le sélecteur de fichier affiche « 50 Mo au plus », refuse tout de suite un fichier plus gros avec la taille et la limite, et le serveur rend le même message (README, « Fichiers déposés »). Contrairement à ce que proposait ce point, les deux limites sont alignées plutôt que documentées séparément : choix signalé dans `docs/decisions.md`.
 
 - **Effort** : faible
@@ -1173,6 +1175,7 @@ Le manque est confirmé. next.config.ts:7 fixe serverActions.bodySizeLimit à '5
 </details>
 
 #### 65. Onglet Révisions : bouton « Restaurer » de la maquette absent
+- **Fait le 18 octobre 2026** : bouton « Restaurer » à côté de « Comparer » (`RevisionsTab`, `src/app/documents/[id]/DocClient.tsx`), actif quand une version de travail antérieure de la révision en brouillon est sélectionnée, avec confirmation ; Server Action `restoreWorkingVersion` (`src/lib/actions.ts`) : contrôles d'`addWorkingVersion` (droit Déposer, lecture, cercle de rédaction D-14, auteur désigné, verrou, brouillon, dernière version vue), version de la révision ouverte avec fichier et non la dernière, fichier relu, comparé à son empreinte et recontrôlé comme un dépôt, version suivante commentée « Restaurée depuis A.2 », journalisée (`working`). Revenir à une révision en vigueur reste une demande à Vigie (D-16). Tests : tests/integration/restore-version.test.ts. Reste : rien.
 
 - **Effort** : faible · **Références** : D-12, D-16
 
@@ -1185,6 +1188,7 @@ Le manque est confirmé. La maquette a deux boutons à la ligne design/GED Group
 </details>
 
 #### 66. Modèles : compteur d'utilisations de la maquette
+- **Fait le 18 octobre 2026** : colonne `documents.template_id` (migration incrémentale `drizzle/0004_modele_source.sql`, et non la régénération décrite ci-dessous, désormais interdite), remplie par `createDocument` quand le fichier du modèle est copié ; reprise des documents existants seulement quand le commentaire de A.1 (FR et EN) et le journal nomment le même modèle FRM, sinon nul ; `listTemplates` compte les documents que le lecteur peut lire (`readableSql`, D-14 ; tous pour un gestionnaire) ; colonne « Utilisations » d'Administration › Modèles et « n utilisations » dans le choix du modèle ; trois documents de démonstration rattachés à leur modèle. Export complet et sauvegarde reprennent la colonne d'eux-mêmes (toutes les tables, toutes les colonnes). Tests : tests/integration/template-uses.test.ts, tests/integration/migrations.test.ts. Reste : les documents créés depuis un modèle avant le 18 octobre et dont la source n'est pas sûre restent sans modèle.
 
 - **Effort** : faible · **Références** : G06
 
@@ -1197,6 +1201,7 @@ Le manque est confirmé. La maquette a une colonne {{ t.uses }} dans Administrat
 </details>
 
 #### 67. Petits écarts avec la maquette : rattachement à une affaire, dépôt depuis l'explorateur
+- **Fait le 18 octobre 2026** : (a) l'onglet Projet est toujours présent ; sans projet, « Ce document n'est rattaché à aucun projet » et « Rattacher à un projet » (propriétaire ou gestionnaire, mêmes refus que « Modifier les métadonnées »), qui ouvre ce dialogue avec le rattachement projet choisi quand le type l'admet ; sinon, ou une fois une révision approuvée (identifiant figé, D-10), une note le dit ; l'onglet par défaut reste Fiche. (b) « Déposer un fichier » dans la barre de l'explorateur ; ce bouton et « Nouveau document » proposent le département, la famille ou le type choisis dans l'arbre. Reste : rien (le projet choisi dans l'arbre n'est pas prérempli : il verrouillerait le rattachement).
 
 - **Effort** : faible · **Références** : D-08, D-10
 
@@ -1209,6 +1214,7 @@ Les deux écarts sont confirmés. (a) src/app/documents/[id]/page.tsx:87 (tabs.f
 </details>
 
 #### 68. Interface bilingue incomplète : libellés en une seule langue, journal et titre de page
+- **Fait le 18 octobre 2026** : sites déjà en FR/EN (point 62) ; fondement de conservation en anglais (`doc_types.retention_basis_en`, migration `0004_modele_source`, dialogue du type, Archivage, Administration, `GET /api/registry` `basisEn`, `registry:apply`, journal), vide pour tout le registre : le français s'affiche suivi de « (FR) » ; libellés EN des phases (provisoires) ; détail structuré du journal (`audit_log.data.text`, code et paramètres) rendu dans la langue du lecteur à l'écran et dans l'export CSV, pour les entrées nouvelles (tailles, lecteurs désignés, délégation, réassignation, transfert d'étape, auteur écarté, import, restauration), les anciennes inchangées ; `generateMetadata` dans le layout et chaque écran (« Recherche — Codex »), et la fiche (« {ID} · {titre} — Codex », titre générique pour une fiche illisible ou introuvable, D-14). Reste : traduire les fondements (après leur revue, O-07) ; libellés EN réels des phases (O-03) ; les pages 404 gardent le titre par défaut.
 
 - **Effort** : moyen
 

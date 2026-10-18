@@ -120,7 +120,7 @@ describe('the type dialog', () => {
       value: {
         code: 'NEW', labelFr: 'Nouveau', labelEn: 'Nouveau', family: 'qualite', origins: ['interne'], attachments: ['none', 'project'],
         subtypes: [{ fr: 'Fiche', en: 'Sheet' }], circuit: ['resp_qualite'], confAllowed: ['restreint', 'interne'], confDefault: 'interne',
-        retentionYears: 10, retentionTrigger: 'superseded', retentionDisposition: 'destroy', retentionBasis: 'Usage', reviewMonths: null, iso: null,
+        retentionYears: 10, retentionTrigger: 'superseded', retentionDisposition: 'destroy', retentionBasis: 'Usage', retentionBasisEn: '', reviewMonths: null, iso: null,
         clientDeliverable: false, active: true,
       },
     });
@@ -141,6 +141,9 @@ describe('the type dialog', () => {
     expect(parseTypeForm(typeForm({ retentionTrigger: 'never' }), refs)).toEqual({ ok: false, key: 'error', field: undefined });
     expect(parseTypeForm(typeForm({ iso: 'x'.repeat(121) }), refs)).toEqual({ ok: false, key: 'reg_text_too_long', field: 'iso' });
     expect(parseTypeForm(typeForm({ retentionBasis: 'x'.repeat(501) }), refs)).toEqual({ ok: false, key: 'reg_text_too_long', field: 'retentionBasis' });
+    // Its English wording (point 68), within the same bound.
+    expect(parseTypeForm(typeForm({ retentionBasisEn: ' Practice ' }), refs)).toMatchObject({ ok: true, value: { retentionBasis: 'Usage', retentionBasisEn: 'Practice' } });
+    expect(parseTypeForm(typeForm({ retentionBasisEn: 'x'.repeat(501) }), refs)).toEqual({ ok: false, key: 'reg_text_too_long', field: 'retentionBasisEn' });
   });
 });
 

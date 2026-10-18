@@ -12,6 +12,7 @@ import { getDoc, listChangeRequests, listRevisions, listWorkflows, type Workflow
 import { CommentBox } from './CommentBox';
 import { MyChangeRequests } from './MyChangeRequests';
 import styles from './workflow.module.css';
+import { screenTitle } from '@/lib/titles';
 
 const FILTERS = ['mine', 'requested', 'active', 'done'] as const;
 type Filter = (typeof FILTERS)[number];
@@ -25,6 +26,10 @@ const PICK: Record<Filter, (w: WorkflowView) => boolean> = {
   active: (w) => !w.done,
   done: (w) => w.done,
 };
+
+export function generateMetadata() {
+  return screenTitle('nav_workflow');
+}
 
 export default async function WorkflowPage({ searchParams }: PageProps<'/validations'>) {
   const sp = (await searchParams) as Record<string, string | undefined>;

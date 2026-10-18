@@ -2255,6 +2255,7 @@ de [decisions.md](decisions.md).
 | 4. Planificateur interne et signature des échanges entre serveurs | commit « Lot 9, étape 4 », qui suit `ccf5940` | 38 (en partie), 23 | Mise en vigueur différée lancée par le serveur toutes les 5 minutes, tâches d'exploitation réglables ; signature HMAC avec fenêtre et anti-rejeu sur le webhook Vigie et l'import, rotation par `…_NEXT`, registre protégeable par jeton | Tâches d'exploitation désactivées par défaut ; pages qui ne mettent plus en vigueur tant que le planificateur le fait ; aucune relance ni envoi sortant ; registre ouvert par défaut ; tout ce qui est défini est exigé ; fenêtre de 5 minutes |
 | 5. Comparaison du contenu des versions et aperçu des fichiers Office | commit « Lot 9, étape 5 », qui suit `3586ab8` | 14, 15 | « Comparer » montre, sous les attributs, le texte des deux versions comparé ligne à ligne (PDF, Word, Excel, PowerPoint, OpenDocument, texte), lu sur le serveur sous les droits du fichier ; aperçu PDF des fichiers Office par LibreOffice sans interface ou Gotenberg, converti à la première consultation, gardé (table `version_previews`, migration `0002_apercu_office`) et servi par la route fichier (`?preview=pdf`) | Texte et non visuel ; formats Office 97-2003 non lus ; bornes de taille, de temps et de lignes ; aperçu désactivé sans outil configuré, conversion à la demande plutôt qu'au dépôt, échec retenté après une heure, rendus dans le stockage local même avec SharePoint, sauvegardés mais hors de l'export complet ; ni PDF/A ni filigrane (M12) |
 | 6. Reprise des documents d'une personne qui part et vocabulaires contrôlés | commit « Lot 9, étape 6 », qui suit `5f92467` | 19, 59 | Administration › Reprise (départ) : simulation puis transfert journalisé, à un remplaçant choisi, des documents et processus possédés, révisions à rédiger, étapes en attente, titulariats et lectures désignées ; réassignation d'une étape par un gestionnaire ; langue contrôlée ; référentiels des organismes sources et des mots-clés (tables `source_orgs`, `keyword_terms`, migration `0003_vocabulaires` avec reprise), autocomplétion et ajout confirmé, Administration › Vocabulaires (ajout, renommage, fusion, sous-types hors liste) | Aucun remplaçant proposé, aucun compte désactivé ; gestionnaires documentaires seulement ; simulation = transfert annulé, empreinte exigée ; documents verrouillés repris, étapes figées par un verrou laissées ; documents gardant le nom du terme en texte ; nouveau terme confirmé dans les formulaires, ajouté à l'import ; termes proposés selon la lecture (D-14) ; sous-types non fermés ; gel juridique respecté au renommage |
+| 7. Finitions de l'interface : phases, Restaurer, compteur des modèles, écarts avec la maquette, bilinguisme | commit « Lot 9, étape 7 », qui suit `2d36d97` | 63, 64 (vérifié), 65, 66, 67, 68 | Phases Keystone en frise compacte ; « Restaurer » une version de travail du brouillon (`restoreWorkingVersion`) ; `documents.template_id` et compteur d'utilisations (migration `0004_modele_source` avec reprise sûre) ; onglet Projet toujours présent et « Rattacher à un projet » ; « Déposer » dans l'explorateur prérempli par l'arbre ; fondement de conservation en anglais, phases en anglais, détail du journal structuré et traduit, titres de page par écran et par fiche | Frise sans libellés sauf la phase courante, libellés EN des phases provisoires ; restauration limitée au brouillon ouvert, journalisée comme une version de travail ; compte limité aux documents lisibles, reprise seulement sur trois indices concordants ; projet non prérempli depuis l'arbre ; aucun fondement traduit, français suivi de « (FR) » ; anciennes entrées du journal non réécrites ; titre générique pour une fiche illisible ou introuvable |
 
 ### 18.1 Rechargement en boucle en développement et lectures ciblées
 
@@ -2562,3 +2563,52 @@ le formulaire ; les sous-types sont éditables dans le registre (point 61) mais 
   processus (A15) ; désactivation des comptes et détection des départs (O-02) ; changement du chef de projet
   (Keystone, O-03) et de l'auteur désigné par Vigie (O-10) ; gouvernance des termes (A05), thésaurus fermé ou libre
   (A21) ; listes réelles d'organismes et de mots-clés (reprise de l'existant, O-11).
+
+### 18.7 Finitions de l'interface : phases, Restaurer, compteur des modèles, écarts avec la maquette, bilinguisme
+
+Points 63 à 68 de [reste-a-faire.md](reste-a-faire.md) (M15, D-12, D-16, G06, D-08, D-10, WCAG 2.4.2), vérifiés au
+commit `2d36d97` : l'onglet Projet n'avait que l'étiquette de la phase et disparaissait sans projet ; aucun
+« Restaurer » ; aucun lien d'un document à son modèle ; l'explorateur n'avait que « Nouveau » ; sites déjà en FR/EN
+(point 62) mais fondement de conservation, phases, une partie du journal et le titre des pages dans une seule langue.
+Le point 64 était déjà fait (15 octobre) : rien de changé.
+
+- **Phases (point 63).** `HStepper` accepte un mode compact (`titleSize` 0 : points et traits, chaque étape nommée
+  par `hint` au survol et pour les lecteurs d'écran, liste et `aria-current`) ; l'onglet Projet affiche les 12 phases
+  de `PROJECT_PHASES` sur une ligne du panneau de 400 px et nomme la courante (« Chantier · Phase 9 sur 12 ») ; une
+  phase inconnue garde son étiquette. `PROJECT_PHASES_EN` et `phaseLabel` (`src/lib/i18n.ts`, provisoires) servent à
+  la fiche, aux facettes, au journal et au choix de la phase (valeur enregistrée inchangée).
+- **Restaurer (point 65).** `restoreWorkingVersion` (`src/lib/actions.ts`) : contrôles d'`addWorkingVersion`, version
+  de la révision en brouillon avec fichier et non la dernière, fichier relu, comparé à son empreinte et repassé par
+  `stageFile`, version suivante « Restaurée depuis A.2 », entrée `working` avec un détail structuré. Bouton dans
+  `RevisionsTab` (raison affichée quand il est inactif, confirmation). Ajoutée à `tests/integration/rate-limits.test.ts`.
+- **Modèles (point 66).** `documents.template_id` (clé étrangère vers le modèle, en cascade sur un renommage, index
+  partiel) et `doc_types.retention_basis_en` dans la migration incrémentale `drizzle/0004_modele_source.sql`, complétée à
+  la main pour reprendre le modèle des documents existants quand le commentaire de A.1 (FR et EN) et le journal le
+  nomment et qu'il existe en type FRM. `listTemplates` compte par `template_id` sous `readableSql` ; colonne
+  « Utilisations » d'Administration › Modèles et « n utilisations » dans le choix du modèle. Le seed rattache trois
+  documents à leur modèle.
+- **Écarts avec la maquette (point 67).** Onglet Projet toujours présent ; sans projet, message et « Rattacher à un
+  projet » (dialogue de métadonnées avec `attach: 'project'`) ; l'explorateur a « Déposer un fichier », et les deux
+  boutons reçoivent le département, la famille ou le type choisis dans l'arbre (`preset.department`, `preset.family`).
+- **Bilinguisme (point 68).** Fondement anglais : dialogue du type, Archivage, Administration, `GET /api/registry`
+  (`basisEn`), `registry:apply`, journal (`retentionBasisEn`). Journal : `AuditData.text` (code et paramètres, types
+  dans `src/db/schema.ts`), rendu par `auditTextL` (`src/lib/queries.ts`) à l'écran et dans l'export CSV ; écrit par
+  le dépôt, la version de travail, la restauration, l'import, les lecteurs désignés, la délégation, la
+  réassignation, le transfert d'une étape et l'auteur écarté par Codex ; la colonne `detail` garde une forme sans mots
+  (la délégation garde la sienne, lue par la fiche de visa). Titres : `generateMetadata` du layout (titre et
+  description par langue) et de chaque écran (`src/lib/titles.ts`), fiche « {ID} · {titre} — Codex » si `getDoc` la
+  rend lisible, « Fiche document — Codex » sinon.
+
+- **Vérifié** : `npm test` (93 fichiers dont 1 ignoré, 1 308 tests passés, 10 ignorés, aussi avec `.data` déplacé),
+  `npm run typecheck`, `npm run lint`, `npm run db:check`, `npm run build`. `npm run dev` sur une copie de la base de
+  démonstration (migrations `0001` à `0004` appliquées après sauvegarde automatique ; aucun document existant n'avait
+  de modèle sûr à reprendre) : frise des phases de `PV-HLT-026-001` (« Chantier · Phase 9 sur 12 », « Site works ·
+  Phase 9 of 12 ») ; « Rattacher à un projet » sur `PRO-QUA-0001` (dialogue avec « Projet » choisi, note d'identifiant
+  figé) et refusé sur un document obsolète ; « Déposer un fichier » depuis HSE dans l'explorateur (département
+  prérempli), puis A.2 et restauration de A.1 en A.3 (confirmation, commentaire, même empreinte, journal « restaurée
+  depuis A.1 · 26 o » / « restored from A.1 · 26 B ») ; création depuis `FRM-QMS-002` : 1 utilisation pour Claire
+  Bardet, 0 pour Julien Wagner (brouillon hors de son cercle) ; fondement anglais saisi pour POL, les autres en
+  français suivis de « (FR) » ; titres « Recherche — Codex », « Browse — Codex », « PV-HLT-026-001 · PV de réception
+  des fondations — Codex », « Fiche document — Codex » pour un brouillon illisible comme pour un identifiant inconnu.
+- **Reste** : libellés anglais réels des phases et liste des phases avec Keystone (O-03) ; traduction des fondements
+  après leur revue (O-07) ; titre des pages 404.

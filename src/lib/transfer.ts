@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { schema as s, type Db } from '@/db';
 import type { Conf, Localized } from '@/db/schema';
-import { loc } from './format';
+import { loc, localized } from './format';
 import { approverCheck, audit, circuitExclusions, defaultPerms, lockOf, mayDraft, type LockKey, type Tx } from './lifecycle';
 
 // Holdings of a person handed to a replacement in one operation (point 19 of docs/reste-a-faire.md, A15): ownership of
@@ -158,7 +158,7 @@ async function runTransfer(tx: Tx, users: Users, actorId: string, from: string, 
     if (!rev || (await circuitExclusions(tx, d, rev, w.requesterId)).has(to)) { Object.assign(item, { ok: false, reason: 'self_approval' }); continue; }
     if (!mayApprove(to)) { Object.assign(item, { ok: false, reason: 'cannot_approve' }); continue; }
     await tx.update(s.workflowSteps).set({ assigneeId: to }).where(and(eq(s.workflowSteps.workflowId, w.id), eq(s.workflowSteps.idx, step.idx)));
-    await audit(tx, actorId, 'transfer', w.docId, `${w.id} · ${loc(step.name, 'fr')}`, rev.id, docEntry('assigneeId', from, to, d, true));
+    await audit(tx, actorId, 'transfer', w.docId, `${w.id} · ${loc(step.name, 'fr')}`, rev.id, { ...docEntry('assigneeId', from, to, d, true), text: { code: 'step_transferred', params: { wf: w.id, step: localized(step.name) } } });
     item.ok = true;
   }
 

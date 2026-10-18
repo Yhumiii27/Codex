@@ -1,6 +1,6 @@
 import { afterEach } from 'vitest';
-import { COOKIE_ROLE, COOKIE_USER } from '@/lib/context';
-import type { SimRole } from '@/lib/i18n';
+import { COOKIE_LANG, COOKIE_ROLE, COOKIE_USER } from '@/lib/context';
+import type { Lang, SimRole } from '@/lib/i18n';
 import type { Person } from './fixtures';
 
 // The simulated session of the Server Actions (lib/context.ts reads it from cookies). A test file that calls actions
@@ -29,6 +29,11 @@ export function actAs(user: Person, role?: SimRole): void {
   jar.set(COOKIE_USER, user);
   if (role) jar.set(COOKIE_ROLE, role);
   else jar.delete(COOKIE_ROLE);
+}
+
+/** The interface language of the next actions and reads (French by default). */
+export function setLangCookie(lang: Lang): void {
+  jar.set(COOKIE_LANG, lang);
 }
 
 afterEach(() => {

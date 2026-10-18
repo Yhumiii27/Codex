@@ -5,7 +5,7 @@ import type { AuditData, AuditTargetKind, LinkKind } from '@/db/schema';
 import { buildAccessIndex, canRead, type AccessIndex } from './access';
 import { nextLetter } from './codification';
 import { nowStamp, todayIso } from './format';
-import { DICT, MATRIX_ROLE, type Perm, type SimRole } from './i18n';
+import { MATRIX_ROLE, type Perm, type SimRole } from './i18n';
 import { relOf, replacementOutcome, storedLink } from './links';
 import { reviewAfter } from './review';
 
@@ -356,8 +356,8 @@ async function implementChange(tx: Tx, req: ChangeRow, doc: DocRow, actorId: str
     if (swap) {
       const names = new Map((await tx.select({ id: s.users.id, name: s.users.name }).from(s.users).where(inArray(s.users.id, [swap.setAside, swap.modifierId]))).map((u) => [u.id, u.name]));
       // Also written when the default author is the one set aside or cannot draft either: the substitution is never silent.
-      const denied = swap.mayDraft ? '' : ` (${DICT.fr.not_allowed} : ${DICT.fr.perm_upload})`;
-      await audit(tx, 'codex', 'ecr', req.docId, `${ref} · ${names.get(swap.setAside) ?? swap.setAside} → ${names.get(swap.modifierId) ?? swap.modifierId}${denied}`, rev.id);
+      const [fromName, toName] = [names.get(swap.setAside) ?? swap.setAside, names.get(swap.modifierId) ?? swap.modifierId];
+      await audit(tx, 'codex', 'ecr', req.docId, `${ref} · ${fromName} → ${toName}`, rev.id, { text: { code: 'modifier_swap', params: { ref, from: fromName, to: toName, denied: !swap.mayDraft } } });
     }
   } else {
     const running = await tx.select().from(s.workflows).where(and(eq(s.workflows.docId, doc.id), isNull(s.workflows.outcome)));

@@ -12,7 +12,7 @@ import { changeAuthor, seenVersion, seenWorkingBase, staleText, workingIssue, wo
 import { backUpNow } from './backup';
 import { checkFilesNow } from './integrity';
 import { COOKIE_LANG, COOKIE_ROLE, COOKIE_USER, getCtx, type Ctx } from './context';
-import { addDays, fmtDate, fmtDateTime, fmtSize, loc, nowStamp, parisStamp, parseIsoDay, todayIso } from './format';
+import { addDays, fmtDate, fmtDateTime, fmtSize, loc, localized, nowStamp, parisStamp, parseIsoDay, todayIso } from './format';
 import { ATTACHMENTS, CONF_LEVELS, ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLES, ORIGINS, PERMS, SEARCH_SCOPES, SIM_ROLES, SIMULATED_MATRIX_ROLES, type Perm, type TKey } from './i18n';
 import { addLink, applyChangeDecision, applyPendingDecision, approverCheck, approveRevision, audit, circuitExclusions, catchUpEffectiveDates, journalConsultation, journalLink, linkBetween, lockOf, refreshHeadline, type ModifierSwap, type Tx } from './lifecycle';
 import { changes, entryChanges, familyJournal, functionJournal, retentionValue, typeJournal } from './journal-values';
@@ -417,7 +417,7 @@ async function createDocumentNow(fd: FormData): Promise<ActionResult> {
     for (const x of vocab.add) await addTerms(tx, x.kind, x.names, ctx.user.id);
     const id = await nextDocId(tx, f);
     await tx.insert(s.documents).values({
-      id, ...f, family: type.family,
+      id, ...f, family: type.family, templateId: template ? templateId : null,
       status: 'draft', revWorking: 'A', createdAt: today, modifiedAt: today,
       retentionYears: type.retentionYears, retentionTrigger: type.retentionTrigger, retentionDisposition: type.retentionDisposition,
     });
@@ -426,7 +426,12 @@ async function createDocumentNow(fd: FormData): Promise<ActionResult> {
       const comment = template ? { fr: `Créé depuis le modèle ${templateId} « ${template.title} »`, en: `Created from template ${templateId} “${template.title}”` } : { fr: 'Dépôt initial', en: 'Initial upload' };
       await tx.insert(s.workingVersions).values({ revisionId: rev.id, docId: id, n: 1, comment, authorId: ctx.user.id, date: today, ...(staged ? fileColumns(staged) : {}) });
     }
-    await audit(tx, ctx.user.id, 'upload', id, `A.1${staged ? ` · ${fmtSize(staged.size, 'fr')}` : ''}${templateId ? ` · ${templateId}` : ''}`, rev.id, staged ? { sha256: staged.sha256 } : null);
+    // The template, only when its file was copied (an uploaded file wins over a template the dialog also sent).
+    const source = template ? templateId : null;
+    await audit(tx, ctx.user.id, 'upload', id, `A.1${source ? ` · ${source}` : ''}`, rev.id, {
+      ...(staged ? { sha256: staged.sha256 } : {}),
+      text: { code: 'version', params: { label: 'A.1', ...(staged ? { size: staged.size } : {}), ...(source ? { template: source } : {}) } },
+    });
     if (f.attachment === 'project' && f.projectCode && expectedId) {
       // A document filed for a piece Keystone expects fills that piece (only if it is still missing).
       const [exp] = await tx.select().from(s.projectExpected).where(and(eq(s.projectExpected.id, expectedId), eq(s.projectExpected.projectCode, f.projectCode)));
@@ -510,7 +515,7 @@ async function addWorkingVersionNow(fd: FormData): Promise<ActionResult> {
     const n = max + 1;
     await tx.insert(s.workingVersions).values({ revisionId: rev.id, docId, n, comment: comment || { fr: 'Nouvelle version de travail', en: 'New working version' }, authorId: ctx.user.id, date: todayIso(), ...fileColumns(staged) });
     await tx.update(s.documents).set({ modifiedAt: todayIso() }).where(eq(s.documents.id, docId));
-    await audit(tx, ctx.user.id, 'working', docId, `${rev.letter}.${n} · ${fmtSize(staged.size, 'fr')}`, rev.id, { sha256: staged.sha256 });
+    await audit(tx, ctx.user.id, 'working', docId, `${rev.letter}.${n}`, rev.id, { sha256: staged.sha256, text: { code: 'version', params: { label: `${rev.letter}.${n}`, size: staged.size } } });
     return { label: `${rev.letter}.${n}` };
   }));
   if (!('label' in res)) {
@@ -520,6 +525,89 @@ async function addWorkingVersionNow(fd: FormData): Promise<ActionResult> {
   await nameStoredFile(staged, docId, res.label);
   refresh();
   return { ok: true, href: docHref(docId, 'versions'), ...(warning ? { warning } : {}) };
+}
+
+/**
+ * « Restaurer » (Révisions tab, point 65): the next working version of the revision being drafted, made of the file of
+ * an earlier working version of that same revision (D-12 keeps every version: nothing is removed or rewritten). Same
+ * checks as addWorkingVersion (upload permission, the document readable and its drafting circle, lock, revision in
+ * draft, last version seen), and only a version of the open draft with a file, not its last one. Going back to a
+ * revision in force is a change request to Vigie (D-16), never this. The copy is checked against the fingerprint
+ * recorded at its upload, then goes through the store's checks again (format, size, virus scan).
+ */
+export async function restoreWorkingVersion(...args: Parameters<typeof restoreWorkingVersionNow>): Promise<ActionResult> {
+  return traceAction('restoreWorkingVersion', () => restoreWorkingVersionNow(...args));
+}
+async function restoreWorkingVersionNow(docId: string, versionId: number, base: WorkingBase | null): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  if (!ctx.can('upload')) return denied(ctx, 'upload');
+  const seen = seenWorkingBase(base?.revisionId, base?.n);
+  if (typeof docId !== 'string' || !Number.isSafeInteger(versionId)) return fail(ctx, 'not_found');
+  const db = await getDb();
+  const ix = await getAccessIndex();
+  const [d] = await db.select().from(s.documents).where(eq(s.documents.id, docId));
+  if (!d) return movedSince(db, ctx, docId, (x) => canRead(ctx, x, ix) && mayWorkOnDraft(ctx, x, ix));
+  // Access first: a document the user cannot see gives nothing away, not even its lock or its versions.
+  if (!canRead(ctx, d, ix)) return fail(ctx, 'not_found');
+  if (!mayWorkOnDraft(ctx, d, ix)) return fail(ctx, 'not_allowed');
+  const lock = lockOf(d);
+  if (lock) return fail(ctx, lock);
+  const open = await workingRevision(db, docId);
+  if (!open) return fail(ctx, 'need_in_force');
+  if (open.status !== 'draft') return fail(ctx, 'not_draft');
+  // A version of another revision (one in force, superseded or cancelled) or of another document is not restored here.
+  const [v] = await db.select().from(s.workingVersions).where(and(eq(s.workingVersions.id, versionId), eq(s.workingVersions.docId, docId), eq(s.workingVersions.revisionId, open.id)));
+  if (!v) return fail(ctx, 'restore_other_revision');
+  const behind = await uploadBehind(db, ctx, docId, open, seen);
+  if (behind) return behind;
+  if (seen && v.n >= seen.n) return fail(ctx, 'restore_latest');
+  if (!v.fileKey) return fail(ctx, 'restore_no_file');
+  const from = `${open.letter}.${v.n}`;
+  let buf: Buffer;
+  try {
+    buf = await readStored(v.storage, v.fileKey);
+  } catch {
+    return fail(ctx, 'error', from);
+  }
+  // A file whose stored bytes no longer match the fingerprint recorded at its upload is not copied (lib/integrity.ts).
+  if (v.sha256 && sha256Of(buf) !== v.sha256) {
+    log.error('restored file altered', { doc: docId, version: v.id });
+    return fail(ctx, 'restore_altered', from);
+  }
+  let staged: StagedFile;
+  try {
+    staged = await stageFile(buf, v.fileName ?? `${docId}_${from}`, v.mime ?? '', { userId: ctx.user.id, entry: 'working', doc: docId });
+  } catch (err) {
+    return refusedFile(ctx, err);
+  }
+  const res = await withStaged(staged, () => db.transaction(async (tx): Promise<{ err: TKey } | { behind: ActionResult } | { label: string }> => {
+    // Checked again inside the transaction: a validation request or another upload may have come in meanwhile.
+    const [cur] = await tx.select().from(s.documents).where(eq(s.documents.id, docId));
+    if (!cur) return { err: 'not_found' };
+    const locked = lockOf(cur);
+    if (locked) return { err: locked };
+    const rev = await workingRevision(tx, docId);
+    if (!rev || rev.id !== open.id || rev.status !== 'draft') return { err: 'not_draft' };
+    const late = await uploadBehind(tx, ctx, docId, rev, seen);
+    if (late) return { behind: late };
+    const [{ max }] = await tx.select({ max: sql<number>`coalesce(max(${s.workingVersions.n}), 0)::int` }).from(s.workingVersions).where(eq(s.workingVersions.revisionId, rev.id));
+    if (v.n >= max) return { err: 'restore_latest' };
+    const n = max + 1;
+    const label = `${rev.letter}.${n}`;
+    await tx.insert(s.workingVersions).values({ revisionId: rev.id, docId, n, comment: { fr: `Restaurée depuis ${from}`, en: `Restored from ${from}` }, authorId: ctx.user.id, date: todayIso(), ...fileColumns(staged) });
+    await tx.update(s.documents).set({ modifiedAt: todayIso() }).where(eq(s.documents.id, docId));
+    await audit(tx, ctx.user.id, 'working', docId, `${label} · ${from}`, rev.id, { sha256: staged.sha256, text: { code: 'version_restored', params: { label, from, size: staged.size } } });
+    return { label };
+  }));
+  if (!('label' in res)) {
+    await discardFile(staged);
+    return 'err' in res ? fail(ctx, res.err) : res.behind;
+  }
+  await nameStoredFile(staged, docId, res.label);
+  refresh();
+  return { ok: true, href: docHref(docId, 'versions'), message: ctx.t.restored_version.replace('{label}', res.label).replace('{from}', from) };
 }
 
 /**
@@ -615,7 +703,7 @@ async function updateMetaNow(fd: FormData): Promise<ActionResult> {
     // Named readers only count for confidential levels (lib/access.ts): below, they are dropped rather than left unseen.
     if (!readersApply(f.conf)) {
       const dropped = await tx.delete(s.documentReaders).where(eq(s.documentReaders.docId, id)).returning();
-      if (dropped.length) await audit(tx, ctx.user.id, 'edit', id, `${ctx.t.readers} (0)`);
+      if (dropped.length) await audit(tx, ctx.user.id, 'edit', id, '', null, { text: { code: 'readers', params: { n: 0 } } });
     }
     if (f.attachment !== d.attachment || f.projectCode !== d.projectCode || f.typeCode !== d.typeCode) await releasePieces(tx, id, f);
     return { id };
@@ -664,7 +752,7 @@ async function setReadersNow(docId: string, userIds: string[], version: number):
     if (ids.length) await tx.insert(s.documentReaders).values(ids.map((userId) => ({ docId, userId })));
     // The readers are kept apart from the row: its version is raised here, for the dialogs open on the record.
     await tx.update(s.documents).set({ version: sql`${s.documents.version} + 1` }).where(eq(s.documents.id, docId));
-    await audit(tx, ctx.user.id, 'edit', docId, `${ctx.t.readers} (${ids.length})`);
+    await audit(tx, ctx.user.id, 'edit', docId, '', null, { text: { code: 'readers', params: { n: ids.length } } });
     return null;
   });
   if (res) return stale(ctx, res.stale);
@@ -1031,7 +1119,8 @@ async function delegateStepNow(workflowId: string, toUserId: string, expectedSte
     if ((await circuitExclusions(tx, doc, rev, wf.w.requesterId)).has(to.id)) return 'no_self_approval';
     if (!(await approverCheck(tx, ctx.users))(to.id)) return 'delegate_no_approve';
     await tx.update(s.workflowSteps).set({ assigneeId: to.id }).where(and(eq(s.workflowSteps.workflowId, workflowId), eq(s.workflowSteps.idx, cur.idx)));
-    await audit(tx, ctx.user.id, 'delegate', wf.w.docId, `${workflowId} · ${loc(cur.name, 'fr')} → ${to.name}`, rev.id);
+    // The detail keeps the step's French name: the approval record reads it (lib/approval.ts parseDelegation).
+    await audit(tx, ctx.user.id, 'delegate', wf.w.docId, `${workflowId} · ${loc(cur.name, 'fr')} → ${to.name}`, rev.id, { text: { code: 'step_delegated', params: { wf: workflowId, step: localized(cur.name), to: to.name } } });
     return null;
   });
   if (err) return fail(ctx, err);
@@ -1072,7 +1161,7 @@ async function reassignStepNow(workflowId: string, toUserId: string, expectedSte
     if ((await circuitExclusions(tx, doc, rev, wf.w.requesterId)).has(to.id)) return 'no_self_approval';
     if (!(await approverCheck(tx, ctx.users))(to.id)) return 'delegate_no_approve';
     await tx.update(s.workflowSteps).set({ assigneeId: to.id }).where(and(eq(s.workflowSteps.workflowId, workflowId), eq(s.workflowSteps.idx, cur.idx)));
-    await audit(tx, ctx.user.id, 'reassign', wf.w.docId, `${workflowId} · ${loc(cur.name, 'fr')} : ${ctx.userName(cur.assigneeId)} → ${to.name}`, rev.id);
+    await audit(tx, ctx.user.id, 'reassign', wf.w.docId, `${workflowId} · ${loc(cur.name, 'fr')} : ${ctx.userName(cur.assigneeId)} → ${to.name}`, rev.id, { text: { code: 'step_reassigned', params: { wf: workflowId, step: localized(cur.name), from: ctx.userName(cur.assigneeId), to: to.name } } });
     return null;
   });
   if (err) return fail(ctx, err);

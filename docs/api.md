@@ -241,7 +241,8 @@ Réponse **200** (extrait) :
         "years": null,
         "trigger": "asset_life", "triggerLabels": { "fr": "Durée de vie de l’actif", "en": "Asset life" },
         "disposition": "review", "dispositionLabels": { "fr": "Revue", "en": "Review" },
-        "basis": "…"
+        "basis": "…",
+        "basisEn": null
       },
       "reviewMonths": null,
       "confAllowed": ["restreint", "interne", "confidentiel"],
@@ -265,7 +266,7 @@ Réponse **200** (extrait) :
 | `attachments` | Rattachements admis : `none`, `project`, `research`. |
 | `subtypes` | Sous-types proposés (`{fr, en}`, 40 au plus), saisie libre possible. |
 | `circuit` | Étapes d'approbation après l'auteur, dans l'ordre, par fonction (`scope` : `global`, `department`, `project`, `research`). Liste vide : approbation immédiate. |
-| `retention` | Règle de conservation : durée en années (`null` : sans durée fixe), événement déclencheur, sort final, fondement. |
+| `retention` | Règle de conservation : durée en années (`null` : sans durée fixe), événement déclencheur, sort final, fondement (`basis`, en français) et sa rédaction anglaise (`basisEn`, `null` tant qu'elle n'est pas saisie dans Administration › Registre des types ; ajoutée le 18 octobre 2026). |
 | `reviewMonths` | Périodicité de revue en mois (1 à 240), `null` sans périodicité (valeur par défaut de tous les types, en attendant les arbitrages du registre). Un document qui entre en vigueur sans date de révision la reçoit, comptée depuis sa mise en vigueur ; « Revue effectuée » sans date saisie la compte depuis le jour de la revue. |
 | `confAllowed` / `confDefault` | Niveaux de confidentialité admis et niveau proposé par défaut. |
 | `iso` | Clause ISO 9001 (ou `null`). |

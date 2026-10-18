@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useApp } from '@/components/shell/AppProvider';
-import { recordConsultation } from '@/lib/actions';
+import { recordConsultation, restoreWorkingVersion } from '@/lib/actions';
+import { ActionButton } from '@/components/ui/client';
 import { Icon } from '@/components/ui/Icon';
 import type { VersionLite } from '@/components/dialogs/types';
 import { previewKind } from '@/lib/filetypes';
@@ -102,14 +103,26 @@ export type RevItem = {
 };
 
 /**
- * Revisions tab: each revision (newest first) with its working versions. Click a version to compare it with the
- * current file (defaults to the newest other version).
+ * « Restaurer »: the draft revision being written, the last working version its author saw (`base`) and the label the
+ * restored copy takes, the versions that may be restored (earlier ones of that revision, with a file), and why the user
+ * may not (lock, permission, author designated by Vigie). Null without a draft in the user's drafting circle.
  */
-export function RevisionsTab({ docId, revisions, current }: { docId: string; revisions: RevItem[]; current: VersionLite | null }) {
+export type RestoreSpec = { revisionId: number; base: { revisionId: number; n: number }; nextLabel: string; versions: number[]; denied?: string } | null;
+
+/**
+ * Revisions tab: each revision (newest first) with its working versions. Click a version to compare it with the
+ * current file (defaults to the newest other version), or to restore it as the next working version of the draft.
+ */
+export function RevisionsTab({ docId, revisions, current, restore }: { docId: string; revisions: RevItem[]; current: VersionLite | null; restore: RestoreSpec }) {
   const { t, open } = useApp();
   const [selected, setSelected] = useState<number | null>(null);
   const all = revisions.flatMap((r) => r.versions ?? []);
   const other = all.find((v) => v.id === selected && !v.current) ?? all.find((v) => !v.current) ?? null;
+  // Restored: the version selected, when it is an earlier one of the draft; the button says why not otherwise.
+  const pick = selected != null ? all.find((v) => v.id === selected) ?? null : null;
+  const restorable = !!pick && !!restore?.versions.includes(pick.id);
+  const inDraft = !!pick && !!restore && !!revisions.find((r) => r.id === restore.revisionId)?.versions?.some((v) => v.id === pick.id);
+  const restoreTitle = restore?.denied ?? (restorable ? undefined : !pick ? t.restore_pick : !inDraft ? t.restore_draft_only : pick.fileName ? t.restore_latest : t.restore_no_file);
   return (
     <>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -164,6 +177,15 @@ export function RevisionsTab({ docId, revisions, current }: { docId: string; rev
       </div>
       <div style={{ display: 'flex', gap: 8, marginTop: 14, alignItems: 'center', flexWrap: 'wrap' }}>
         <button type="button" className="btn btn-secondary" disabled={!current || !other} onClick={() => current && other && open({ kind: 'compare', docId, current, other })}>{t.compare}</button>
+        {restore && (
+          <ActionButton
+            className="btn btn-ghost"
+            disabled={!restorable || !!restore.denied}
+            title={restoreTitle}
+            confirm={pick ? t.restore_confirm.replace('{from}', pick.label).replace('{next}', restore.nextLabel) : undefined}
+            action={() => restoreWorkingVersion(docId, pick!.id, restore.base)}
+          >{t.restore}</ActionButton>
+        )}
       </div>
     </>
   );

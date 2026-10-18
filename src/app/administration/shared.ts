@@ -16,7 +16,7 @@ export function typeSpec(x: TypeRow, used: boolean, retention?: RetentionByType)
     type: {
       code: x.code, labelFr: x.labelFr, labelEn: x.labelEn, family: x.family, origins: x.origins, attachments: x.attachments, subtypes: x.subtypes,
       circuit: x.circuit, confAllowed: x.confAllowed, confDefault: x.confDefault, retentionYears: x.retentionYears, retentionTrigger: x.retentionTrigger,
-      retentionDisposition: x.retentionDisposition, retentionBasis: x.retentionBasis, reviewMonths: x.reviewMonths, iso: x.iso,
+      retentionDisposition: x.retentionDisposition, retentionBasis: x.retentionBasis, retentionBasisEn: x.retentionBasisEn, reviewMonths: x.reviewMonths, iso: x.iso,
       clientDeliverable: x.clientDeliverable, active: x.active, used, retention,
     },
   };

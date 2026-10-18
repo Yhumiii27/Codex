@@ -642,7 +642,7 @@ par les décisions D-06 à D-21 et par le modèle v2.
 
 - **Constat sur la v1** : Table `templates` sans fichier : le brouillon créé depuis un modèle n'avait aucun contenu, s'appelait « Sans titre — … » et recevait un service et un processus codés en dur.
 - **Vérification** : « Partiel », confirmé.
-- **Aujourd'hui — intégré.** Un modèle est un document de type FRM au contexte QMS (D-10), versionné et validé comme les autres. « Nouveau depuis un modèle » copie le fichier de la révision en vigueur du modèle dans la version A.1 du nouveau document (`createDocument`, `src/lib/actions.ts` ; `isUsableTemplate`, `src/lib/access.ts`). Onglet Administration › Modèles (QMS). Reste : les modèles du jeu de démonstration n'ont pas de fichier (`src/db/seed-docs.ts`) ; les vrais modèles EPC2I sont à fournir.
+- **Aujourd'hui — intégré.** Un modèle est un document de type FRM au contexte QMS (D-10), versionné et validé comme les autres. « Nouveau depuis un modèle » copie le fichier de la révision en vigueur du modèle dans la version A.1 du nouveau document (`createDocument`, `src/lib/actions.ts` ; `isUsableTemplate`, `src/lib/access.ts`). Onglet Administration › Modèles (QMS), avec, depuis le 18 octobre 2026, le nombre d'utilisations de chaque modèle (`documents.template_id`, documents que le lecteur peut lire, D-14), aussi affiché dans le choix du modèle. Reste : les modèles du jeu de démonstration n'ont pas de fichier (`src/db/seed-docs.ts`) ; les vrais modèles EPC2I sont à fournir.
 
 <a id="g07"></a>
 #### G07 — Workflow de création de document (avec codification automatique)

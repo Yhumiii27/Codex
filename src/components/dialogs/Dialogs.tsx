@@ -14,7 +14,7 @@ import { contextOf, idMatches, seqWidth, TEMPLATE_TYPE } from '@/lib/codes';
 import type { CompareResult } from '@/lib/compare';
 import { DEFAULT_FEATURED, FEATURABLE, MAX_FEATURED } from '@/lib/departments';
 import { fmtDate } from '@/lib/format';
-import { ATTACHMENTS, CONF_LEVELS, ORIGINS, PROJECT_PHASES, SEARCH_SCOPES, SIM_ROLES, type T, type TKey } from '@/lib/i18n';
+import { ATTACHMENTS, CONF_LEVELS, ORIGINS, PROJECT_PHASES, PROJECT_PHASES_EN, SEARCH_SCOPES, SIM_ROLES, type T, type TKey } from '@/lib/i18n';
 import { markInactive, newDocDepartment, offered, type OrgKind } from '@/lib/org-rules';
 import { sameRule } from '@/lib/retention';
 import { reviewDueHint } from '@/lib/review';
@@ -32,7 +32,7 @@ export function Dialogs({ spec }: { spec: DialogSpec }) {
     case 'notes': return <Notes />;
     case 'user': return <UserSwitcher />;
     case 'working': return <WorkingVersion docId={spec.docId} nextLabel={spec.nextLabel} base={spec.base} />;
-    case 'meta': return <EditMeta doc={spec.doc} />;
+    case 'meta': return <EditMeta doc={spec.doc} attach={spec.attach} />;
     case 'validate': return <RequestValidation docId={spec.docId} title={spec.title} revLabel={spec.revLabel} circuitL={spec.circuitL} minDate={spec.minDate} base={spec.base} />;
     case 'change': return <ChangeRequest docId={spec.docId} title={spec.title} change={spec.change} openRev={spec.openRev} replacements={spec.replacements} />;
     case 'link': return <LinkDocument spec={spec} />;
@@ -305,7 +305,7 @@ function DocFields({ types, st, set, doc, preset, withOwner, locked, lockType, f
           <GridSection>{t.ctx_project}</GridSection>
           <Field label={t.project_phase}>
             {(id) => <><input id={id} className="input" name="projectPhase" list="codex-phases" defaultValue={doc?.projectPhase ?? ''} autoComplete="off" />
-              <datalist id="codex-phases">{PROJECT_PHASES.map((k) => <option key={k} value={k} />)}</datalist></>}
+              <datalist id="codex-phases">{PROJECT_PHASES.map((k) => <option key={k} value={k} label={lang === 'fr' ? undefined : PROJECT_PHASES_EN[k]} />)}</datalist></>}
           </Field>
           <Field label={t.work_package}>
             {(id) => <input id={id} className="input" name="workPackage" defaultValue={doc?.workPackage ?? ''} />}
@@ -489,12 +489,17 @@ function NewDocument({ preset }: { preset: NewPreset }) {
   const [mode, setMode] = useState<Mode>(preset?.mode ?? (preset?.templateId || (!preset?.projectCode && !preset?.typeCode && data.templates.length) ? 'template' : 'file'));
   const [st, setSt] = useState<Classif>(() => {
     const presetType = types.find((x) => x.code === preset?.typeCode);
+    // A family proposed from the explorer brings the first active type of it the new document may take.
+    const familyType = !presetType && preset?.family ? types.find((x) => x.family === preset.family && x.attachments.includes('none')) : undefined;
+    const firstType = presetType ?? familyType;
+    // A department proposed from the explorer, if it is still offered (active); otherwise the usual default.
+    const presetDept = preset?.department && data.departments.some((d) => d.key === preset.department && d.active) ? preset.department : null;
     const s = normalize(types, {
-      origin: presetType && !presetType.origins.includes('interne') ? presetType.origins[0] : 'interne',
+      origin: firstType && !firstType.origins.includes('interne') ? firstType.origins[0] : 'interne',
       attachment: lockProject ? 'project' : 'none',
       projectCode: preset?.projectCode ?? '', programCode: '',
-      family: presetType?.family ?? '', typeCode: preset?.typeCode ?? '', subtype: '',
-      department: newDocDepartment(data.currentDepartment, data.departments),
+      family: firstType?.family ?? '', typeCode: firstType?.code ?? '', subtype: '',
+      department: presetDept ?? newDocDepartment(data.currentDepartment, data.departments),
       conf: 'interne', confTouched: false,
     }, lockProject);
     const type = types.find((x) => x.code === s.typeCode);
@@ -533,7 +538,7 @@ function NewDocument({ preset }: { preset: NewPreset }) {
     <label key={x.id} className="radio hover-tint" style={{ padding: '7px 8px', borderRadius: 'var(--radius-md)', gap: 10 }}>
       <input type="radio" name="tpl" checked={tplId === x.id} onChange={() => pickTemplate(x)} /><span className="dot" />
       <span className="ellipsis" style={{ flex: 1, fontSize: 13 }}>{x.label}</span>
-      <span className="text-muted nowrap" style={{ fontSize: 11 }}>{x.id} · {t.revision} {x.rev} · {x.owner}{other && x.types.length > 0 ? ` · ${t.tpl_other_types} ${x.types.join(', ')}` : ''}</span>
+      <span className="text-muted nowrap" style={{ fontSize: 11 }} title={t.tpl_uses_hint}>{x.id} · {t.revision} {x.rev} · {x.owner} · {x.uses} {t.tpl_uses}{other && x.types.length > 0 ? ` · ${t.tpl_other_types} ${x.types.join(', ')}` : ''}</span>
     </label>
   );
   const tplHead = (label: string) => <div className="text-muted" style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '.06em', padding: '6px 8px 2px' }}>{label}</div>;
@@ -595,13 +600,13 @@ function NewDocument({ preset }: { preset: NewPreset }) {
 
 // ── Edit metadata ───────────────────────────────────────────────────────
 
-function EditMeta({ doc }: { doc: MetaDoc }) {
+function EditMeta({ doc, attach }: { doc: MetaDoc; attach?: 'project' }) {
   const { t, data, close } = useApp();
   const { pending, error, field, run, reload } = useSubmit();
   // A type withdrawn from the register stays available to the documents that already have it.
   const types = data.types.filter((x) => x.active || x.code === doc.typeCode);
   const [st, setSt] = useState<Classif>(() => normalize(types, {
-    origin: doc.origin, attachment: doc.attachment, projectCode: doc.projectCode ?? '', programCode: doc.programCode ?? '',
+    origin: doc.origin, attachment: attach ?? doc.attachment, projectCode: doc.projectCode ?? '', programCode: doc.programCode ?? '',
     family: types.find((x) => x.code === doc.typeCode)?.family ?? '', typeCode: doc.typeCode, subtype: doc.subtype ?? '',
     department: doc.department, conf: doc.conf, confTouched: true,
   }, false));
@@ -1368,7 +1373,7 @@ function CircuitSteps({ circuit, setCircuit }: { circuit: string[]; setCircuit: 
 const EMPTY_TYPE: TypeSettings = {
   code: '', labelFr: '', labelEn: '', family: '', origins: ['interne'], attachments: ['none'], subtypes: [], circuit: [],
   confAllowed: ['restreint', 'interne', 'confidentiel', 'tres_confidentiel'], confDefault: 'interne', retentionYears: null, retentionTrigger: 'superseded',
-  retentionDisposition: 'destroy', retentionBasis: '', reviewMonths: null, iso: null, clientDeliverable: false, active: true, used: false,
+  retentionDisposition: 'destroy', retentionBasis: '', retentionBasisEn: '', reviewMonths: null, iso: null, clientDeliverable: false, active: true, used: false,
 };
 
 /**
@@ -1514,8 +1519,12 @@ function TypeEditor({ type, family }: { type?: TypeSettings; family?: string }) 
           <Field label={t.disposition}>
             {(id) => <Select id={id} name="retentionDisposition" value={rule.disposition} onChange={(v) => setRule({ ...rule, disposition: v })} options={DISPOSITIONS.map((k) => ({ key: k, label: t[`disp_${k}`] }))} />}
           </Field>
-          <Field label={t.retention_basis} span error={errorOf('retentionBasis')}>
+          <Field label={t.retention_basis_fr} span error={errorOf('retentionBasis')}>
             {(id) => <textarea id={id} className="input" name="retentionBasis" defaultValue={x.retentionBasis} rows={2} maxLength={500} style={{ resize: 'vertical' }} />}
+          </Field>
+          {/* Empty: the French wording is shown in English too, marked as such (lib/queries.ts basisL). */}
+          <Field label={t.retention_basis_en} span error={errorOf('retentionBasisEn')} hint={t.retention_basis_en_hint}>
+            {(id) => <textarea id={id} className="input" name="retentionBasisEn" defaultValue={x.retentionBasisEn} rows={2} maxLength={500} style={{ resize: 'vertical' }} />}
           </Field>
           {/* Applying the rule to the documents that follow it is asked, never implied (lib/actions.ts applyTypeRetention). */}
           {!creating && (following > 0 || !!x.retention?.overrides) && (

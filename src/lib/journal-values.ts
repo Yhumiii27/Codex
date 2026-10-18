@@ -39,7 +39,7 @@ export function typeJournal(x: TypeValues | TypeRow): [string, AuditValue][] {
   return [
     ['code', x.code], ['labelFr', x.labelFr], ['labelEn', x.labelEn], ['family', x.family], ['origins', x.origins], ['attachments', x.attachments],
     ['subtypes', subtypesJournal(x.subtypes)], ['circuit', x.circuit], ['confAllowed', x.confAllowed], ['confDefault', x.confDefault],
-    ['retention', retentionValue(x)], ['retentionBasis', x.retentionBasis], ['reviewMonths', monthsValue(x.reviewMonths)], ['iso', x.iso],
+    ['retention', retentionValue(x)], ['retentionBasis', x.retentionBasis], ['retentionBasisEn', x.retentionBasisEn], ['reviewMonths', monthsValue(x.reviewMonths)], ['iso', x.iso],
     ['clientDeliverable', x.clientDeliverable], ['active', x.active],
   ];
 }

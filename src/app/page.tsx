@@ -8,11 +8,16 @@ import { getCtx } from '@/lib/context';
 import { todayLong } from '@/lib/format';
 import { dueDeadlines, inForceThisWeek, myTodo, recentActivity, recentDocs } from '@/lib/queries';
 import styles from './home.module.css';
+import { screenTitle } from '@/lib/titles';
 
 /** A KPI card: a link when the role may open its screen, otherwise a plain card (never a dead end). */
 function Kpi({ href, ok, children }: { href: string; ok: boolean; children: ReactNode }) {
   const cls = `card ${styles.kpi}`;
   return ok ? <Link href={href} className={cls}>{children}</Link> : <div className={cls}>{children}</div>;
+}
+
+export function generateMetadata() {
+  return screenTitle('nav_home');
 }
 
 export default async function HomePage() {

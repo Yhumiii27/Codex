@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { boolean, check, date, index, integer, jsonb, pgTable, primaryKey, serial, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { boolean, check, date, index, integer, jsonb, pgTable, primaryKey, serial, text, timestamp, uniqueIndex, type AnyPgColumn } from 'drizzle-orm/pg-core';
 
 // Data model of the GED — see docs/modele-cible.md.
 
@@ -88,7 +88,9 @@ export const docTypes = pgTable('doc_types', {
   retentionYears: integer('retention_years'),
   retentionTrigger: text('retention_trigger').$type<RetentionTrigger>().notNull(),
   retentionDisposition: text('retention_disposition').$type<Disposition>().notNull(),
+  /** What the retention rests on, in French (the register's text); `retentionBasisEn` its English wording, empty until written. */
   retentionBasis: text('retention_basis').notNull().default(''),
+  retentionBasisEn: text('retention_basis_en').notNull().default(''),
   confAllowed: jsonb('conf_allowed').$type<Conf[]>().notNull(),
   confDefault: text('conf_default').$type<Conf>().notNull(),
   /**
@@ -251,9 +253,19 @@ export const documents = pgTable(
      * refused (lib/actions.ts updateMeta, setReaders; lib/concurrency.ts). Shown to the drafting circle only (docView).
      */
     version: integer('version').notNull().default(1),
+    /**
+     * Template (type FRM) whose file became working version A.1 (lib/actions.ts createDocument); null for a document
+     * created otherwise, or before 18 October 2026 when its source could not be told for sure (migration
+     * 0004_modele_source). Counted by lib/queries.ts listTemplates, over the documents the reader may read (D-14).
+     */
+    templateId: text('template_id').references((): AnyPgColumn => documents.id, { onUpdate: 'cascade' }),
   },
   // A former ID (reclassification, migration) resolves with `aliases @> '["…"]'` (lib/queries.ts getDoc, lib/importer.ts).
-  (t) => [index('documents_aliases').using('gin', t.aliases.op('jsonb_path_ops'))],
+  // The uses of a template are counted by template_id (listTemplates).
+  (t) => [
+    index('documents_aliases').using('gin', t.aliases.op('jsonb_path_ops')),
+    index('documents_template').on(t.templateId).where(sql`${t.templateId} is not null`),
+  ],
 );
 
 const docRef = () => documents.id;
@@ -591,8 +603,27 @@ export type AuditValue = string | string[] | boolean | null | { years: number | 
  */
 export type AuditChange = { field: string; before?: AuditValue; after?: AuditValue; scope?: string | null };
 
+/**
+ * Codes of the journal's structured details (AuditData.text), each rendered in the reader's language by lib/queries.ts
+ * auditTextL: a working version filed (`version`: label, size in bytes, template copied), restored from an earlier one
+ * (`version_restored`: label, from, size), imported (`import`: legacy reference, label, size), named readers set
+ * (`readers`: n), a step delegated or reassigned (`step_delegated`: wf, step, to; `step_reassigned`: wf, step, from,
+ * to), a step handed over (`step_transferred`: wf, step), an author set aside by Codex (`modifier_swap`: ref, from, to,
+ * denied).
+ */
+export type AuditTextCode = 'version' | 'version_restored' | 'import' | 'readers' | 'step_delegated' | 'step_reassigned' | 'step_transferred' | 'modifier_swap';
+/** A parameter: a value written once (an ID, a name), a number, a flag, or a text in both languages (a step's name). */
+export type AuditParam = string | number | boolean | { fr: string; en: string };
+export type AuditText = { code: AuditTextCode; params: Record<string, AuditParam> };
+
 /** Structured part of a journal entry, next to its free `detail`. */
 export type AuditData = {
+  /**
+   * The detail as a code and its parameters, rendered in the reader's language in place of `detail` (Journal tab, record,
+   * CSV export), for entries written since 18 October 2026; `detail` then keeps a form without words of either language
+   * (or the one lib/approval.ts reads). Older entries keep their detail as written: the journal is never rewritten.
+   */
+  text?: AuditText;
   changes?: AuditChange[];
   /**
    * CSV export: query, facets, period and chosen order of a search export (none for the full journal), rows written,

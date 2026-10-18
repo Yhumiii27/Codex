@@ -1434,6 +1434,52 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     un libellé du type prend sa graphie ; une autre est gardée (avertissement `subtype_unlisted` à l'import) et listée
     dans Administration › Vocabulaires, où un administrateur l'**ajoute au type** (même libellé FR et EN, dans les
     limites du registre : 120 caractères, 40 sous-types), journalisé comme un changement du type.
+- **Finitions de l'interface** (points 63 à 68 de `docs/reste-a-faire.md`, lot 9 étape 7, 18 octobre). Choix prudents,
+  à confirmer :
+  - **phases Keystone** (point 63) : frise compacte de 12 points dans l'onglet Projet (la maquette en a 4, nommés),
+    seule la phase courante nommée sous la frise, les autres au survol ; une phase reçue de Keystone hors de la liste
+    garde son étiquette, sans frise ; **libellés anglais écrits par Codex, provisoires** (`PROJECT_PHASES_EN`,
+    `src/lib/i18n.ts`), à aligner sur ceux de Keystone (O-03) ; la valeur enregistrée reste le libellé français de
+    Keystone ;
+  - **taille des fichiers** (point 64) : déjà traité le 15 octobre (une seule limite, contrôlée dans le sélecteur et
+    par le serveur) ; rien de changé ;
+  - **« Restaurer »** (point 65) : seulement une version de travail antérieure de la **révision en brouillon**, avec
+    un fichier, jamais la dernière ; elle crée la version suivante (« Restaurée depuis A.2 »), sans rien supprimer
+    (D-12) ; mêmes droits et refus que le dépôt d'une version de travail (droit Déposer, cercle de rédaction D-14,
+    auteur désigné par Vigie, verrou, brouillon, dernière version vue) ; le fichier est relu, comparé à son empreinte
+    SHA-256 et recontrôlé (format, taille, antivirus) comme un dépôt ; journalisé comme une version de travail
+    (`working`), avec la version d'origine ; une confirmation est demandée ; revenir à une révision en vigueur reste
+    une demande à Vigie (D-16) ;
+  - **compteur des modèles** (point 66) : colonne `documents.template_id`, remplie par `createDocument` **seulement
+    quand le fichier du modèle a été copié** (un fichier déposé l'emporte sur le modèle choisi, comme avant) ; compte
+    **limité aux documents que le lecteur peut lire** (même règle que les listes, `readableSql`), tous pour un
+    gestionnaire documentaire : le chiffre ne trahit ni brouillon ni document confidentiel invisible (D-14) ; reprise
+    des documents existants par la migration `0004_modele_source` **seulement quand trois indices concordent**
+    (commentaire de A.1 en français et en anglais, fin du détail « upload » du journal, modèle existant de type FRM),
+    sinon nul ; la base de démonstration existante n'en a pas (aucun document n'y avait été créé depuis un modèle) ;
+    le jeu de démonstration neuf rattache trois documents à leur modèle ;
+  - **onglet Projet toujours présent** (point 67) : sans projet, « Ce document n'est rattaché à aucun projet » et
+    « Rattacher à un projet » pour le propriétaire ou un gestionnaire, qui ouvre « Modifier les métadonnées » avec le
+    rattachement projet choisi si le type l'admet (sinon une note invite à changer de type dans le dialogue) ; après
+    la première approbation l'identifiant ne change pas (D-10), ce que l'onglet rappelle ; l'onglet par défaut reste
+    « Fiche » sans projet ;
+  - **dépôt depuis l'explorateur** (point 67) : « Déposer un fichier » à côté de « Nouveau document », les deux
+    préremplis avec le département, la famille ou le type choisis dans l'arbre (simples propositions, un département
+    inactif n'est pas proposé) ; un projet choisi n'est pas prérempli (il verrouillerait le rattachement) ;
+  - **fondement de conservation en anglais** (point 68) : colonne `doc_types.retention_basis_en`, vide pour tout le
+    registre : **aucun fondement juridique n'est traduit par Codex** (durées et fondements attendent leur revue, O-07) ;
+    en anglais, un fondement sans traduction s'affiche en français suivi de « (FR) » ; saisi dans Administration ›
+    Registre des types, journalisé, publié par `GET /api/registry` (`basisEn`), appliqué par `registry:apply` si le
+    registre du code en donne un (`basisEn`) ; les sites avaient déjà leurs libellés FR/EN (point 62) ;
+  - **journal bilingue** (point 68) : les entrées écrites depuis le 18 octobre dont le détail contenait des mots ou
+    des unités d'une langue (taille d'un fichier, lecteurs désignés, étape déléguée, réassignée ou transférée, auteur
+    écarté par Codex, import, restauration) portent un détail structuré (`audit_log.data.text` : code et paramètres)
+    rendu dans la langue du lecteur à l'écran et dans l'export CSV ; la colonne `detail` garde une forme sans mots
+    (ou celle que lit la fiche de visa pour les délégations) ; **les entrées antérieures ne sont pas réécrites** (journal
+    en ajout seul) ; les autres détails (identifiants, lettres, motifs saisis) n'ont pas de langue ;
+  - **titres des pages** (point 68, WCAG 2.4.2) : « {écran} — Codex » dans la langue choisie ; une fiche lisible
+    « {ID} · {titre} — Codex », une fiche illisible ou introuvable « Fiche document — Codex », sans distinguer les deux
+    (D-14).
 - **Git** (D-23) : premier commit sur une branche `codex-ged-v2` plutôt que sur `main`.
 
 ## Ce qui est explicitement hors périmètre

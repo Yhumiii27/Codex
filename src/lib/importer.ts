@@ -5,7 +5,7 @@ import type { Attachment, Conf, Origin, RevStatus } from '@/db/schema';
 import { readersApply } from './access';
 import { contextOf, nextDocId, reserveDocId, seqWidth } from './codification';
 import { dateIssues, dateIssueText } from './dates';
-import { fmtSize, parseIsoDay, todayIso } from './format';
+import { parseIsoDay, todayIso } from './format';
 import { ATTACHMENTS, CONF_LEVELS, DICT, ORIGINS } from './i18n';
 import { audit, refreshHeadline, type Tx } from './lifecycle';
 import { logger } from './log';
@@ -439,7 +439,10 @@ export async function importDocument(raw: unknown, file: ImportFile | null): Pro
     }
     if (v.readers.length) await tx.insert(s.documentReaders).values(v.readers.map((userId) => ({ docId: id, userId })));
     await refreshHeadline(tx, id);
-    await audit(tx, IMPORT_ACTOR, 'import', id, `${v.legacyRef} → ${withVersion ? label : v.letter}${stored ? ` · ${fmtSize(stored.size, 'fr')}` : ''}`, rev.id, stored ? { sha256: stored.sha256 } : null);
+    await audit(tx, IMPORT_ACTOR, 'import', id, `${v.legacyRef} → ${withVersion ? label : v.letter}`, rev.id, {
+      ...(stored ? { sha256: stored.sha256 } : {}),
+      text: { code: 'import', params: { ref: v.legacyRef, label: withVersion ? label : v.letter, ...(stored ? { size: stored.size } : {}) } },
+    });
     return { kind: 'created', id, revision: v.letter, version: withVersion ? `${v.letter}.1` : null, revStatus, file: !!stored, warnings };
     });
   } catch (err) {

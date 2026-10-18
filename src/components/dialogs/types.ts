@@ -8,7 +8,7 @@ export type Option = { key: string; label: string };
 export type TypeSettings = {
   code: string; labelFr: string; labelEn: string; family: string; origins: Origin[]; attachments: Attachment[]; subtypes: { fr: string; en: string }[];
   circuit: string[]; confAllowed: Conf[]; confDefault: Conf; retentionYears: number | null; retentionTrigger: string; retentionDisposition: string;
-  retentionBasis: string; reviewMonths: number | null; iso: string | null; clientDeliverable: boolean; active: boolean; used: boolean;
+  retentionBasis: string; retentionBasisEn: string; reviewMonths: number | null; iso: string | null; clientDeliverable: boolean; active: boolean; used: boolean;
   /**
    * Retention classes of its documents (lib/queries.ts retentionByType): how many a change of its rule would reach when
    * applied to those that follow it, and how many derogations it leaves as they are.
@@ -21,7 +21,7 @@ export type RetentionByType = { following: { retentionYears: number | null; rete
 /** Reference data the dialogs need, loaded once by the root layout (src/app/layout.tsx). */
 export type DialogData = {
   /** Template documents in force (type FRM, context QMS); `types`: those it is meant for, offered first for them. */
-  templates: { id: string; label: string; rev: string; owner: string; types: string[] }[];
+  templates: { id: string; label: string; rev: string; owner: string; types: string[]; /** Documents created from it that the user may read (lib/queries.ts listTemplates). */ uses: number }[];
   /** Register of document types. Inactive ones are only offered to documents that already have them. */
   types: {
     code: string; label: string; family: string; familyLabel: string; origins: Origin[]; attachments: Attachment[];
@@ -89,7 +89,8 @@ export type DialogSpec =
    * New document (codified): from a template, from a file, or without a file yet (`mode` picks the initial content).
    * Preset when filing a piece Keystone expects.
    */
-  | { kind: 'new'; preset?: { mode?: 'template' | 'file' | 'blank'; projectCode?: string; expectedId?: number; typeCode?: string; title?: string; label?: string; templateId?: string } }
+  /** `department`, `family`: proposed from the selection of the explorer's tree (still free to change). */
+  | { kind: 'new'; preset?: { mode?: 'template' | 'file' | 'blank'; projectCode?: string; expectedId?: number; typeCode?: string; title?: string; label?: string; templateId?: string; department?: string; family?: string } }
   | { kind: 'notes' }
   | { kind: 'user' }
   /**
@@ -97,7 +98,8 @@ export type DialogSpec =
    * working version shown (0 before the first), sent back so that one uploaded since is not passed over.
    */
   | { kind: 'working'; docId: string; nextLabel: string; base: { revisionId: number; n: number } }
-  | { kind: 'meta'; doc: MetaDoc }
+  /** `attach`: open with this attachment chosen (Project tab, « Rattacher à un projet »). */
+  | { kind: 'meta'; doc: MetaDoc; attach?: 'project' }
   /**
    * Request approval of the revision being drafted, with an optional effective date (`minDate`: today, Paris time).
    * `base`: as for an upload, the last working version shown, so that the circuit does not start on one uploaded since.

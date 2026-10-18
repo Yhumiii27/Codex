@@ -7,6 +7,7 @@ import { getCtx } from '@/lib/context';
 import { markInactive } from '@/lib/org-rules';
 import { departmentPage } from '@/lib/queries';
 import { FACET_LABEL } from '@/lib/search';
+import { titled } from '@/lib/titles';
 import { DepartmentPicker } from '../DepartmentPicker';
 import styles from '../departments.module.css';
 
@@ -18,6 +19,14 @@ const DUE_SHOWN = 8;
 function Kpi({ href, children }: { href?: string; children: ReactNode }) {
   const cls = `card ${styles.kpi}`;
   return href ? <Link href={href} className={cls}>{children}</Link> : <div className={cls}>{children}</div>;
+}
+
+/** « Qualité — Codex »: the department's label (reference data, the same for every user); an unknown code, the screen's name. */
+export async function generateMetadata({ params }: PageProps<'/departements/[code]'>) {
+  const { code } = await params;
+  const ctx = await getCtx();
+  const known = ctx.departments.some((d) => d.code === code);
+  return titled(known ? ctx.label('department', code) : ctx.t.nav_departments);
 }
 
 export default async function DepartmentPage({ params }: PageProps<'/departements/[code]'>) {

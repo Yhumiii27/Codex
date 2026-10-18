@@ -53,6 +53,8 @@ async function handleGet(req: Request) {
         disposition: t.retentionDisposition,
         dispositionLabels: labels(`disp_${t.retentionDisposition}`),
         basis: t.retentionBasis,
+        /** English wording of `basis`; null until written (Administration › Registre des types). */
+        basisEn: t.retentionBasisEn || null,
       },
       /** Periodic review in months, null without one: the next review date of a document entering into force without one. */
       reviewMonths: t.reviewMonths,

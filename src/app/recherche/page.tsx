@@ -11,9 +11,14 @@ import { DATE_FIELDS, DATE_LABEL, dueOf, FACET_KEYS, FACET_LABEL, hasCriteria, O
 import { ATTACHMENTS, CONF_LEVELS, ORIGINS, STATUS_KEYS } from '@/lib/i18n';
 import { FacetCheck, PeriodFilter, SearchField, SortSelect } from './SearchClient';
 import styles from './search.module.css';
+import { screenTitle } from '@/lib/titles';
 
 /** Options shown in a facet before « N de plus ». */
 const SHOWN = 8;
+
+export function generateMetadata() {
+  return screenTitle('nav_search');
+}
 
 export default async function SearchPage({ searchParams }: PageProps<'/recherche'>) {
   const sp = await searchParams;

@@ -12,10 +12,11 @@ import { CONF_LEVELS, MATRIX_ROLE, type SimRole, type TKey } from '@/lib/i18n';
 import { keystoneUrl } from '@/lib/keystone';
 import { getMatrix, listTemplates, myTodo, recentActivity, typeView, vocabSuggestions } from '@/lib/queries';
 
-export const metadata: Metadata = {
-  title: 'Codex — GED Groupe',
-  description: 'Gestion électronique des documents du groupe',
-};
+/** Title and description in the user's language; each screen names itself (lib/titles.ts screenTitle, WCAG 2.4.2). */
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await getCtx();
+  return { title: `${t.title_suffix} — ${t.brand_sub}`, description: t.app_description };
+}
 
 export default async function RootLayout({ children }: LayoutProps<'/'>) {
   const ctx = await getCtx();
@@ -26,7 +27,7 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
   // templates, the five latest entries of the 60 latest about documents the user may see (each under its current ID).
   const [todo, templates, recent, matrix, vocab] = await Promise.all([myTodo(ctx), listTemplates(ctx), recentActivity(ctx, 5, 60), getMatrix(), vocabSuggestions(ctx)]);
   const data: DialogData = {
-    templates: templates.map((x) => ({ id: x.id, label: x.label, rev: x.rev, owner: x.owner, types: x.types })),
+    templates: templates.map((x) => ({ id: x.id, label: x.label, rev: x.rev, owner: x.owner, types: x.types, uses: x.uses })),
     types: ctx.types.map((x) => {
       const v = typeView(ctx, x);
       return {

@@ -5,7 +5,7 @@ import type { MetaDoc, VersionLite } from '@/components/dialogs/types';
 import { Forbidden } from '@/components/ui/Forbidden';
 import { Icon } from '@/components/ui/Icon';
 import { Seg } from '@/components/ui/Seg';
-import { VStepper } from '@/components/ui/Stepper';
+import { HStepper, VStepper } from '@/components/ui/Stepper';
 import { getDb } from '@/db';
 import { ActionButton, DialogButton, ShareButton } from '@/components/ui/client';
 import { canRead, mayEditLinks, mayGetApprovalRecord, mayLinkTemplate, mayManageRetention, mayRecordReview, maySetRetentionEvent, mayWorkOnDraft, openRevisionView, readerMaySeeRevision, readerMaySeeVersion, readersApply } from '@/lib/access';
@@ -14,13 +14,14 @@ import { isFinalStatus, TEMPLATE_TYPE } from '@/lib/codes';
 import { getCtx } from '@/lib/context';
 import { addDays, fmtDate, todayIso } from '@/lib/format';
 import { previewKind } from '@/lib/filetypes';
-import { ECR_TAGCLS } from '@/lib/i18n';
+import { ECR_TAGCLS, PROJECT_PHASES, phaseIndex, phaseLabel } from '@/lib/i18n';
 import { getProject } from '@/lib/keystone';
 import { CONSULT_WINDOW_MINUTES, decisionWait, defaultModifier, draftersOf } from '@/lib/lifecycle';
 import { decisionWaitL, getDoc, listAudit, templateTypesOf, METADATA_ACTIONS, RETENTION_ACTIONS, listChangeRequests, listDocLinks, listRevisions, projectDocs as projectDocsOf, readableBriefs, stateNotice, typeView, docWorkflows, type RevisionView } from '@/lib/queries';
 import { sameRule } from '@/lib/retention';
 import { previewPlan } from '@/lib/office-preview';
 import { normalizeMime, storedExt } from '@/lib/storage';
+import { titled } from '@/lib/titles';
 import { vigieSimulated, vigieUrl } from '@/lib/vigie';
 import { Preview, RecordConsultation, RevisionsTab, type RevItem } from './DocClient';
 import styles from './document.module.css';
@@ -60,6 +61,17 @@ function Dl({ rows }: { rows: [string, ReactNode][] }) {
   );
 }
 
+/**
+ * « {ID} · {titre} — Codex », only for a document the user may read (getDoc); one they may not, or none under this ID,
+ * gets the screen's generic name: the tab's title must not tell that it exists, nor its title (D-14).
+ */
+export async function generateMetadata({ params }: PageProps<'/documents/[id]'>) {
+  const { id: rawId } = await params;
+  const ctx = await getCtx();
+  const res = await getDoc(ctx, safeDecode(rawId));
+  return titled(res && res !== 'hidden' ? `${res.doc.id} · ${res.doc.title}` : ctx.t.sc_document);
+}
+
 export default async function DocumentPage({ params, searchParams }: PageProps<'/documents/[id]'>) {
   const { id: rawId } = await params;
   const sp = (await searchParams) as Record<string, string | undefined>;
@@ -93,7 +105,8 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
   // Types a template is meant for (« Nouveau depuis un modèle »).
   const tplTypes = doc.typeCode === TEMPLATE_TYPE ? (await templateTypesOf(ctx, [doc.id])).get(doc.id) ?? [] : null;
 
-  const tabs = TABS.filter((k) => k !== 'project' || project);
+  // The Project tab is always there (design): without a project, it says so and offers to link one.
+  const tabs = TABS;
   const asked = sp.tab === 'affaire' ? 'project' : sp.tab;
   const tab: Tab = tabs.find((k) => k === asked) ?? (project ? 'project' : 'meta');
   const tabHref = (k: string) => `${doc.href}?tab=${k}`;
@@ -219,6 +232,14 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
   const expiredL = doc.expired ? `${t.notice_expired.replace('{date}', doc.expiresF)}${canChange || canWithdraw ? `${lang === 'fr' ? ' : ' : ': '}${t.notice_expired_act}` : ''}.` : null;
   const smallBtn: CSSProperties = { fontSize: 12, padding: '5px 10px' };
 
+  // « Restaurer » (lib/actions.ts restoreWorkingVersion): an earlier working version of the draft becomes the next one,
+  // for whoever may upload one (same refusals as « Nouvelle version de travail »). Revisions in force: a request to Vigie.
+  const restore = drafting && base ? {
+    revisionId: drafting.id, base, nextLabel: `${drafting.letter}.${base.n + 1}`,
+    versions: drafting.versions.filter((v) => v.n < base.n && !!v.fileName).map((v) => v.id),
+    denied: lock ?? deny('upload') ?? draftReserved,
+  } : null;
+
   // A piece counts as filled only by a document of this project; a document the user cannot see shows no ID or status.
   const pieces = project ? project.expected.map((p) => {
     const d = p.docId ? projectDocs.find((x) => x.id === p.docId && x.attachment === 'project' && x.projectCode === project.code) : undefined;
@@ -264,6 +285,17 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
     // Only for whoever may edit the record (in the drafting circle): it moves with the drafting too (docView, D-14).
     version: isOwner ? doc.version : 0,
   };
+  // Project tab without a project (design: « Rattacher à une affaire »): the metadata dialog with the project attachment
+  // chosen, for its owner or a records manager (lib/actions.ts updateMeta), when the type admits it; once a revision is
+  // approved the ID no longer changes (D-10), which the dialog says too.
+  const stageAt = project ? phaseIndex(project.stage) : -1;
+  const attachable = !!type?.attachments.includes('project');
+  const metaDenied = lock ?? deny('edit') ?? (isOwner ? undefined : `${t.not_allowed} : ${t.owner}`);
+  const attachBtn = !project && (
+    <DialogButton spec={{ kind: 'meta', doc: meta, attach: attachable ? 'project' : undefined }} icon="pen" deniedTitle={metaDenied}>{t.attach_aff}</DialogButton>
+  );
+  const attachNote = project ? null : !attachable ? t.attach_aff_type.replace('{type}', doc.typeCode) : !meta.idMayChange ? t.attach_aff_frozen : null;
+
   const readerIds = [...ix.readers(doc.id)];
   // Named readers count for confidential levels; leftovers on a lower level stay listed so they can be removed.
   const showReaders = readersApply(doc.conf) || readerIds.length > 0;
@@ -389,16 +421,37 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
             />
           </div>
           <div className={styles.sideBody}>
+            {tab === 'project' && !project && (
+              <div>
+                <p className="text-muted" style={{ margin: '0 0 14px', fontSize: 13 }}>{t.no_aff}</p>
+                {attachBtn}
+                {attachNote && <p className="text-muted" style={{ margin: '10px 0 0', fontSize: 11.5 }}>{attachNote}</p>}
+              </div>
+            )}
             {tab === 'project' && project && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
                     <span className="tag tag-accent">{project.code}</span>
-                    <span className="tag tag-outline">{project.stage}</span>
+                    {stageAt < 0 && <span className="tag tag-outline" title={t.phase_unknown}>{project.stage}</span>}
                     <span className="text-muted" style={{ fontSize: 11 }}>{t.synced} {project.synced}</span>
                   </div>
                   <div style={{ fontSize: 14, lineHeight: 1.3 }}>{project.name}</div>
                 </div>
+                {/* Keystone's phases (lib/i18n.ts PROJECT_PHASES): twelve where the design has four, so only the current one is
+                    named under the row; each step says its name on hover. An unknown phase keeps its tag above. */}
+                {stageAt >= 0 && (
+                  <div className={styles.phases}>
+                    <HStepper
+                      items={PROJECT_PHASES.map((ph, i) => ({ key: ph, state: i < stageAt ? 'done' : i === stageAt ? 'current' : 'todo', title: '', hint: `${phaseLabel(ph, lang)} · ${t.phase_of.replace('{n}', String(i + 1)).replace('{total}', String(PROJECT_PHASES.length))}` }))}
+                      dot={10} gap={0} glow={10} minWidth={0} wrap={false} titleSize={0}
+                    />
+                    <div className={styles.phaseNow}>
+                      <span>{phaseLabel(project.stage, lang)}</span>
+                      <span className="text-muted tabnum">{t.phase_of.replace('{n}', String(stageAt + 1)).replace('{total}', String(PROJECT_PHASES.length))}</span>
+                    </div>
+                  </div>
+                )}
                 <dl className="dl" style={{ gap: '8px 16px', fontSize: 12.5 }}>
                   <dt className="text-muted">{t.client}</dt><dd>{project.client}</dd>
                   <dt className="text-muted">{t.pm}</dt><dd>{project.manager}</dd>
@@ -494,7 +547,7 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
                 {doc.attachment === 'project' && (
                   <section style={{ marginTop: 18 }}>
                     <h6 className="sec-title" style={{ marginBottom: 10 }}>{t.attachment} · {doc.attachmentL}</h6>
-                    <Dl rows={[[t.project, doc.contextL], [t.project_phase, doc.projectPhase ?? '—'], [t.work_package, doc.workPackage ?? '—'], [t.discipline, doc.discipline ?? '—']]} />
+                    <Dl rows={[[t.project, doc.contextL], [t.project_phase, doc.projectPhase ? phaseLabel(doc.projectPhase, lang) : '—'], [t.work_package, doc.workPackage ?? '—'], [t.discipline, doc.discipline ?? '—']]} />
                   </section>
                 )}
                 {doc.attachment === 'research' && (
@@ -547,7 +600,7 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
                 </section>
 
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 18 }}>
-                  <DialogButton spec={{ kind: 'meta', doc: meta }} icon="pen" deniedTitle={lock ?? deny('edit') ?? (isOwner ? undefined : `${t.not_allowed} : ${t.owner}`)}>{t.edit_meta}</DialogButton>
+                  <DialogButton spec={{ kind: 'meta', doc: meta }} icon="pen" deniedTitle={metaDenied}>{t.edit_meta}</DialogButton>
                   {reviewBtn('btn btn-secondary')}
                   {showReaders && isOwner && <DialogButton spec={{ kind: 'readers', docId: doc.id, readers: readerIds, version: doc.version }} icon="lock" deniedTitle={lock ?? deny('edit')}>{t.readers}</DialogButton>}
                   {tplTypes && isOwner && (
@@ -579,7 +632,7 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
             )}
 
             {tab === 'versions' && (
-              <RevisionsTab docId={doc.id} revisions={revItems} current={current ? lite(current) : null} />
+              <RevisionsTab docId={doc.id} revisions={revItems} current={current ? lite(current) : null} restore={restore} />
             )}
 
             {tab === 'approval' && (

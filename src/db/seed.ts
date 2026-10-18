@@ -61,7 +61,7 @@ async function seedReference(tx: Tx) {
   await tx.insert(s.docTypes).values(TYPES.map((t, sort) => ({
     code: t.code, labelFr: t.label_fr, labelEn: t.label_en, family: t.family, origins: t.origins, attachments: t.attachments,
     subtypes: t.subtypes, circuit: t.circuit, retentionYears: t.retention.years, retentionTrigger: t.retention.trigger,
-    retentionDisposition: t.retention.disposition, retentionBasis: t.retention.basis, confAllowed: t.confAllowed, confDefault: t.confDefault,
+    retentionDisposition: t.retention.disposition, retentionBasis: t.retention.basis, retentionBasisEn: t.retention.basisEn ?? '', confAllowed: t.confAllowed, confDefault: t.confDefault,
     iso: t.iso ?? null, clientDeliverable: !!t.clientDeliverable, source: t.source, sort,
   })));
   await tx.insert(s.functions).values(FUNCTIONS.map(([key, labelFr, labelEn, scope], sort) => ({ key, labelFr, labelEn, scope, sort })));
@@ -144,6 +144,7 @@ export async function seed(db: Db, mode: SeedMode = 'demo') {
     // ── Documents ──
     const seqs = new Map<string, number>();
     const idByKey = new Map<string, string>();
+    const ids: string[] = [];
     /** Revision opened by each change order (ECO → revision id). */
     const revByChange = new Map<string, number>();
     const audit: (typeof s.auditLog.$inferInsert)[] = [];
@@ -162,6 +163,7 @@ export async function seed(db: Db, mode: SeedMode = 'demo') {
       seqs.set(ctxKey, seq);
       const id = formatId(idIn, seq);
       if (demo.key) idByKey.set(demo.key, id);
+      ids.push(id);
 
       // Revisions in force so far (earlier letters superseded), then the working one. The last one entered into force
       // before the working revision was opened (its first version comes 2n days before `modified`); a single letter in
@@ -240,6 +242,18 @@ export async function seed(db: Db, mode: SeedMode = 'demo') {
           }
         }
       }
+    }
+
+    // Documents created from a template (the uses counted in Administration › Modèles): its ID, and the comment of A.1
+    // as createDocument writes it. Templates come after the documents in DEMO_DOCS: set once every ID is known.
+    const docIdOf = new Map(DEMO_DOCS.map((d, i) => [d, ids[i]]));
+    for (const demo of DEMO_DOCS.filter((d) => d.fromTemplate)) {
+      const id = docIdOf.get(demo)!, tplId = idByKey.get(demo.fromTemplate!)!;
+      const tpl = DEMO_DOCS.find((d) => d.key === demo.fromTemplate)!;
+      await tx.update(s.documents).set({ templateId: tplId }).where(eq(s.documents.id, id));
+      const [a] = await tx.select({ id: s.revisions.id }).from(s.revisions).where(and(eq(s.revisions.docId, id), eq(s.revisions.letter, 'A')));
+      await tx.update(s.workingVersions).set({ comment: { fr: `Créé depuis le modèle ${tplId} « ${tpl.title} »`, en: `Created from template ${tplId} “${tpl.title}”` } })
+        .where(and(eq(s.workingVersions.revisionId, a.id), eq(s.workingVersions.n, 1)));
     }
 
     // A few completed workflows so the "Terminées" view tells the history of recent revisions.
