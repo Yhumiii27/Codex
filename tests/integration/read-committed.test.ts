@@ -1,11 +1,11 @@
 import { and, eq } from 'drizzle-orm';
 import { describe, expect, it, vi } from 'vitest';
 import { schema as s } from '@/db';
-import { decideStep, requestChange, requestValidation, togglePermission } from '@/lib/actions';
+import { decideStep, renameVocabTerm, requestChange, requestValidation, togglePermission, updateType } from '@/lib/actions';
 import { DICT } from '@/lib/i18n';
 import { applyChangeDecision, lockDoc, promoteDue } from '@/lib/lifecycle';
 import { submitChange } from '@/lib/vigie';
-import { addDoc, baseOf, fixClock, revisionStatuses, setupDb } from '../support/db';
+import { addDoc, baseOf, fixClock, getDoc, revisionStatuses, setupDb } from '../support/db';
 import { actAs } from '../support/session';
 
 // The transactions that read before they write, under READ COMMITTED (point 51 of docs/reste-a-faire.md,
@@ -89,6 +89,68 @@ describe('transactions that read before they write', () => {
     // It saw the rejection once committed, instead of approving a circuit already ended.
     expect(await decision).toEqual({ ok: false, error: t.wrong_step });
     expect(await entries('approve')).toBe(0);
+  });
+
+  // Revue du lot 9 : deux écritures en masse relisaient les documents sans les verrouiller, puis les réécrivaient d'après
+  // cette lecture. Sous READ COMMITTED, ce qu'une autre transaction avait engagé entre-temps était écrasé.
+  it.skipIf(!server)('leaves alone a document frozen meanwhile when a type rule is applied to its documents', async () => {
+    await addDoc(db(), { id: ID });
+    const before = await getDoc(db(), ID);
+    const hold = gate();
+    const held = gate();
+    // A hold put by another transaction, which keeps the document's row until it commits.
+    const other = db().transaction(async (tx) => {
+      await lockDoc(tx, ID);
+      await tx.update(s.documents).set({ legalHold: true, legalHoldAt: '2026-10-10' }).where(eq(s.documents.id, ID));
+      held.open();
+      await hold.p;
+    });
+    await held.p;
+    actAs('manager');
+    const [x] = await db().select().from(s.docTypes).where(eq(s.docTypes.code, 'PRO'));
+    const fd = new FormData();
+    const fields: Record<string, string | string[]> = {
+      original: 'PRO', code: 'PRO', labelFr: x.labelFr, labelEn: x.labelEn, family: x.family, origins: x.origins, attachments: x.attachments, circuit: x.circuit,
+      confAllowed: x.confAllowed, confDefault: x.confDefault, retentionYears: '25', retentionTrigger: 'in_force', retentionDisposition: 'archive', reviewMonths: '', applyRetention: 'on',
+    };
+    for (const [k, v] of Object.entries(fields)) for (const one of Array.isArray(v) ? v : [v]) fd.append(k, one);
+    const saving = updateType(fd);
+    try {
+      await pendingAfter(saving, 300);
+    } finally {
+      hold.open();
+    }
+    await other;
+    expect(await saving).toMatchObject({ ok: true, message: expect.stringContaining(t.retention_held_kept.replace('{n}', '1')) });
+    // The frozen document keeps its class (D-20: a hold freezes the record).
+    const after = await getDoc(db(), ID);
+    expect([after.retentionYears, after.retentionTrigger, after.retentionDisposition]).toEqual([before.retentionYears, before.retentionTrigger, before.retentionDisposition]);
+  });
+
+  it.skipIf(!server)('keeps a keyword added meanwhile when a term is renamed on its documents', async () => {
+    await addDoc(db(), { id: ID });
+    await db().update(s.documents).set({ keywords: ['Soudage'] }).where(eq(s.documents.id, ID));
+    const [term] = await db().insert(s.keywordTerms).values({ name: 'Soudage', key: 'soudage', createdAt: '2026-10-10' }).returning();
+    const hold = gate();
+    const held = gate();
+    // A metadata edit adds a keyword and keeps the document's row until it commits.
+    const other = db().transaction(async (tx) => {
+      await lockDoc(tx, ID);
+      await tx.update(s.documents).set({ keywords: ['Soudage', 'acier'] }).where(eq(s.documents.id, ID));
+      held.open();
+      await hold.p;
+    });
+    await held.p;
+    actAs('manager');
+    const renaming = renameVocabTerm('keyword', term.id, 'Soudage TIG');
+    try {
+      await pendingAfter(renaming, 300);
+    } finally {
+      hold.open();
+    }
+    await other;
+    expect(await renaming).toMatchObject({ ok: true });
+    expect((await getDoc(db(), ID)).keywords).toEqual(['Soudage TIG', 'acier']);
   });
 
   it('puts an approved revision in force once when several promotions run at once', async () => {

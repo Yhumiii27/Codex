@@ -1,5 +1,5 @@
 import 'server-only';
-import { asc, eq, sql } from 'drizzle-orm';
+import { asc, eq, inArray, sql } from 'drizzle-orm';
 import { schema as s } from '@/db';
 import { todayIso } from './format';
 import { audit, type Tx } from './lifecycle';
@@ -107,13 +107,23 @@ export async function syncVocabularies(tx: Tx): Promise<number> {
   return n;
 }
 
-/** The documents whose value for a vocabulary is one of `keys` (vocabKey), with their row. */
+/**
+ * The documents whose value for a vocabulary is one of `keys` (vocabKey), with their row, locked in the order of their
+ * IDs (as lib/lifecycle.ts lockDocs) until the end of the transaction: the caller rewrites the value from what it reads
+ * here, and an edit committed meanwhile (a keyword added, a hold put) must be waited for and read, not overwritten
+ * (READ COMMITTED; revue du lot 9). The candidates are found first without lock, then only they are locked and read
+ * again.
+ */
 export async function documentsWith(tx: Tx, kind: VocabKind, keys: ReadonlySet<string>) {
   const D = s.documents;
-  const rows = kind === 'source_org'
+  const pick = (rows: (typeof D.$inferSelect)[]) => rows.filter((d) => (kind === 'source_org' ? keys.has(vocabKey(d.sourceOrg ?? '')) : d.keywords.some((k) => keys.has(vocabKey(k)))));
+  const seen = kind === 'source_org'
     ? await tx.select().from(D).where(sql`${D.sourceOrg} is not null`).orderBy(asc(D.id))
     : await tx.select().from(D).where(sql`jsonb_array_length(${D.keywords}) > 0`).orderBy(asc(D.id));
-  return rows.filter((d) => (kind === 'source_org' ? keys.has(vocabKey(d.sourceOrg ?? '')) : d.keywords.some((k) => keys.has(vocabKey(k)))));
+  const ids = pick(seen).map((d) => d.id);
+  if (!ids.length) return [];
+  const rows = await tx.select().from(D).where(inArray(D.id, ids)).orderBy(asc(D.id)).for('update');
+  return pick(rows);
 }
 
 /** A term by its id, locked for the change about to be made. */

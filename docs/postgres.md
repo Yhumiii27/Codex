@@ -88,7 +88,8 @@ pour une demande de modification aussi, la demande étant relue une fois le docu
 | `togglePermission` | deux bascules simultanées allaient dans le même sens (journal faux) ; une ligne absente créée deux fois (clé primaire) | ligne créée si absente, verrouillée, relue |
 | Registre et organisation : `update…`, `delete…` (types, familles, fonctions, programmes), `setDepartmentFeatured` | ligne lue sans verrou : modification perdue, « avant » du journal faux | ligne verrouillée (`FOR UPDATE`) |
 | `confirmTransfer` (reprise d'une personne qui part) | verrou consultatif entre transferts, mais documents lus sans verrou face aux autres actions | documents concernés verrouillés avant le plan, comparé ensuite à l'empreinte |
-| `updateMeta`, `setReaders`, `setTemplateTypes`, `setRetentionEvent`, `setRetentionClass`, organisation (`…OrgValue`), vocabulaires, `applyDuePendingDecisions` | déjà un verrou de ligne | inchangées |
+| `updateType` avec application de la règle de conservation (`applyTypeRetention`), `renameVocabTerm` et `mergeVocabTerms` (`applyTerm`) | documents du type ou du terme lus sans verrou puis réécrits : un gel ou une dérogation posés entre-temps étaient écrasés, un mot-clé ajouté entre-temps perdu (revue du lot 9, [historique.md](historique.md) §18.10) | documents verrouillés dans l'ordre de leurs identifiants, puis relus |
+| `updateMeta`, `setReaders`, `setTemplateTypes`, `setRetentionEvent`, `setRetentionClass`, organisation (`…OrgValue`), ajout d'un terme, `applyDuePendingDecisions` | déjà un verrou de ligne | inchangées |
 | Compteurs d'identifiants, import (`pg_advisory_xact_lock`), bail du planificateur (mise à jour conditionnelle), signatures (`on conflict do nothing`), aperçus Office (`on conflict … where`) | déjà sûrs (points 20, 23, 38, 40) | inchangés |
 | `addComment`, `addFunctionHolder`, `removeFunctionHolder`, `journalConsultation`, recherches enregistrées, création d'un type, d'une famille, d'une fonction, d'un programme | insertion ou suppression seule (clé primaire, `returning`) | inchangées |
 
@@ -97,7 +98,9 @@ sur la clé étrangère (une erreur, pas une incohérence) ; un commentaire peut
 terminer. `tests/integration/read-committed.test.ts` rejoue les cas corrigés : sur PostgreSQL 18.3, ses 6 tests
 échouaient tous avec l'ancien code (doubles approbations, double mise en vigueur, demandes en double sur une contrainte
 d'unicité, décision Vigie appliquée deux fois, bascule perdue) et passent avec le nouveau ; sur PGlite, 5 passent (le
-sixième, qui tient une transaction ouverte, demande deux connexions).
+sixième, qui tient une transaction ouverte, demande deux connexions). La revue du lot 9 y a ajouté deux cas, sautés sur
+PGlite pour la même raison : une règle de conservation appliquée au type pendant qu'un gel est posé, un terme renommé
+pendant qu'un mot-clé est ajouté au document ; tous deux échouaient sur PostgreSQL 18.3 avant correction.
 
 ## Tests
 

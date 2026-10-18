@@ -2446,7 +2446,9 @@ async function updateTypeNow(fd: FormData): Promise<ActionResult> {
  * puts the type's rule back on them, setRetentionClass). Nothing is archived or destroyed (O-07).
  */
 async function applyTypeRetention(tx: Tx, ctx: Ctx, type: Pick<TypeValues, 'code' | 'retentionYears' | 'retentionTrigger' | 'retentionDisposition'>) {
-  const docs = await tx.select().from(s.documents).where(eq(s.documents.typeCode, type.code)).orderBy(asc(s.documents.id));
+  // Locked in the order of their IDs, then read (READ COMMITTED; revue du lot 9): a hold or a derogation committed
+  // meanwhile is waited for and seen, never overwritten by the type's rule.
+  const docs = await tx.select().from(s.documents).where(eq(s.documents.typeCode, type.code)).orderBy(asc(s.documents.id)).for('update');
   const rule = { retentionYears: type.retentionYears, retentionTrigger: type.retentionTrigger, retentionDisposition: type.retentionDisposition };
   const following = docs.filter((d) => !d.retentionOverride && !sameRule(d, rule));
   const held = following.filter((d) => d.legalHold).length;
