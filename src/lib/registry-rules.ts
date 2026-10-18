@@ -76,7 +76,7 @@ export type CodeSpace = { types: readonly string[]; departments: readonly string
 /**
  * A code that would read as another segment of an ID: TYPE-CONTEXTE with the same letters (« FIN-FIN-0001 », point 1 of
  * docs/registre-points-ouverts.md, not settled, O-05), or two contexts sharing a counter. The types and departments that
- * already share a code (FIN, HSE, COM) keep it: only a new code, or a code that changes, is checked.
+ * already share a code (FIN, HSE, COM, JUR) keep it: only a new code, or a code that changes, is checked.
  */
 function clash(code: string, space: CodeSpace, own: keyof CodeSpace): TKey | null {
   if (code === TEMPLATE_CONTEXT) return 'reg_code_qms';

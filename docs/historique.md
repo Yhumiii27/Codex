@@ -2812,6 +2812,7 @@ présentent l'état du code et recueillent les réponses ; rien n'est prérégl�
 | 1. Fiches de décision pour les questions O-01 à O-11 | `79d2dc2` | 70 à 120 (préparation) | [fiches-decision.md](fiches-decision.md) : une fiche par question (question citée, état du code, options, effort, irréversible, points débloqués, données attendues) ; JUR relevé en collision type/département | Propositions de l'assistant étiquetées « non validée » ; aucune question reposée plus d'une fois |
 | 2. Cahiers de validation du registre et de l'organigramme | commit « Lot 10, étape 2 », qui suit `79d2dc2` | 113 à 118 (préparation, toujours bloqués) | `npm run registry:review` (cahiers `types.csv` et `fonctions.csv`, contrôle d'un cahier rempli et écart avec le code) ; modèle `docs/modeles/organigramme.csv` et `npm run org:check` | Cahiers tirés du code, pas d'une base ; réponses vides ; aucune table société ; rien n'est écrit ni en base ni dans `registry.ts`, `seed-org.ts` |
 | 3. SharePoint sans tenant | commits « Lot 10, étape 3 » (deux) | 36, 103 (préparation, O-01 toujours ouverte) | Faux Microsoft Graph et 26 tests du pilote ; quatre défauts corrigés (délai d'envoi non entier, jeton refusé gardé en cache, `Retry-After`, corps des réponses de limitation) ; `npm run storage:check` ; procédure d'essai sur un tenant (`docs/exploitation.md` §8) | `CODEX_STORAGE` reste `local` par défaut ; aucune suppression sur SharePoint ; pas de session d'envoi ; plafond de 250 Mo inchangé |
+| 4. Constats remis à jour et corrections neutres | commit « Lot 10, étape 4 » | 70 à 120 (constats), 87, 88, 94 (avancés, toujours bloqués) | 50 constats revérifiés ; état récapitulatif recompté par question (O-01 : 5 points au lieu de 11, O-11 : 2 au lieu de 9) et annexe B des fiches alignée ; vocabulaires : un terme non proposé est traité comme inconnu, comptes réservés aux gestionnaires (D-14) ; indicateur « En retard » des circuits ; chiffrement au repos documenté ; bouton « Copier le lien du document » ; JUR dans la question 1 du registre | Aucune question tranchée ; délai de 7 jours, relances et « À traiter » inchangés ; rien de chiffré par Codex |
 
 ### 19.1 Cahiers de validation du registre et de l'organigramme
 
@@ -2885,3 +2886,57 @@ pouvait reprendre un code déjà pris (FIN-FIN-0001) ou une valeur que Codex ref
 - **Reste** : l'essai sur un vrai tenant, notamment la forme du déplacement par `parentReference.path`. Restent aussi
   la décision O-01, la suppression des orphelins sur SharePoint, la session d'envoi au-delà de 250 Mo et la sauvegarde
   des fichiers SharePoint.
+
+### 19.3 Constats remis à jour et corrections neutres (lot 10, étape 4)
+
+Rien de ce qui suit ne tranche une question ouverte ; aucun point bloqué ne change d'état.
+
+- **Constats des points 70 à 120** ([reste-a-faire.md](reste-a-faire.md)) : chacun revérifié dans le code ; une
+  ligne « Revérifié le 18 octobre 2026 » ajoutée aux 50 points dont le constat ou les références avaient changé (75
+  inchangé). Constats périmés confirmés : 93 (`src/proxy.ts` existe, mais ne pose que la CSP et HSTS, aucune session),
+  104, 109 et 111 (planificateur `src/lib/scheduler.ts`, sans envoi sortant), 112 (`.github/workflows/ci.yml`, santé,
+  journal, migrations au déploiement ; toujours ni image ni proxy), 113 (fondement modifiable, répercussion du point
+  18, durée de vie de l'actif calculable une fois la date saisie), 114 et 115 (`createFunction`, `createType`,
+  `createFamily`), 96 (c) et 105 (`retention_event_at` saisissable pour le départ du salarié et la fin de vie de
+  l'actif ; la fin de projet reste incalculable), 98 (une seule limite `maxFileBytes`, 50 Mo par défaut, 250 Mo au
+  plus avec SharePoint, au lieu du plafond propre à l'import), 81 (langue contrôlée, facette Langue), 86 (liste
+  blanche commune et aperçu Office, pas de rendu figé), 107 (`.eml` et `.msg` admis, sans lecture), 116 (recherches
+  enregistrées), 118 (`npm run registry:apply`) ; numéros de ligne remis à jour partout ailleurs.
+- **État récapitulatif recompté** (tête de [reste-a-faire.md](reste-a-faire.md)) : chaque point rattaché aux
+  questions que citent ses références et son constat. 73, 78, 79, 82, 86, 107 et 112 sortent des listes d'O-01 et
+  d'O-11 (seul 86 cite O-01, aucun O-11) ; 82 et 112 rejoignent les points qui n'attendent qu'une question de l'audit
+  (M10, M22) ; les restes de 46 et 50 rejoignent O-11. Décomptes (points, puis avec les restes) : O-01 5 (9), O-02 7
+  (8), O-03 7 (9), O-04 6 (7), O-05 6 (7), O-06 4, O-07 6, O-08 1, O-09 4 (7), O-10 2 (3), O-11 2 (4) ; 13 points
+  n'attendent qu'une question de l'audit. Annexe B de [fiches-decision.md](fiches-decision.md) alignée, l'écart qu'elle
+  signalait est corrigé.
+- **Vocabulaires, D-14** (choix documentés de la revue du lot 9, §18.10) : un terme qu'on ne propose pas à
+  l'utilisateur (porté seulement par des documents qu'il ne peut pas lire) est traité comme un terme inconnu :
+  `readVocab` demande la même confirmation avec le même message (`offeredTerms`, `src/lib/queries.ts` ; paramètre
+  `offered` de `readTerms`, `src/lib/vocab.ts`) ; une fois la case cochée, le terme existant est écrit, sans doublon
+  ni entrée « terme ajouté ». Administration › Vocabulaires : nombre de documents par terme réservé aux gestionnaires
+  documentaires, comme les chiffres du planificateur (`summaryShown`) ; un autre administrateur voit « — » et, parmi
+  les valeurs et sous-types hors liste, seulement ceux d'un document qu'il peut lire (`vocabOverview`). Mention
+  correspondante de [decisions.md](decisions.md) mise à jour. Tests : `tests/integration/vocab.test.ts` (deux
+  utilisateurs : réponse identique pour un terme caché et un terme inconnu, création et modification, pas de doublon ;
+  administrateur non gestionnaire) ; les trois cas qui décrivent la correction échouaient sur le code d'avant.
+- **Indicateur « En retard »** (point 87, affichage seul) : `isCircuitLate` et `circuitDaysLate` (`src/lib/review.ts`,
+  même règle de jour que l'expiration : le lendemain de l'échéance, en heure de Paris) ; `daysLate`, `lateL` et
+  `lateTitle` dans `workflowsWhere` ; étiquette dans Validations (liste et en-tête), l'onglet Validation de la fiche
+  (cercle de rédaction) et la page de département, info-bulle avec la date prévue et le nombre de jours ; libellés
+  `wf_late`, `wf_late_title` (FR/EN). Mêmes listes qu'avant, donc rien sur un circuit invisible (D-14). Tests :
+  `tests/unit/review.test.ts`, `tests/integration/circuit-late.test.ts` (bascule à minuit à Paris, anglais, circuit
+  terminé, utilisateur hors du circuit).
+- **Chiffrement au repos** (point 88) : [exploitation.md](exploitation.md) §9 et [sauvegarde.md](sauvegarde.md)
+  (« Chiffrement ») : volumes de `.data`, des sauvegardes et des exports chiffrés, clés hors du serveur et
+  sauvegardées ; documentation seulement.
+- **Bouton de la fiche** (point 94) : nom accessible et info-bulle « Copier le lien du document » (`copy_link`),
+  visuel inchangé.
+- **Registre** : JUR ajouté à la question 1 de [registre-points-ouverts.md](registre-points-ouverts.md) (la question
+  ne change pas).
+- **Vérifié** : `npm run typecheck`, `npm run lint`, `npm run db:check`, `npm test` (105 fichiers dont 1 sauté, 1 421
+  tests passés, 13 sautés, aussi avec `.data` déplacé), `npm run build`, `npm run a11y` (30 écrans et 20 dialogues, 0
+  violation). Essai réel sur une copie de la base de démonstration (serveur de production, `CODEX_DATA_DIR` dans le
+  dossier de travail) : les 8 circuits en cours de Claire Bardet portent « En retard » (3 à 19 jours au 18 octobre),
+  aucun circuit terminé ; même étiquette sur l'onglet Validation de `FDS-HLT-026-001` et sur la page du département
+  QUA, « Overdue » en anglais ; un collaborateur hors de ces circuits n'en voit aucun ni sur la fiche ni sur la page
+  du département.

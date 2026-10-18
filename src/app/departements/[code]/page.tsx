@@ -94,6 +94,7 @@ export default async function DepartmentPage({ params }: PageProps<'/departement
                       <div className="ellipsis">{w.docTitle}</div>
                       <div className="text-muted ellipsis sub">{w.docId} · {t.rev_short} {w.letter} · {t.step}{colon}{w.stepName} · {t.due} {w.dueF}</div>
                     </div>
+                    {w.lateL && <span className="tag tag-outline" style={{ flex: 'none' }} title={w.lateTitle ?? undefined}>{w.lateL}</span>}
                     <span className="tag tag-outline" style={{ flex: 'none' }}>{w.progress}</span>
                   </Link>
                 ))}

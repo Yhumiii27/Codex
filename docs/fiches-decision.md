@@ -714,28 +714,32 @@ Questions de `docs/audit-deck-epc2i.md` restées ouvertes ou répondues en parti
 
 ## Annexe B — Nombre de points débloqués par question
 
-Compte fait le 18 octobre 2026 dans `docs/reste-a-faire.md`. C'est un constat, pas une recommandation : un point peut
-dépendre de plusieurs questions, et une réponse ne suffit pas toujours à le débloquer.
+Compte fait le 18 octobre 2026 dans `docs/reste-a-faire.md`, refait le même jour (lot 10, étape 4) après la
+correction de son état récapitulatif. C'est un constat, pas une recommandation : un point peut dépendre de plusieurs
+questions, et une réponse ne suffit pas toujours à le débloquer.
 
-Deux colonnes, parce que les deux sources du fichier ne disent pas toujours la même chose :
-- **état récapitulatif** : la liste « Une décision de l'utilisateur » en tête de `docs/reste-a-faire.md` ;
-- **ligne Références** : la ligne « Références » de chaque point 70 à 120.
+Chaque point est rattaché aux questions que citent sa ligne « Références » et son constat ; l'état récapitulatif en
+tête de `docs/reste-a-faire.md` suit désormais la même règle, et les deux colonnes « Points » disent la même chose. La
+dernière colonne ne garde que la ligne « Références », pour montrer d'où vient chaque rattachement.
 
-| Question | Points (état récapitulatif) | Restes de points faits en partie | Total récapitulatif | Points dont la ligne Références cite la question |
+| Question | Points (Références et constat) | Restes de points faits en partie | Total | Dont la ligne Références cite la question |
 |---|---|---|---|---|
-| O-01 | 73, 78, 79, 82, 84, 86, 88, 98, 103, 107, 112 (11) | 36, 46, 48, 50 (4) | 15 | 84, 86, 88, 98, 103 (5) |
-| O-02 | 79, 89, 93, 94, 104, 107, 117 (7) | 69 (1) | 8 | 89, 93, 94, 104, 107, 117 (6) |
-| O-03 | 80, 97, 101, 102, 105, 110, 111 (7) | 38, 51 (2) | 9 | 80, 97, 101, 102, 105, 110, 111 (7) |
-| O-04 | 89, 92, 96, 116, 117, 120 (6) | 62 (1) | 7 | 89, 92, 96, 116, 117, 120 (6) |
-| O-05 | 78, 80, 96, 105, 117, 118 (6) | 58 (1) | 7 | 78, 80, 96, 105, 118 (5) |
-| O-06 | 87, 102, 114, 118 (4) | — | 4 | 87, 102, 114 (3) |
-| O-07 | 90, 96, 105, 113, 118, 120 (6) | — | 6 | 90, 96, 105, 113, 120 (5) |
+| O-01 | 84, 86, 88, 98, 103 (5) | 36, 46, 48, 50 (4) | 9 | 84, 86, 88, 98, 103 (5) |
+| O-02 | 79, 89, 93, 94, 104, 107, 117 (7) | 69 (1) | 8 | 89, 93, 94, 104, 107, 117 (6) ; 79 par son constat |
+| O-03 | 80, 97, 101, 102, 105, 110, 111 (7) | 38, 51 (2) | 9 | les 7 |
+| O-04 | 89, 92, 96, 116, 117, 120 (6) | 62 (1) | 7 | les 6 |
+| O-05 | 78, 80, 96, 105, 117, 118 (6) | 58 (1) | 7 | 78, 80, 96, 105, 118 (5) ; 117 par son constat (question 1) |
+| O-06 | 87, 102, 114, 118 (4) | — | 4 | 87, 102, 114 (3) ; 118 par son constat (question 2) |
+| O-07 | 90, 96, 105, 113, 118, 120 (6) | — | 6 | 90, 96, 105, 113, 120 (5) ; 118 par son constat (questions 3 et 6) |
 | O-08 | 115 (1) | — | 1 | 115 (1) |
-| O-09 | 72, 73, 76, 114 (4) | 6, 20, 62 (3) | 7 | 72, 73, 76 (3) |
+| O-09 | 72, 73, 76, 114 (4) | 6, 20, 62 (3) | 7 | 72, 73, 76 (3) ; 114 par son constat (exclusion de l'auteur) |
 | O-10 | 100, 109 (2) | 38 (1) | 3 | 100, 109 (2) |
-| O-11 | 73, 78, 79, 82, 86, 99, 106, 107, 112 (9) | — | 9 | 99, 106 (2) |
+| O-11 | 99, 106 (2) | 46, 50 (2) | 4 | 99, 106 (2) |
 
-Écart constaté, sans correction ici (`docs/reste-a-faire.md` est tenu par un autre lot) : dans l'état récapitulatif,
-les listes d'O-01 et d'O-11 partagent sept numéros (73, 78, 79, 82, 86, 107, 112). La ligne Références de ces points
-cite d'autres questions : 73 (G09, WFL-04, O-09), 78 (M02, O-05), 79 (M23), 82 (M10), 107 (M08, O-02), 112 (M22) ;
-seul 86 cite aussi O-01. Aucun ne cite O-11. Les fiches ci-dessus suivent la ligne Références et le texte des points.
+Corrigé le 18 octobre 2026 (lot 10, étape 4) : l'état récapitulatif comptait aussi 73, 78, 79, 82, 86, 107 et 112 sous
+O-01 (11 points, 15 avec les restes) et sous O-11 (9 points). Leurs références citent d'autres questions : 73 (G09,
+WFL-04, O-09), 78 (M02, O-05), 79 (M23, O-02), 82 (M10), 86 (M12 et O-01 pour le moteur de conversion), 107 (M08,
+O-02), 112 (M22) ; seul 86 reste sous O-01, aucun sous O-11. 82 et 112 n'attendent qu'une question de l'audit (M10,
+M22). Les restes de 46 (import par morceaux, avec 106) et de 50 (volume réel, M18) citent O-11 et y sont ajoutés. La
+fiche O-11 cite le point 112 (hébergement) parmi ce que les volumes éclairent : il attend M22 et n'est pas compté sous
+O-11.

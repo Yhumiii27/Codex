@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { addMonths } from '@/lib/format';
 import { DICT } from '@/lib/i18n';
-import { isExpired, isReviewOverdue, nextReviewDate, parseReviewMonths, REVIEW_MONTHS_MAX, reviewAfter, reviewDueHint } from '@/lib/review';
+import { circuitDaysLate, isCircuitLate, isExpired, isReviewOverdue, nextReviewDate, parseReviewMonths, REVIEW_MONTHS_MAX, reviewAfter, reviewDueHint } from '@/lib/review';
 
 // Expiry and periodic review (point 13 of docs/reste-a-faire.md, G36, G37): indicators without a new status (D-17),
 // the next review date of « Revue effectuée » and the periodicity of a type.
@@ -114,5 +114,23 @@ describe('reviewDueHint (review date of the create and metadata dialogs)', () =>
   it('says nothing without a periodicity', () => {
     expect(reviewDueHint(null, false)).toBeNull();
     expect(reviewDueHint(undefined, true)).toBeNull();
+  });
+});
+
+describe('isCircuitLate and circuitDaysLate (point 87)', () => {
+  const wf = (over: Partial<{ outcome: string | null; done: boolean; due: string | null }> = {}) => ({ outcome: null, done: false, due: '2026-10-09', ...over });
+  it('a running circuit once its due day has passed: the due day itself is not late, the next day is (1 day)', () => {
+    expect(isCircuitLate(wf(), TODAY)).toBe(true);
+    expect(circuitDaysLate(wf(), TODAY)).toBe(1);
+    expect(circuitDaysLate(wf({ due: '2026-09-30' }), TODAY)).toBe(10);
+    expect(isCircuitLate(wf({ due: TODAY }), TODAY)).toBe(false);
+    expect(isCircuitLate(wf({ due: '2026-10-11' }), TODAY)).toBe(false);
+    expect(circuitDaysLate(wf({ due: TODAY }), TODAY)).toBe(0);
+  });
+  it('never a circuit that is over (approved, rejected, recalled, or with no step left), nor one without a due day', () => {
+    for (const outcome of ['approved', 'rejected', 'recalled']) expect(isCircuitLate(wf({ outcome }), TODAY)).toBe(false);
+    expect(isCircuitLate(wf({ done: true }), TODAY)).toBe(false);
+    expect(isCircuitLate(wf({ due: null }), TODAY)).toBe(false);
+    expect(circuitDaysLate(wf({ outcome: 'approved' }), TODAY)).toBe(0);
   });
 });

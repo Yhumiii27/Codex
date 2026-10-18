@@ -1421,8 +1421,15 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     redemandée ; à l'import, un terme inconnu est **ajouté** (journalisé sous l'acteur `codex`, avertissement
     `term_added`), jamais refusé ;
   - les formulaires ne proposent que les termes portés par un document que l'utilisateur peut lire, ou par aucun
-    document (D-14) ; un terme qu'on ne lui propose pas est quand même reconnu s'il le saisit (sa graphie est alors
-    reprise : seule la casse ou les accents pourraient trahir son existence) ;
+    document (D-14) ; un terme qu'on ne lui propose pas est, s'il le saisit, **traité comme un terme inconnu** : la
+    même confirmation est demandée, avec le même message (appliqué depuis le 18 octobre, lot 10 étape 4, sur la revue
+    du lot 9 : avant, un appel sans case cochée réussissait si le terme existait et échouait sinon) ; une fois la case
+    cochée, le serveur écrit le terme existant, sans doublon ni entrée « terme ajouté » (sa graphie est alors reprise :
+    seule la casse ou les accents pourraient trahir son existence, après confirmation) ;
+  - Administration › Vocabulaires : le nombre de documents de chaque terme (brouillons et confidentiels compris) n'est
+    montré qu'aux gestionnaires documentaires, comme les chiffres du journal et du planificateur ; un autre
+    administrateur voit les termes sans compte (« — ») et, parmi les valeurs hors liste et les sous-types hors liste,
+    seulement ceux d'un document qu'il peut lire (lot 10 étape 4, D-14) ;
   - renommer ou fusionner **met à jour les documents**, journalisé document par document (`vocab_apply`), sauf ceux
     sous gel juridique, qui gardent leur valeur (résolue par l'alias) ; les archivés et obsolètes suivent, comme pour
     l'application d'une règle de conservation ; leur date « Modifié » ne change pas ;

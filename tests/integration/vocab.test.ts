@@ -97,6 +97,48 @@ describe('forms: terms read against the vocabularies', () => {
   });
 });
 
+describe('forms: a term the user is not offered is answered as an unknown one (D-14, revue du lot 9)', () => {
+  // A keyword carried only by a draft `writer` may not read: whether it exists must not show in the answer.
+  async function hiddenTerm() {
+    await addTerm(s.keywordTerms, 'Projet Hélios', 'projet helios');
+    await addDoc(db(), { id: 'PRO-QUA-0009', revisions: [{ letter: 'A', status: 'draft', versions: ['owner'] }] });
+    await db().update(s.documents).set({ keywords: ['Projet Hélios'] }).where(eq(s.documents.id, 'PRO-QUA-0009'));
+  }
+  const strip = (r: unknown) => JSON.stringify(r).replace(/PROJET HELIOS|inconnu/g, 'X');
+
+  it('asks the same confirmation for a hidden term as for an unknown one, without adding a duplicate once confirmed', async () => {
+    await hiddenTerm();
+    const hidden = await letter({ sourceOrg: 'X', confirmTerm: 'X', keywords: 'PROJET HELIOS' }, 'writer');
+    const unknown = await letter({ sourceOrg: 'X', confirmTerm: 'X', keywords: 'inconnu' }, 'writer');
+    expect(hidden).toEqual({ ok: false, error: t.vocab_confirm_new.replace('{terms}', '« PROJET HELIOS »'), field: 'keywords', confirm: '["PROJET HELIOS"]' });
+    expect(strip(hidden)).toBe(strip(unknown));
+    expect(await letter({ sourceOrg: 'X', confirmTerm: ['X', 'PROJET HELIOS'], keywords: 'PROJET HELIOS' }, 'writer')).toMatchObject({ ok: true });
+    const [made] = (await docs()).filter(([id]) => id !== 'PRO-QUA-0009');
+    expect(made[2]).toEqual(['Projet Hélios']);
+    expect((await terms(s.keywordTerms)).map((x) => x.name)).toEqual(['Projet Hélios']);
+    const added = await db().select().from(s.auditLog).where(eq(s.auditLog.action, 'vocab_add'));
+    expect(added.map((a) => a.targetId)).toEqual(['X']);
+  });
+
+  it('takes it without asking from whoever is offered it: the draft’s owner, a records manager', async () => {
+    await hiddenTerm();
+    expect(await letter({ sourceOrg: 'X', confirmTerm: 'X', keywords: 'projet helios' }, 'owner')).toMatchObject({ ok: true });
+    expect(await letter({ sourceOrg: 'X', keywords: 'projet helios' }, 'manager')).toMatchObject({ ok: true });
+    expect((await docs()).filter(([id]) => id !== 'PRO-QUA-0009').map(([, , k]) => k)).toEqual([['Projet Hélios'], ['Projet Hélios']]);
+  });
+
+  it('asks it on edit too, unless the document already carries it', async () => {
+    await hiddenTerm();
+    await addDoc(db(), { id: 'PRO-QUA-0001', ownerId: 'writer' });
+    expect(await edit('PRO-QUA-0001', { title: 'Procédure', keywords: 'Projet Hélios' }, 'writer')).toEqual({
+      ok: false, error: t.vocab_confirm_new.replace('{terms}', '« Projet Hélios »'), field: 'keywords', confirm: '["Projet Hélios"]',
+    });
+    expect(await edit('PRO-QUA-0001', { title: 'Procédure', keywords: 'Projet Hélios', confirmTerm: 'Projet Hélios' }, 'writer')).toMatchObject({ ok: true });
+    expect(await edit('PRO-QUA-0001', { title: 'Procédure bis', keywords: 'Projet Hélios' }, 'writer')).toMatchObject({ ok: true });
+    expect((await terms(s.keywordTerms)).map((x) => x.name)).toEqual(['Projet Hélios']);
+  });
+});
+
 describe('Administration › Vocabulaires', () => {
   it('adds a term, and refuses another spelling of an existing one', async () => {
     actAs('manager');
@@ -179,6 +221,31 @@ describe('Administration › Vocabulaires', () => {
     expect(o.source_org.terms.map((x) => [x.name, x.uses])).toEqual([['Siemens', 2]]);
     expect(o.source_org.unlisted).toEqual([{ value: 'Nordvolt', uses: 1 }]);
     expect(o.subtypes).toEqual([{ typeCode: 'COR', value: 'Télécopie', uses: 1 }]);
+  });
+
+  it('gives the counts to records managers only; another administrator sees the terms, and what is left out of documents they may read (D-14)', async () => {
+    // An administrator who is not a records manager: the « Administrer » permission given to the auditors.
+    await db().insert(s.rolePermissions).values({ role: 'auditeur', perm: 'admin', granted: true });
+    await addTerm(s.keywordTerms, 'secret', 'secret');
+    await db().update(s.docTypes).set({ subtypes: [] }).where(eq(s.docTypes.code, 'PRO'));
+    await addDoc(db(), { id: 'PRO-QUA-0001' });
+    await addDoc(db(), { id: 'PRO-QUA-0002', revisions: [{ letter: 'A', status: 'draft', versions: ['owner'] }] });
+    await addDoc(db(), { id: 'PRO-QUA-0003', revisions: [{ letter: 'A', status: 'draft', versions: ['owner'] }] });
+    await db().update(s.documents).set({ keywords: ['vu'], subtype: 'Lisible' }).where(eq(s.documents.id, 'PRO-QUA-0001'));
+    await db().update(s.documents).set({ keywords: ['secret', 'brouillon seul'], subtype: 'Caché' }).where(eq(s.documents.id, 'PRO-QUA-0002'));
+    await db().update(s.documents).set({ keywords: ['secret'] }).where(eq(s.documents.id, 'PRO-QUA-0003'));
+    actAs('auditor');
+    const ctx = await getCtx();
+    expect(ctx.screens.admin && !ctx.seesAll).toBe(true);
+    const o = await vocabOverview(ctx);
+    expect(o.keyword.terms.map((x) => [x.name, x.uses])).toEqual([['secret', null]]);
+    expect(o.keyword.unlisted).toEqual([{ value: 'vu', uses: null }]);
+    expect(o.subtypes).toEqual([{ typeCode: 'PRO', value: 'Lisible', uses: null }]);
+    actAs('manager');
+    const m = await vocabOverview(await getCtx());
+    expect(m.keyword.terms.map((x) => [x.name, x.uses])).toEqual([['secret', 2]]);
+    expect(m.keyword.unlisted).toEqual([{ value: 'brouillon seul', uses: 1 }, { value: 'vu', uses: 1 }]);
+    expect(m.subtypes.map((x) => [x.value, x.uses])).toEqual([['Caché', 1], ['Lisible', 1]]);
   });
 });
 

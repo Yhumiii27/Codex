@@ -74,14 +74,19 @@ export function ActionButton({ action, className = 'btn btn-secondary', children
   );
 }
 
+/**
+ * Copies the address of the page (the document's record) to the clipboard. Its accessible name and tooltip say so
+ * (« Copier le lien du document »): it shares nothing by itself; a controlled sharing with an outside party waits for M07
+ * (point 94 of docs/reste-a-faire.md). Same look as the mock-up's button.
+ */
 export function ShareButton() {
   const { t, toast } = useApp();
   return (
     <button
       type="button"
       className="btn btn-secondary btn-icon"
-      aria-label={t.share}
-      title={t.share}
+      aria-label={t.copy_link}
+      title={t.copy_link}
       onClick={async () => {
         try { await navigator.clipboard.writeText(window.location.href); toast(t.link_copied); } catch { toast(window.location.href); }
       }}

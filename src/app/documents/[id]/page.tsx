@@ -640,7 +640,10 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
                 {running ? (
                   <>
                     <div className="sec-head" style={{ marginBottom: 4 }}><span style={{ fontSize: 13 }}>{t.revision} {running.letter}</span>{running.visible ? <Link href={running.href} className="link-plain" style={{ fontSize: 12 }}>{running.id}</Link> : <span className="text-muted" style={{ fontSize: 12 }}>{running.id}</span>}</div>
-                    <div className="text-muted" style={{ fontSize: 11, marginBottom: 14 }}>{t.requested_by} {running.requester} · {t.due} {running.dueF}</div>
+                    <div className="text-muted" style={{ fontSize: 11, marginBottom: 14 }}>
+                      {t.requested_by} {running.requester} · {t.due} {running.dueF}
+                      {running.lateL && <> <span className="tag tag-outline" style={{ fontSize: 10.5, padding: '0 6px', marginLeft: 4 }} title={running.lateTitle ?? undefined}>{running.lateL}</span></>}
+                    </div>
                     <VStepper items={running.steps.map((st) => ({ key: st.idx, state: st.state, title: st.nameL, lines: [`${st.assignee} · ${st.stateLabel}${st.dateF ? ` ${st.dateF}` : ''}`] }))} />
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
                       {running.visible && <Link href={running.href} className="btn btn-primary">{t.open}</Link>}

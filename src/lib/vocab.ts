@@ -22,9 +22,12 @@ export async function loadTerms(tx: Tx, kind: VocabKind): Promise<Term[]> {
  * What values become once read against a vocabulary: each one the name of the term it stands for (findTerm), or, for a
  * value no term stands for, the value cleaned (cleanTerm), listed in `added` (one per key, in order of appearance) unless
  * `confirmed` lacks its key, in which case it is listed in `unconfirmed` and nothing should be written. `confirmed`
- * undefined: every new value is accepted (the import's controlled addition).
+ * undefined: every new value is accepted (the import's controlled addition). `offered`: the ids of the terms the user is
+ * offered (lib/queries.ts offeredTerms); a value standing for any other term is answered as an unknown one (listed in
+ * `unconfirmed` as typed, unless confirmed), so that the answer does not tell that the term exists (D-14), and once
+ * confirmed it takes the existing term's name, without being added again.
  */
-export function readTerms(terms: readonly Term[], values: readonly string[], confirmed?: ReadonlySet<string>): { values: string[]; added: string[]; unconfirmed: string[] } {
+export function readTerms(terms: readonly Term[], values: readonly string[], confirmed?: ReadonlySet<string>, offered?: ReadonlySet<number>): { values: string[]; added: string[]; unconfirmed: string[] } {
   const out: string[] = [];
   const added: string[] = [];
   const unconfirmed: string[] = [];
@@ -38,8 +41,10 @@ export function readTerms(terms: readonly Term[], values: readonly string[], con
     if (seen.has(k)) continue;
     seen.add(k);
     out.push(name);
-    if (term) continue;
+    const known = term && (!offered || offered.has(term.id));
+    if (known) continue;
     if (confirmed && !confirmed.has(vocabKey(clean))) unconfirmed.push(clean);
+    else if (term) continue;
     else added.push(clean);
   }
   return { values: out, added, unconfirmed };

@@ -16,9 +16,10 @@ conservés (PRO, NCR, PID, CER…) ; les types du deck ont reçu un code mnémon
 - PER = permis de travail de chantier ; les permis et autorisations administratifs restent en AUT.
 
 ## Questions ouvertes
-1. Codes identiques à des codes de département (FIN, HSE, COM) : on obtient FIN-FIN-0001, HSE-HSE-0001… Garder ou renommer ?
-   En attendant la réponse, l'administration garde ces trois codes et refuse tout nouveau code (type, département,
-   programme) qui recréerait une telle collision (`docs/decisions.md`).
+1. Codes identiques à des codes de département (FIN, HSE, COM, JUR) : on obtient FIN-FIN-0001, HSE-HSE-0001… Garder ou
+   renommer ? JUR (type « Acte juridique » et département Juridique) manquait à la liste d'origine : relevé le 18 octobre
+   2026 (lot 10), la question reste la même. En attendant la réponse, l'administration garde ces quatre codes et refuse
+   tout nouveau code (type, département, programme) qui recréerait une telle collision (`docs/decisions.md`).
 2. MIN, PO, HSE et VIS admettent « sans rattachement » mais leur circuit contient une étape « chef de projet » :
    hors projet, l'étape revient au titulaire « groupe » de la fonction (aujourd'hui Marie Lefebvre). OK ?
 3. Conservation déclenchée par « fin de projet » pour DQF, CER, COC, HSE hors projet, et pour les 12 types recherche

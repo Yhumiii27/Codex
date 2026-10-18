@@ -1,4 +1,4 @@
-import { addMonths, parseIsoDay } from './format';
+import { addMonths, daysBetween, parseIsoDay } from './format';
 
 // Expiry and periodic review of a document (G36, G37, point 13 of docs/reste-a-faire.md): indicators, the next review
 // date and the periodicity of a type. No new status: an expired document stays in force until Vigie withdraws it (D-17),
@@ -20,6 +20,20 @@ export function isExpired(d: Pick<Dated, 'state' | 'expiresAt'>, today: string):
 /** Review overdue: an active document with a revision in force whose review date has passed (same day rule as isExpired). */
 export function isReviewOverdue(d: Pick<Dated, 'state' | 'revInForce' | 'reviewDueAt'>, today: string): boolean {
   return d.state === 'active' && !!d.revInForce && !!d.reviewDueAt && d.reviewDueAt < today;
+}
+
+/**
+ * Circuit overdue (point 87 of docs/reste-a-faire.md): still running (no outcome, steps left) and its due day passed,
+ * `today` being the day in Paris time (lib/format.ts todayIso), as for isExpired: the due day itself is not late, the
+ * next day is. Display only: neither the 7-day delay, nor reminders, nor « À traiter » follow from it.
+ */
+export function isCircuitLate(w: { outcome: string | null; done: boolean; due: string | null }, today: string): boolean {
+  return !w.outcome && !w.done && !!w.due && w.due.slice(0, 10) < today;
+}
+
+/** Whole days a late circuit is past its due day (1 on the day after it); 0 for a circuit that is not late. */
+export function circuitDaysLate(w: { outcome: string | null; done: boolean; due: string | null }, today: string): number {
+  return isCircuitLate(w, today) ? daysBetween(w.due!, today) : 0;
 }
 
 /** Day of the periodic review `months` after `from`; null without a periodicity. */

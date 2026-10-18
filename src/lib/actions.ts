@@ -19,7 +19,7 @@ import { changes, entryChanges, familyJournal, functionJournal, retentionValue, 
 import { isLinkRel, linkIssue, otherEnd, replacementIssue, storedLink } from './links';
 import { logger, traceAction } from './log';
 import { limitWrite } from './ratelimit';
-import { decisionWaitL, orgUsage, registryUsage, sameFiles } from './queries';
+import { decisionWaitL, offeredTerms, orgUsage, registryUsage, sameFiles } from './queries';
 import { dateIssues, dateIssueText, effectIssue, issueFrom, latestEffect, type DateIssue } from './dates';
 import { cleanFeatured } from './departments';
 import { inUse, isOrgKind, lastActiveIssue, orgLabels, parseOrgForm, type OrgKind } from './org-rules';
@@ -239,15 +239,20 @@ const KEYWORDS_MAX = 50;
  * name of the term it stands for (« SIEMENS » → « Siemens »). A value no term stands for is a new term, added only when
  * the form confirms it (`confirmTerm`, one per new value, as the form offers it) or when the document already carries it
  * (`base`); otherwise the form is refused on its field, with the values to confirm (`confirm`, a JSON list), and nothing
- * is written. `add`: the terms to add with the document, in its transaction (addTerms).
+ * is written. A value standing for a term the user is not offered (lib/queries.ts offeredTerms: carried only by
+ * documents they may not read) is answered exactly the same way, then written as that term once confirmed, without a
+ * duplicate: whether such a term exists is not told (D-14; revue du lot 9). `add`: the terms to add with the document, in its transaction (addTerms).
  */
 async function readVocab(ctx: Ctx, fd: FormData, f: Fields, base?: DocRow): Promise<{ refused: ActionResult } | { sourceOrg: string | null; keywords: string[]; add: { kind: VocabKind; names: string[] }[] }> {
   const db = await getDb();
   const confirmed = new Set(fd.getAll('confirmTerm').map((x) => vocabKey(String(x))));
   for (const v of [base?.sourceOrg, ...(base?.keywords ?? [])]) if (v) confirmed.add(vocabKey(v));
   const [orgs, kws] = await Promise.all([loadTerms(db, 'source_org'), loadTerms(db, 'keyword')]);
-  const org = readTerms(orgs, f.sourceOrg ? [f.sourceOrg] : [], confirmed);
-  const keywords = readTerms(kws, f.keywords, confirmed);
+  // A term the user is not offered (met only on documents they may not read) is answered as an unknown one (D-14).
+  const offered = ctx.seesAll || (!f.sourceOrg && !f.keywords.length) ? null : await offeredTerms(ctx);
+  const ids = (kind: VocabKind) => (offered ? new Set(offered[kind].map((x) => x.id)) : undefined);
+  const org = readTerms(orgs, f.sourceOrg ? [f.sourceOrg] : [], confirmed, ids('source_org'));
+  const keywords = readTerms(kws, f.keywords, confirmed, ids('keyword'));
   for (const [field, x] of [['sourceOrg', org], ['keywords', keywords]] as const) {
     if (x.unconfirmed.length) {
       const quoted = x.unconfirmed.map((v) => (ctx.lang === 'fr' ? `« ${v} »` : `“${v}”`)).join(', ');

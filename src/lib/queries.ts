@@ -16,10 +16,10 @@ import { LINK_RELS, otherEnd, relOf } from './links';
 import { NO_USAGE, type OrgUsage } from './org-rules';
 import { BUILT_IN_FUNCTIONS, BUILT_IN_TYPES } from './registry-rules';
 import { EVENT_TRIGGERS, isEventTrigger, retainUntil, retentionGap } from './retention';
-import { isExpired, isReviewOverdue } from './review';
+import { circuitDaysLate, isExpired, isReviewOverdue } from './review';
 import { featuredFilters, featuredOf } from './departments';
 import { simulateTransfer, type TransferPlan } from './transfer';
-import { bothDocumentValues, documentValues, loadTerms } from './vocab';
+import { bothDocumentValues, documentValues, loadTerms, type Term } from './vocab';
 import { canonicalSubtype, termKeys, vocabKey, type VocabKind } from './vocab-rules';
 import { DATE_LABEL, FACET_KEYS, FACET_LABEL, fold, hit, SCORE_WEIGHT, searchHref, SORT_LABEL, sortOf, wordStartPrefix, type DateField, type FacetKey, type Facets, type Period, type SearchDoc, type SearchInput, type SortKey } from './search';
 
@@ -823,6 +823,7 @@ export async function workflowsWhere(ctx: Ctx, where?: SQL) {
   const docBy = new Map(docs.map((d) => [d.id, d]));
   const revBy = new Map(revs.map((r) => [r.id, r]));
   const { t, lang } = ctx;
+  const today = todayIso();
   return wfs.map((w) => {
     const ws = (stepsBy.get(w.id) ?? []).map((st) => {
       const state = st.idx < w.step ? 'done' : st.idx === w.step ? 'current' : 'todo';
@@ -839,6 +840,7 @@ export async function workflowsWhere(ctx: Ctx, where?: SQL) {
     const doc = docBy.get(w.docId);
     const rev = revBy.get(w.revisionId);
     const outcomeL = w.outcome === 'approved' ? t.wf_approved : w.outcome === 'rejected' ? t.wf_rejected : w.outcome === 'recalled' ? t.wf_recalled : null;
+    const daysLate = circuitDaysLate({ outcome: w.outcome, done: !!w.outcome || w.step >= ws.length, due: w.due }, today);
     return {
       ...w,
       docTitle: doc?.title ?? w.docId,
@@ -849,6 +851,13 @@ export async function workflowsWhere(ctx: Ctx, where?: SQL) {
       revStatus: rev?.status ?? null,
       requester: ctx.userName(w.requesterId),
       dueF: fmtDate(w.due, lang),
+      /**
+       * Running past its due day (lib/review.ts isCircuitLate, Paris time; point 87): how many days, 0 when not late,
+       * and the label of the indicator (« En retard », its title saying since when), or null. Display only.
+       */
+      daysLate,
+      lateL: daysLate ? t.wf_late : null,
+      lateTitle: daysLate ? t.wf_late_title.replace('{date}', fmtDate(w.due, lang)).replace('{n}', String(daysLate)) : null,
       steps: ws,
       current: cur ?? null,
       stepName: (w.outcome === 'rejected' || w.outcome === 'recalled') && outcomeL ? outcomeL : cur && !w.outcome ? cur.nameL : t.wf_finished,
@@ -2099,18 +2108,19 @@ async function templateUses(ctx: Ctx, ids: string[]): Promise<Map<string, number
 // ── Controlled vocabularies (point 59 of docs/reste-a-faire.md) ─────────
 
 /**
- * Terms the forms offer (source organisation, keywords), by name: those a document the user may read carries
- * (readableSql, D-14: a term met only on drafts or on documents they may not read is not shown to them), and those no
- * document carries (added in Administration). Records managers get every term. Empty for whoever may neither create nor
- * edit a document. A term the user is not offered is still recognised when typed (lib/actions.ts readVocab).
+ * Terms the forms offer (source organisation, keywords): those a document the user may read carries (readableSql, D-14:
+ * a term met only on drafts or on documents they may not read is not shown to them), and those no document carries
+ * (added in Administration). Records managers get every term. Empty for whoever may neither create nor edit a document.
+ * A term the user is not offered is treated as an unknown one when typed: the form asks to confirm it the same way, then
+ * writes the existing term, without adding a duplicate (lib/actions.ts readVocab; revue du lot 9).
  */
-export async function vocabSuggestions(ctx: Ctx): Promise<{ sourceOrgs: string[]; keywords: string[] }> {
-  if (!ctx.can('upload') && !ctx.can('edit')) return { sourceOrgs: [], keywords: [] };
+export async function offeredTerms(ctx: Ctx): Promise<Record<VocabKind, Term[]>> {
+  if (!ctx.can('upload') && !ctx.can('edit')) return { source_org: [], keyword: [] };
   const db = await getDb();
   const all = ctx.seesAll ? null : await bothDocumentValues(db, readableSql(ctx));
   const offered = async (kind: VocabKind) => {
     const terms = await loadTerms(db, kind);
-    if (!all) return terms.map((x) => x.name);
+    if (!all) return terms;
     const values = all[kind];
     const used = new Set<string>(), seen = new Set<string>();
     for (const v of values) {
@@ -2118,49 +2128,65 @@ export async function vocabSuggestions(ctx: Ctx): Promise<{ sourceOrgs: string[]
       used.add(k);
       if (v.readable) seen.add(k);
     }
-    return terms.filter((x) => { const keys = termKeys(x); return keys.some((k) => seen.has(k)) || !keys.some((k) => used.has(k)); }).map((x) => x.name);
+    return terms.filter((x) => { const keys = termKeys(x); return keys.some((k) => seen.has(k)) || !keys.some((k) => used.has(k)); });
   };
-  const byName = (xs: string[]) => xs.sort((p, q) => p.localeCompare(q, ctx.lang, { sensitivity: 'base' }));
-  const [sourceOrgs, keywords] = await Promise.all([offered('source_org'), offered('keyword')]);
-  return { sourceOrgs: byName(sourceOrgs), keywords: byName(keywords) };
+  const [source_org, keyword] = await Promise.all([offered('source_org'), offered('keyword')]);
+  return { source_org, keyword };
 }
 
-/** A term of a vocabulary as Administration › Vocabulaires lists it: how many documents carry it, in any spelling. */
-export type VocabRow = { id: number; name: string; aliases: string[]; uses: number; createdAt: string };
+/** The names of the terms the forms offer the user (offeredTerms), sorted. */
+export async function vocabSuggestions(ctx: Ctx): Promise<{ sourceOrgs: string[]; keywords: string[] }> {
+  const o = await offeredTerms(ctx);
+  const byName = (xs: Term[]) => xs.map((x) => x.name).sort((p, q) => p.localeCompare(q, ctx.lang, { sensitivity: 'base' }));
+  return { sourceOrgs: byName(o.source_org), keywords: byName(o.keyword) };
+}
 
 /**
- * Every term of both vocabularies with the documents that carry it, drafts and confidential ones included
- * (administration only), the values documents carry that no term stands for, and the sub-types documents carry outside
- * their type's list (lib/vocab-rules.ts canonicalSubtype), by type, most frequent first.
+ * A term of a vocabulary as Administration › Vocabulaires lists it: how many documents carry it, in any spelling (null
+ * for whoever is not a records manager: see vocabOverview).
  */
-export async function vocabOverview(ctx: Ctx): Promise<Record<VocabKind, { terms: VocabRow[]; unlisted: { value: string; uses: number }[] }> & { subtypes: { typeCode: string; value: string; uses: number }[] }> {
+export type VocabRow = { id: number; name: string; aliases: string[]; uses: number | null; createdAt: string };
+
+/**
+ * Every term of both vocabularies, the values documents carry that no term stands for, and the sub-types documents carry
+ * outside their type's list (lib/vocab-rules.ts canonicalSubtype), by type, most frequent first. How many documents
+ * carry each (drafts and confidential ones included) is given to records managers only, as the journal and the
+ * scheduler's panel give their figures (D-14; lib/scheduler.ts summaryShown; revue du lot 9): anyone else who reaches
+ * Administration gets the terms without counts (`uses` null), and only the values and sub-types left out that a document
+ * they may read carries (readableSql).
+ */
+export async function vocabOverview(ctx: Ctx): Promise<Record<VocabKind, { terms: VocabRow[]; unlisted: { value: string; uses: number | null }[] }> & { subtypes: { typeCode: string; value: string; uses: number | null }[] }> {
   const db = await getDb();
+  const full = ctx.seesAll;
+  const readable = full ? sql`true` : readableSql(ctx);
+  const byUses = <T extends { uses: number | null }>(p: T, q: T) => (q.uses ?? 0) - (p.uses ?? 0);
   const one = async (kind: VocabKind) => {
-    const [terms, values] = await Promise.all([loadTerms(db, kind), documentValues(db, kind)]);
+    const [terms, values] = await Promise.all([loadTerms(db, kind), documentValues(db, kind, readable)]);
     const byKey = new Map<string, number>();
     for (const v of values) byKey.set(vocabKey(v.value), (byKey.get(vocabKey(v.value)) ?? 0) + v.n);
     const covered = new Set(terms.flatMap(termKeys));
-    const rows = terms.map((x): VocabRow => ({ id: x.id, name: x.name, aliases: x.aliases, uses: termKeys(x).reduce((n, k) => n + (byKey.get(k) ?? 0), 0), createdAt: x.createdAt }));
-    const unlisted = new Map<string, { value: string; uses: number }>();
+    const rows = terms.map((x): VocabRow => ({ id: x.id, name: x.name, aliases: x.aliases, uses: full ? termKeys(x).reduce((n, k) => n + (byKey.get(k) ?? 0), 0) : null, createdAt: x.createdAt }));
+    const unlisted = new Map<string, { value: string; uses: number; shown: boolean }>();
     for (const v of values) {
       const k = vocabKey(v.value);
       if (covered.has(k)) continue;
       const cur = unlisted.get(k);
-      if (cur) cur.uses += v.n;
-      else unlisted.set(k, { value: v.value, uses: v.n });
+      if (cur) { cur.uses += v.n; cur.shown ||= v.readable; } else unlisted.set(k, { value: v.value, uses: v.n, shown: v.readable });
     }
     rows.sort((p, q) => p.name.localeCompare(q.name, ctx.lang, { sensitivity: 'base' }) || p.id - q.id);
-    return { terms: rows, unlisted: [...unlisted.values()].sort((p, q) => q.uses - p.uses || p.value.localeCompare(q.value, ctx.lang)) };
+    const left = [...unlisted.values()].filter((x) => full || x.shown).map((x) => ({ value: x.value, uses: full ? x.uses : null }));
+    return { terms: rows, unlisted: left.sort((p, q) => byUses(p, q) || p.value.localeCompare(q.value, ctx.lang)) };
   };
   const D = s.documents;
   const [source_org, keyword, used] = await Promise.all([
     one('source_org'), one('keyword'),
-    db.select({ typeCode: D.typeCode, value: D.subtype, n: sql<number>`count(*)::int` }).from(D).where(isNotNull(D.subtype)).groupBy(D.typeCode, D.subtype),
+    db.select({ typeCode: D.typeCode, value: D.subtype, n: sql<number>`count(*)::int`, readable: sql<boolean>`bool_or(${readable})` }).from(D).where(isNotNull(D.subtype)).groupBy(D.typeCode, D.subtype),
   ]);
   const subtypes = used.flatMap((x) => {
     const type = ctx.typeByCode.get(x.typeCode);
-    return x.value && type && !canonicalSubtype(type.subtypes, x.value).listed ? [{ typeCode: x.typeCode, value: x.value, uses: Number(x.n) }] : [];
-  }).sort((p, q) => q.uses - p.uses || p.typeCode.localeCompare(q.typeCode) || p.value.localeCompare(q.value, ctx.lang));
+    if (!full && !x.readable) return [];
+    return x.value && type && !canonicalSubtype(type.subtypes, x.value).listed ? [{ typeCode: x.typeCode, value: x.value, uses: full ? Number(x.n) : null }] : [];
+  }).sort((p, q) => byUses(p, q) || p.typeCode.localeCompare(q.typeCode) || p.value.localeCompare(q.value, ctx.lang));
   return { source_org, keyword, subtypes };
 }
 

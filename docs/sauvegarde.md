@@ -43,6 +43,14 @@ efface pas. Dossier en `0700`, archives en `0600` (lisibles par le seul compte q
 chiffrées**. Sur le même disque que la base par défaut : cela protège d'une erreur ou d'une base abîmée, pas de la
 perte du disque. Copier les archives ailleurs (autre disque, autre machine) relève de l'hébergement.
 
+**Chiffrement.** Une archive contient toute la base et tous les fichiers, brouillons et documents confidentiels
+compris, et Codex ne la chiffre pas. Placer `CODEX_BACKUP_DIR`, comme le dossier de données, sur un **volume chiffré**
+(chiffrement de disque de l'hôte ou de l'hébergeur), et chiffrer chaque archive avant de la copier hors de la machine
+(par exemple `age` ou `gpg` vers une clé publique). Les **clés restent hors du serveur** (coffre de clés, module
+matériel ou phrase saisie au démarrage ; jamais dans le dépôt, dans `.env*` ni sur le volume chiffré) et sont
+elles-mêmes sauvegardées : une restauration d'essai (« Tester une restauration ») se fait aussi avec la clé de secours.
+Détail et contexte : `docs/exploitation.md` §9 ; l'outil et le lieu dépendent de l'hébergement (M22, non décidé).
+
 **Rotation.** Après chaque sauvegarde réussie et relue, sont gardées les `CODEX_BACKUP_KEEP` archives les plus
 récentes (7 par défaut) **et** la plus récente de chacun des `CODEX_BACKUP_KEEP` derniers jours (jour UTC) où une
 sauvegarde a été faite, soit au plus le double. Plusieurs sauvegardes faites à la suite le même jour n'écartent donc
@@ -210,6 +218,6 @@ la sauvegarde. Un échec forcé du déplacement des fichiers (`chattr +i`) a lai
 - La mise en place d'une restauration n'est pas atomique : elle déplace des entrées une à une, et un arrêt brutal à ce
   moment (coupure, `kill -9`) laisse un état intermédiaire, sans retour arrière (voir « Dépannage », `.restore-…`).
 - Pas de sauvegarde programmée par défaut (fréquence non décidée) : le planificateur la lance quand
-  `CODEX_SCHEDULE_BACKUP` en donne la fréquence (`docs/exploitation.md` §4) ; toujours
-  pas de chiffrement ni de copie hors site (hébergement non décidé), pas de téléchargement de l'archive depuis
-  l'application, pas de restauration depuis l'application (elle demande le serveur arrêté).
+  `CODEX_SCHEDULE_BACKUP` en donne la fréquence (`docs/exploitation.md` §4) ; toujours pas de chiffrement par Codex
+  (volume à chiffrer, voir « Chiffrement ») ni de copie hors site (hébergement non décidé), pas de téléchargement de
+  l'archive depuis l'application, pas de restauration depuis l'application (elle demande le serveur arrêté).

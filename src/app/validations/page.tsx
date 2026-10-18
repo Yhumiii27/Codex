@@ -145,6 +145,7 @@ export default async function WorkflowPage({ searchParams }: PageProps<'/validat
               <div style={{ fontSize: 13, lineHeight: 1.3 }}>{w.docTitle}</div>
               <div className="text-muted" style={{ fontSize: 11 }}>
                 {w.done ? w.outcomeL ?? t.wf_finished : `${t.step} : ${w.stepName}`} · {t.due} {w.dueF}
+                {w.lateL && <> <span className="tag tag-outline" style={{ fontSize: 10.5, padding: '0 6px', marginLeft: 4 }} title={w.lateTitle ?? undefined}>{w.lateL}</span></>}
               </div>
             </Link>
           ))}
@@ -162,6 +163,7 @@ export default async function WorkflowPage({ searchParams }: PageProps<'/validat
               <span className="tag tag-neutral">{t.revision} {r.letter}</span>
               {doc && <span className="tag tag-neutral">{doc.contextL}</span>}
               <span className="text-muted" style={{ fontSize: 12, marginLeft: 4 }}>{t.due} {r.dueF}</span>
+              {r.lateL && <span className="tag tag-outline" title={r.lateTitle ?? undefined}>{r.lateL}</span>}
               {doc && <Link href={doc.href} className="link-plain nowrap" style={{ fontSize: 12, marginLeft: 'auto' }}>{t.open_record}</Link>}
             </div>
           </div>

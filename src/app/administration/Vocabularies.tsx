@@ -8,9 +8,10 @@ import styles from './admin.module.css';
 
 /**
  * Administration › Vocabulaires (point 59 of docs/reste-a-faire.md): the terms of the source organisations and of the
- * keywords, with the documents that carry them (drafts and confidential ones included: administration only), their
- * other spellings; adding, renaming, merging a duplicate; the values documents carry without a term; the sub-types
- * documents carry outside their type's list, which an administrator may add to it (the list stays open, MET-17).
+ * keywords, with how many documents carry them (drafts and confidential ones included: records managers only,
+ * lib/queries.ts vocabOverview; anyone else sees « — »), their other spellings; adding, renaming, merging a duplicate;
+ * the values documents carry without a term; the sub-types documents carry outside their type's list, which an
+ * administrator may add to it (the list stays open, MET-17).
  */
 export async function Vocabularies({ ctx }: { ctx: Ctx }) {
   const { t, lang } = ctx;
@@ -26,13 +27,13 @@ export async function Vocabularies({ ctx }: { ctx: Ctx }) {
         </div>
         <div className={styles.tableScroll}>
           <table className="table" style={{ fontSize: 13 }}>
-            <thead><tr><th>{t.vocab_term}</th><th>{t.vocab_aliases}</th><th style={{ textAlign: 'right' }}>{t.vocab_uses}</th><th>{t.created}</th><th><span className="sr-only">{t.col_actions}</span></th></tr></thead>
+            <thead><tr><th>{t.vocab_term}</th><th>{t.vocab_aliases}</th><th style={{ textAlign: 'right' }} title={ctx.seesAll ? undefined : t.vocab_uses_hidden}>{t.vocab_uses}</th><th>{t.created}</th><th><span className="sr-only">{t.col_actions}</span></th></tr></thead>
             <tbody>
               {terms.map((x) => (
                 <tr key={x.id}>
                   <td>{x.name}</td>
                   <td className="text-muted">{x.aliases.length ? x.aliases.join(' · ') : '—'}</td>
-                  <td className="tabnum" style={{ textAlign: 'right' }}>{x.uses}</td>
+                  <td className="tabnum" style={{ textAlign: 'right' }}>{x.uses ?? '—'}</td>
                   <td className="text-muted nowrap">{fmtDate(x.createdAt, lang)}</td>
                   <td style={{ textAlign: 'right' }}>
                     <div style={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
@@ -55,7 +56,7 @@ export async function Vocabularies({ ctx }: { ctx: Ctx }) {
             <span className="text-muted">{t.vocab_unlisted}</span>
             {unlisted.map((v) => (
               <span key={v.value} className={`tag tag-neutral ${styles.holder}`}>
-                {v.value} <span className="tabnum" style={{ opacity: 0.7 }}>· {v.uses}</span>
+                {v.value} {v.uses != null && <span className="tabnum" style={{ opacity: 0.7 }}>· {v.uses}</span>}
                 <ActionButton action={addVocabTerm.bind(null, kind, v.value)} className="btn btn-ghost" style={{ fontSize: 11.5, padding: '0 6px' }}>{t.vocab_add_value}</ActionButton>
               </span>
             ))}
@@ -76,13 +77,13 @@ export async function Vocabularies({ ctx }: { ctx: Ctx }) {
         <p className="text-muted" style={{ margin: '0 0 10px', fontSize: 12.5 }}>{t.vocab_subtypes_hint}</p>
         {o.subtypes.length === 0 ? <p className="text-muted" style={{ fontSize: 12.5 }}>{t.vocab_subtypes_none}</p> : (
           <table className="table" style={{ fontSize: 13 }}>
-            <thead><tr><th>{t.type}</th><th>{t.subtype}</th><th style={{ textAlign: 'right' }}>{t.vocab_uses}</th><th><span className="sr-only">{t.col_actions}</span></th></tr></thead>
+            <thead><tr><th>{t.type}</th><th>{t.subtype}</th><th style={{ textAlign: 'right' }} title={ctx.seesAll ? undefined : t.vocab_uses_hidden}>{t.vocab_uses}</th><th><span className="sr-only">{t.col_actions}</span></th></tr></thead>
             <tbody>
               {o.subtypes.map((x) => (
                 <tr key={`${x.typeCode}:${x.value}`}>
                   <td className="nowrap">{x.typeCode} · <span className="text-muted">{ctx.label('type', x.typeCode)}</span></td>
                   <td>{x.value}</td>
-                  <td className="tabnum" style={{ textAlign: 'right' }}>{x.uses}</td>
+                  <td className="tabnum" style={{ textAlign: 'right' }}>{x.uses ?? '—'}</td>
                   <td style={{ textAlign: 'right' }}>
                     <ActionButton action={adoptSubtype.bind(null, x.typeCode, x.value)} className="btn btn-ghost nowrap" style={{ fontSize: 12 }}>{t.subtype_adopt}</ActionButton>
                   </td>
