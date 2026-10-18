@@ -9,6 +9,7 @@ import type { FileRejection } from '@/lib/storage';
 // HMAC signature with CODEX_IMPORT_SECRET (lib/server-auth.ts).
 //   multipart/form-data: part "meta" (JSON, text or file) + optional part "file"
 //   application/json:    the metadata alone, without a file
+//   ?dryRun=1            a simulation: the same checks and answers, nothing stored nor written (200 instead of 201)
 
 /** The largest file, the same for every entry (CODEX_MAX_FILE_MB, lib/filetypes.ts). */
 const maxBytes = () => fileRules(process.env).maxBytes;
@@ -49,12 +50,29 @@ function capped(req: Request, cap: number): { body: Response; over: () => boolea
   return { body: new Response(stream ?? null, { headers: { 'Content-Type': req.headers.get('content-type') ?? '' } }), over: () => over };
 }
 
+/**
+ * The query string: `dryRun` alone, `1`/`true` for a simulation, `0`/`false` (or absent) for the import. Anything else is
+ * refused before the body is read: a misspelt `dryrun=1` must not import for real what was meant to be simulated.
+ */
+function dryRunOf(req: Request): boolean | Response {
+  const params = [...new URL(req.url).searchParams];
+  const other = params.find(([k]) => k !== 'dryRun');
+  if (other) return json({ error: 'invalid_query', param: other[0] }, 400);
+  if (params.length > 1) return json({ error: 'invalid_query', param: 'dryRun' }, 400);
+  const v = params[0]?.[1];
+  if (v == null || v === '0' || v === 'false') return false;
+  if (v === '1' || v === 'true') return true;
+  return json({ error: 'invalid_query', param: 'dryRun' }, 400);
+}
+
 async function handlePost(req: Request) {
   const denied = checkBearer(req, 'import');
   if (denied) return denied;
   // Counted once the token is checked: a client without it cannot spend the budget of the one holding it.
   const limited = limitRequest(req, 'import');
   if (limited) return limited;
+  const dryRun = dryRunOf(req);
+  if (dryRun instanceof Response) return dryRun;
   // The file plus room for the metadata and the multipart framing.
   const cap = maxBytes() + 1024 * 1024;
   if (Number(req.headers.get('content-length') ?? 0) > cap) return tooLarge();
@@ -108,7 +126,7 @@ async function handlePost(req: Request) {
   }
 
   try {
-    const res = await importDocument(meta, file);
+    const res = await importDocument(meta, file, { dryRun });
     switch (res.kind) {
       case 'invalid':
         return json({ error: 'validation', issues: res.issues, warnings: res.warnings }, 400);
@@ -119,6 +137,8 @@ async function handlePost(req: Request) {
         return json({ error: 'ref_is_codex_id', id: res.id }, 409);
       case 'file_rejected':
         return refused(res.rejection);
+      case 'dry_run':
+        return json({ dryRun: true, id: res.id, warnings: res.warnings }, 200);
       case 'created': {
         const href = `/documents/${encodeURIComponent(res.id)}`;
         return json({ id: res.id, revision: res.revision, version: res.version, status: res.revStatus, file: res.file, href, warnings: res.warnings }, 201, { Location: href });

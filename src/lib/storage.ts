@@ -436,19 +436,23 @@ async function journalInfected(origin: UploadOrigin, name: string, size: number,
   }
 }
 
+/** A file that passed the checks of stageFile, described as it would be stored, but not stored (yet). */
+export type CheckedFile = Omit<StagedFile, 'storage' | 'fileKey'>;
+
 /**
- * Uploads a file to the active store under a provisional name. Call before the transaction that records it.
- * Throws FileRejectedError, with nothing stored, for a file of a format or size not admitted (lib/filetypes.ts), one the
- * virus scan finds infected (journaled), or one it could not scan while CODEX_CLAMD_ON_ERROR refuses (lib/antivirus.ts).
+ * The checks of stageFile without the upload: format and size (lib/filetypes.ts), then the virus scan (lib/antivirus.ts).
+ * Throws FileRejectedError as stageFile does. `journal: false` (a simulated import, docs/api.md « Simulation ») leaves an
+ * infected file out of the audit trail: it goes to the technical log only.
  */
-export async function stageFile(buf: Buffer, originalName: string, rawMime: string, origin: UploadOrigin): Promise<StagedFile> {
+export async function checkFile(buf: Buffer, originalName: string, rawMime: string, origin: UploadOrigin, o: { journal?: boolean } = {}): Promise<CheckedFile> {
   // One name for the check, the record and the stored file: the extension checked is the one the file is served with.
   const name = cleanFileName(originalName);
   const issue = fileIssue(name, buf.length, buf, fileRules(process.env));
   if (issue) throw new FileRejectedError(issue);
   const scan = await scanFile(buf, name);
   if (scan.kind === 'infected') {
-    await journalInfected(origin, name, buf.length, scan.threat);
+    if (o.journal === false) log.warn('infected file refused, not journaled (dry run)', { entry: origin.entry, ref: origin.ref, file: name, size: buf.length, threat: scan.threat });
+    else await journalInfected(origin, name, buf.length, scan.threat);
     throw new FileRejectedError({ code: 'infected', threat: scan.threat });
   }
   if (scan.kind === 'failed') throw new FileRejectedError({ code: 'scan_failed' });
@@ -458,10 +462,19 @@ export async function stageFile(buf: Buffer, originalName: string, rawMime: stri
   const mime = normalizeMime(extensionOf(name) ? rawMime : '', name, buf);
   const ext = storedExt(name, mime);
   // Fingerprint of the bytes as received, before they reach the store: what is stored is compared with it afterwards.
-  const sha256 = sha256Of(buf);
+  return { fileName: name, mime, size: buf.length, pages: countPdfPages(buf, mime), sha256: sha256Of(buf), ext };
+}
+
+/**
+ * Uploads a file to the active store under a provisional name. Call before the transaction that records it.
+ * Throws FileRejectedError, with nothing stored, for a file of a format or size not admitted (lib/filetypes.ts), one the
+ * virus scan finds infected (journaled), or one it could not scan while CODEX_CLAMD_ON_ERROR refuses (lib/antivirus.ts).
+ */
+export async function stageFile(buf: Buffer, originalName: string, rawMime: string, origin: UploadOrigin): Promise<StagedFile> {
+  const checked = await checkFile(buf, originalName, rawMime, origin);
   const st = store();
-  const fileKey = await st.put(buf, `upload${ext}`);
-  return { storage: st.name, fileKey, fileName: name, mime, size: buf.length, pages: countPdfPages(buf, mime), sha256, ext };
+  const fileKey = await st.put(buf, `upload${checked.ext}`);
+  return { ...checked, storage: st.name, fileKey };
 }
 
 /** SHA-256 of bytes, 64 lowercase hex: the form working_versions.sha256 keeps. */

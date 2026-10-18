@@ -10,7 +10,7 @@ import { ATTACHMENTS, CONF_LEVELS, DICT, ORIGINS } from './i18n';
 import { audit, refreshHeadline, type Tx } from './lifecycle';
 import { logger } from './log';
 import { sameFiles } from './queries';
-import { discardFile, FileRejectedError, fileColumns, nameStoredFile, stageFile, type FileRejection, type StagedFile } from './storage';
+import { checkFile, discardFile, FileRejectedError, fileColumns, nameStoredFile, stageFile, type CheckedFile, type FileRejection, type StagedFile } from './storage';
 import { addTerms, loadTerms, readTerms } from './vocab';
 import { canonicalSubtype, cleanTerm, docLang, VOCAB_MAX } from './vocab-rules';
 
@@ -293,6 +293,8 @@ export type ImportFile = { buf: Buffer; name: string; mime: string };
 
 export type ImportResult =
   | { kind: 'created'; id: string; revision: string; version: string | null; revStatus: RevStatus; file: boolean; warnings: Issue[] }
+  /** A simulation (`dryRun`) that would have created the document `id`: nothing was stored nor written. */
+  | { kind: 'dry_run'; id: string; warnings: Issue[] }
   | { kind: 'invalid'; issues: Issue[]; warnings: Issue[] }
   /** The legacy reference was already imported: the document it became. */
   | { kind: 'duplicate'; id: string }
@@ -341,12 +343,25 @@ async function importId(tx: Tx, v: ImportInput): Promise<string> {
   return nextDocId(tx, v);
 }
 
+/** Thrown to roll the transaction of a simulated import back with what it would have answered (as lib/transfer.ts). */
+class DryRun extends Error {
+  constructor(readonly result: ImportResult) {
+    super('dry run');
+  }
+}
+
 /**
  * Creates one migrated document: ID TYPE-CONTEXTE-SEQ, the legacy reference recorded (legacy_ref) and kept as an alias,
  * its revision (in force, approved with a future effective date, or in draft) and working version n°1 carrying the
  * file, stored as {ID}_{letter}.{ext} ({ID}_{letter}.1.{ext} for a draft).
+ *
+ * `dryRun` (POST /api/import?dryRun=1, docs/api.md « Simulation »): the same checks, file included (format, size, virus
+ * scan), and the same transaction, rolled back once it has computed the ID and the warnings: no file stored, no row
+ * written (document, counters, vocabularies, audit trail), an infected file not journaled. The ID given is the one a
+ * real import would get if nothing changes in between.
  */
-export async function importDocument(raw: unknown, file: ImportFile | null): Promise<ImportResult> {
+export async function importDocument(raw: unknown, file: ImportFile | null, o: { dryRun?: boolean } = {}): Promise<ImportResult> {
+  const dryRun = !!o.dryRun;
   const db = await getDb();
   // A replay answers 409 whatever the register has become since the first run (a type deactivated meanwhile…).
   const ref = legacyRefOf(raw);
@@ -364,18 +379,22 @@ export async function importDocument(raw: unknown, file: ImportFile | null): Pro
   const modifiedAt = [v.modifiedAt ?? (revStatus === 'in_force' ? inForceAt! : today), createdAt].sort().at(-1)!;
   const label = revStatus === 'draft' ? `${v.letter}.1` : v.letter;
 
-  // The file goes to the store before the transaction (an upload never holds the database), then gets its name.
+  // The file goes to the store before the transaction (an upload never holds the database), then gets its name. A
+  // simulation checks it the same way and stores nothing.
   let staged: StagedFile | null = null;
+  let checked: CheckedFile | null = null;
   if (file) {
+    const origin = { userId: IMPORT_ACTOR, entry: 'import', ref: v.legacyRef } as const;
     try {
-      staged = await stageFile(file.buf, file.name, file.mime, { userId: IMPORT_ACTOR, entry: 'import', ref: v.legacyRef });
+      if (dryRun) checked = await checkFile(file.buf, file.name, file.mime, origin, { journal: false });
+      else checked = staged = await stageFile(file.buf, file.name, file.mime, origin);
     } catch (err) {
       if (err instanceof FileRejectedError) return { kind: 'file_rejected', rejection: err.rejection };
       throw err;
     }
     // Not blocking: the same file may rightly be filed twice (a form attached to two projects).
     try {
-      const same = await sameFiles(IMPORT_VIEWER, staged.sha256);
+      const same = await sameFiles(IMPORT_VIEWER, checked!.sha256);
       if (same.length) {
         const docs = same.map((x) => `${x.docId} ${x.label}`).join(', ');
         warnings.push({ field: 'file', code: 'duplicate_file', message: MESSAGES.duplicate_file.replace('{docs}', docs) });
@@ -396,6 +415,8 @@ export async function importDocument(raw: unknown, file: ImportFile | null): Pro
       await reserveDocId(tx, v.legacyRef);
       // Checked again inside the transaction: a concurrent import of the same reference has committed by now.
       const existing = await findByRef(tx, v.legacyRef);
+      // A simulation rolls back the reservation above too.
+      if (existing && dryRun) throw new DryRun(existing);
       if (existing) return existing;
       const id = await importId(tx, v);
       // Unknown terms are added (controlled addition, journaled under the import), never refused: the existing ones
@@ -429,7 +450,7 @@ export async function importDocument(raw: unknown, file: ImportFile | null): Pro
     const stored = staged;
     // A revision that has been approved is represented by its last working version, even without a file (as in the seed);
     // a draft without a file waits for its first working version, as after createDocument.
-    const withVersion = !!stored || revStatus !== 'draft';
+    const withVersion = !!checked || revStatus !== 'draft';
     if (withVersion) {
       await tx.insert(s.workingVersions).values({
         revisionId: rev.id, docId: id, n: 1, authorId: v.authorId ?? v.ownerId, date: revStatus === 'in_force' ? inForceAt! : modifiedAt,
@@ -443,9 +464,17 @@ export async function importDocument(raw: unknown, file: ImportFile | null): Pro
       ...(stored ? { sha256: stored.sha256 } : {}),
       text: { code: 'import', params: { ref: v.legacyRef, label: withVersion ? label : v.letter, ...(stored ? { size: stored.size } : {}) } },
     });
-    return { kind: 'created', id, revision: v.letter, version: withVersion ? `${v.letter}.1` : null, revStatus, file: !!stored, warnings };
+    const created: ImportResult = { kind: 'created', id, revision: v.letter, version: withVersion ? `${v.letter}.1` : null, revStatus, file: !!checked, warnings };
+    // A simulation stops here: everything written above is rolled back.
+    if (dryRun) throw new DryRun(created);
+    return created;
     });
   } catch (err) {
+    if (err instanceof DryRun) {
+      const r = err.result;
+      logger('import').info('import simulated (dry run), nothing written', { ref: v.legacyRef, result: r.kind === 'created' ? r.id : r.kind });
+      return r.kind === 'created' ? { kind: 'dry_run', id: r.id, warnings: r.warnings } : r;
+    }
     await discardFile(staged);
     throw err;
   }

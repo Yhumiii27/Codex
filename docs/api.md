@@ -409,12 +409,47 @@ Un export complet de Codex (`docs/export.md`) donne, dans `import/documents.json
 fichier à envoyer avec lui : un autre Codex peut ainsi reprendre ses documents par ce point d'entrée, une révision par
 document, en gardant leurs identifiants quand ils sont libres.
 
+### Simulation (`?dryRun=1`)
+
+`POST /api/import?dryRun=1` (ou `?dryRun=true`) fait **tous** les contrôles de l'import sans rien enregistrer :
+authentification (jeton, signature), limite de débit, corps et taille, fichier (nom, format, contenu, taille, analyse
+antivirus si `CODEX_CLAMD` est défini), métadonnées et règles du registre, rejeu (`legacyRef` déjà importée ou
+identifiant Codex), identifiant attribué et avertissements. Elle sert à l'outil de migration à vérifier un lot avant de
+l'envoyer pour de bon.
+
+- **Réponse** : **200** `{"dryRun":true,"id":"<ID prévu>","warnings":[…]}` ; les refus sont ceux de l'import, avec les
+  mêmes codes et les mêmes corps (400, 401, 409, 413, 415, 422, 429, 503, 500). Les avertissements sont ceux que
+  l'import donnerait : `term_added` annonce le terme qui **serait** ajouté au vocabulaire, `duplicate_file` le document
+  dont le fichier en vigueur est identique.
+- **Rien n'est écrit** : le fichier est contrôlé en mémoire et n'est pas déposé dans le stockage ; l'import est exécuté
+  dans une transaction annulée à la fin (comme la simulation de reprise de l'Administration, `src/lib/transfer.ts`) :
+  ni document, ni révision, ni version, ni compteur d'identifiants, ni terme de vocabulaire, ni entrée au journal
+  d'audit. Un fichier infecté reçoit le même **422** `file_infected`, mais n'est **pas** journalisé (seulement au
+  journal technique, `infected file refused, not journaled (dry run)`). Le journal technique note la simulation
+  (`import simulated (dry run), nothing written`, avec la `legacyRef` et l'identifiant prévu). Seules traces en base :
+  la mémoire anti-rejeu d'une requête signée (table `integration_signatures`, comme pour toute requête signée) et
+  l'avance des séquences de clés internes de PostgreSQL, sans effet visible.
+- **Identifiant prévu** : c'est celui que l'import donnera si rien ne change entre-temps. Il n'est **pas réservé** : un
+  document créé dans Codex ou un autre import du même type et du même contexte peut le prendre, et l'import reçoit
+  alors le numéro suivant. Le `201` de l'import fait foi.
+- **Mêmes contrats** : aucun champ de plus n'est accepté (ni état, ni gel juridique, ni approbation d'origine, ni
+  plusieurs révisions : points 99 et 106 de [reste-a-faire.md](reste-a-faire.md)), mêmes limites de taille et de
+  débit (une simulation compte comme un import), mêmes jetons.
+- **Paramètres** : `dryRun` est le seul paramètre admis, avec les valeurs `1`, `true` (simulation), `0`, `false`
+  (import, comme sans paramètre). Tout autre paramètre ou valeur (`?dryrun=1`, `?dryRun=yes`, `dryRun` répété) est
+  refusé, avant la lecture du corps, par **400** `{"error":"invalid_query","param":"<nom>"}` : une faute de frappe ne
+  doit pas importer pour de bon ce qui devait être simulé.
+- **Signature** : elle couvre l'horodatage et le corps, **pas** l'adresse ni le paramètre `dryRun`. Une requête signée
+  n'étant acceptée qu'une fois (anti-rejeu), la même requête renvoyée sans `?dryRun=1` est refusée (`401`
+  `signature_replayed`) : l'import qui suit une simulation est signé à nouveau, avec un nouvel horodatage.
+
 ### Réponses
 
 | Code | Corps |
 |---|---|
 | **201** | `{"id","revision","version","status","file","href","warnings"}` + en-tête `Location: /documents/<id>` |
-| **400** | `{"error":"validation","issues":[{field,code,message}],"warnings":[…]}` ; ou `invalid_json`, `meta_required`, `invalid_body`, `file_not_a_file` |
+| **200** | `{"dryRun":true,"id","warnings"}` : simulation (`?dryRun=1`), rien n'est enregistré ; voir « Simulation » |
+| **400** | `{"error":"validation","issues":[{field,code,message}],"warnings":[…]}` ; ou `invalid_json`, `meta_required`, `invalid_body`, `file_not_a_file` ; ou `{"error":"invalid_query","param"}` : paramètre d'adresse autre que `dryRun`, ou valeur de `dryRun` non admise |
 | **401** / **503** | jeton absent ou faux, signature absente, fausse, hors fenêtre ou déjà reçue (`reason`, voir « Authentification ») / import désactivé |
 | **409** | `{"error":"duplicate","id":"<ID existant>"}` : `legacyRef` déjà importée ; `id` est l'identifiant actuel du document repris, même s'il a été reclassé depuis. Vérifié avant la validation : un document déjà repris répond 409 même si le registre a changé depuis (type désactivé…). |
 | **409** | `{"error":"ref_is_codex_id","id":"<ID>"}` : `legacyRef` est l'identifiant Codex, actuel ou ancien (gardé en alias après un reclassement), d'**un autre** document, qui n'a pas été importé depuis elle ; `id` est l'identifiant actuel de ce document. Ce n'est pas un rejeu : l'outil ne doit pas enregistrer cette correspondance. |
@@ -466,6 +501,13 @@ curl -s -X POST "$CODEX/api/import" \
   -H "Authorization: Bearer $CODEX_IMPORT_TOKEN" -H 'Content-Type: application/json' \
   -d '{"legacyRef":"Q-12","title":"Procédure achats","typeCode":"PRO","department":"ACH","ownerId":"gcomte","status":"draft"}'
 # → 201 {"id":"PRO-ACH-0001","revision":"A","version":null,"status":"draft",…}
+
+# Simulation du même plan : identifiant prévu et avertissements, rien n'est enregistré
+curl -s -X POST "$CODEX/api/import?dryRun=1" \
+  -H "Authorization: Bearer $CODEX_IMPORT_TOKEN" \
+  -F 'meta=@./export/GED1-PID-0042.json;type=application/json' \
+  -F 'file=@./export/GED1-PID-0042_C.pdf;type=application/pdf'
+# → 200 {"dryRun":true,"id":"PID-HLT-026-002","warnings":[]}
 
 # Erreur de validation
 curl -s -X POST "$CODEX/api/import" \
