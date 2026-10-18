@@ -4,7 +4,7 @@ import { Forbidden } from '@/components/ui/Forbidden';
 import { Icon } from '@/components/ui/Icon';
 import { Seg } from '@/components/ui/Seg';
 import { ActionButton, DialogButton } from '@/components/ui/client';
-import { mayBackUp, mayCheckIntegrity, mayCleanStorage, mayExportAll, mayLinkTemplate } from '@/lib/access';
+import { mayBackUp, mayCheckIntegrity, mayCleanStorage, mayExportAll, mayLinkTemplate, mayTransferHoldings } from '@/lib/access';
 import { backUpData, checkFileIntegrity, purgeOrphanFiles, removeFunctionHolder, togglePermission } from '@/lib/actions';
 import { antivirusStatus } from '@/lib/antivirus';
 import { backupList, backupSettings } from '@/lib/backup';
@@ -21,13 +21,15 @@ import { inUse } from '@/lib/org-rules';
 import { DEPARTMENT_HEAD_FUNCTION } from '@/lib/registry-rules';
 import { FACET_LABEL, oneEach } from '@/lib/search';
 import { AddValue } from './AddValue';
+import { Transfer } from './Transfer';
+import { Vocabularies } from './Vocabularies';
 import { FamilyFilter } from './FamilyFilter';
 import { countBy, typeSpec } from './shared';
 import styles from './admin.module.css';
 
-const TABS = ['registry', 'functions', 'roles', 'org', 'templates', 'audit'] as const;
+const TABS = ['registry', 'functions', 'roles', 'org', 'vocab', 'transfer', 'templates', 'audit'] as const;
 type Tab = (typeof TABS)[number];
-const TAB_LABEL: Record<Tab, TKey> = { registry: 'registry', functions: 'functions_tab', roles: 'ad_roles', org: 'organisation', templates: 'templates_qms', audit: 'ad_audit' };
+const TAB_LABEL: Record<Tab, TKey> = { registry: 'registry', functions: 'functions_tab', roles: 'ad_roles', org: 'organisation', vocab: 'tab_vocab', transfer: 'tab_transfer', templates: 'templates_qms', audit: 'ad_audit' };
 
 const sub = { fontSize: 11 } as const;
 
@@ -49,7 +51,8 @@ export default async function AdminPage({ searchParams }: PageProps<'/administra
           value={tab}
           style={{ flex: 'none' }}
           optStyle={{ padding: '6px 12px', fontSize: 12.5 }}
-          options={TABS.map((k) => ({ key: k, label: t[TAB_LABEL[k]], href: `/administration${k === 'registry' ? '' : `?tab=${k}`}` }))}
+          // The handover is for records managers only (access.ts mayTransferHoldings): the tab is not shown to others.
+          options={TABS.filter((k) => k !== 'transfer' || mayTransferHoldings(ctx)).map((k) => ({ key: k, label: t[TAB_LABEL[k]], href: `/administration${k === 'registry' ? '' : `?tab=${k}`}` }))}
         />
         <span style={{ flex: 1 }} />
         {tab === 'registry' && (
@@ -81,6 +84,8 @@ export default async function AdminPage({ searchParams }: PageProps<'/administra
         {tab === 'functions' && <Functions ctx={ctx} />}
         {tab === 'roles' && <Roles ctx={ctx} />}
         {tab === 'org' && <Organisation ctx={ctx} />}
+        {tab === 'vocab' && <Vocabularies ctx={ctx} />}
+        {tab === 'transfer' && <Transfer ctx={ctx} person={sp.person ?? ''} replacement={sp.replacement ?? ''} />}
         {tab === 'templates' && <Templates ctx={ctx} />}
         {tab === 'audit' && <Audit ctx={ctx} sp={sp} />}
       </div>

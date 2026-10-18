@@ -6,6 +6,7 @@ import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
 import { afterAll, describe, expect, it } from 'vitest';
 import { openDb, schema, type SqlClient } from '@/db';
 import type { SqlQueryable } from '@/db/sql-client';
+import { vocabKey } from '@/lib/vocab-rules';
 
 // Versioned migrations (point 41 of docs/reste-a-faire.md, src/db/migrations.ts):
 // - every change of src/db/schema.ts has its migration: the schema equals the last snapshot of drizzle/meta;
@@ -60,6 +61,44 @@ describe('migrations', () => {
     const [a, b] = await Promise.all([structure(migrated.$client), structure(direct)]);
     expect(a.columns.length).toBeGreaterThan(100);
     expect(a).toEqual(b);
+  }, 60_000);
+
+  it('take up the existing source organisations, keywords and languages into the vocabularies (0003_vocabulaires)', async () => {
+    const pg = new PGlite({ extensions: { pg_trgm } });
+    opened.push(pg);
+    await pg.exec('create extension if not exists pg_trgm');
+    const run = async (file: string) => {
+      for (const st of (await readFile(path.join('drizzle', file), 'utf8')).split('--> statement-breakpoint')) if (st.trim()) await pg.exec(st);
+    };
+    for (const f of ['0000_init.sql', '0001_planificateur_signatures.sql', '0002_apercu_office.sql']) await run(f);
+    // Documents as a database of 17 October left them (foreign keys aside: only these columns matter here).
+    await pg.transaction(async (tx) => {
+      await tx.exec('set local session_replication_role = replica');
+      const q = (id: string, org: string | null, keywords: string[], lang: string | null, created: string) => tx.query(
+        `insert into documents (id, title, origin, attachment, family, type_code, department, owner_id, conf, keywords, lang, status, retention_trigger, retention_disposition, created_at, modified_at, source_org)
+         values ($1, $1, 'externe', 'none', 'f', 'COR', 'QUA', 'u', 'interne', $2, $3, 'in_force', 'creation', 'destroy', $4, $4, $5)`,
+        [id, JSON.stringify(keywords), lang, created, org],
+      );
+      await q('D1', 'Siemens', ['Sécurité', 'levage'], 'fr', '2026-01-03');
+      await q('D2', 'Siemens', ['SECURITE'], 'FR', '2026-01-01');
+      await q('D3', ' SIEMENS\u00a0 ', [' levage '], ' en', '2026-01-02');
+      await q('D4', 'Électricité de France', [], 'de', '2026-02-01');
+      await q('D5', null, [], null, '2026-02-02');
+    });
+    await run('0003_vocabulaires.sql');
+    const rows = async (table: string) => (await pg.query<{ name: string; key: string; created_at: string }>(`select name, key, created_at::text from ${table} order by key`)).rows;
+    expect(await rows('source_orgs')).toEqual([
+      { name: 'Électricité de France', key: 'electricite de france', created_at: '2026-02-01' },
+      { name: 'Siemens', key: 'siemens', created_at: '2026-01-01' },
+    ]);
+    expect(await rows('keyword_terms')).toEqual([
+      { name: 'levage', key: 'levage', created_at: '2026-01-02' },
+      { name: 'SECURITE', key: 'securite', created_at: '2026-01-01' },
+    ]);
+    // The database folds as lib/vocab-rules.ts vocabKey does.
+    for (const r of [...(await rows('source_orgs')), ...(await rows('keyword_terms'))]) expect(r.key).toBe(vocabKey(r.name));
+    // Languages: fr and en whatever their case and blanks; another value is left for its next edit to correct.
+    expect((await pg.query<{ id: string; lang: string | null }>(`select id, lang from documents order by id`)).rows.map((r) => r.lang)).toEqual(['fr', 'fr', 'en', 'de', null]);
   }, 60_000);
 
   it('refuse a database made by another schema, and leave it as it was', async () => {

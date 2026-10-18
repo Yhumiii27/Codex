@@ -21,7 +21,7 @@ import { mkdir, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { sql } from 'drizzle-orm';
 import { openDb, schema as s, type Db } from '../src/db';
-import { seed } from '../src/db/seed';
+import { seed, seedVocabularies } from '../src/db/seed';
 import { redactUrl } from '../src/db/sql-client';
 import { BackupError, lockForCommand, unlock } from '../src/lib/backup-core.mjs';
 import { formatId, lettersUpTo, contextOf, type IdInput } from '../src/lib/codes';
@@ -291,6 +291,8 @@ async function main() {
       process.stdout.write(`\r${counts.documents} / ${a.docs} documents`);
     }
     process.stdout.write('\n');
+    // Terms of the controlled vocabularies for the keywords and organisations drawn (lib/vocab.ts), as the seed does.
+    await db.transaction((tx) => seedVocabularies(tx));
     await db.$client.exec('analyze');
     const secs = ((performance.now() - started) / 1000).toFixed(1);
     console.log(`Écrit en ${secs} s : ${counts.documents} documents, ${counts.revisions} révisions, ${counts.workingVersions} versions de travail, ${counts.workflows} circuits (${counts.steps} étapes, ${counts.comments} commentaires), ${counts.readers} lecteurs nommés, ${counts.audit} entrées de journal ; ${newPeople.length} personnes ajoutées.`);

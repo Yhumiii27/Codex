@@ -243,6 +243,25 @@ export async function openRevision(tx: Tx, docId: string, opts: { modifierId?: s
   return rev;
 }
 
+/**
+ * People who never approve a revision (docs/modele-cible.md §6): whoever requested the validation, its designated
+ * author, the authors of its working versions, and the owner when nobody was designated to write it.
+ */
+export async function circuitExclusions(tx: Tx, d: Pick<DocRow, 'ownerId'>, rev: Pick<RevRow, 'id' | 'modifierId'>, requesterId: string): Promise<Set<string>> {
+  const versions = await tx.select({ authorId: s.workingVersions.authorId }).from(s.workingVersions).where(eq(s.workingVersions.revisionId, rev.id));
+  return new Set([requesterId, rev.modifierId ?? d.ownerId, ...versions.map((v) => v.authorId)]);
+}
+
+/** Who may approve with their default role (its row of the matrix), whatever role they simulate right now. */
+export async function approverCheck(tx: Tx, users: ReadonlyMap<string, Pick<UserRow, 'role' | 'isSystem'>>): Promise<(userId: string) => boolean> {
+  const rows = await tx.select().from(s.rolePermissions).where(and(eq(s.rolePermissions.perm, 'approve'), eq(s.rolePermissions.granted, true)));
+  const roles = new Set(rows.map((r) => r.role));
+  return (id) => {
+    const u = users.get(id);
+    return !!u && !u.isSystem && roles.has(MATRIX_ROLE[u.role as SimRole]);
+  };
+}
+
 /** Permissions a person holds with their default role (not the simulated one). */
 export async function defaultPerms(tx: Tx, role: string): Promise<Set<Perm>> {
   const row = MATRIX_ROLE[role as SimRole];

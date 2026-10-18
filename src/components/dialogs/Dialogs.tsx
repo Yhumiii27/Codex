@@ -7,7 +7,7 @@ import { Seg } from '@/components/ui/Seg';
 import type { Attachment, Conf, LinkRel, Origin } from '@/db/schema';
 import {
   addDocLink, addFunctionHolder, addOrgValue, addWorkingVersion, createDocument, createFamily, createFunction, createProgram, createType, decideStep,
-  delegateStep, deleteFamily, deleteFunction, deleteOrgValue, deleteProgram, deleteType, graftChange, recallValidation, recordReview, requestChange, requestValidation,
+  addVocabTerm, delegateStep, deleteFamily, mergeVocabTerms, reassignStep, renameVocabTerm, deleteFunction, deleteOrgValue, deleteProgram, deleteType, graftChange, recallValidation, recordReview, requestChange, requestValidation,
   saveSearch, setDepartmentFeatured, setReaders, setRetentionClass, setRetentionEvent, setTemplateTypes, simulateUser, simulateVigieDecision, updateFamily, updateFunction, updateMeta, updateOrgValue, updateProgram, updateType,
 } from '@/lib/actions';
 import { contextOf, idMatches, seqWidth, TEMPLATE_TYPE } from '@/lib/codes';
@@ -23,6 +23,8 @@ import { FACET_LABEL, type FacetKey } from '@/lib/search';
 import { FilePicker, Modal, Select, useSubmit, type SelectOption } from './Modal';
 import type { DialogData, DialogSpec, MetaDoc, TypeSettings, VersionLite } from './types';
 import cmp from './compare.module.css';
+import voc from './vocab.module.css';
+import { cleanTerm, findTerm, similarTerms, vocabKey } from '@/lib/vocab-rules';
 
 export function Dialogs({ spec }: { spec: DialogSpec }) {
   switch (spec.kind) {
@@ -35,6 +37,9 @@ export function Dialogs({ spec }: { spec: DialogSpec }) {
     case 'change': return <ChangeRequest docId={spec.docId} title={spec.title} change={spec.change} openRev={spec.openRev} replacements={spec.replacements} />;
     case 'link': return <LinkDocument spec={spec} />;
     case 'delegate': return <Delegate workflowId={spec.workflowId} stepName={spec.stepName} step={spec.step} excluded={spec.excluded} />;
+    case 'reassign': return <Delegate workflowId={spec.workflowId} stepName={spec.stepName} step={spec.step} excluded={spec.excluded} holder={{ id: spec.holder, name: spec.holderName }} />;
+    case 'vocabTerm': return <VocabTerm spec={spec} />;
+    case 'vocabMerge': return <VocabMerge spec={spec} />;
     case 'reject': case 'recall': return <CloseWorkflow spec={spec} />;
     case 'compare': return <Compare docId={spec.docId} current={spec.current} other={spec.other} />;
     case 'readers': return <Readers docId={spec.docId} readers={spec.readers} version={spec.version} />;
@@ -248,8 +253,9 @@ function DocFields({ types, st, set, doc, preset, withOwner, locked, lockType, f
           </Field>
         </>
       )}
-      <Field label={t.subtype} hint={type?.subtypes.length ? t.subtype_hint : undefined}>
-        {(id) => <><input id={id} className="input" name="subtype" list="codex-subtypes" value={st.subtype} onChange={(e) => set({ subtype: e.target.value })} autoComplete="off" />
+      {/* The list of a type stays open (MET-17): a value outside it is kept, and offered to the register's administrators. */}
+      <Field label={t.subtype} hint={st.subtype.trim() && type && !type.subtypes.some((x) => vocabKey(x) === vocabKey(st.subtype)) ? t.subtype_unlisted_hint : type?.subtypes.length ? t.subtype_hint : undefined} error={errorOf('subtype')}>
+        {(id) => <><input id={id} className="input" name="subtype" list="codex-subtypes" value={st.subtype} onChange={(e) => set({ subtype: e.target.value })} autoComplete="off" maxLength={200} />
           <datalist id="codex-subtypes">{type?.subtypes.map((x) => <option key={x} value={x} />)}</datalist></>}
       </Field>
       {/* An inactive department or site is offered only to a document that already has it (lib/org-rules.ts). */}
@@ -262,11 +268,10 @@ function DocFields({ types, st, set, doc, preset, withOwner, locked, lockType, f
       <Field label={t.conf} hint={confHint}>
         {(id) => <Select id={id} name="conf" value={st.conf} onChange={(v) => set({ conf: v as Conf, confTouched: true })} options={(type?.confAllowed ?? []).map((c) => ({ key: c, label: t[`conf_${c}`] }))} required />}
       </Field>
-      <Field label={t.keywords} hint={t.keywords_hint}>
-        {(id) => <input id={id} className="input" name="keywords" defaultValue={doc?.keywords.join(', ') ?? ''} />}
-      </Field>
-      <Field label={t.language}>
-        {(id) => <Select id={id} name="lang" defaultValue={doc ? doc.lang ?? '' : lang} options={[{ key: 'fr', label: t.lang_fr }, { key: 'en', label: t.lang_en }]} empty="—" />}
+      <KeywordsField initial={doc?.keywords ?? []} error={errorOf('keywords')} />
+      <Field label={t.language} error={errorOf('lang')}>
+        {/* fr, en or none (lib/actions.ts validateFields); another value a record already has stays offered to it. */}
+        {(id) => <Select id={id} name="lang" defaultValue={doc ? doc.lang ?? '' : lang} options={[{ key: 'fr', label: t.lang_fr }, { key: 'en', label: t.lang_en }, ...(doc?.lang && doc.lang !== 'fr' && doc.lang !== 'en' ? [{ key: doc.lang, label: doc.lang }] : [])]} empty="—" />}
       </Field>
       {/* Without a date, entry into force sets one from the type's periodicity (lib/lifecycle.ts putInForce, lib/review.ts reviewDueHint). */}
       <Field label={t.review_due_at} error={errorOf('reviewDueAt')} hint={reviewHint ? t[reviewHint].replace('{n}', String(type?.reviewMonths)) : undefined}>
@@ -286,9 +291,7 @@ function DocFields({ types, st, set, doc, preset, withOwner, locked, lockType, f
       {st.origin === 'externe' && (
         <>
           <GridSection>{t.ctx_externe}</GridSection>
-          <Field label={t.source_org}>
-            {(id) => <input id={id} className="input" name="sourceOrg" defaultValue={doc?.sourceOrg ?? ''} required />}
-          </Field>
+          <SourceOrgField initial={doc?.sourceOrg ?? ''} error={errorOf('sourceOrg')} />
           <Field label={t.external_ref}>
             {(id) => <input id={id} className="input" name="externalRef" defaultValue={doc?.externalRef ?? ''} />}
           </Field>
@@ -335,6 +338,107 @@ function DocFields({ types, st, set, doc, preset, withOwner, locked, lockType, f
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * Terms the user is offered (DialogData `vocab`, lib/queries.ts vocabSuggestions) as rules read them: a value they stand
+ * for takes their spelling, any other is a new term the user confirms (lib/actions.ts readVocab).
+ */
+const asTerms = (names: string[]) => names.map((name) => ({ name }));
+
+/** A new term: the box that confirms its addition to the vocabulary, required to send the form, and the close terms. */
+function NewTerm({ value, terms, onPick }: { value: string; terms: { name: string }[]; onPick: (name: string) => void }) {
+  const { t } = useApp();
+  const near = similarTerms(terms, value);
+  return (
+    <div className={voc.confirm}>
+      {near.length > 0 && (
+        <div className={voc.similar}>
+          <span>{t.vocab_did_you_mean}</span>
+          {near.map((x) => <button key={x.name} type="button" className={voc.similarBtn} onClick={() => onPick(x.name)}>{x.name}</button>)}
+        </div>
+      )}
+      <label><input type="checkbox" name="confirmTerm" value={value} required />{t.vocab_confirm_add.replace('{term}', value)}</label>
+    </div>
+  );
+}
+
+/**
+ * Source organisation of an external document (MET-07, G40): picked from the vocabulary, or a new term whose addition the
+ * user confirms; a value that folds to a term's spelling (« SIEMENS ») is written as the term (« Siemens »).
+ */
+function SourceOrgField({ initial, error }: { initial: string; error: string | null }) {
+  const { t, data } = useApp();
+  const [value, setValue] = useState(initial);
+  const terms = asTerms(data.vocab.sourceOrgs);
+  const clean = cleanTerm(value);
+  // A value the record already has is not new (lib/actions.ts readVocab), even when the user is not offered it.
+  const isNew = !!clean && !findTerm(terms, clean) && vocabKey(clean) !== vocabKey(initial);
+  return (
+    <Field label={t.source_org} error={error}>
+      {(id) => (
+        <>
+          <input id={id} className="input" name="sourceOrg" list="codex-orgs" value={value} onChange={(e) => setValue(e.target.value)} autoComplete="off" required maxLength={300} aria-invalid={error ? true : undefined} />
+          <datalist id="codex-orgs">{data.vocab.sourceOrgs.map((x) => <option key={x} value={x} />)}</datalist>
+          {isNew && <NewTerm value={clean} terms={terms} onPick={setValue} />}
+        </>
+      )}
+    </Field>
+  );
+}
+
+/**
+ * Keywords (MET-07, G32): several values, each picked from the vocabulary or a new term whose addition the user confirms.
+ * Enter or a comma adds what is typed; sent as one list (`keywords`, comma-separated, as lib/actions.ts readFields reads it).
+ */
+function KeywordsField({ initial, error }: { initial: string[]; error: string | null }) {
+  const { t, data } = useApp();
+  const [list, setList] = useState(initial);
+  const [entry, setEntry] = useState('');
+  const terms = asTerms(data.vocab.keywords);
+  const known = (k: string) => !!findTerm(terms, k) || initial.some((x) => vocabKey(x) === vocabKey(k));
+  const add = (raw: string) => {
+    const parts = raw.split(',').map(cleanTerm).filter(Boolean);
+    if (!parts.length) return;
+    setList((xs) => {
+      const out = [...xs];
+      for (const p of parts) {
+        const name = findTerm(terms, p)?.name ?? p;
+        if (!out.some((x) => vocabKey(x) === vocabKey(name))) out.push(name);
+      }
+      return out;
+    });
+    setEntry('');
+  };
+  const replace = (from: string, to: string) => setList((xs) => (xs.some((x) => vocabKey(x) === vocabKey(to)) ? xs.filter((x) => x !== from) : xs.map((x) => (x === from ? to : x))));
+  const fresh = list.filter((k) => !known(k));
+  return (
+    <Field label={t.keywords} hint={t.keywords_pick_hint} error={error}>
+      {(id) => (
+        <>
+          <input type="hidden" name="keywords" value={list.join(', ')} />
+          <div className={`input ${voc.chips}`} aria-invalid={error ? true : undefined}>
+            {list.map((k) => (
+              <span key={k} className={`tag tag-neutral ${voc.chip} ${known(k) ? '' : voc.chipNew}`}>
+                {k}{!known(k) && <small>{t.vocab_new_term}</small>}
+                <button type="button" className={voc.chipRemove} onClick={() => setList((xs) => xs.filter((x) => x !== k))} aria-label={t.keyword_remove.replace('{k}', k)} title={t.remove}>
+                  <Icon name="close" size={11} sw={2} />
+                </button>
+              </span>
+            ))}
+            <input
+              id={id} className={voc.entry} list="codex-keywords" value={entry} autoComplete="off" maxLength={100}
+              onChange={(e) => { if (e.target.value.includes(',')) add(e.target.value); else setEntry(e.target.value); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add(entry); } else if (e.key === 'Backspace' && !entry && list.length) setList((xs) => xs.slice(0, -1)); }}
+              onBlur={() => add(entry)}
+            />
+            <datalist id="codex-keywords">{data.vocab.keywords.filter((x) => !list.some((k) => vocabKey(k) === vocabKey(x))).map((x) => <option key={x} value={x} />)}</datalist>
+          </div>
+          {fresh.map((k) => <NewTerm key={k} value={k} terms={terms} onPick={(name) => replace(k, name)} />)}
+        </>
+      )}
+    </Field>
   );
 }
 
@@ -674,22 +778,28 @@ function LinkDocument({ spec }: { spec: Extract<DialogSpec, { kind: 'link' }> })
   );
 }
 
-function Delegate({ workflowId, stepName, step, excluded }: { workflowId: string; stepName: string; step: number; excluded: string[] }) {
+/**
+ * Hands the current step on: its holder delegates it (delegateStep), or, with `holder`, a records manager reassigns a
+ * step someone else holds (reassignStep, point 19). Same people offered either way.
+ */
+function Delegate({ workflowId, stepName, step, excluded, holder }: { workflowId: string; stepName: string; step: number; excluded: string[]; holder?: { id: string; name: string } }) {
   const { t, data, close } = useApp();
   const { pending, error, run } = useSubmit();
   // Only people who may decide this step: never the author or requester, always someone whose role can approve.
-  const others = userOptions(data, data.currentUserId).filter((o) => !excluded.includes(o.key) && data.users.find((u) => u.id === o.key)?.approver);
+  const others = userOptions(data, holder?.id ?? data.currentUserId).filter((o) => !excluded.includes(o.key) && data.users.find((u) => u.id === o.key)?.approver);
   const [to, setTo] = useState(others[0]?.key ?? '');
+  const label = holder ? t.reassign : t.delegate;
   return (
     <Modal
-      title={t.delegate_title}
+      title={holder ? t.reassign_title : t.delegate_title}
       actions={<>
         <button type="button" className="btn btn-secondary" onClick={close}>{t.cancel}</button>
-        <button type="button" className="btn btn-primary" disabled={pending || !to} onClick={() => run(() => delegateStep(workflowId, to, step), { staleError: t.wrong_step })}>{t.delegate}</button>
+        <button type="button" className="btn btn-primary" disabled={pending || !to} onClick={() => run(() => (holder ? reassignStep(workflowId, to, step) : delegateStep(workflowId, to, step)), { staleError: t.wrong_step })}>{label}</button>
       </>}
     >
       <div className="text-muted" style={{ fontSize: 12.5 }}>{t.step} : {stepName}</div>
-      <Field label={t.delegate_to}>{(id) => <Select id={id} name="to" value={to} onChange={setTo} options={others} />}</Field>
+      {holder && <div className="text-muted" style={{ fontSize: 12.5 }}>{t.reassign_hint.replace('{who}', holder.name)}</div>}
+      <Field label={holder ? t.reassign_to : t.delegate_to}>{(id) => <Select id={id} name="to" value={to} onChange={setTo} options={others} />}</Field>
       <ErrorLine error={error} />
     </Modal>
   );
@@ -1771,6 +1881,55 @@ function SaveSearch({ spec }: { spec: Extract<DialogSpec, { kind: 'saveSearch' }
         <p className="text-muted" style={{ margin: 0, fontSize: 12.5 }}>{t.search_save_hint}</p>
         <ErrorLine error={error} />
       </form>
+    </Modal>
+  );
+}
+
+// ── Controlled vocabularies (Administration › Vocabulaires) ──────────────
+
+/** Adds a term to a vocabulary, or renames one (its documents follow, lib/actions.ts renameVocabTerm). */
+function VocabTerm({ spec }: { spec: Extract<DialogSpec, { kind: 'vocabTerm' }> }) {
+  const { t, close } = useApp();
+  const { pending, error, field, run } = useSubmit();
+  const title = `${spec.term ? t.vocab_rename : t.vocab_new} · ${spec.vocab === 'source_org' ? t.source_org : t.keywords}`;
+  return (
+    <Modal title={title} actions={<Actions pending={pending} label={spec.term ? t.vocab_rename : t.create} onCancel={close} form="vocab-term-form" />}>
+      <form
+        id="vocab-term-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const form = e.currentTarget;
+          const name = String(new FormData(form).get('name') ?? '');
+          run(() => (spec.term ? renameVocabTerm(spec.vocab, spec.term.id, name) : addVocabTerm(spec.vocab, name)), { form });
+        }}
+        style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
+      >
+        <Field label={t.vocab_term} error={field === 'name' ? error : null} hint={spec.term ? t.vocab_intro : undefined}>
+          {(id) => <input id={id} className="input" name="name" defaultValue={spec.term?.name ?? ''} required maxLength={spec.vocab === 'source_org' ? 300 : 100} autoFocus />}
+        </Field>
+        <ErrorLine error={field ? null : error} />
+      </form>
+    </Modal>
+  );
+}
+
+/** Merges a duplicate into another term of the same vocabulary (lib/actions.ts mergeVocabTerms). */
+function VocabMerge({ spec }: { spec: Extract<DialogSpec, { kind: 'vocabMerge' }> }) {
+  const { t, close } = useApp();
+  const { pending, error, run } = useSubmit();
+  const [into, setInto] = useState(String(spec.others[0]?.id ?? ''));
+  const target = spec.others.find((x) => String(x.id) === into);
+  return (
+    <Modal
+      title={`${t.vocab_merge} · ${spec.from.name}`}
+      actions={<>
+        <button type="button" className="btn btn-secondary" onClick={close}>{t.cancel}</button>
+        <button type="button" className="btn btn-primary" disabled={pending || !target} onClick={() => run(() => mergeVocabTerms(spec.vocab, spec.from.id, Number(into)))}>{t.vocab_merge}</button>
+      </>}
+    >
+      <Field label={t.vocab_merge_into}>{(id) => <Select id={id} value={into} onChange={setInto} options={spec.others.map((x) => ({ key: String(x.id), label: x.name }))} />}</Field>
+      {target && <p className="text-muted" style={{ margin: 0, fontSize: 12.5 }}>{t.vocab_merge_hint.replaceAll('{from}', spec.from.name).replace('{into}', target.name)}</p>}
+      <ErrorLine error={error} />
     </Modal>
   );
 }

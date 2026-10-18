@@ -216,6 +216,23 @@ export function mayExportAll(ctx: Pick<Ctx, 'seesAll' | 'screens'>): boolean {
 }
 
 /**
+ * Who may hand a person's holdings to a replacement (Administration › Reprise, lib/transfer.ts): a records manager with
+ * access to Administration. The simulation names every document the person holds, drafts and confidential ones
+ * included (D-14), and the transfer reaches documents locked against everyone else.
+ */
+export function mayTransferHoldings(ctx: Pick<Ctx, 'seesAll' | 'screens'>): boolean {
+  return ctx.seesAll && ctx.screens.admin;
+}
+
+/**
+ * Who may hand the current step of a circuit to someone else without holding it (a step left with an absent person): a
+ * records manager with access to Validations. The step's holder delegates it himself (delegateStep).
+ */
+export function mayReassignStep(ctx: Pick<Ctx, 'seesAll' | 'screens'>): boolean {
+  return ctx.seesAll && ctx.screens.workflow;
+}
+
+/**
  * Revisions every reader of the document sees: the one in force and those it replaced. A draft, a revision under review
  * or waiting for its effective date, and a cancelled one belong to the drafting circle (D-14): outside it, they do not
  * exist, nor do their workflows, comments, designated author or change order.
@@ -406,7 +423,7 @@ export const CONSULT_ACTIONS = ['consult', 'view'] as const;
  * entry into force, files, a change grafted onto the revision being drafted, the approval record issued for it, and
  * consultations: a record opened is tied to the revision in force, else the last superseded, else the latest).
  */
-const REVISION_ACTIONS = new Set(['upload', 'working', 'import', 'reclass', 'request', 'approve', 'sign', 'reject', 'recall', 'delegate', 'comment', 'in_force', 'download', 'graft', 'visa', ...CONSULT_ACTIONS]);
+const REVISION_ACTIONS = new Set(['upload', 'working', 'import', 'reclass', 'request', 'approve', 'sign', 'reject', 'recall', 'delegate', 'reassign', 'comment', 'in_force', 'download', 'graft', 'visa', ...CONSULT_ACTIONS]);
 
 /**
  * Journal entries outside the drafting circle (D-14). An entry about a revision records it (audit_log.revision_id) and

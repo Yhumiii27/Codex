@@ -334,13 +334,13 @@ Dans tous ces cas, rien n'est importé et la `legacyRef` reste libre : l'outil p
 | `attachment` | non | `none` / `project` / `research`. Défaut : `project` si `projectCode` est fourni, `research` si `programCode` l'est, sinon `none` (ou le premier rattachement admis par le type). |
 | `projectCode` | si projet | Code projet Keystone connu de Codex (ex. `HLT-026`). |
 | `programCode` | si recherche | Code du programme de recherche (ex. `R2601`). Un programme désactivé (clos) est accepté : la reprise porte aussi sur les documents des programmes terminés, alors que l'écran ne le propose plus à un nouveau document. |
-| `subtype` | non | Sous-type (texte). |
+| `subtype` | non | Sous-type (texte, 200 caractères au plus). Écrit dans la graphie du registre quand il s'y retrouve à la casse, aux accents et aux espaces près (libellé français ou anglais du type) ; une autre valeur est gardée telle quelle (la liste reste ouverte, MET-17), avec l'avertissement `subtype_unlisted`, et proposée aux administrateurs (Administration › Vocabulaires). |
 | `site` | non | Clé d'un site connu, désactivé ou non. |
 | `author` | non | Identifiant d'un utilisateur, sinon texte libre (auteur externe, ancien salarié…). |
 | `conf` | non | `public`, `restreint`, `interne`, `confidentiel`, `tres_confidentiel`. Défaut : niveau par défaut du type ; doit être admis par le type. |
 | `readers` | non | Identifiants des lecteurs désignés : documents confidentiels ou très confidentiels seulement (sinon `readers_conf`). |
-| `keywords` | non | Tableau de chaînes ou liste séparée par des virgules (50 au plus). |
-| `lang` | non | Langue du document (`fr`, `en`…). |
+| `keywords` | non | Tableau de chaînes ou liste séparée par des virgules (50 au plus, 100 caractères chacun). Lus contre le vocabulaire des mots-clés : un mot-clé connu (ou un alias, ancienne graphie ou doublon fusionné) prend la graphie du terme ; un mot-clé inconnu est **ajouté** au vocabulaire (journalisé sous l'acteur `codex`, avec la `legacyRef`), avec l'avertissement `term_added`. |
+| `lang` | non | Langue du document : `fr`, `en` ou vide, quelle que soit la casse ; toute autre valeur est refusée (`invalid_lang`). |
 | `revision` | non | Lettre de la révision reprise : `A` (défaut), `B`, … `Z`, `AA`… |
 | `status` | non | `in_force` (défaut) ou `draft`. |
 | `inForceAt` | non | Date de mise en vigueur de la révision (`status: in_force`). Défaut : `issuedAt`, sinon le jour de l'import. |
@@ -353,7 +353,7 @@ Champs selon le contexte (ignorés, avec un avertissement, quand le contexte ne 
 
 | Contexte | Champs |
 |---|---|
-| Externe | `sourceOrg` (**obligatoire**), `externalRef`, `receivedAt` |
+| Externe | `sourceOrg` (**obligatoire**, 300 caractères au plus, lu contre le vocabulaire des organismes sources comme `keywords` : terme connu dans sa graphie, terme inconnu ajouté avec `term_added`), `externalRef`, `receivedAt` |
 | Projet | `projectPhase`, `workPackage`, `discipline` |
 | Recherche | `researchTheme`, `studyId`, `ipStatus` |
 | Interne | `processOwnerId` (identifiant utilisateur) |
@@ -429,8 +429,9 @@ Codes de `issues[].code` : `required`, `invalid_type`, `too_long`, `invalid_date
 `unknown_type`, `unknown_department`, `unknown_site`, `unknown_user`, `type_mismatch`, `conf_not_allowed`,
 `project_required`, `program_required`, `source_required`, `readers_conf`, `effective_before_issued`,
 `expires_before_issued`, `expires_before_effective`, `expires_before_first_issue`, `review_before_issued`,
-`review_before_first_issue`, `received_in_future`, `received_after_issued`. Avertissements (`warnings[].code`) :
-`ignored` ; `duplicate_file` (champ `file`) : le fichier envoyé a le même SHA-256 que le fichier en vigueur d'un
+`review_before_first_issue`, `received_in_future`, `received_after_issued`, `invalid_lang`. Avertissements
+(`warnings[].code`) : `ignored` ; `subtype_unlisted` (champ `subtype`) ; `term_added` (champs `sourceOrg`, `keywords`) :
+terme ajouté au vocabulaire contrôlé, nommé dans le message (un terme inconnu n'est jamais un refus) ; `duplicate_file` (champ `file`) : le fichier envoyé a le même SHA-256 que le fichier en vigueur d'un
 document existant, nommé dans le message, de niveau Public, Restreint ou Interne (jamais un brouillon, une version de
 travail ni un document confidentiel, D-14) ; le document est importé quand même. L'empreinte SHA-256 du fichier
 importé est gardée sur sa version de travail.

@@ -51,6 +51,8 @@ export type DialogData = {
   seesAll: boolean;
   /** Formats and size admitted on upload (lib/filetypes.ts), checked by the file picker before sending; the server decides. */
   files: FileRules;
+  /** Terms of the controlled vocabularies the forms offer (lib/queries.ts vocabSuggestions, D-14). */
+  vocab: { sourceOrgs: string[]; keywords: string[] };
 };
 
 /** Every editable metadata field of a document (edit dialog). */
@@ -117,6 +119,12 @@ export type DialogSpec =
   | { kind: 'link'; docId: string; title: string; withdrawn: boolean; active: boolean; candidates: (Option & { withdrawn: boolean; active: boolean })[] }
   /** Hand the current step on: `step` is the step shown, `excluded` the people who may not approve this revision. */
   | { kind: 'delegate'; workflowId: string; stepName: string; step: number; excluded: string[] }
+  /** A records manager hands on the current step held by someone else (`holder`), with the rules of a delegation. */
+  | { kind: 'reassign'; workflowId: string; stepName: string; step: number; excluded: string[]; holder: string; holderName: string }
+  /** A term of a controlled vocabulary: added (no `term`) or renamed. */
+  | { kind: 'vocabTerm'; vocab: 'source_org' | 'keyword'; term?: { id: number; name: string } }
+  /** Merges a duplicate term (`from`) into another of the same vocabulary, chosen among `others`. */
+  | { kind: 'vocabMerge'; vocab: 'source_org' | 'keyword'; from: { id: number; name: string }; others: { id: number; name: string }[] }
   /**
    * End a running circuit, the revision going back to drafting: reject the current step, with a reason (required), or
    * recall the request, with an optional one. `step` is the step shown: the circuit may have moved on since.

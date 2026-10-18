@@ -149,6 +149,29 @@ export const researchPrograms = pgTable('research_programs', {
   active: boolean('active').notNull().default(true),
 });
 
+// ── Controlled vocabularies (point 59 of docs/reste-a-faire.md) ─────────
+
+/**
+ * Terms of a controlled vocabulary (lib/vocab.ts): the source organisations of external documents and the keywords.
+ * Documents keep the term's name as text (documents.source_org, documents.keywords), so that search, export and import
+ * read them as before; a term stands for every value that folds to its `key` or to one of its `aliases` (lib/vocab-rules.ts
+ * vocabKey: case, accents and spaces set aside). Added by Administration › Vocabulaires, by a document's form once its
+ * author confirms the new term, or by the import; renamed or merged there, the documents that carry it following
+ * (those under legal hold keep their value, which the former name, kept as an alias, still resolves).
+ */
+const vocabColumns = () => ({
+  id: serial('id').primaryKey(),
+  name: text('name').notNull(),
+  /** vocabKey(name): one term per key. */
+  key: text('key').notNull(),
+  /** Former names and names merged into this term, still resolved to it (an import, a document under legal hold). */
+  aliases: jsonb('aliases').$type<string[]>().notNull().default([]),
+  createdAt: date('created_at', { mode: 'string' }).notNull(),
+});
+
+export const sourceOrgs = pgTable('source_orgs', vocabColumns(), (t) => [uniqueIndex('source_orgs_key').on(t.key)]);
+export const keywordTerms = pgTable('keyword_terms', vocabColumns(), (t) => [uniqueIndex('keyword_terms_key').on(t.key)]);
+
 // ── Documents ───────────────────────────────────────────────────────────
 
 export const documents = pgTable(
@@ -554,7 +577,9 @@ export const idCounters = pgTable('id_counters', {
 /** 'storage': a file store (target id: 'local' or 'sharepoint'), cleaned of its orphan files (lib/orphans.ts). */
 /** 'backup': an archive of the database and files (target id: its file name, lib/backup-core.mjs). */
 /** 'integrity': a check of the stored files against their SHA-256 (target id: 'files', lib/integrity-core.mjs). */
-export type AuditTargetKind = 'permission' | 'department' | 'site' | 'function' | 'family' | 'type' | 'program' | 'export' | 'file' | 'storage' | 'backup' | 'integrity';
+/** 'user': a person whose holdings were handed to a replacement (target id: their user id, lib/transfer.ts). */
+/** 'source_org', 'keyword': a term of a controlled vocabulary (target id: its name at the time, lib/vocab.ts). */
+export type AuditTargetKind = 'permission' | 'department' | 'site' | 'function' | 'family' | 'type' | 'program' | 'export' | 'file' | 'storage' | 'backup' | 'integrity' | 'user' | 'source_org' | 'keyword';
 
 /** A value in a journal change, as stored: keys and codes, rendered in the reader's language (lib/queries.ts). */
 export type AuditValue = string | string[] | boolean | null | { years: number | null; trigger: string; disposition: string };
@@ -632,6 +657,12 @@ export type AuditData = {
     checked: number; bytes: number; altered: IntegrityItem[]; alteredCount: number; missing: IntegrityItem[]; missingCount: number;
     filled: number; skipped: number; by?: 'app' | 'cli'; failed?: boolean;
   };
+  /**
+   * Holdings of a person handed to a replacement in one operation (action 'transfer_summary', target 'user', lib/transfer.ts):
+   * the replacement, what was transferred by kind, what could not be. Counts only, they count drafts: shown to records
+   * managers only (lib/queries.ts transferL, D-14). Each object transferred has its own entry (action 'transfer').
+   */
+  transfer?: { to: string; done: Partial<Record<string, number>>; skipped: number };
 };
 
 /** A working version an integrity check names: its row, its document under the ID of the time, its label (A.2). */

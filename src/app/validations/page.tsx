@@ -5,6 +5,7 @@ import { Icon } from '@/components/ui/Icon';
 import { Seg } from '@/components/ui/Seg';
 import { HStepper, type StepItem } from '@/components/ui/Stepper';
 import { ActionButton, DialogButton } from '@/components/ui/client';
+import { mayReassignStep } from '@/lib/access';
 import { decideStep } from '@/lib/actions';
 import { getCtx } from '@/lib/context';
 import { getDoc, listChangeRequests, listRevisions, listWorkflows, type WorkflowView } from '@/lib/queries';
@@ -113,6 +114,10 @@ export default async function WorkflowPage({ searchParams }: PageProps<'/validat
   const recallBtn = r.recallable && <DialogButton spec={{ kind: 'recall', ...closeSpec }} className="btn btn-ghost" deniedTitle={lockText}>{t.recall}</DialogButton>;
   // Never offered as delegates: the requester, the revision's author (designated, or the owner) and its working versions' authors.
   const excluded = [...new Set([r.requesterId, rev?.modifierId ?? doc?.ownerId, ...(rev?.versions.map((v) => v.authorId) ?? [])].filter((x): x is string => !!x))];
+  // A records manager hands on a step someone else holds (an absent person, point 19): the rules of a delegation.
+  const reassignBtn = !canAct && !over && r.current && mayReassignStep(ctx) && (
+    <DialogButton spec={{ kind: 'reassign', workflowId: r.id, stepName: r.stepName, step: r.step, excluded, holder: r.current.assigneeId, holderName: r.current.assignee }} className="btn btn-ghost" deniedTitle={lockText}>{t.reassign}</DialogButton>
+  );
 
   const steps: StepItem[] = r.steps.map((st) => {
     if ((r.outcome === 'rejected' || r.outcome === 'recalled') && st.idx >= r.step) {
@@ -183,11 +188,12 @@ export default async function WorkflowPage({ searchParams }: PageProps<'/validat
               </div>
             </div>
           )}
-          {!canAct && recallBtn && (
+          {!canAct && (recallBtn || reassignBtn) && (
             <div className="card elev-sm" style={{ padding: '14px 16px', gap: 12 }}>
-              <div className="text-muted" style={{ fontSize: 12.5 }}>{t.recall_note}</div>
+              {recallBtn && <div className="text-muted" style={{ fontSize: 12.5 }}>{t.recall_note}</div>}
+              {reassignBtn && <div className="text-muted" style={{ fontSize: 12.5 }}>{t.reassign_hint.replace('{who}', r.current!.assignee)}</div>}
               {lockText && <div role="status" style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12.5 }}><Icon name="lock" size={15} style={{ color: 'var(--color-accent)' }} />{lockText} {t.wf_closed_hint}</div>}
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{recallBtn}</div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{reassignBtn}{recallBtn}</div>
             </div>
           )}
           {over && (

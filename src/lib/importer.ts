@@ -11,6 +11,8 @@ import { audit, refreshHeadline, type Tx } from './lifecycle';
 import { logger } from './log';
 import { sameFiles } from './queries';
 import { discardFile, FileRejectedError, fileColumns, nameStoredFile, stageFile, type FileRejection, type StagedFile } from './storage';
+import { addTerms, loadTerms, readTerms } from './vocab';
+import { canonicalSubtype, cleanTerm, docLang, VOCAB_MAX } from './vocab-rules';
 
 // Integration endpoints (docs/api.md; their authentication: lib/server-auth.ts): the
 // import of one legacy document for the migration tool. The business rules repeat those of actions.validateFields,
@@ -58,6 +60,9 @@ const MESSAGES: Record<string, string> = {
   source_required: DICT.fr.source_required,
   readers_conf: 'Lecteurs désignés réservés aux documents confidentiels ou très confidentiels.',
   ignored: 'Champ ignoré : il ne s’applique pas à ce document (origine, rattachement ou statut).',
+  invalid_lang: 'Langue attendue : fr, en ou vide.',
+  subtype_unlisted: 'Sous-type absent de la liste du type : gardé tel quel, proposé aux administrateurs du registre (Administration › Vocabulaires).',
+  term_added: 'Terme ajouté au vocabulaire contrôlé : {terms}.',
 };
 
 type TypeRow = typeof s.docTypes.$inferSelect;
@@ -167,7 +172,7 @@ function parseImportMeta(raw: unknown, refs: Refs): { value: ImportInput | null;
     if (v == null || v === '') return [];
     const items = typeof v === 'string' ? v.split(',') : Array.isArray(v) && v.every((x) => typeof x === 'string') ? (v as string[]) : null;
     if (!items) { issue(k, 'invalid_type'); return []; }
-    const out = [...new Set(items.map((x) => x.trim()).filter(Boolean))];
+    const out = [...new Set(items.map(cleanTerm).filter(Boolean))];
     if (out.length > maxItems || out.some((x) => x.length > maxLen)) { issue(k, 'too_long'); return []; }
     return out;
   };
@@ -205,13 +210,21 @@ function parseImportMeta(raw: unknown, refs: Refs): { value: ImportInput | null;
   const readers = list('readers', 200, 64);
   if (readers.some((u) => !refs.users.get(u) || refs.users.get(u)!.isSystem)) issue('readers', 'unknown_user');
 
+  // Controlled values (point 59): a language fr, en or none; a sub-type in its type's spelling when it folds to one of its
+  // labels, kept otherwise (the list stays open, MET-17) with a warning; keywords and source organisation are read
+  // against their vocabularies when the document is written (importDocument).
+  const lang = docLang(text('lang', 10));
+  if (lang === undefined) issue('lang', 'invalid_lang');
+  const subtype = canonicalSubtype(type?.subtypes ?? [], text('subtype', 200));
+  if (type && !subtype.listed) warnings.push({ field: 'subtype', code: 'subtype_unlisted', message: MESSAGES.subtype_unlisted });
+  const sourceOrgRaw = text('sourceOrg', VOCAB_MAX.source_org);
   const f = {
-    subtype: text('subtype', 200),
-    keywords: list('keywords', 50, 100),
-    lang: text('lang', 10)?.toLowerCase() ?? null,
+    subtype: subtype.value,
+    keywords: list('keywords', 50, VOCAB_MAX.keyword),
+    lang: lang ?? null,
     issuedAt: date('issuedAt'), inForceAt: date('inForceAt'), reviewDueAt: date('reviewDueAt'), expiresAt: date('expiresAt'),
     createdAt: date('createdAt'), modifiedAt: date('modifiedAt'),
-    sourceOrg: text('sourceOrg'), externalRef: text('externalRef', 200), receivedAt: date('receivedAt'),
+    sourceOrg: sourceOrgRaw ? cleanTerm(sourceOrgRaw) || null : null, externalRef: text('externalRef', 200), receivedAt: date('receivedAt'),
     projectPhase: text('projectPhase', 100), workPackage: text('workPackage', 100), discipline: text('discipline', 100),
     researchTheme: text('researchTheme', 200), studyId: text('studyId', 100), ipStatus: text('ipStatus', 100),
     comment: text('comment', 2000),
@@ -385,6 +398,16 @@ export async function importDocument(raw: unknown, file: ImportFile | null): Pro
       const existing = await findByRef(tx, v.legacyRef);
       if (existing) return existing;
       const id = await importId(tx, v);
+      // Unknown terms are added (controlled addition, journaled under the import), never refused: the existing ones
+      // give their spelling (« SIEMENS » → « Siemens »), a merged duplicate the term it was merged into.
+      for (const [kind, field, values] of [['source_org', 'sourceOrg', v.sourceOrg ? [v.sourceOrg] : []], ['keyword', 'keywords', v.keywords]] as const) {
+        const read = readTerms(await loadTerms(tx, kind), values);
+        if (kind === 'source_org') v.sourceOrg = read.values[0] ?? null;
+        else v.keywords = read.values;
+        if (!read.added.length) continue;
+        await addTerms(tx, kind, read.added, IMPORT_ACTOR, v.legacyRef);
+        warnings.push({ field, code: 'term_added', message: MESSAGES.term_added.replace('{terms}', read.added.map((x) => `« ${x} »`).join(', ')) });
+      }
       await tx.insert(s.documents).values({
         id, aliases: [v.legacyRef], legacyRef: v.legacyRef, title: v.title, origin: v.origin, attachment: v.attachment,
         projectCode: v.projectCode, programCode: v.programCode, family: type.family, typeCode: type.code, subtype: v.subtype,

@@ -3,7 +3,7 @@ import { cache } from 'react';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, notInArray, or, sql, type SQL, type SQLWrapper } from 'drizzle-orm';
 import { getDb, schema as s } from '@/db';
 import type { AuditChange, AuditData, AuditTargetKind, AuditValue, Conf, LinkRel, RetentionTrigger, TermField } from '@/db/schema';
-import { canRead, changeAsSeen, CONSULT_ACTIONS, deadlineActor, draftingCircleSql, draftTodo, followsCircuit, getAccessIndex, inDraftingCircle, isUsableTemplate, mayDeleteSearch, mayEditLinks, mayGetApprovalRecord, mayRecall, mayWorkOnDraft, openRevisionView, readableSql, readerMaySeeEntry, readerMaySeeRevision, readerMaySeeVersion, savedSearchesSeenBy, type AccessIndex } from './access';
+import { canRead, changeAsSeen, CONSULT_ACTIONS, deadlineActor, draftingCircleSql, draftTodo, followsCircuit, getAccessIndex, inDraftingCircle, isUsableTemplate, mayDeleteSearch, mayTransferHoldings, mayEditLinks, mayGetApprovalRecord, mayRecall, mayWorkOnDraft, openRevisionView, readableSql, readerMaySeeEntry, readerMaySeeRevision, readerMaySeeVersion, savedSearchesSeenBy, type AccessIndex } from './access';
 import { visaCircuit, type VisaRecord } from './approval';
 import { isFinalStatus, TEMPLATE_TYPE } from './codes';
 import { revLabel } from './codification';
@@ -18,6 +18,9 @@ import { BUILT_IN_FUNCTIONS, BUILT_IN_TYPES } from './registry-rules';
 import { EVENT_TRIGGERS, isEventTrigger, retainUntil, retentionGap } from './retention';
 import { isExpired, isReviewOverdue } from './review';
 import { featuredFilters, featuredOf } from './departments';
+import { simulateTransfer, type TransferPlan } from './transfer';
+import { bothDocumentValues, documentValues, loadTerms } from './vocab';
+import { canonicalSubtype, termKeys, vocabKey, type VocabKind } from './vocab-rules';
 import { DATE_LABEL, FACET_KEYS, FACET_LABEL, fold, hit, SCORE_WEIGHT, searchHref, SORT_LABEL, sortOf, wordStartPrefix, type DateField, type FacetKey, type Facets, type Period, type SearchDoc, type SearchInput, type SortKey } from './search';
 
 type DocRow = typeof s.documents.$inferSelect;
@@ -1264,7 +1267,7 @@ export async function auditForReader(ctx: Ctx, all: AuditRow[]): Promise<AuditEn
   });
 }
 
-const TARGET_LABEL: Record<AuditTargetKind, TKey> = { permission: 'target_permission', department: 'department', site: 'site', function: 'function_label', family: 'family', type: 'type', program: 'program', export: 'target_export', file: 'target_file', storage: 'target_storage', backup: 'target_backup', integrity: 'target_integrity' };
+const TARGET_LABEL: Record<AuditTargetKind, TKey> = { permission: 'target_permission', department: 'department', site: 'site', function: 'function_label', family: 'family', type: 'type', program: 'program', export: 'target_export', file: 'target_file', storage: 'target_storage', backup: 'target_backup', integrity: 'target_integrity', user: 'target_user', source_org: 'target_source_org', keyword: 'target_keyword' };
 
 /** What an entry without document is about, as the Journal tab and its export name it: "Fonction · Responsable qualité". */
 export function auditTargetL(ctx: Ctx, kind: AuditTargetKind | null, id: string | null): string {
@@ -1283,6 +1286,8 @@ export function auditTargetL(ctx: Ctx, kind: AuditTargetKind | null, id: string 
     : kind === 'storage' ? t[`store_${id}` as TKey] ?? id
     : kind === 'backup' ? id
     : kind === 'integrity' ? t.integrity_all
+    : kind === 'user' ? ctx.userName(id)
+    : kind === 'source_org' || kind === 'keyword' ? id
     : id === 'search' ? t.adv_search : id === 'full' ? t.target_export_full : t.ad_audit;
   return `${t[TARGET_LABEL[kind]]} · ${name}`;
 }
@@ -1300,6 +1305,8 @@ const CHANGE_LABEL: Record<string, TKey> = {
   code: 'rule_id', key: 'key_label', labelFr: 'label_fr', labelEn: 'label_en', family: 'family', origins: 'origin', attachments: 'attachment',
   subtypes: 'subtypes_label', retentionBasis: 'retention_basis', iso: 'iso_clause', clientDeliverable: 'client_deliverable', grp: 'family_group',
   scope: 'scope', name: 'program_name', managerId: 'manager',
+  // Holdings handed to a replacement (lib/transfer.ts) and controlled vocabularies (lib/vocab.ts).
+  modifierId: 'modifier', assigneeId: 'assignee', reader: 'reader_label', term: 'vocab_term', aliases: 'vocab_aliases',
 };
 
 /** One stored value of a change, in the reader's language. */
@@ -1314,7 +1321,7 @@ function changeValueL(ctx: Ctx, field: string, v: AuditValue | undefined): strin
   const key = (prefix: string) => t[`${prefix}${v}` as TKey] ?? v;
   switch (field) {
     case 'title': return ctx.lang === 'fr' ? `« ${v} »` : `“${v}”`;
-    case 'ownerId': case 'authorId': case 'processOwnerId': case 'holder': case 'managerId': return ctx.userName(v);
+    case 'ownerId': case 'authorId': case 'processOwnerId': case 'holder': case 'managerId': case 'modifierId': case 'assigneeId': case 'reader': return ctx.userName(v);
     case 'conf': case 'confAllowed': case 'confDefault': return key('conf_');
     case 'origin': case 'origins': return key('or_');
     case 'attachment': case 'attachments': return key('att_');
@@ -1397,7 +1404,19 @@ function exportL(ctx: Ctx, targetId: string | null, x: NonNullable<AuditData['ex
 export function auditDetailL(ctx: Ctx, a: Pick<AuditRow, 'detail' | 'data' | 'targetId'>): string {
   const x = a.data;
   const link = x?.link ? `${ctx.t[`link_${x.link.rel}`]} ${x.link.other}${x.link.skipped ? ` : ${ctx.t[`link_skip_${x.link.skipped}`]}` : ''}` : '';
-  return [a.detail, link, x?.changes?.length ? x.changes.map((c) => changeL(ctx, c)).join(' ; ') : '', x?.export ? exportL(ctx, a.targetId, x.export) : '', x?.file ? refusedFileL(ctx, a.targetId, x.file) : '', x?.purge ? purgeL(ctx, x.purge) : '', x?.backup ? backupL(ctx, x.backup) : '', x?.archive ? archiveL(ctx, x.archive) : '', x?.integrity ? integrityL(ctx, x.integrity) : '', x?.sha256 ? `SHA-256 ${x.sha256.slice(0, 16)}…` : ''].filter(Boolean).join(' · ');
+  return [a.detail, link, x?.changes?.length ? x.changes.map((c) => changeL(ctx, c)).join(' ; ') : '', x?.export ? exportL(ctx, a.targetId, x.export) : '', x?.file ? refusedFileL(ctx, a.targetId, x.file) : '', x?.purge ? purgeL(ctx, x.purge) : '', x?.backup ? backupL(ctx, x.backup) : '', x?.archive ? archiveL(ctx, x.archive) : '', x?.integrity ? integrityL(ctx, x.integrity) : '', x?.transfer ? transferL(ctx, x.transfer) : '', x?.sha256 ? `SHA-256 ${x.sha256.slice(0, 16)}…` : ''].filter(Boolean).join(' · ');
+}
+
+/**
+ * Holdings handed to a replacement (lib/transfer.ts): to whom, and to records managers only, what by kind and how many
+ * could not go (the counts include drafts, D-14).
+ */
+export function transferL(ctx: Ctx, x: NonNullable<AuditData['transfer']>): string {
+  const { t } = ctx;
+  const to = t.transfer_summary_l.replace('{to}', ctx.userName(x.to));
+  if (!ctx.seesAll) return to;
+  const done = Object.entries(x.done).filter(([, n]) => n).map(([k, n]) => `${t[`transfer_kind_${k}` as TKey] ?? k}${ctx.lang === 'fr' ? ' : ' : ': '}${n}`);
+  return [to, ...done, x.skipped ? t.transfer_summary_skipped.replace('{n}', String(x.skipped)) : ''].filter(Boolean).join(' · ');
 }
 
 /**
@@ -1515,9 +1534,11 @@ function auditTargetHref(ctx: Ctx, kind: AuditTargetKind | null, id: string | nu
 
 /**
  * Actions that change a record's metadata (the record's "Métadonnées" history): its fields, values before → after
- * (lib/actions.ts updateMeta, setReaders), the new ID a reclassification gives it, and its retention.
+ * (lib/actions.ts updateMeta, setReaders), the new ID a reclassification gives it, and its retention; a holding handed to
+ * a replacement (owner, process owner, reader, designated author, step: lib/transfer.ts) and a vocabulary term renamed or
+ * merged (lib/actions.ts applyTerm).
  */
-export const METADATA_ACTIONS = ['edit', 'reclass', ...RETENTION_ACTIONS] as const;
+export const METADATA_ACTIONS = ['edit', 'reclass', 'transfer', 'vocab_apply', ...RETENTION_ACTIONS] as const;
 
 /**
  * Journal entries, newest first, as auditForReader lets the user read them. For a document, its entries under its
@@ -1875,4 +1896,89 @@ export async function listTemplates(ctx: Ctx) {
   const docs = candidates.filter((d) => isUsableTemplate(ctx, d, ix));
   const types = await templateTypesOf(ctx, docs.map((d) => d.id));
   return docs.map((d) => ({ id: d.id, label: d.title, rev: d.revInForce!, owner: d.owner, ownerId: d.ownerId, typeCode: d.typeCode, department: d.department, state: d.state, legalHold: d.legalHold, version: d.version, types: types.get(d.id) ?? [] }));
+}
+
+// ── Controlled vocabularies (point 59 of docs/reste-a-faire.md) ─────────
+
+/**
+ * Terms the forms offer (source organisation, keywords), by name: those a document the user may read carries
+ * (readableSql, D-14: a term met only on drafts or on documents they may not read is not shown to them), and those no
+ * document carries (added in Administration). Records managers get every term. Empty for whoever may neither create nor
+ * edit a document. A term the user is not offered is still recognised when typed (lib/actions.ts readVocab).
+ */
+export async function vocabSuggestions(ctx: Ctx): Promise<{ sourceOrgs: string[]; keywords: string[] }> {
+  if (!ctx.can('upload') && !ctx.can('edit')) return { sourceOrgs: [], keywords: [] };
+  const db = await getDb();
+  const all = ctx.seesAll ? null : await bothDocumentValues(db, readableSql(ctx));
+  const offered = async (kind: VocabKind) => {
+    const terms = await loadTerms(db, kind);
+    if (!all) return terms.map((x) => x.name);
+    const values = all[kind];
+    const used = new Set<string>(), seen = new Set<string>();
+    for (const v of values) {
+      const k = vocabKey(v.value);
+      used.add(k);
+      if (v.readable) seen.add(k);
+    }
+    return terms.filter((x) => { const keys = termKeys(x); return keys.some((k) => seen.has(k)) || !keys.some((k) => used.has(k)); }).map((x) => x.name);
+  };
+  const byName = (xs: string[]) => xs.sort((p, q) => p.localeCompare(q, ctx.lang, { sensitivity: 'base' }));
+  const [sourceOrgs, keywords] = await Promise.all([offered('source_org'), offered('keyword')]);
+  return { sourceOrgs: byName(sourceOrgs), keywords: byName(keywords) };
+}
+
+/** A term of a vocabulary as Administration › Vocabulaires lists it: how many documents carry it, in any spelling. */
+export type VocabRow = { id: number; name: string; aliases: string[]; uses: number; createdAt: string };
+
+/**
+ * Every term of both vocabularies with the documents that carry it, drafts and confidential ones included
+ * (administration only), the values documents carry that no term stands for, and the sub-types documents carry outside
+ * their type's list (lib/vocab-rules.ts canonicalSubtype), by type, most frequent first.
+ */
+export async function vocabOverview(ctx: Ctx): Promise<Record<VocabKind, { terms: VocabRow[]; unlisted: { value: string; uses: number }[] }> & { subtypes: { typeCode: string; value: string; uses: number }[] }> {
+  const db = await getDb();
+  const one = async (kind: VocabKind) => {
+    const [terms, values] = await Promise.all([loadTerms(db, kind), documentValues(db, kind)]);
+    const byKey = new Map<string, number>();
+    for (const v of values) byKey.set(vocabKey(v.value), (byKey.get(vocabKey(v.value)) ?? 0) + v.n);
+    const covered = new Set(terms.flatMap(termKeys));
+    const rows = terms.map((x): VocabRow => ({ id: x.id, name: x.name, aliases: x.aliases, uses: termKeys(x).reduce((n, k) => n + (byKey.get(k) ?? 0), 0), createdAt: x.createdAt }));
+    const unlisted = new Map<string, { value: string; uses: number }>();
+    for (const v of values) {
+      const k = vocabKey(v.value);
+      if (covered.has(k)) continue;
+      const cur = unlisted.get(k);
+      if (cur) cur.uses += v.n;
+      else unlisted.set(k, { value: v.value, uses: v.n });
+    }
+    rows.sort((p, q) => p.name.localeCompare(q.name, ctx.lang, { sensitivity: 'base' }) || p.id - q.id);
+    return { terms: rows, unlisted: [...unlisted.values()].sort((p, q) => q.uses - p.uses || p.value.localeCompare(q.value, ctx.lang)) };
+  };
+  const D = s.documents;
+  const [source_org, keyword, used] = await Promise.all([
+    one('source_org'), one('keyword'),
+    db.select({ typeCode: D.typeCode, value: D.subtype, n: sql<number>`count(*)::int` }).from(D).where(isNotNull(D.subtype)).groupBy(D.typeCode, D.subtype),
+  ]);
+  const subtypes = used.flatMap((x) => {
+    const type = ctx.typeByCode.get(x.typeCode);
+    return x.value && type && !canonicalSubtype(type.subtypes, x.value).listed ? [{ typeCode: x.typeCode, value: x.value, uses: Number(x.n) }] : [];
+  }).sort((p, q) => q.uses - p.uses || p.typeCode.localeCompare(q.typeCode) || p.value.localeCompare(q.value, ctx.lang));
+  return { source_org, keyword, subtypes };
+}
+
+// ── Holdings of a person who leaves (point 19 of docs/reste-a-faire.md) ─────
+
+/**
+ * The simulation of Administration › Reprise: what `from` holds and, with a replacement chosen, what would go to them and
+ * what would not, and why (lib/transfer.ts, the transfer itself rolled back). Null for an unknown person or a system
+ * actor. Records managers only (access.ts mayTransferHoldings): it names every document the person holds, drafts
+ * included (D-14).
+ */
+export async function transferView(ctx: Ctx, from: string, to: string | null): Promise<TransferPlan | null> {
+  if (!mayTransferHoldings(ctx)) return null;
+  const f = ctx.users.get(from);
+  if (!f || f.isSystem) return null;
+  const t = to ? ctx.users.get(to) : undefined;
+  const replacement = t && !t.isSystem && t.id !== f.id ? t.id : null;
+  return simulateTransfer(await getDb(), ctx.users, ctx.user.id, f.id, replacement);
 }

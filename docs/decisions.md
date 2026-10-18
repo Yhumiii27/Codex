@@ -1380,6 +1380,60 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     nombre de pages de la pagination calculé sur le rendu ; LibreOffice lancé sans les variables de Codex ; Gotenberg
     appelé sans authentification, sur un réseau privé ;
   - ni PDF/A, ni filigrane « Brouillon », ni en-têtes générés : ce sont les questions restées ouvertes de M12.
+- **Reprise des responsabilités d'une personne qui part** (point 19 de `docs/reste-a-faire.md`, A15, 18 octobre) :
+  Administration › Reprise (départ), `transferHoldings` et `reassignStep` dans `src/lib/actions.ts`,
+  `src/lib/transfer.ts`. Choix prudents, à confirmer :
+  - **aucun remplaçant proposé d'office** (la règle par défaut, manager ou gestionnaire, est la question A15) et
+    **aucun compte désactivé** ni indicateur « parti » ajouté : la désactivation et la détection des départs relèvent du
+    fournisseur d'authentification (O-02) ; la personne reste dans les listes ;
+  - réservé aux **gestionnaires documentaires ayant l'accès Administration** (`mayTransferHoldings`, comme la
+    sauvegarde) : la simulation nomme tous les documents de la personne, brouillons et confidentiels compris (D-14) ;
+    la réassignation d'une étape seule, aux gestionnaires documentaires ayant l'accès Validations (`mayReassignStep`) ;
+  - **simulation = le transfert lui-même dans une transaction annulée**, journal compris ; la confirmation renvoie
+    l'empreinte de la simulation (SHA-256 de la personne, du remplaçant et de chaque objet avec son issue) : un plan
+    qui se lit autrement au moment de confirmer est refusé sans rien écrire, et la page montre le nouveau ;
+  - transférés : propriété des documents **verrouillés compris** (archivés, obsolètes, sous gel : acte
+    d'administration), propriété de processus, lecteur désigné (une seule ligne si le remplaçant l'était déjà),
+    auteur désigné des révisions ouvertes (s'il peut rédiger le document, règle `mayDraft` d'un auteur désigné par
+    Vigie), étapes de circuit en attente (l'étape en cours et les suivantes, mêmes contrôles que `delegateStep` : pas
+    sur un document verrouillé, jamais le demandeur, l'auteur ou un auteur de version de travail, droit de valider du
+    rôle par défaut), titulariats de fonctions (droit de valider ; une seule ligne si le remplaçant tenait déjà la
+    fonction pour la même portée) ;
+  - **non transférés, avec la raison** : une propriété ou une rédaction qui ferait du remplaçant le juge de sa propre
+    révision (il valide le circuit en cours : réassigner d'abord son étape), et tout ce que les contrôles ci-dessus
+    refusent ; **listés pour information, non touchés** : l'auteur désigné par Vigie d'une modification acceptée (la
+    désignation appartient à Vigie, D-16), le chef de projet (Keystone, D-04), le responsable d'un programme de recherche
+    (son dialogue d'Administration) ; ni le demandeur des circuits en cours ni les recherches enregistrées ne changent ;
+  - journal : une entrée par objet transféré (`transfer`, avant → après ; celle d'un auteur ou d'une étape suit sa
+    révision, D-14), puis une entrée de synthèse sur la personne (`transfer_summary`, comptes visibles des seuls
+    gestionnaires documentaires) ; la date « Modifié » des documents ne change pas.
+- **Vocabulaires contrôlés** (point 59, MET-07, G32, G40, A21, 18 octobre) : tables `source_orgs` et `keyword_terms`
+  (migration `drizzle/0003_vocabulaires.sql`), `src/lib/vocab.ts`, `src/lib/vocab-rules.ts`, Administration ›
+  Vocabulaires. Qui gouverne les termes (A05) n'est pas décidé : le droit « Administrer » vaut en attendant. Choix
+  prudents, à confirmer :
+  - les documents **gardent le nom du terme en texte** (`documents.source_org`, `documents.keywords`) : recherche,
+    facettes, export complet et import lisent les mêmes colonnes qu'avant ;
+  - deux graphies sont le même terme à la **casse, aux accents et aux espaces près** ; « SIEMENS SAS » et « Siemens »
+    restent deux termes, que le formulaire signale comme proches et qu'un administrateur fusionne ; un terme renommé ou
+    fusionné garde ses anciennes graphies comme **alias**, qui le désignent encore ;
+  - dans les formulaires, une valeur inconnue est un **nouveau terme ajouté seulement après confirmation** (case à
+    cocher par terme, exigée aussi par le serveur), journalisé ; une valeur que le document porte déjà n'est pas
+    redemandée ; à l'import, un terme inconnu est **ajouté** (journalisé sous l'acteur `codex`, avertissement
+    `term_added`), jamais refusé ;
+  - les formulaires ne proposent que les termes portés par un document que l'utilisateur peut lire, ou par aucun
+    document (D-14) ; un terme qu'on ne lui propose pas est quand même reconnu s'il le saisit (sa graphie est alors
+    reprise : seule la casse ou les accents pourraient trahir son existence) ;
+  - renommer ou fusionner **met à jour les documents**, journalisé document par document (`vocab_apply`), sauf ceux
+    sous gel juridique, qui gardent leur valeur (résolue par l'alias) ; les archivés et obsolètes suivent, comme pour
+    l'application d'une règle de conservation ; leur date « Modifié » ne change pas ;
+  - reprise des valeurs existantes par la migration : un terme par valeur repliée, sous sa graphie la plus fréquente ;
+    les documents gardent leur graphie ;
+  - **langue** : `fr`, `en` ou vide, quelle que soit la casse, contrôlée par `validateFields` et par l'import ; une autre
+    valeur déjà portée par un document est gardée à sa modification (la migration n'a corrigé que la casse) ;
+  - **sous-types** : la liste n'est **pas fermée** côté serveur (MET-17, point 9 de O-05) ; une valeur qui se replie sur
+    un libellé du type prend sa graphie ; une autre est gardée (avertissement `subtype_unlisted` à l'import) et listée
+    dans Administration › Vocabulaires, où un administrateur l'**ajoute au type** (même libellé FR et EN, dans les
+    limites du registre : 120 caractères, 40 sous-types), journalisé comme un changement du type.
 - **Git** (D-23) : premier commit sur une branche `codex-ged-v2` plutôt que sur `main`.
 
 ## Ce qui est explicitement hors périmètre

@@ -6,15 +6,15 @@ import { cookies } from 'next/headers';
 import { refresh } from 'next/cache';
 import { getDb, schema as s } from '@/db';
 import type { Attachment, AuditChange, AuditValue, Conf, Origin, SearchScope } from '@/db/schema';
-import { buildAccessIndex, canRead, followsCircuit, getAccessIndex, inDraftingCircle, isUsableTemplate, mayBackUp, mayCheckIntegrity, mayCleanStorage, mayDeleteSearch, mayEditLinks, mayLinkTemplate, mayManageRetention, mayRecall, mayRecordReview, maySaveSearch, maySetRetentionEvent, mayWorkOnDraft, readerMaySeeRevision, readersApply, seesSavedSearch } from './access';
+import { buildAccessIndex, canRead, followsCircuit, getAccessIndex, inDraftingCircle, isUsableTemplate, mayBackUp, mayCheckIntegrity, mayCleanStorage, mayDeleteSearch, mayEditLinks, mayLinkTemplate, mayManageRetention, mayReassignStep, mayRecall, mayRecordReview, maySaveSearch, maySetRetentionEvent, mayWorkOnDraft, readerMaySeeRevision, readersApply, mayTransferHoldings, seesSavedSearch } from './access';
 import { idMatches, nextDocId, nextWorkflowId, TEMPLATE_TYPE } from './codification';
 import { changeAuthor, seenVersion, seenWorkingBase, staleText, workingIssue, workingStaleText, type WorkingBase } from './concurrency';
 import { backUpNow } from './backup';
 import { checkFilesNow } from './integrity';
 import { COOKIE_LANG, COOKIE_ROLE, COOKIE_USER, getCtx, type Ctx } from './context';
 import { addDays, fmtDate, fmtDateTime, fmtSize, loc, nowStamp, parisStamp, parseIsoDay, todayIso } from './format';
-import { ATTACHMENTS, CONF_LEVELS, ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLES, ORIGINS, PERMS, SEARCH_SCOPES, SIM_ROLES, SIMULATED_MATRIX_ROLES, type Perm, type SimRole, type TKey } from './i18n';
-import { addLink, applyChangeDecision, applyPendingDecision, approveRevision, audit, catchUpEffectiveDates, journalConsultation, journalLink, linkBetween, lockOf, refreshHeadline, type ModifierSwap, type Tx } from './lifecycle';
+import { ATTACHMENTS, CONF_LEVELS, ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLES, ORIGINS, PERMS, SEARCH_SCOPES, SIM_ROLES, SIMULATED_MATRIX_ROLES, type Perm, type TKey } from './i18n';
+import { addLink, applyChangeDecision, applyPendingDecision, approverCheck, approveRevision, audit, circuitExclusions, catchUpEffectiveDates, journalConsultation, journalLink, linkBetween, lockOf, refreshHeadline, type ModifierSwap, type Tx } from './lifecycle';
 import { changes, entryChanges, familyJournal, functionJournal, retentionValue, typeJournal } from './journal-values';
 import { isLinkRel, linkIssue, otherEnd, replacementIssue, storedLink } from './links';
 import { logger, traceAction } from './log';
@@ -27,13 +27,16 @@ import { fileIssueReason, fileIssueText, fileRules } from './filetypes';
 import { MAX_PER_RUN, purgeOrphans } from './orphans';
 import {
   builtInScopeIssue, builtInTypeIssue, departmentCodeIssue, keyIssue, outsideType, parseFamilyForm, parseFunctionForm, parseProgramForm, parseRetentionRule, parseTypeForm, programCodeIssue, PROJECT_MANAGER_FUNCTIONS,
-  typeCodeIssue, type CodeSpace, type FormIssue, type ProgramValues, type TypeValues,
+  SUBTYPE_MAX, SUBTYPES_MAX, typeCodeIssue, type CodeSpace, type FormIssue, type ProgramValues, type TypeValues,
 } from './registry-rules';
 import { isEventTrigger, parseEventDate, sameRule } from './retention';
 import { nextReviewDate } from './review';
 import { beyondBounds, cleanCriteria, hasCriteria, type SearchInput } from './search';
 import { discardFile, FileRejectedError, fileColumns, nameStoredFile, readStored, renameDocFiles, sha256Of, stageFile, stageUpload, type StagedFile } from './storage';
 import { submitChange, vigieSimulated } from './vigie';
+import { confirmTransfer } from './transfer';
+import { addTerms, documentsWith, loadTerms, readTerms, termById, VOCAB_TABLE } from './vocab';
+import { canonicalSubtype, cleanTerm, docLang, isVocabKind, termKeys, termNameIssue, VOCAB_MAX, vocabKey, type VocabKind } from './vocab-rules';
 
 /**
  * `field`: the form field the error is about, when the dialog can show it there. `stale`: the view the request came
@@ -191,11 +194,15 @@ function readFields(ctx: Ctx, fd: FormData, base?: DocRow): Fields {
   };
   const typeCode = str(fd, 'typeCode') || base?.typeCode || '';
   const type = ctx.typeByCode.get(typeCode);
+  // fr or en, whatever the case; any other value is kept for validateFields to refuse (unless the document has it).
+  const rawLang = opt(fd, 'lang');
+  const lang = docLang(rawLang);
   const attachment = pick('attachment', ATTACHMENTS, base?.attachment ?? type?.attachments[0] ?? 'none');
   const origin = pick('origin', ORIGINS, base?.origin ?? type?.origins[0] ?? 'interne');
   return {
     title: str(fd, 'title') || base?.title || '',
-    typeCode, subtype: opt(fd, 'subtype'), origin, attachment,
+    // A sub-type takes its type's spelling when it folds to one of its labels; another value is kept (MET-17).
+    typeCode, subtype: canonicalSubtype(type?.subtypes ?? [], opt(fd, 'subtype')).value, origin, attachment,
     projectCode: attachment === 'project' ? opt(fd, 'projectCode') : null,
     programCode: attachment === 'research' ? opt(fd, 'programCode') : null,
     // Not sent: the user's department, refused by validateFields when inactive; without one, the first active department.
@@ -204,10 +211,10 @@ function readFields(ctx: Ctx, fd: FormData, base?: DocRow): Fields {
     ownerId: str(fd, 'ownerId') || base?.ownerId || ctx.user.id,
     ...readAuthor(ctx, fd, base),
     conf: pick('conf', CONF_LEVELS, base?.conf ?? type?.confDefault ?? 'interne'),
-    keywords: dedupe(str(fd, 'keywords').split(',').map((k) => k.trim()).filter(Boolean)),
-    lang: opt(fd, 'lang'),
+    keywords: dedupe(str(fd, 'keywords').split(',').map(cleanTerm).filter(Boolean)),
+    lang: lang === undefined ? rawLang : lang,
     reviewDueAt: opt(fd, 'reviewDueAt'), expiresAt: opt(fd, 'expiresAt'),
-    sourceOrg: origin === 'externe' ? opt(fd, 'sourceOrg') : null,
+    sourceOrg: origin === 'externe' ? cleanTerm(str(fd, 'sourceOrg')) || null : null,
     externalRef: origin === 'externe' ? opt(fd, 'externalRef') : null,
     receivedAt: origin === 'externe' ? opt(fd, 'receivedAt') : null,
     projectPhase: attachment === 'project' ? opt(fd, 'projectPhase') : null,
@@ -222,6 +229,32 @@ function readFields(ctx: Ctx, fd: FormData, base?: DocRow): Fields {
 
 /** Longest free-text author, as the import takes it (lib/importer.ts). */
 const AUTHOR_TEXT_MAX = 200;
+/** Longest sub-type and most keywords of a document, as the import takes them (lib/importer.ts). */
+const DOC_SUBTYPE_MAX = 200;
+const KEYWORDS_MAX = 50;
+
+/**
+ * The source organisation and keywords of a form read against their vocabularies (lib/vocab.ts): each value becomes the
+ * name of the term it stands for (« SIEMENS » → « Siemens »). A value no term stands for is a new term, added only when
+ * the form confirms it (`confirmTerm`, one per new value, as the form offers it) or when the document already carries it
+ * (`base`); otherwise the form is refused on its field, with the values to confirm (`confirm`, a JSON list), and nothing
+ * is written. `add`: the terms to add with the document, in its transaction (addTerms).
+ */
+async function readVocab(ctx: Ctx, fd: FormData, f: Fields, base?: DocRow): Promise<{ refused: ActionResult } | { sourceOrg: string | null; keywords: string[]; add: { kind: VocabKind; names: string[] }[] }> {
+  const db = await getDb();
+  const confirmed = new Set(fd.getAll('confirmTerm').map((x) => vocabKey(String(x))));
+  for (const v of [base?.sourceOrg, ...(base?.keywords ?? [])]) if (v) confirmed.add(vocabKey(v));
+  const [orgs, kws] = await Promise.all([loadTerms(db, 'source_org'), loadTerms(db, 'keyword')]);
+  const org = readTerms(orgs, f.sourceOrg ? [f.sourceOrg] : [], confirmed);
+  const keywords = readTerms(kws, f.keywords, confirmed);
+  for (const [field, x] of [['sourceOrg', org], ['keywords', keywords]] as const) {
+    if (x.unconfirmed.length) {
+      const quoted = x.unconfirmed.map((v) => (ctx.lang === 'fr' ? `« ${v} »` : `“${v}”`)).join(', ');
+      return { refused: { ok: false, error: ctx.t.vocab_confirm_new.replace('{terms}', quoted), field, confirm: JSON.stringify(x.unconfirmed) } };
+    }
+  }
+  return { sourceOrg: org.values[0] ?? null, keywords: keywords.values, add: [{ kind: 'source_org', names: org.added }, { kind: 'keyword', names: keywords.added }] };
+}
 
 /**
  * The author of a document (MET-10): a person of the group or a free text (external author), never both. The dialogs
@@ -261,7 +294,7 @@ function metaChanges(d: DocRow, f: Fields, retention: Partial<Pick<DocRow, 'rete
  * Business rules of the register: type admits origin, attachment and confidentiality; contextual fields are filled.
  * An inactive type, programme, department or site is refused, except for a document that already has it (`current`).
  */
-function validateFields(ctx: Ctx, f: Fields, current?: Pick<DocRow, 'typeCode' | 'programCode' | 'department' | 'site'>): ActionResult | null {
+function validateFields(ctx: Ctx, f: Fields, current?: Pick<DocRow, 'typeCode' | 'programCode' | 'department' | 'site' | 'lang'>): ActionResult | null {
   const type = ctx.typeByCode.get(f.typeCode);
   if (!f.title || !type || !(type.active || type.code === current?.typeCode)) return fail(ctx);
   if (!type.origins.includes(f.origin) || !type.attachments.includes(f.attachment)) return fail(ctx, 'type_mismatch');
@@ -270,6 +303,12 @@ function validateFields(ctx: Ctx, f: Fields, current?: Pick<DocRow, 'typeCode' |
   // An inactive programme (closed) is no longer offered, except to a document that already has it.
   if (f.attachment === 'research' && !ctx.programs.some((p) => p.code === f.programCode && (p.active || p.code === current?.programCode))) return fail(ctx, 'program_required');
   if (f.origin === 'externe' && !f.sourceOrg) return fail(ctx, 'source_required');
+  // Controlled values (point 59): the language is fr, en or none (a document that has another one keeps it); the lengths
+  // the import admits for the sub-type, the keywords and the source organisation.
+  if (f.lang && docLang(f.lang) === undefined && f.lang !== current?.lang) return { ok: false, error: ctx.t.lang_invalid, field: 'lang' };
+  if (f.subtype && f.subtype.length > DOC_SUBTYPE_MAX) return { ok: false, error: ctx.t.value_too_long.replace('{n}', String(DOC_SUBTYPE_MAX)), field: 'subtype' };
+  if (f.keywords.length > KEYWORDS_MAX || f.keywords.some((k) => k.length > VOCAB_MAX.keyword)) return { ok: false, error: ctx.t.keywords_too_many.replace('{n}', String(KEYWORDS_MAX)).replace('{len}', String(VOCAB_MAX.keyword)), field: 'keywords' };
+  if (f.sourceOrg && f.sourceOrg.length > VOCAB_MAX.source_org) return { ok: false, error: ctx.t.value_too_long.replace('{n}', String(VOCAB_MAX.source_org)), field: 'sourceOrg' };
   // A department or a site made inactive (Administration › Organisation) is no longer offered, except where it is set.
   const dept = ctx.departments.find((d) => d.code === f.department);
   if (!dept) return fail(ctx);
@@ -323,6 +362,10 @@ async function createDocumentNow(fd: FormData): Promise<ActionResult> {
   // A new document is issued today at the earliest: its expiry and its review come after.
   const dated = dateIssues({ ...f, issuedAt: null, issueFrom: todayIso(), effective: null }, todayIso())[0];
   if (dated) return dateFail(ctx, dated);
+  const vocab = await readVocab(ctx, fd, f);
+  if ('refused' in vocab) return vocab.refused;
+  f.sourceOrg = vocab.sourceOrg;
+  f.keywords = vocab.keywords;
   const type = ctx.typeByCode.get(f.typeCode)!;
   const file = uploadedFile(fd);
   const templateId = opt(fd, 'templateId');
@@ -371,6 +414,7 @@ async function createDocumentNow(fd: FormData): Promise<ActionResult> {
   // A copy of a template is that template's file by design: only a file sent by the user is compared.
   const warning = file && staged ? await duplicateWarning(ctx, staged.sha256) : undefined;
   const id = await withStaged(staged, () => db.transaction(async (tx) => {
+    for (const x of vocab.add) await addTerms(tx, x.kind, x.names, ctx.user.id);
     const id = await nextDocId(tx, f);
     await tx.insert(s.documents).values({
       id, ...f, family: type.family,
@@ -521,6 +565,10 @@ async function updateMetaNow(fd: FormData): Promise<ActionResult> {
   const f = readFields(ctx, fd, d);
   const invalid = authorMissing(ctx, fd) ?? validateFields(ctx, f, d);
   if (invalid) return invalid;
+  const vocab = await readVocab(ctx, fd, f, d);
+  if ('refused' in vocab) return vocab.refused;
+  f.sourceOrg = vocab.sourceOrg;
+  f.keywords = vocab.keywords;
   const type = ctx.typeByCode.get(f.typeCode)!;
   const reclassified = f.typeCode !== d.typeCode || f.attachment !== d.attachment || f.projectCode !== d.projectCode || f.programCode !== d.programCode || f.department !== d.department;
   const res = await db.transaction(async (tx): Promise<{ err: TKey } | { date: DateIssue } | { id: string } | { stale: string | null }> => {
@@ -541,6 +589,7 @@ async function updateMetaNow(fd: FormData): Promise<ActionResult> {
       ...dateIssues({ ...entered, issuedAt: d.issuedAt, issueFrom: issueFrom(d.issuedAt, ahead, today), effective: ahead }, today),
     ].find((i) => i.field !== 'effective');
     if (dated) return { date: dated };
+    for (const x of vocab.add) await addTerms(tx, x.kind, x.names, ctx.user.id);
     const everApproved = revs.some((r) => r.approvedAt);
     let id = docId;
     if (!everApproved && !idMatches(docId, f)) {
@@ -725,27 +774,6 @@ async function recordReviewNow(docId: string, next: string | null, comment = '')
 
 // ── Approval workflows ───────────────────────────────────────────────────
 
-type RevRow = typeof s.revisions.$inferSelect;
-
-/**
- * People who never approve a revision (docs/modele-cible.md §6): whoever requested the validation, its designated
- * author, the authors of its working versions, and the owner when nobody was designated to write it.
- */
-async function circuitExclusions(tx: Tx, d: DocRow, rev: Pick<RevRow, 'id' | 'modifierId'>, requesterId: string): Promise<Set<string>> {
-  const versions = await tx.select({ authorId: s.workingVersions.authorId }).from(s.workingVersions).where(eq(s.workingVersions.revisionId, rev.id));
-  return new Set([requesterId, rev.modifierId ?? d.ownerId, ...versions.map((v) => v.authorId)]);
-}
-
-/** Who may approve with their default role (its row of the matrix), whatever role they simulate right now. */
-async function approverCheck(tx: Tx, ctx: Ctx): Promise<(userId: string) => boolean> {
-  const rows = await tx.select().from(s.rolePermissions).where(and(eq(s.rolePermissions.perm, 'approve'), eq(s.rolePermissions.granted, true)));
-  const roles = new Set(rows.map((r) => r.role));
-  return (id) => {
-    const u = ctx.users.get(id);
-    return !!u && !u.isSystem && roles.has(MATRIX_ROLE[u.role as SimRole]);
-  };
-}
-
 /**
  * Resolves a function to a person for this document: holder for the document's department, project or programme,
  * then the project or programme manager where relevant, then the group-level holder. Never someone excluded (author,
@@ -814,7 +842,7 @@ async function requestValidationNow(docId: string, effectiveAt: string | null, b
     // The author's step goes to the person who wrote the revision, whoever launches the circuit.
     const author = rev.modifierId ?? versions[0].authorId ?? d.ownerId;
     const excluded = await circuitExclusions(tx, d, rev, ctx.user.id);
-    const mayApprove = await approverCheck(tx, ctx);
+    const mayApprove = await approverCheck(tx, ctx.users);
     const taken = new Set<string>();
     const steps: { functionKey: string | null; name: { fr: string; en: string }; assigneeId: string }[] = [
       { functionKey: null, name: { fr: 'Rédaction', en: 'Drafting' }, assigneeId: author },
@@ -1001,7 +1029,7 @@ async function delegateStepNow(workflowId: string, toUserId: string, expectedSte
     const to = ctx.users.get(toUserId);
     if (!to || to.isSystem || to.id === ctx.user.id) return 'error';
     if ((await circuitExclusions(tx, doc, rev, wf.w.requesterId)).has(to.id)) return 'no_self_approval';
-    if (!(await approverCheck(tx, ctx))(to.id)) return 'delegate_no_approve';
+    if (!(await approverCheck(tx, ctx.users))(to.id)) return 'delegate_no_approve';
     await tx.update(s.workflowSteps).set({ assigneeId: to.id }).where(and(eq(s.workflowSteps.workflowId, workflowId), eq(s.workflowSteps.idx, cur.idx)));
     await audit(tx, ctx.user.id, 'delegate', wf.w.docId, `${workflowId} · ${loc(cur.name, 'fr')} → ${to.name}`, rev.id);
     return null;
@@ -1009,6 +1037,47 @@ async function delegateStepNow(workflowId: string, toUserId: string, expectedSte
   if (err) return fail(ctx, err);
   refresh();
   return { ok: true };
+}
+
+/**
+ * Hands the current step of a running circuit to someone else, for a records manager who does not hold it (a step left
+ * with an absent person, point 19 of docs/reste-a-faire.md): delegateStep's checks (not locked, a person who may approve
+ * with their default role, never the requester, the author or the authors of the working versions), and someone else
+ * than its holder. `expectedStep` is the step the manager saw: a circuit that moved on since is left alone. Journaled on
+ * the revision ('reassign', D-14), as a delegation.
+ */
+export async function reassignStep(...args: Parameters<typeof reassignStepNow>): Promise<ActionResult> {
+  return traceAction('reassignStep', () => reassignStepNow(...args));
+}
+async function reassignStepNow(workflowId: string, toUserId: string, expectedStep: number): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  if (!mayReassignStep(ctx)) return fail(ctx, 'forbidden');
+  if (typeof workflowId !== 'string' || typeof toUserId !== 'string') return fail(ctx);
+  const db = await getDb();
+  const err = await db.transaction(async (tx): Promise<TKey | null> => {
+    const wf = await loadWorkflow(tx, workflowId);
+    if (!wf) return 'not_found';
+    if (wf.w.outcome || wf.w.step !== expectedStep) return 'wrong_step';
+    const cur = wf.steps[wf.w.step];
+    if (!cur) return 'wrong_step';
+    const [doc] = await tx.select().from(s.documents).where(eq(s.documents.id, wf.w.docId));
+    const [rev] = await tx.select().from(s.revisions).where(eq(s.revisions.id, wf.w.revisionId));
+    if (!doc || !rev) return 'not_found';
+    const lock = lockOf(doc);
+    if (lock) return lock;
+    const to = ctx.users.get(toUserId);
+    if (!to || to.isSystem || to.id === cur.assigneeId) return 'error';
+    if ((await circuitExclusions(tx, doc, rev, wf.w.requesterId)).has(to.id)) return 'no_self_approval';
+    if (!(await approverCheck(tx, ctx.users))(to.id)) return 'delegate_no_approve';
+    await tx.update(s.workflowSteps).set({ assigneeId: to.id }).where(and(eq(s.workflowSteps.workflowId, workflowId), eq(s.workflowSteps.idx, cur.idx)));
+    await audit(tx, ctx.user.id, 'reassign', wf.w.docId, `${workflowId} · ${loc(cur.name, 'fr')} : ${ctx.userName(cur.assigneeId)} → ${to.name}`, rev.id);
+    return null;
+  });
+  if (err) return fail(ctx, err);
+  refresh();
+  return { ok: true, message: ctx.t.reassign_done };
 }
 
 export async function addComment(...args: Parameters<typeof addCommentNow>): Promise<ActionResult> {
@@ -1871,7 +1940,7 @@ async function addFunctionHolderNow(functionKey: string, scopeValue: string | nu
   const scope = fn.scope === 'global' ? null : scopeValue || null;
   const db = await getDb();
   // A holder decides approval steps: their default role must be able to approve.
-  if (!(await approverCheck(db, ctx))(u.id)) return fail(ctx, 'delegate_no_approve');
+  if (!(await approverCheck(db, ctx.users))(u.id)) return fail(ctx, 'delegate_no_approve');
   const res = await db.transaction(async (tx): Promise<ActionResult> => {
     if (scope !== null && !(await scopeValueOk(tx, fn.scope, scope))) return fail(ctx, 'holder_scope_invalid');
     await tx.insert(s.functionHolders).values({ functionKey, scopeValue: scope, userId });
@@ -1898,6 +1967,199 @@ async function removeFunctionHolderNow(id: number): Promise<ActionResult> {
   });
   refresh();
   return { ok: true };
+}
+
+// ── Holdings of a person who leaves (point 19 of docs/reste-a-faire.md) ─────────
+
+/**
+ * Hands every holding of `from` to the replacement `to` in one operation (lib/transfer.ts): documents and processes
+ * owned, open revisions to write, pending approval steps, function holderships, named readers. For a records manager
+ * with access to Administration (access.ts mayTransferHoldings). `digest`: that of the simulation the manager confirmed
+ * (Administration › Reprise): when the plan reads otherwise now, nothing is written and the page shows it again. The
+ * replacement is chosen, never proposed (A15); no account is disabled (O-02).
+ */
+export async function transferHoldings(...args: Parameters<typeof transferHoldingsNow>): Promise<ActionResult> {
+  return traceAction('transferHoldings', () => transferHoldingsNow(...args));
+}
+async function transferHoldingsNow(fromId: string, toId: string, digest: string): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  if (!mayTransferHoldings(ctx)) return fail(ctx, 'forbidden');
+  if (typeof fromId !== 'string' || typeof toId !== 'string' || typeof digest !== 'string') return fail(ctx);
+  const from = ctx.users.get(fromId), to = ctx.users.get(toId);
+  if (!from || from.isSystem) return fail(ctx, 'transfer_from_unknown');
+  if (!to || to.isSystem || to.id === from.id) return fail(ctx, 'transfer_to_invalid');
+  const res = await confirmTransfer(await getDb(), ctx.users, ctx.user.id, from.id, to.id, digest);
+  if ('changed' in res) return { ok: false, error: ctx.t.transfer_changed, stale: true };
+  if ('empty' in res) return fail(ctx, 'transfer_nothing');
+  const done = res.done.items.filter((i) => i.ok).length;
+  const skipped = res.done.items.filter((i) => i.ok === false).length;
+  refresh();
+  return {
+    ok: true,
+    message: [ctx.t.transfer_done.replace('{n}', String(done)).replace('{to}', to.name), skipped ? ctx.t.transfer_skipped_n.replace('{n}', String(skipped)) : ''].filter(Boolean).join(' · '),
+  };
+}
+
+// ── Controlled vocabularies (point 59 of docs/reste-a-faire.md) ─────────────
+
+/** A term of a vocabulary as the journal stores it: its name and the spellings it also stands for. */
+const termJournal = (x: { name: string; aliases: string[] }): [string, AuditValue][] => [['term', x.name], ['aliases', [...x.aliases].sort()]];
+
+/**
+ * Gives the documents carrying one of `keys` the value `name` (a term renamed, or merged into another), each journaled
+ * as a metadata change ('vocab_apply', before → after, its values as for a metadata edit, D-14). Documents under legal
+ * hold keep theirs: the former spelling stays an alias of the term, which still resolves it. Their modification date is
+ * left as it is: the document was not edited, the journal says what changed. Returns the documents changed and kept.
+ */
+async function applyTerm(tx: Tx, ctx: Ctx, kind: VocabKind, keys: ReadonlySet<string>, name: string): Promise<{ changed: number; held: number }> {
+  let changed = 0, held = 0;
+  for (const d of await documentsWith(tx, kind, keys)) {
+    const field = kind === 'source_org' ? 'sourceOrg' : 'keywords';
+    const before: string | string[] | null = kind === 'source_org' ? d.sourceOrg : d.keywords;
+    const after = kind === 'source_org' ? name : dedupe(d.keywords.map((k) => (keys.has(vocabKey(k)) ? name : k)));
+    if (JSON.stringify(before) === JSON.stringify(after)) continue;
+    if (d.legalHold) { held++; continue; }
+    await tx.update(s.documents).set(kind === 'source_org' ? { sourceOrg: name } : { keywords: after as string[] }).where(eq(s.documents.id, d.id));
+    await audit(tx, ctx.user.id, 'vocab_apply', d.id, '', null, { changes: changes([[field, before, after]]), doc: { conf: d.conf, inForce: !!d.revInForce } });
+    changed++;
+  }
+  return { changed, held };
+}
+
+function appliedText(ctx: Ctx, x: { changed: number; held: number }): string {
+  return [ctx.t.vocab_docs_changed.replace('{n}', String(x.changed)), x.held ? ctx.t.retention_held_kept.replace('{n}', String(x.held)) : ''].filter(Boolean).join(' · ');
+}
+
+/**
+ * Adds a term to a vocabulary from Administration › Vocabulaires: a name no term already stands for (lib/vocab-rules.ts
+ * termNameIssue). Who may govern the terms (A05) is not decided: the « Administrer » permission, as for the register.
+ */
+export async function addVocabTerm(...args: Parameters<typeof addVocabTermNow>): Promise<ActionResult> {
+  return traceAction('addVocabTerm', () => addVocabTermNow(...args));
+}
+async function addVocabTermNow(kind: string, name: string): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  const no = adminOnly(ctx);
+  if (no) return no;
+  if (!isVocabKind(kind) || typeof name !== 'string') return fail(ctx);
+  const db = await getDb();
+  const res = await db.transaction(async (tx): Promise<ActionResult> => {
+    // Locked, so that two additions of one spelling cannot both find it free.
+    await tx.execute(sql`lock table ${VOCAB_TABLE[kind]} in share row exclusive mode`);
+    const issue = termNameIssue(kind, await loadTerms(tx, kind), name);
+    if (issue) return { ok: false, error: ctx.t[issue], field: 'name' };
+    await addTerms(tx, kind, [cleanTerm(name)], ctx.user.id);
+    return { ok: true, message: ctx.t.vocab_added };
+  });
+  if (res.ok) refresh();
+  return res;
+}
+
+/**
+ * Renames a term: its documents take the new name (applyTerm), and the former one stays an alias of the term (an
+ * import, a document under legal hold still resolve it). The new name must not be another term's.
+ */
+export async function renameVocabTerm(...args: Parameters<typeof renameVocabTermNow>): Promise<ActionResult> {
+  return traceAction('renameVocabTerm', () => renameVocabTermNow(...args));
+}
+async function renameVocabTermNow(kind: string, id: number, name: string): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  const no = adminOnly(ctx);
+  if (no) return no;
+  if (!isVocabKind(kind) || !Number.isInteger(id) || typeof name !== 'string') return fail(ctx);
+  const db = await getDb();
+  const res = await db.transaction(async (tx): Promise<ActionResult> => {
+    await tx.execute(sql`lock table ${VOCAB_TABLE[kind]} in share row exclusive mode`);
+    const cur = await termById(tx, kind, id);
+    if (!cur) return fail(ctx, 'vocab_not_found');
+    const issue = termNameIssue(kind, await loadTerms(tx, kind), name, id);
+    if (issue) return { ok: false, error: ctx.t[issue], field: 'name' };
+    const next = cleanTerm(name);
+    if (next === cur.name) return { ok: true, message: ctx.t.saved_ok };
+    const nextKey = vocabKey(next);
+    const aliases = dedupe([...cur.aliases, cur.name]).filter((x) => vocabKey(x) !== nextKey);
+    const t = VOCAB_TABLE[kind];
+    await tx.update(t).set({ name: next, key: nextKey, aliases }).where(eq(t.id, id));
+    await audit(tx, ctx.user.id, 'vocab_rename', { kind, id: next }, '', null, { changes: entryChanges(termJournal(cur), termJournal({ name: next, aliases })) });
+    const applied = await applyTerm(tx, ctx, kind, new Set(termKeys(cur)), next);
+    return { ok: true, message: `${ctx.t.saved_ok} · ${appliedText(ctx, applied)}` };
+  });
+  if (res.ok) refresh();
+  return res;
+}
+
+/**
+ * Merges a duplicate into the term it duplicates (« SIEMENS SAS » into « Siemens »): the documents of the duplicate
+ * take the term's name (applyTerm), the duplicate's spellings become aliases of the term, and the duplicate is removed.
+ * Journaled on the term kept, with the spellings it gained.
+ */
+export async function mergeVocabTerms(...args: Parameters<typeof mergeVocabTermsNow>): Promise<ActionResult> {
+  return traceAction('mergeVocabTerms', () => mergeVocabTermsNow(...args));
+}
+async function mergeVocabTermsNow(kind: string, fromId: number, intoId: number): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  const no = adminOnly(ctx);
+  if (no) return no;
+  if (!isVocabKind(kind) || !Number.isInteger(fromId) || !Number.isInteger(intoId)) return fail(ctx);
+  if (fromId === intoId) return fail(ctx, 'vocab_merge_self');
+  const db = await getDb();
+  const res = await db.transaction(async (tx): Promise<ActionResult> => {
+    const dup = await termById(tx, kind, fromId);
+    const into = await termById(tx, kind, intoId);
+    if (!dup || !into) return fail(ctx, 'vocab_not_found');
+    const t = VOCAB_TABLE[kind];
+    const aliases = dedupe([...into.aliases, dup.name, ...dup.aliases]).filter((x) => vocabKey(x) !== into.key);
+    await tx.delete(t).where(eq(t.id, dup.id));
+    await tx.update(t).set({ aliases }).where(eq(t.id, into.id));
+    await audit(tx, ctx.user.id, 'vocab_merge', { kind, id: into.name }, dup.name, null, { changes: entryChanges(termJournal(into), termJournal({ name: into.name, aliases })) });
+    const applied = await applyTerm(tx, ctx, kind, new Set(termKeys(dup)), into.name);
+    return { ok: true, message: `${ctx.t.vocab_merged.replace('{from}', dup.name).replace('{into}', into.name)} · ${appliedText(ctx, applied)}` };
+  });
+  if (res.ok) refresh();
+  return res;
+}
+
+/**
+ * Adds to a type's sub-types a value its documents carry outside the list (Administration › Vocabulaires): the list of a
+ * type stays open (MET-17, O-05 point 9), and a value entered on a document joins it only when an administrator of the
+ * register adopts it. Same label in French and English until the type dialog gives it another; journaled as a change
+ * of the type.
+ */
+export async function adoptSubtype(...args: Parameters<typeof adoptSubtypeNow>): Promise<ActionResult> {
+  return traceAction('adoptSubtype', () => adoptSubtypeNow(...args));
+}
+async function adoptSubtypeNow(typeCode: string, value: string): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  const no = adminOnly(ctx);
+  if (no) return no;
+  if (typeof typeCode !== 'string' || typeof value !== 'string') return fail(ctx);
+  const label = cleanTerm(value);
+  if (!label || label.length > DOC_SUBTYPE_MAX) return fail(ctx);
+  // The register's own bounds (lib/registry-rules.ts), so that the type dialog still reads the list.
+  if (label.length > SUBTYPE_MAX) return fail(ctx, 'subtype_adopt_long', String(SUBTYPE_MAX));
+  const db = await getDb();
+  const res = await db.transaction(async (tx): Promise<ActionResult> => {
+    const [cur] = await tx.select().from(s.docTypes).where(eq(s.docTypes.code, typeCode)).for('update');
+    if (!cur) return fail(ctx, 'reg_not_found');
+    if (canonicalSubtype(cur.subtypes, label).listed) return fail(ctx, 'subtype_listed');
+    if (cur.subtypes.length >= SUBTYPES_MAX) return fail(ctx, 'subtype_adopt_full', String(SUBTYPES_MAX));
+    const next = { ...cur, subtypes: [...cur.subtypes, { fr: label, en: label }] };
+    await tx.update(s.docTypes).set({ subtypes: next.subtypes }).where(eq(s.docTypes.code, typeCode));
+    await audit(tx, ctx.user.id, 'type', { kind: 'type', id: typeCode }, '', null, { changes: entryChanges(typeJournal(cur), typeJournal(next)) });
+    return { ok: true, message: ctx.t.subtype_adopted.replace('{value}', label).replace('{type}', typeCode) };
+  });
+  if (res.ok) refresh();
+  return res;
 }
 
 // ── Register of types, families, functions; research programmes ──────────

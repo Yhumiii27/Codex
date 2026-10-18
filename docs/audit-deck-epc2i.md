@@ -516,12 +516,12 @@ agent distinct.
 
 La vérification a ramené 4 écarts de « couvert » à « partiel » (G05, G15, G17, G48) et confirmé tous les autres. Effort estimé : 21 faibles, 21 moyens, 6 importants. C'est le décompte vérifié qui a été donné à l'utilisateur.
 
-**Aujourd'hui (9 octobre 2026)** :
+**Aujourd'hui (9 octobre 2026, mis à jour le 18 octobre)** :
 
 | Statut aujourd'hui | Nombre | Écarts |
 |---|---|---|
-| intégré | 30 | G04, G05, G06, G07, G08, G09, G10, G11, G14, G17, G20, G21, G22, G23, G24, G25, G26, G27, G28, G29, G30, G31, G33, G34, G35, G36, G37, G38, G41, G47 |
-| partiel | 15 | G02, G03, G12, G13, G15, G18, G19, G32, G39, G40, G42, G43, G44, G45, G48 |
+| intégré | 32 | G04, G05, G06, G07, G08, G09, G10, G11, G14, G17, G20, G21, G22, G23, G24, G25, G26, G27, G28, G29, G30, G31, G32, G33, G34, G35, G36, G37, G38, G40, G41, G47 |
+| partiel | 13 | G02, G03, G12, G13, G15, G18, G19, G39, G42, G43, G44, G45, G48 |
 | non fait | 0 | — |
 | écarté par décision | 3 | G01, G16, G46 |
 
@@ -565,7 +565,7 @@ La vérification a ramené 4 écarts de « couvert » à « partiel » (G05, G15
 | [G29](#g29) | Tronc commun : Statut (liste à 7 valeurs : Brouillon / En révision / Approuvé / En vigueur / Remplacé / Archivé / Obsolète) | en conflit | important | intégré |
 | [G30](#g30) | Tronc commun : Département / Fonction (entité métier) | partiel | faible | intégré |
 | [G31](#g31) | Tronc commun : Niveau de confidentialité (liste à 4 valeurs : Interne / Confidentiel / Très confidentiel / Restreint) | en conflit | faible | intégré |
-| [G32](#g32) | Tronc commun : Mots-clés (métadonnée gérée multiple, facultatif) | partiel | faible | **partiel** |
+| [G32](#g32) | Tronc commun : Mots-clés (métadonnée gérée multiple, facultatif) | partiel | faible | intégré |
 | [G33](#g33) | Tronc commun : Version / Révision | couvert | faible | intégré |
 | [G34](#g34) | Tronc commun : Date d'émission (obligatoire, première émission) | partiel | faible | intégré |
 | [G35](#g35) | Tronc commun : Date d'effet (début de validité) | absent | faible | intégré |
@@ -573,7 +573,7 @@ La vérification a ramené 4 écarts de « couvert » à « partiel » (G05, G15
 | [G37](#g37) | Tronc commun : Date d'expiration (fin de validité) | en conflit | moyen | intégré |
 | [G38](#g38) | Tronc commun : Langue (choix, facultatif) | couvert | faible | intégré |
 | [G39](#g39) | Tronc commun : Classe de conservation (métadonnée gérée, obligatoire) | partiel | moyen | **partiel** |
-| [G40](#g40) | Tronc commun : Organisme source (conditionnel, obligatoire pour les documents externes) | absent | faible | **partiel** |
+| [G40](#g40) | Tronc commun : Organisme source (conditionnel, obligatoire pour les documents externes) | absent | faible | intégré |
 | [G41](#g41) | Niveau 3 – Taxonomie Domaine › Catégorie › Type › Sous-type (DI, DE, DP, DR) | en conflit | important | intégré |
 | [G42](#g42) | Niveau 4 – Champs spécifiques DI (propriétaire de processus, autorité d'approbation, département, niveau de confidentialité) | partiel | moyen | **partiel** |
 | [G43](#g43) | Niveau 4 – Champs spécifiques DE (organisme source, référence externe, sens entrant/sortant, date de réception) | absent | faible | **partiel** |
@@ -615,7 +615,7 @@ par les décisions D-06 à D-21 et par le modèle v2.
 
 - **Constat sur la v1** : Table `taxonomy` plate (axes entité, service, processus, type, confidentialité). On ne pouvait ajouter des valeurs que sur 4 axes, sans hiérarchie, renommage ni désactivation.
 - **Vérification** : « Partiel », confirmé. Mots-clés en texte libre ; les 22 types de la maquette (activité explosifs) n'avaient aucun rapport avec la taxonomie du deck : tout le référentiel était à reprendre.
-- **Aujourd'hui — partiel.** Par décision, le référentiel est le registre des types de Codex et non la banque de termes SharePoint (D-06, D-07) : 23 familles et 69 types avec leurs sous-types (`src/db/registry.ts`), départements et sites (`src/db/seed-org.ts`), fonctions. Depuis le 15 octobre, Administration crée, modifie et supprime types (tous leurs réglages, libellés et sous-types compris), familles, fonctions et programmes de recherche (`createType`, `updateType`… dans `src/lib/actions.ts`), journalisés ; une entrée utilisée garde son code et se désactive plutôt que d'être supprimée. Administration › Organisation ajoute des départements et des sites (`addOrgValue`) et, depuis le 15 octobre, les renomme (libellés FR/EN), les désactive ou les réactive, et supprime une valeur inutilisée (`updateOrgValue`, `deleteOrgValue`), journalisés ; le code d'un département ne change jamais. Reste : fusionner deux départements ; mots-clés et organisme source sont du texte libre ; qui gouverne les termes (A05) n'est pas décidé ; l'organigramme réel (O-04).
+- **Aujourd'hui — partiel.** Par décision, le référentiel est le registre des types de Codex et non la banque de termes SharePoint (D-06, D-07) : 23 familles et 69 types avec leurs sous-types (`src/db/registry.ts`), départements et sites (`src/db/seed-org.ts`), fonctions. Depuis le 15 octobre, Administration crée, modifie et supprime types (tous leurs réglages, libellés et sous-types compris), familles, fonctions et programmes de recherche (`createType`, `updateType`… dans `src/lib/actions.ts`), journalisés ; une entrée utilisée garde son code et se désactive plutôt que d'être supprimée. Administration › Organisation ajoute des départements et des sites (`addOrgValue`) et, depuis le 15 octobre, les renomme (libellés FR/EN), les désactive ou les réactive, et supprime une valeur inutilisée (`updateOrgValue`, `deleteOrgValue`), journalisés ; le code d'un département ne change jamais. Depuis le 18 octobre, Administration › Vocabulaires gère les organismes sources et les mots-clés (ajout, renommage, fusion) et adopte dans le registre les sous-types saisis hors liste. Reste : fusionner deux départements ; qui gouverne les termes (A05) n'est pas décidé ; l'organigramme réel (O-04).
 
 <a id="g04"></a>
 #### G04 — Codification automatique du nom / de l'ID du document selon son type
@@ -876,7 +876,7 @@ par les décisions D-06 à D-21 et par le modèle v2.
 
 - **Constat sur la v1** : `keywords` facultatif, saisi en texte libre séparé par des virgules, cherché en plein texte.
 - **Vérification** : « Partiel », confirmé ; pas de facette mot-clé.
-- **Aujourd'hui — partiel.** Texte libre séparé par des virgules (`readFields`, `src/lib/actions.ts`), cherché en plein texte ; facette « Mots-clés » de la recherche depuis le 11 octobre 2026 (plusieurs valeurs par document). Pas de vocabulaire géré.
+- **Aujourd'hui — intégré** (18 octobre 2026, point 59 de `docs/reste-a-faire.md`). Vocabulaire géré des mots-clés (table `keyword_terms`, `src/lib/vocab.ts`) : saisie par sélection avec autocomplétion, graphie du terme reprise, nouveau terme ajouté après confirmation et journalisé ; ajout, renommage et fusion de doublons dans Administration › Vocabulaires ; facette « Mots-clés » de la recherche depuis le 11 octobre 2026. Réserve : thésaurus fermé ou libre et gouvernance des termes (A21, A05) non décidés ; liste ouverte en attendant.
 
 <a id="g33"></a>
 #### G33 — Tronc commun : Version / Révision
@@ -948,7 +948,7 @@ par les décisions D-06 à D-21 et par le modèle v2.
 
 - **Constat sur la v1** : Aucun champ.
 - **Vérification** : « Absent », confirmé.
-- **Aujourd'hui — partiel.** `documents.source_org`, obligatoire pour l'origine externe (`validateFields`, `src/lib/actions.ts`). C'est un texte libre, pas la « métadonnée gérée » (liste contrôlée) que prévoit le deck.
+- **Aujourd'hui — intégré** (18 octobre 2026, point 59 de `docs/reste-a-faire.md`). `documents.source_org`, obligatoire pour l'origine externe (`validateFields`, `src/lib/actions.ts`), lu contre le référentiel administré des organismes sources (table `source_orgs`) : autocomplétion, graphie du terme reprise (casse, accents, espaces), termes proches proposés, nouveau terme ajouté après confirmation ou par l'import, journalisé ; renommage et fusion de doublons dans Administration › Vocabulaires. Réserve : gouvernance des termes (A05) et liste réelle des organismes (O-11).
 
 <a id="g41"></a>
 #### G41 — Niveau 3 – Taxonomie Domaine › Catégorie › Type › Sous-type (DI, DE, DP, DR)
@@ -1359,7 +1359,7 @@ tranché dans le modèle ou le code, ouvert, ou sans objet.
 
 - **Constat** : Le Propriétaire est un 'responsable métier interne'. L'Auteur est 'personne ou texte, auteur réel ou organisme émetteur'. La slide 18 ajoute un 'Propriétaire de processus' pour les DI. Les rôles et obligations de chacun ne sont pas distingués, pas plus que le déposant.
 - **Question** : Pour un document interne, l'Auteur est-il le rédacteur, distinct du déposant et du propriétaire ? Peut-il y avoir plusieurs auteurs ? Quelles obligations porte le propriétaire (revue périodique, traitement des ECR, renouvellement) ? Qui reprend ses documents quand il quitte l'entreprise ? En quoi le Propriétaire de processus diffère-t-il du Propriétaire du document ?
-- **Suite** : **Ouvert.** Les champs existent (propriétaire transférable, auteur personne ou texte, propriétaire de processus facultatif), mais les obligations de chacun et la reprise des documents d'une personne qui part ne sont pas définies.
+- **Suite** : **Ouvert.** Les champs existent (propriétaire transférable, auteur personne ou texte, propriétaire de processus facultatif). Depuis le 18 octobre 2026, un gestionnaire documentaire reprend en une opération journalisée les responsabilités d'une personne qui part au profit d'un remplaçant qu'il choisit (Administration › Reprise, point 19 de `docs/reste-a-faire.md`). Restent à décider : les obligations de chacun et la règle par défaut du remplaçant.
 
 #### A16 — Numérotation des versions et révisions (slides 7, 13)
 
@@ -1395,7 +1395,7 @@ tranché dans le modèle ou le code, ouvert, ou sans objet.
 
 - **Constat** : Le champ Mots-clés est une 'métadonnée gérée multiple', sans préciser s'il s'agit d'un thésaurus fermé ou de mots-clés libres.
 - **Question** : Les mots-clés viennent-ils d'un thésaurus fermé tenu par le gestionnaire documentaire, ou chacun peut-il en saisir librement ? Qui fait le ménage dans les doublons ?
-- **Suite** : **Ouvert** (mots-clés toujours libres, voir G32).
+- **Suite** : **Ouvert.** Depuis le 18 octobre 2026, les mots-clés sont un vocabulaire géré à liste ouverte : un nouveau terme est ajouté après confirmation, journalisé, et un administrateur fusionne les doublons (G32). Thésaurus fermé ou libre et qui le tient : non décidés.
 
 #### A22 — Création de document et modèles (slides 7, 9, 11)
 
@@ -1593,7 +1593,7 @@ tranché dans le modèle ou le code, ouvert, ou sans objet.
 
 - **Pourquoi** : Codex n'a pas encore d'authentification, et le deck ne dit pas comment les rôles et les restrictions sont portés techniquement.
 - **Question** : Les utilisateurs se connectent-ils via Entra ID (SSO Microsoft) ? Les rôles et périmètres (site, département) sont-ils alimentés par des groupes de l'annuaire ? Comment traite-t-on les départs, les intérimaires et les comptes invités ?
-- **Suite** : **Proposé, non confirmé** : Entra ID (`docs/modele-cible.md` §1 : « simulée jusqu'au branchement Entra ID »). Groupes, départs et invités : ouverts (O-02).
+- **Suite** : **Proposé, non confirmé** : Entra ID (`docs/modele-cible.md` §1 : « simulée jusqu'au branchement Entra ID »). Groupes, départs et invités : ouverts (O-02). Depuis le 18 octobre 2026, la reprise des responsabilités d'une personne qui part se fait à la main dans Administration (point 19) ; la désactivation des comptes et la détection des départs restent liées au fournisseur.
 
 #### M17 — Données personnelles (RGPD)
 

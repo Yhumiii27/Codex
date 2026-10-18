@@ -10,7 +10,7 @@ import { getCtx } from '@/lib/context';
 import { fileRules } from '@/lib/filetypes';
 import { CONF_LEVELS, MATRIX_ROLE, type SimRole, type TKey } from '@/lib/i18n';
 import { keystoneUrl } from '@/lib/keystone';
-import { getMatrix, listTemplates, myTodo, recentActivity, typeView } from '@/lib/queries';
+import { getMatrix, listTemplates, myTodo, recentActivity, typeView, vocabSuggestions } from '@/lib/queries';
 
 export const metadata: Metadata = {
   title: 'Codex — GED Groupe',
@@ -24,7 +24,7 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
   // the same items as the home's « À traiter », each linking to where to act (myTodo, AppProvider).
   // Only what the shell shows is read (lib/queries.ts): the documents and workflows « À traiter » may come from, the
   // templates, the five latest entries of the 60 latest about documents the user may see (each under its current ID).
-  const [todo, templates, recent, matrix] = await Promise.all([myTodo(ctx), listTemplates(ctx), recentActivity(ctx, 5, 60), getMatrix()]);
+  const [todo, templates, recent, matrix, vocab] = await Promise.all([myTodo(ctx), listTemplates(ctx), recentActivity(ctx, 5, 60), getMatrix(), vocabSuggestions(ctx)]);
   const data: DialogData = {
     templates: templates.map((x) => ({ id: x.id, label: x.label, rev: x.rev, owner: x.owner, types: x.types })),
     types: ctx.types.map((x) => {
@@ -49,6 +49,7 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
     perms: [...ctx.perms],
     seesAll: ctx.seesAll,
     files: fileRules(process.env),
+    vocab,
   };
   return (
     <html lang={ctx.lang} className={interClassName}>

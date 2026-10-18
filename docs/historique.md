@@ -2254,6 +2254,7 @@ de [decisions.md](decisions.md).
 | 3. Postgres serveur en option et mesures sur gros volume | commit « Lot 9, étape 3 », qui suit `98b45db` | 51 (en partie), 56 | `DATABASE_URL` : serveur PostgreSQL 18 par node-postgres, mêmes migrations et compléments sous verrou consultatif ; suite de tests rejouée sur un serveur (`npm run test:pg`, CI) ; `npm run seed:large` et `npm run perf`, mesures dans `docs/performances.md` | PGlite par défaut ; PostgreSQL 18 exigé ; référentiel minimal par défaut sur un serveur ; sauvegarde, restauration, `export` et `integrity` en ligne de commande refusés sur un serveur ; migration d'une base serveur seulement avec `CODEX_MIGRATION_BACKUP=off` ; `READ COMMITTED` ; volume dans une base à part |
 | 4. Planificateur interne et signature des échanges entre serveurs | commit « Lot 9, étape 4 », qui suit `ccf5940` | 38 (en partie), 23 | Mise en vigueur différée lancée par le serveur toutes les 5 minutes, tâches d'exploitation réglables ; signature HMAC avec fenêtre et anti-rejeu sur le webhook Vigie et l'import, rotation par `…_NEXT`, registre protégeable par jeton | Tâches d'exploitation désactivées par défaut ; pages qui ne mettent plus en vigueur tant que le planificateur le fait ; aucune relance ni envoi sortant ; registre ouvert par défaut ; tout ce qui est défini est exigé ; fenêtre de 5 minutes |
 | 5. Comparaison du contenu des versions et aperçu des fichiers Office | commit « Lot 9, étape 5 », qui suit `3586ab8` | 14, 15 | « Comparer » montre, sous les attributs, le texte des deux versions comparé ligne à ligne (PDF, Word, Excel, PowerPoint, OpenDocument, texte), lu sur le serveur sous les droits du fichier ; aperçu PDF des fichiers Office par LibreOffice sans interface ou Gotenberg, converti à la première consultation, gardé (table `version_previews`, migration `0002_apercu_office`) et servi par la route fichier (`?preview=pdf`) | Texte et non visuel ; formats Office 97-2003 non lus ; bornes de taille, de temps et de lignes ; aperçu désactivé sans outil configuré, conversion à la demande plutôt qu'au dépôt, échec retenté après une heure, rendus dans le stockage local même avec SharePoint, sauvegardés mais hors de l'export complet ; ni PDF/A ni filigrane (M12) |
+| 6. Reprise des documents d'une personne qui part et vocabulaires contrôlés | commit « Lot 9, étape 6 », qui suit `5f92467` | 19, 59 | Administration › Reprise (départ) : simulation puis transfert journalisé, à un remplaçant choisi, des documents et processus possédés, révisions à rédiger, étapes en attente, titulariats et lectures désignées ; réassignation d'une étape par un gestionnaire ; langue contrôlée ; référentiels des organismes sources et des mots-clés (tables `source_orgs`, `keyword_terms`, migration `0003_vocabulaires` avec reprise), autocomplétion et ajout confirmé, Administration › Vocabulaires (ajout, renommage, fusion, sous-types hors liste) | Aucun remplaçant proposé, aucun compte désactivé ; gestionnaires documentaires seulement ; simulation = transfert annulé, empreinte exigée ; documents verrouillés repris, étapes figées par un verrou laissées ; documents gardant le nom du terme en texte ; nouveau terme confirmé dans les formulaires, ajouté à l'import ; termes proposés selon la lecture (D-14) ; sous-types non fermés ; gel juridique respecté au renommage |
 
 ### 18.1 Rechargement en boucle en développement et lectures ciblées
 
@@ -2518,3 +2519,46 @@ n'avait que « Aperçu indisponible » et le téléchargement, `preview_note` n'
   caractères) ; choix de l'outil de conversion avec l'hébergement et essai sur macOS (app Mac, D-22) ; conversion par
   Microsoft Graph si SharePoint est activé (O-01) ; PDF/A, filigrane et en-têtes générés (M12).
 
+### 18.6 Reprise des documents d'une personne qui part et vocabulaires contrôlés
+
+Points 19 et 59 de [reste-a-faire.md](reste-a-faire.md) (A15, M16, MET-07, MET-17, G32, G40, G03, A21, A05), vérifiés
+au commit `5f92467` : les utilisateurs ne sont toujours ni administrables ni marqués actifs ou partis ; seul le
+titulaire d'une étape la délègue ; mots-clés et organisme source sont du texte libre, la langue n'est contrôlée que par
+le formulaire ; les sous-types sont éditables dans le registre (point 61) mais libres sur les documents.
+
+- **Reprise (point 19).** `src/lib/transfer.ts` exécute le transfert nature par nature (propriété de documents,
+  verrouillés compris ; propriété de processus ; lecteur désigné ; auteur désigné des révisions ouvertes ; étapes en
+  attente ; titulariats), chaque objet contrôlé contre l'état que laissent les précédents (règles de `delegateStep`,
+  `mayDraft`, exclusions du circuit), et journalise chaque objet puis la synthèse. La simulation est ce même transfert
+  dans une transaction annulée ; la confirmation (`transferHoldings`) recalcule le plan sous un verrou consultatif et
+  le refuse, sans rien écrire, si son empreinte n'est plus celle qui a été montrée. `circuitExclusions` et
+  `approverCheck` sont passés de `src/lib/actions.ts` à `src/lib/lifecycle.ts` pour être partagés. `reassignStep`
+  laisse un gestionnaire documentaire réassigner l'étape en cours (dialogue de délégation réutilisé). Onglet réservé aux
+  gestionnaires documentaires (`mayTransferHoldings`), état dans l'URL (`person`, `replacement`).
+- **Vocabulaires (point 59).** `src/lib/vocab-rules.ts` (règles pures : graphie repliée, alias, termes proches,
+  sous-type, langue), `src/lib/vocab.ts` (lecture des valeurs d'un formulaire ou d'un import, ajout journalisé, valeurs
+  des documents), tables `source_orgs` et `keyword_terms` par la migration incrémentale `0003_vocabulaires`, complétée à
+  la main pour reprendre les valeurs existantes (repli écrit en SQL, `codex_fold` n'existant pas encore sur une base
+  neuve à ce stade ; le test des migrations vérifie qu'il donne la clé de `vocabKey`). Formulaires : mots-clés en
+  étiquettes avec autocomplétion, organisme source avec liste et termes proches, case de confirmation par nouveau terme
+  (exigée aussi par le serveur), indication d'un sous-type hors liste (CSS module `vocab.module.css`). Suggestions
+  lues par le layout racine en un passage sur les documents (`bothDocumentValues`) : environ 27 ms par page pour un
+  contributeur sur la base de 10 000 documents de `docs/performances.md` (PGlite), rien à lire pour un gestionnaire ni
+  pour qui ne peut ni déposer ni modifier. Import : langue contrôlée (`invalid_lang`), termes inconnus ajoutés
+  (`term_added`), sous-type hors liste gardé (`subtype_unlisted`). Seed et `npm run seed:large` remplissent les
+  vocabulaires (`seedVocabularies`). Recherche, termes de recherche, export complet, sauvegarde et `registry:apply`
+  inchangés : les documents gardent le nom du terme en texte.
+- **Vérifié** : `npm test` (91 fichiers dont 1 ignoré, 1 298 tests passés, 10 ignorés, aussi avec `.data` déplacé),
+  `npm run typecheck`, `npm run lint`, `npm run db:check`, `npm run build`. `npm run dev` sur une copie de la base de
+  démonstration (migrations `0001` à `0003` appliquées après sauvegarde automatique ; 8 organismes et 20 mots-clés
+  repris) : reprise de Gabriel Comte par Hélène Sauvage simulée (12 transférables, 1 refusé : elle validait la
+  révision en cours de `RPT-HLT-026-001`), confirmée (12 entrées `transfer` et la synthèse au journal), puis étape
+  réassignée par Claire Bardet et dernier document devenu transférable ; création par Julien Wagner d'un courrier
+  externe avec « Nordvolt » choisi parmi les termes proches de « Nordvolt Energy », « LEVAGE » ramené à « levage » et
+  « essai vocabulaire » ajouté après confirmation (envoi bloqué tant que la case n'est pas cochée) ; ajout d'un
+  doublon refusé, fusion de « Nordvolt Energy SAS » dans « Nordvolt », renommage d'« Apave » (document mis à jour et
+  journalisé) ; écrans en français et en anglais.
+- **Reste** : règle par défaut du remplaçant et obligations du propriétaire, de l'auteur et du propriétaire de
+  processus (A15) ; désactivation des comptes et détection des départs (O-02) ; changement du chef de projet
+  (Keystone, O-03) et de l'auteur désigné par Vigie (O-10) ; gouvernance des termes (A05), thésaurus fermé ou libre
+  (A21) ; listes réelles d'organismes et de mots-clés (reprise de l'existant, O-11).

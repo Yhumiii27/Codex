@@ -4,6 +4,7 @@ import { parisToUtc } from '@/lib/format';
 import { relOf } from '@/lib/links';
 import { MATRIX_ROLE, type SimRole } from '@/lib/i18n';
 import type { SeedMode } from '@/lib/seed-mode';
+import { cleanTerm, vocabKey } from '@/lib/vocab-rules';
 import type { Db } from './index';
 import * as s from './schema';
 import type { Attachment, Conf, Origin, RevStatus } from './schema';
@@ -282,5 +283,37 @@ export async function seed(db: Db, mode: SeedMode = 'demo') {
     await tx.insert(s.projectEvents).values(EVENTS.map((e) => ({ projectCode: e.project, at: `${e.at}:00`, text: loc(e.text) })));
     // Demo entries are written in Paris time; the journal stores UTC instants.
     await tx.insert(s.auditLog).values(audit.sort((a, b) => a.at.localeCompare(b.at)).map((a) => ({ ...a, at: parisToUtc(a.at) })));
+    await seedVocabularies(tx);
   });
+}
+
+/**
+ * Terms of the controlled vocabularies (lib/vocab.ts) for the values the documents carry that no term stands for yet, as
+ * the migration took up those of an existing database (drizzle/0003_vocabulaires.sql): one term per key, under the most
+ * frequent spelling, dated by the first document that carries it. Without journal entries. Returns how many were added.
+ */
+export async function seedVocabularies(tx: Tx | Db): Promise<number> {
+  const docs = await tx.select({ org: s.documents.sourceOrg, kw: s.documents.keywords, at: s.documents.createdAt }).from(s.documents);
+  let added = 0;
+  for (const [table, values] of [
+    [s.sourceOrgs, docs.flatMap((d) => (d.org ? [[d.org, d.at] as const] : []))],
+    [s.keywordTerms, docs.flatMap((d) => d.kw.map((k) => [k, d.at] as const))],
+  ] as const) {
+    const known = new Set((await tx.select({ name: table.name, aliases: table.aliases }).from(table)).flatMap((x) => [x.name, ...x.aliases].map(vocabKey)));
+    const byKey = new Map<string, { names: Map<string, number>; at: string }>();
+    for (const [raw, at] of values) {
+      const name = cleanTerm(raw), key = vocabKey(name);
+      if (!key || known.has(key)) continue;
+      const x = byKey.get(key) ?? { names: new Map<string, number>(), at };
+      x.names.set(name, (x.names.get(name) ?? 0) + 1);
+      if (at < x.at) x.at = at;
+      byKey.set(key, x);
+    }
+    for (const [key, x] of byKey) {
+      const name = [...x.names].sort((p, q) => q[1] - p[1] || (p[0] < q[0] ? -1 : 1))[0][0];
+      await tx.insert(table).values({ name, key, createdAt: x.at }).onConflictDoNothing();
+      added++;
+    }
+  }
+  return added;
 }

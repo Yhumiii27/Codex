@@ -25,6 +25,8 @@ const ID = 'PRO-QUA-0001';
 async function saveMeta(who: Person, fields: Record<string, string>) {
   const fd = new FormData();
   for (const [k, v] of Object.entries({ docId: ID, version: (await viewOf(db(), ID)).version, ...fields })) fd.set(k, v);
+  // New keywords are terms of their vocabulary: the form confirms their addition (lib/actions.ts readVocab).
+  for (const k of (fields.keywords ?? '').split(',').map((x) => x.trim()).filter(Boolean)) fd.append('confirmTerm', k);
   actAs(who);
   return updateMeta(fd);
 }

@@ -298,6 +298,7 @@ describe('Server Actions that write (CODEX_RATE_WRITES), per simulated user', ()
       'togglePermission', 'addOrgValue', 'updateOrgValue', 'deleteOrgValue', 'setDepartmentFeatured', 'addFunctionHolder', 'removeFunctionHolder', 'createType', 'updateType',
       'deleteType', 'createFamily', 'updateFamily', 'deleteFamily', 'createFunction', 'updateFunction', 'deleteFunction', 'createProgram',
       'updateProgram', 'deleteProgram', 'purgeOrphanFiles', 'backUpData', 'checkFileIntegrity', 'recordConsultation', 'setRetentionEvent', 'setRetentionClass',
+      'reassignStep', 'transferHoldings', 'addVocabTerm', 'renameVocabTerm', 'mergeVocabTerms', 'adoptSubtype',
     ];
     const all = actions as unknown as Record<string, unknown>;
     const exported = Object.keys(all).filter((k) => typeof all[k] === 'function');
