@@ -36,6 +36,7 @@ Conventions :
 | 11 oct. | Fonctions du deck (lot 5), une étape par fonction : « Mes demandes Vigie », « À traiter » complet, rejet motivé et rappel, recherches enregistrées partagées, facettes et tri de la recherche, pages par département | 14 |
 | 12 oct. | Lot 6 : points développables de reste-a-faire.md, une étape par point. Étape 1 : dates, format contrôlé et cohérence émission ≤ effet ≤ expiration. Étape 2 : expiration et revue périodique. Étape 3 : lien « remplacé par ». Étape 4 : fiche de visa. Étape 5 : modifications simultanées détectées. Étape 6 : recherche, explorateur et journal filtrés et paginés en base | 15 |
 | 15 oct. | Lot 7 : suite des points développables de reste-a-faire.md. Étape 1 : en-têtes de sécurité HTTP et limitation de débit des API | 16 |
+| 18 oct. | Lot 10 : préparer les réponses aux questions ouvertes sans rien trancher. Étape 1 : fiches de décision O-01 à O-11. Étape 2 : cahiers de validation du registre et de l'organigramme | 19 |
 
 La session a été coupée plusieurs fois par une limite d'usage ou de dépense :
 - le 7 octobre à 13:38, reprise à 17:31 sur « Try again » ;
@@ -2799,3 +2800,60 @@ au plus juste. Aucun choix de [decisions.md](decisions.md) n'a été changé, au
 sauté, 1 360 tests passés, 13 sautés, aussi avec `.data` déplacé), `npm run test:pg` sur PostgreSQL 18.3 (102
 fichiers, 1 370 passés, 3 sautés), `npm run build`. Chaque nouveau test a d'abord échoué sur le code du lot 9 (les deux
 cas `READ COMMITTED` sur le serveur seulement).
+
+## 19. Lot 10 (18 oct.)
+
+Les points développables sans décision étant traités (fin du lot 9), le lot 10 prépare les réponses de l'utilisateur
+aux questions ouvertes de [decisions.md](decisions.md), **sans en trancher aucune** : outils et documents qui
+présentent l'état du code et recueillent les réponses ; rien n'est préréglé, recommandé ni appliqué.
+
+| Étape | Commit | Points | Ce qui change | Choix prudents |
+|---|---|---|---|---|
+| 1. Fiches de décision pour les questions O-01 à O-11 | `79d2dc2` | 70 à 120 (préparation) | [fiches-decision.md](fiches-decision.md) : une fiche par question (question citée, état du code, options, effort, irréversible, points débloqués, données attendues) ; JUR relevé en collision type/département | Propositions de l'assistant étiquetées « non validée » ; aucune question reposée plus d'une fois |
+| 2. Cahiers de validation du registre et de l'organigramme | commit « Lot 10, étape 2 », qui suit `79d2dc2` | 113 à 118 (préparation, toujours bloqués) | `npm run registry:review` (cahiers `types.csv` et `fonctions.csv`, contrôle d'un cahier rempli et écart avec le code) ; modèle `docs/modeles/organigramme.csv` et `npm run org:check` | Cahiers tirés du code, pas d'une base ; réponses vides ; aucune table société ; rien n'est écrit ni en base ni dans `registry.ts`, `seed-org.ts` |
+
+### 19.1 Cahiers de validation du registre et de l'organigramme
+
+**Le besoin.** O-04 à O-08 attendent des tableaux de l'utilisateur (fiches, « Ce dont l'assistant a besoin ») : types
+avec durées, circuits et niveaux, fonctions et titulaires, organigramme. Sans support, une réponse saisie à la main
+pouvait reprendre un code déjà pris (FIN-FIN-0001) ou une valeur que Codex refuse, et l'écart avec le registre restait
+à relever ligne à ligne.
+
+- **Cahiers** (`src/lib/registry-review.ts`, règles pures sur `TYPES`, `FAMILIES`, `FUNCTIONS`, `HOLDERS`) :
+  `npm run registry:review -- --out <dossier>` (`scripts/codex-registry-review.mts`) écrit `types.csv` (69 lignes : code,
+  libellés, famille, origines, rattachements, sous-types, circuit, conservation, fondement FR et EN, niveaux, livrable
+  client, ISO, source) et `fonctions.csv` (16 fonctions, portée, titulaires de démonstration, types qui les nomment),
+  au format des exports (`src/lib/csv.ts` : BOM, point-virgule, formules neutralisées). Colonne « Question liée » ;
+  colonnes « Validé (oui/non) », « Correction » et, pour les types, « Nouveau code (renommage) », laissées vides. Un
+  cahier déjà présent n'est pas écrasé sans `--force`.
+- **Drapeaux comptés dans le registre** : 16 types sans durée (O-07 ; 14 « durée de vie de l'actif », GOV et PUB
+  permanents), 26 « fin de projet » (question 3 du registre), 5 admettant « Public » (O-08 : POL, REG, DTF, PUB,
+  COL), 4 codes aussi codes de département (question 1 : FIN, HSE, COM et JUR, que la liste du registre omet), 3 sans
+  circuit (O-06 : LET, RFQ, PHO).
+- **Contrôle** : `-- --check <cahier>` (un ou deux cahiers, reconnus à leur en-tête ; `--org` pour les personnes et
+  départements d'un organigramme) applique les règles de l'Administration (`src/lib/registry-rules.ts` : formats,
+  collisions avec un type, un département, un projet, un programme ou `QMS`, valeurs admises, portée fixe des
+  fonctions des règles de Codex, modèles sans rattachement), signale chaque refus au lieu de l'écarter, puis liste les
+  réponses, l'écart champ par champ avec le code, les renommages demandés, les lignes ajoutées et absentes. Il n'écrit
+  rien. Les quatre codes déjà en collision restent tels quels, comme dans l'Administration ; un nouveau code ou un
+  renommage en collision est refusé.
+- **Organigramme** : modèle `docs/modeles/organigramme.csv` (une ligne par département, site ou personne ; société en
+  colonne facultative, Codex n'ayant pas de table société), rempli des 15 départements et 3 sites provisoires, sans
+  personne. `npm run org:check -- <csv>` (`src/lib/org-review.ts`, `scripts/codex-org-check.mts`) : libellés
+  (`orgLabels`), formats, un département au moins, doublons, références inconnues (département, site, responsable),
+  collisions des codes de département avec les codes de type ; sur le modèle, les quatre collisions et rien d'autre.
+  Aucune base n'est ouverte.
+- **Lecture d'un CSV** : `parseCsv` et `unneutralise` ajoutés à `src/lib/csv.ts` (BOM, point-virgule ou virgule,
+  guillemets, retours à la ligne, apostrophe de neutralisation retirée avant comparaison).
+- **Documentation** : [registre-points-ouverts.md](registre-points-ouverts.md) (« Valider le registre avec le
+  cahier », valeurs admises, format de l'organigramme), renvois dans les fiches O-04 à O-08
+  ([fiches-decision.md](fiches-decision.md)), README, ligne « Préparé le 18 octobre 2026 » des points 113 à 118 de
+  [reste-a-faire.md](reste-a-faire.md), qui restent bloqués.
+- **Outillage** : `.claude/**` ignoré par ESLint et `.claude/worktrees/` par git (copies de travail d'autres agents).
+- **Tests** : `tests/unit/registry-review.test.ts` (69 lignes, drapeaux, réponses vides, relecture du CSV, cahier
+  inchangé sans écart, cahier modifié : réponses, écarts, renommage, valeurs refusées colonne par colonne, fonctions
+  d'un cahier joint, titulaires d'un organigramme) et `tests/unit/org-review.test.ts` (fichier valide, société
+  facultative, collisions FIN, HSE, COM, JUR et QMS, doublons, références inconnues, valeurs fautives, modèle).
+- **Vérifié** : `npm run typecheck`, `npm run lint`, `npm run db:check`, `npm test` (104 fichiers dont 1 sauté, 1 385
+  tests passés, 13 sautés, aussi avec `.data` déplacé), `npm run build` ; `npm run registry:review` et
+  `npm run org:check` lancés sur les cahiers écrits, un cahier modifié et le modèle.

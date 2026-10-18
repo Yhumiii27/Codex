@@ -19,6 +19,8 @@
     "db:check": "drizzle-kit check",
     "db:migrate": "tsx --conditions=react-server scripts/codex-migrate.mts",
     "registry:apply": "tsx scripts/codex-registry.mts",
+    "registry:review": "tsx scripts/codex-registry-review.mts",
+    "org:check": "tsx scripts/codex-org-check.mts",
     "seed:large": "tsx --conditions=react-server scripts/codex-seed-large.mts",
     "perf": "node scripts/codex-perf.mjs",
     "a11y": "tsx scripts/codex-a11y.mts",

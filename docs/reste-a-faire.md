@@ -2,7 +2,7 @@
 
 Inventaire du 9 octobre 2026, sur la branche `codex-ged-v2-vkmf4l`, tenu à jour jusqu'au 18 octobre 2026 (fin du
 lot 9, étape 9 comprise). Chaque point fait porte sa ligne « Fait le … » ; le détail de chaque lot est dans
-`docs/historique.md` (§11 à §18).
+`docs/historique.md` (§11 à §19).
 
 ## État au 18 octobre 2026 (fin du lot 9)
 
@@ -12,6 +12,10 @@ lot 9, étape 9 comprise). Chaque point fait porte sa ligne « Fait le … » ; 
 | Attend une décision de l'utilisateur | 49 | 0 | 0 | 49 |
 | Attend des données de l'utilisateur | 2 | 0 | 0 | 2 |
 | Demande une session sur macOS | 9 | 0 | 0 | 9 |
+
+Le lot 10 (18 octobre) prépare les réponses de l'utilisateur sans rien trancher : fiches de décision
+(`docs/fiches-decision.md`), cahiers de validation du registre et de l'organigramme (`npm run registry:review`,
+`npm run org:check` ; ligne « Préparé le 18 octobre 2026 » des points 113 à 118, qui restent bloqués).
 
 Les 69 points développables sans décision ont tous été traités (lots 1 à 9, du 10 au 18 octobre). L'étape 9 du lot 9 a
 repris les restes qui ne dépendaient de rien (points 36, 43, 46, 47, 50, 51, 52 et 57) : 43, 52 et 57 sont faits, les
@@ -2036,6 +2040,7 @@ Vérifié : package.json:8 (`next start --port 3100`) ; ni Dockerfile, ni compos
 #### 113. Durées de conservation par type à valider
 
 - **Effort** : faible · **Références** : O-07, ACC-06, G39, D-20
+- **Préparé le 18 octobre 2026** : cahier `types.csv` (`npm run registry:review -- --out <dossier>`, src/lib/registry-review.ts) : durée, déclencheur, sort final et fondement FR et EN de chaque type, avec les 16 types sans durée (O-07) et les 26 types « fin de projet » (point 3 du registre) signalés et des colonnes de réponse vides ; `-- --check` contrôle le cahier rempli et montre l'écart avec src/db/registry.ts, sans rien écrire. Aucune durée n'est validée : le point attend toujours O-07. Mode d'emploi : docs/registre-points-ouverts.md, « Valider le registre avec le cahier ».
 
 L'utilisateur doit valider type par type les durées, déclencheurs et sorts finaux (O-07, points 3 et 6 de docs/registre-points-ouverts.md). Une fois les durées validées, il reste du développement :
 - updateType (src/lib/actions.ts:777) ne met à jour que doc_types, alors que chaque document a copié la règle à sa création (actions.ts:191) ou à son changement de type (actions.ts:305). Une durée corrigée ne s'appliquera donc pas aux documents existants : il faut une propagation, au moins proposée à la validation.
@@ -2054,6 +2059,7 @@ RSQ fixe 40 ans à partir de la création pour ses 3 sous-types (analyse de risq
 #### 114. Matrice type → circuit et titulaires des fonctions définitifs
 
 - **Effort** : faible · **Références** : O-06, D-15, WFL-02, M01
+- **Préparé le 18 octobre 2026** : cahier `fonctions.csv` (`npm run registry:review -- --out <dossier>`) : 16 fonctions, portées, titulaires de démonstration et types qui les nomment, et colonne « Circuit » de `types.csv` (LET, RFQ, PHO signalés sans circuit) ; `-- --check` contrôle clés, portées, fonctions des circuits et titulaires (personnes d'un organigramme avec `--org`), sans rien écrire. Aucun circuit n'est validé : le point attend toujours O-06. Mode d'emploi : docs/registre-points-ouverts.md, « Valider le registre avec le cahier ».
 
 C'est surtout une saisie de données après validation de l'utilisateur (O-06), à faire dans Administration › Registre et Fonctions & circuits. Il faudra du développement seulement dans deux cas :
 - le RACI introduit de nouvelles fonctions : aucune action ne crée de fonction, la table functions n'est remplie que par le seed (seed.ts:101) ;
@@ -2069,6 +2075,7 @@ Le mécanisme est en place. Le circuit est porté par le type et modifiable dans
 #### 115. Types admettant « Public » et type « communication » absent
 
 - **Effort** : faible · **Références** : O-08, D-13, MET-09, G31
+- **Préparé le 18 octobre 2026** : colonnes « Niveaux admis » et « Niveau par défaut » de `types.csv` (`npm run registry:review -- --out <dossier>`), les 5 types qui admettent « Public » signalés (O-08) ; un type ajouté en ligne du cahier est contrôlé par `-- --check` (format, collisions de code). Rien n'est choisi : le point attend toujours O-08. Mode d'emploi : docs/registre-points-ouverts.md, « Valider le registre avec le cahier ».
 
 Il faut que l'utilisateur dise quels types ou quelles familles admettent « Public ». Il parle de « familles », le registre applique la règle type par type. Ensuite :
 - ajuster confAllowed : c'est possible sans développement dans Administration › Registre (TypeEditor, Dialogs.tsx:770-777) ;
@@ -2084,6 +2091,7 @@ Dans src/db/registry.ts, seuls POL, REG, DTF, PUB et COL ont « public » dans c
 #### 116. Recueil des besoins par département
 
 - **Effort** : moyen · **Références** : O-04, G12, MIG-05, FON-06
+- **Préparé le 18 octobre 2026** : modèle `docs/modeles/organigramme.csv` et `npm run org:check -- <csv>` (src/lib/org-review.ts), pour fixer la liste des départements dont dépend le recueil ; rien n'est écrit en base. Le point attend toujours O-04. Mode d'emploi : docs/registre-points-ouverts.md, « Valider le registre avec le cahier ».
 
 Le recueil lui-même n'est pas du développement : il revient aux départements, une fois la liste fixée par l'organigramme (O-04). Il conditionne ce qui reste à développer pour G12/FON-06 :
 - des pages ou vues par département (squelette fait le 11 octobre 2026, point 11 : `/departements/[code]`, filtres mis en avant réglables dans Administration ; le contenu par métier attend le recueil) ;
@@ -2100,6 +2108,7 @@ Point confirmé. Le recueil prévu par la slide 9 (MIG-05) n'est pas fait (docs/
 #### 117. Organigramme définitif : sociétés, sites, départements, personnes
 
 - **Effort** : moyen · **Références** : O-04, O-02, D-19, MET-03, MET-04
+- **Préparé le 18 octobre 2026** : modèle `docs/modeles/organigramme.csv` (départements, sites, personnes, société en colonne facultative, sans table société) et `npm run org:check -- <csv>` : règles de src/lib/org-rules.ts, formats, doublons, références inconnues et collisions avec les codes de type (sur le modèle : COM, HSE, FIN, JUR), sans rien écrire. Le point attend toujours O-04 (et O-02 pour les personnes). Mode d'emploi : docs/registre-points-ouverts.md, « Valider le registre avec le cahier ».
 
 Il faut attendre l'organigramme de l'utilisateur (O-04). Ensuite :
 - remplacer départements, sites et personnes, par l'administration ou par le script du point « Appliquer les évolutions du registre » ;
@@ -2118,6 +2127,7 @@ src/db/seed-org.ts contient des valeurs provisoires : DEPARTMENTS (l.6-22, 15 co
 #### 118. Appliquer les arbitrages du registre des types
 
 - **Effort** : moyen · **Références** : O-05
+- **Préparé le 18 octobre 2026** : cahier `types.csv` (`npm run registry:review -- --out <dossier>`) avec la question liée de chaque type (question 1 : FIN, HSE, COM, JUR ; question 3 : 26 types) et une colonne « Nouveau code (renommage) » ; `-- --check` contrôle les réponses avec src/lib/registry-rules.ts (formats, collisions, valeurs admises) et liste l'écart avec src/db/registry.ts, à reporter ensuite puis appliquer par `npm run registry:apply`. Rien n'est arbitré : le point attend toujours O-05. Mode d'emploi : docs/registre-points-ouverts.md, « Valider le registre avec le cahier ».
 
 Il faut les réponses de l'utilisateur aux 9 questions et aux choix de fusion. Ensuite :
 - modifier src/db/registry.ts ;

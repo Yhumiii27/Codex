@@ -64,6 +64,14 @@ Les fichiers déposés sont stockés dans `.data/files/` (ou dans SharePoint, vo
   `DATABASE_URL`, elle travaille sur le serveur PostgreSQL ; Codex ne sachant pas le sauvegarder, `--apply` y demande
   `--no-backup`, à donner une fois la sauvegarde du serveur faite (`pg_dump`). App Mac :
   `CODEX_DATA_DIR="$HOME/Library/Application Support/Codex/data" npm run registry:apply`, app quittée.
+- **Cahiers de validation du registre et de l'organigramme** (O-04 à O-08 ; mode d'emploi :
+  `docs/registre-points-ouverts.md`, « Valider le registre avec le cahier ») : sans base ni serveur, rien n'est écrit
+  ailleurs que dans le dossier donné à `--out`.
+  ```bash
+  npm run registry:review -- --out <dossier>          # types.csv (69 types) et fonctions.csv, réponses vides
+  npm run registry:review -- --check <cahier.csv>     # contrôle un cahier rempli, écart avec le code (--org <csv> en plus)
+  npm run org:check -- <organigramme.csv>             # modèle docs/modeles/organigramme.csv : règles, doublons, collisions
+  ```
 - **Serveur PostgreSQL en option** (`docs/postgres.md`) : `DATABASE_URL=postgres://…` fait travailler Codex sur ce
   serveur (PostgreSQL 18 au moins, ICU, `pg_trgm`) au lieu de PGlite, avec les mêmes migrations, fonctions et
   déclencheurs. Sans cette variable, rien ne change (développement, démonstration, app Mac). Une base serveur neuve
@@ -633,16 +641,19 @@ src/
     registry-rules.ts  administration du registre : formats des codes, collisions entre segments d'un identifiant,
                        lecture des formulaires de type, famille, fonction et programme
     registry-apply.ts  application du registre du code à une base existante (npm run registry:apply)
+    registry-review.ts cahiers de validation du registre (types, fonctions) : écriture, contrôle d'un cahier rempli,
+                       écart avec le code (npm run registry:review)
     journal-values.ts  valeurs des changements journalisés (avant → après) du registre et des métadonnées
     seed-mode.ts       CODEX_SEED : démonstration ou référentiel minimal
     codification.ts    attribution des identifiants, numéros de circuit et références ECR (compteurs en base)
     dates.ts           cohérence des dates d'un document (émission ≤ effet < expiration)
-    format.ts, csv.ts  dates, tailles et textes bilingues affichés ; lignes CSV des exports
+    format.ts, csv.ts  dates, tailles et textes bilingues affichés ; lignes CSV des exports, relecture d'un CSV
     errors.ts          référence d'une erreur montrée à l'utilisateur, jamais son message (i18n-errors.ts : ses textes)
     titles.ts          titre de chaque page dans la langue choisie
     integrity-core.mjs contrôle d'intégrité des fichiers stockés (SHA-256), lancé par Administration (integrity.ts) et
                        par scripts/codex-integrity.mjs
     org-rules.ts       administration de l'organisation : libellés, valeurs proposées (actives), un département actif
+    org-review.ts      contrôle d'un organigramme en CSV : règles, doublons, références, collisions (npm run org:check)
     transfer.ts        reprise des responsabilités d'une personne qui part : simulation (transaction annulée), empreinte,
                        transfert journalisé objet par objet
     vocab-rules.ts     vocabulaires contrôlés (règles pures) : graphies d'un terme, termes proches, sous-types, langue
@@ -690,6 +701,8 @@ scripts/
   codex-export.mjs     commandes npm run export, export:check (docs/export.md)
   codex-integrity.mjs  commande npm run integrity (empreintes SHA-256 des fichiers)
   codex-registry.mts   commande npm run registry:apply (TypeScript, lancé par tsx)
+  codex-registry-review.mts  commande npm run registry:review (cahiers de validation, tsx)
+  codex-org-check.mts  commande npm run org:check (organigramme en CSV, tsx)
   codex-seed-large.mts commande npm run seed:large : volume synthétique pour les mesures (docs/performances.md)
   codex-perf.mjs       commande npm run perf : temps des écrans et routes principaux d'un serveur lancé
   codex-a11y.mts       commande npm run a11y : contrôle d'accessibilité (axe-core, Chromium), docs/accessibilite.md

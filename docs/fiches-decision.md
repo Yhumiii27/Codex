@@ -273,6 +273,13 @@ département (`FIN-FIN-0001`, `JUR-JUR-0001`…).
 
 ### 4. Ce dont l'assistant a besoin
 
+**Outil (18 octobre 2026)** : modèle `docs/modeles/organigramme.csv` (départements, sites, personnes ; société en
+colonne facultative, sans table société) et `npm run org:check -- <fichier.csv>`, qui contrôle formats, doublons,
+références inconnues et collisions avec les codes de type, sans rien écrire. Le modèle reprend les valeurs
+provisoires ; il ne préjuge d'aucune option. La date de clôture d'exercice d'une société n'y a pas de colonne : à
+donner à part. Mode d'emploi : `docs/registre-points-ouverts.md`, « Valider le
+registre avec le cahier ».
+
 Un tableau (CSV ou tableur) avec :
 - **sociétés** : nom, et si elles clôturent leur exercice à une autre date que le 31 décembre ;
 - **sites** : libellé FR et EN, société ;
@@ -335,6 +342,11 @@ reste de 58 (date de fin des programmes).
 
 ### 4. Ce dont l'assistant a besoin
 
+**Outil (18 octobre 2026)** : `npm run registry:review -- --out <dossier>` écrit `types.csv`, une ligne par type
+avec la question liée (dont la question 1 : FIN, HSE, COM, JUR) et des colonnes de réponse vides ;
+`-- --check <types.csv>` contrôle le cahier rempli et montre l'écart avec `src/db/registry.ts`, sans rien écrire.
+Mode d'emploi : `docs/registre-points-ouverts.md`, « Valider le registre avec le cahier ».
+
 Une réponse par numéro (1 à 9) et par choix de fusion, même brève (« OK », « non », « renommer en … »). Pour un
 renommage, le nouveau code (2 ou 3 lettres, `TYPE_CODE_RE`), qui ne doit reprendre aucun autre code de type, de
 département, de projet, de programme ni `QMS`.
@@ -384,6 +396,11 @@ documents. »
 
 ### 4. Ce dont l'assistant a besoin
 
+**Outil (18 octobre 2026)** : `fonctions.csv` (fonctions, portées, titulaires de démonstration, types qui les
+nomment) et la colonne « Circuit » de `types.csv` (LET, RFQ, PHO signalés sans circuit), écrits par
+`npm run registry:review -- --out <dossier>` et contrôlés par `-- --check` (avec `--org` pour les personnes d'un
+organigramme). Mode d'emploi : `docs/registre-points-ouverts.md`, « Valider le registre avec le cahier ».
+
 - Un tableau type → étapes : pour chaque type (code), la liste ordonnée des fonctions qui valident.
 - Pour chaque fonction : sa portée (groupe, département, projet, programme ou autre) et ses titulaires par valeur de
   portée (identifiants de personnes, O-02 et O-04).
@@ -431,6 +448,11 @@ date de clôture, O-04).
 
 ### 4. Ce dont l'assistant a besoin
 
+**Outil (18 octobre 2026)** : les colonnes « Durée (ans) », « Déclencheur », « Sort final », « Fondement » et
+« Fondement EN » de `types.csv` (`npm run registry:review -- --out <dossier>`) ; les 16 types sans durée y sont
+signalés, et `-- --check` contrôle les valeurs saisies. Mode d'emploi : `docs/registre-points-ouverts.md`,
+« Valider le registre avec le cahier ».
+
 Pour chaque type (code) : durée en années (ou « permanent »), déclencheur (parmi les dix de `RetentionTrigger`, ou un
 nouveau à nommer), sort final (détruire, réexaminer, archiver, conserver), fondement. Un tableau suffit ; une simple
 mention « OK » valide la ligne existante.
@@ -469,6 +491,11 @@ a une extreprise externe ou un client. »
 92).
 
 ### 4. Ce dont l'assistant a besoin
+
+**Outil (18 octobre 2026)** : les colonnes « Niveaux admis » et « Niveau par défaut » de `types.csv`
+(`npm run registry:review -- --out <dossier>`) ; les 5 types qui admettent « Public » y sont signalés. Un nouveau
+type peut y être ajouté en ligne, et `-- --check` contrôle son code (collisions comprises). Mode d'emploi :
+`docs/registre-points-ouverts.md`, « Valider le registre avec le cahier ».
 
 La liste des types ou des familles qui admettent Public ; pour un type « communication », son code, sa famille, ses
 sous-types, son circuit (O-06) et sa règle de conservation (O-07).

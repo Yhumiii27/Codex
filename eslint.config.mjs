@@ -15,6 +15,8 @@ const eslintConfig = defineConfig([
     // Design prototype sources (reference only)
     "design/**",
     ".data/**",
+    // Working copies of other agents (git worktrees), outside the repository
+    ".claude/**",
   ]),
 ]);
 
