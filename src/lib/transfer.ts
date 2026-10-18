@@ -4,7 +4,7 @@ import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { schema as s, type Db } from '@/db';
 import type { Conf, Localized } from '@/db/schema';
 import { loc, localized } from './format';
-import { approverCheck, audit, circuitExclusions, defaultPerms, lockOf, mayDraft, type LockKey, type Tx } from './lifecycle';
+import { approverCheck, audit, circuitExclusions, defaultPerms, lockDocs, lockOf, mayDraft, type LockKey, type Tx } from './lifecycle';
 
 // Holdings of a person handed to a replacement in one operation (point 19 of docs/reste-a-faire.md, A15): ownership of
 // documents and processes, designated author of open revisions, pending approval steps, function holderships, named
@@ -216,6 +216,20 @@ export async function simulateTransfer(db: Db, users: Users, actorId: string, fr
 }
 
 /**
+ * Documents a transfer from `from` may change: owned or whose process they own, named reader, author of an open
+ * revision or of a change Vigie accepted, holder of a step of a running circuit.
+ */
+async function holdingsOf(tx: Tx, from: string): Promise<string[]> {
+  const rows = await tx.execute<{ id: string }>(sql`
+    select id from documents where owner_id = ${from} or process_owner_id = ${from}
+    union select doc_id from document_readers where user_id = ${from}
+    union select doc_id from revisions where modifier_id = ${from} and status in ('draft', 'in_review', 'approved')
+    union select doc_id from change_requests where modifier_id = ${from} and status = 'accepted'
+    union select w.doc_id from workflows w join workflow_steps x on x.workflow_id = w.id where x.assignee_id = ${from} and coalesce(w.outcome, '') = ''`);
+  return rows.rows.map((r) => r.id);
+}
+
+/**
  * Runs the transfer for good, provided its plan still has the digest shown (`digest`): otherwise nothing is written and
  * the plan as it now stands is returned (`changed`). `empty`: nothing would go to the replacement.
  */
@@ -224,6 +238,9 @@ export async function confirmTransfer(db: Db, users: Users, actorId: string, fro
     return await db.transaction(async (tx) => {
       // One transfer at a time (a no-op on PGlite's single connection): two of them never read the same holdings.
       await tx.execute(sql`select pg_advisory_xact_lock(hashtext('codex:transfer'))`);
+      // The documents of the person who leaves locked (lib/lifecycle.ts lockDocs), then read: a decision, an upload or an
+      // edit on one of them, committed meanwhile, is part of the plan compared with the digest, never overwritten.
+      await lockDocs(tx, await holdingsOf(tx, from));
       const raw = await runTransfer(tx, users, actorId, from, to);
       const plan = { ...raw, digest: transferDigest(raw) };
       if (plan.digest !== digest) throw new Rollback({ changed: plan });

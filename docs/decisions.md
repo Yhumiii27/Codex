@@ -1513,6 +1513,15 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     plutôt que de répondre ; Validations par pages de **50 circuits**, ordre inchangé (échéance puis identifiant, les
     terminés du plus récent au plus ancien, « Mes demandes » en cours d'abord), et la page qui contient le circuit
     demandé quand l'adresse n'en donne pas ;
+  - **migrations au déploiement** (point 51) : `npm run db:migrate` en plus du démarrage, qui **migre toujours** si la
+    commande n'a pas été lancée (rien n'oblige à l'utiliser) ; même sauvegarde que le démarrage, refus d'un serveur
+    PostgreSQL qui a des données sans `--no-backup` ; la commande n'amorce rien (l'amorçage reste au premier
+    démarrage, selon `CODEX_SEED`) ;
+  - **transactions en `READ COMMITTED`** (point 51) : verrou de la ligne du document en tête de chaque transaction
+    qui relit l'état d'un document avant d'écrire, plutôt qu'un niveau `SERIALIZABLE` (qui demanderait de rejouer les
+    transactions refusées) ; plusieurs documents verrouillés dans l'ordre de leurs identifiants ; une action en
+    double reçoit la réponse qu'aurait eue la seconde après la première (« étape déjà décidée », « demande en
+    attente ») ; **plusieurs processus** laissés comme limite documentée ;
 - **Git** (D-23) : premier commit sur une branche `codex-ged-v2` plutôt que sur `main`.
 
 ## Ce qui est explicitement hors périmètre

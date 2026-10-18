@@ -157,7 +157,7 @@ function inside(child, parent) {
 // writes codex.lock when it opens the database; the commands refuse to run while that process lives, and write their
 // own lock, which the server respects and which they refresh while they run.
 
-/** @typedef {{ pid: number, kind: 'server' | 'backup' | 'restore' | 'export' | 'integrity' | 'registry' | 'seed', since: string, beat?: string }} DataDirLock */
+/** @typedef {{ pid: number, kind: 'server' | 'backup' | 'restore' | 'export' | 'integrity' | 'registry' | 'seed' | 'migrate', since: string, beat?: string }} DataDirLock */
 
 /**
  * @param {string} dataDir
@@ -166,7 +166,7 @@ function inside(child, parent) {
 export async function readLock(dataDir) {
   try {
     const v = JSON.parse(await readFile(path.join(dataDir, LOCK_FILE), 'utf8'));
-    return v && Number.isInteger(v.pid) && v.pid > 0 && ['server', 'backup', 'restore', 'export', 'integrity', 'registry', 'seed'].includes(v.kind) ? v : null;
+    return v && Number.isInteger(v.pid) && v.pid > 0 && ['server', 'backup', 'restore', 'export', 'integrity', 'registry', 'seed', 'migrate'].includes(v.kind) ? v : null;
   } catch {
     return null;
   }
@@ -226,7 +226,7 @@ export async function lockForServer(dataDir) {
   const held = await readLock(dataDir);
   if (held && held.kind !== 'server' && lockHeld(held)) {
     const file = path.join(dataDir, LOCK_FILE);
-    throw new BackupError('busy', `a ${held.kind} command (pid ${held.pid}) holds ${file}; if no backup, restore, export, integrity or registry command is running, delete that file`);
+    throw new BackupError('busy', `a ${held.kind} command (pid ${held.pid}) holds ${file}; if no backup, restore, export, integrity, registry or migrate command is running, delete that file`);
   }
   try {
     await writeLock(dataDir, 'server', new Date().toISOString());
@@ -241,7 +241,7 @@ export async function lockForServer(dataDir) {
  * scripts/codex-registry.mts, seed: scripts/codex-seed-large.mts): refuses while another live process holds the
  * directory (BackupError 'busy', with the lock), then holds it, refreshing the lock every 30 s until unlock().
  * @param {string} dataDir
- * @param {'backup' | 'restore' | 'export' | 'integrity' | 'registry' | 'seed'} kind
+ * @param {'backup' | 'restore' | 'export' | 'integrity' | 'registry' | 'seed' | 'migrate'} kind
  */
 export async function lockForCommand(dataDir, kind) {
   const held = await readLock(dataDir);

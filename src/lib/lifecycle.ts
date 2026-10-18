@@ -14,6 +14,26 @@ import { reviewAfter } from './review';
 export type Tx = Db | Parameters<Parameters<Db['transaction']>[0]>[0];
 
 type DocRow = typeof s.documents.$inferSelect;
+
+/**
+ * Locks the rows of documents `ids` until the end of the transaction (SELECT … FOR UPDATE), in ascending ID order so
+ * that two transactions locking several never wait for each other, and returns those that exist, read once locked.
+ * On a PostgreSQL server (READ COMMITTED: each statement sees what was committed when it starts), a transaction that
+ * reads a document's state (its row, revisions, working versions, circuits, change requests) to decide what to write
+ * takes this lock first: another one working on the same document waits for its commit, then reads what it wrote,
+ * instead of deciding on what it read before (docs/postgres.md, « Transactions »). PGlite runs one transaction at a
+ * time: the lock changes nothing there.
+ */
+export async function lockDocs(tx: Tx, ids: readonly string[]): Promise<DocRow[]> {
+  const unique = [...new Set(ids)].sort();
+  if (!unique.length) return [];
+  return tx.select().from(s.documents).where(inArray(s.documents.id, unique)).orderBy(asc(s.documents.id)).for('update');
+}
+
+/** lockDocs for one document: its row, locked, or undefined when it does not exist. */
+export async function lockDoc(tx: Tx, id: string): Promise<DocRow | undefined> {
+  return (await lockDocs(tx, [id]))[0];
+}
 type RevRow = typeof s.revisions.$inferSelect;
 type UserRow = typeof s.users.$inferSelect;
 
@@ -185,16 +205,17 @@ export async function promoteDue(db: Db): Promise<number> {
   const today = todayIso();
   let promoted = 0;
   const due = await db
-    .select({ id: s.revisions.id })
+    .select({ id: s.revisions.id, docId: s.revisions.docId })
     .from(s.revisions)
     .innerJoin(s.documents, eq(s.documents.id, s.revisions.docId))
     .where(and(eq(s.revisions.status, 'approved'), or(isNull(s.revisions.effectiveAt), lte(s.revisions.effectiveAt, today)), eq(s.documents.state, 'active'), eq(s.documents.legalHold, false)));
-  for (const { id } of due) {
+  for (const { id, docId } of due) {
     await db.transaction(async (tx) => {
-      // Read again inside the transaction: a concurrent request may have promoted it, or the document changed meanwhile.
+      // Read again once the document is locked: a concurrent request (another page, another process) may have promoted
+      // it, or the document changed meanwhile; it waits for that one to commit, then sees what it wrote.
+      const d = await lockDoc(tx, docId);
       const [rev] = await tx.select().from(s.revisions).where(and(eq(s.revisions.id, id), eq(s.revisions.status, 'approved')));
       if (!rev) return;
-      const [d] = await tx.select().from(s.documents).where(eq(s.documents.id, rev.docId));
       if (!d || lockOf(d)) return;
       await putInForce(tx, rev, rev.effectiveAt ?? today);
       promoted++;
@@ -218,7 +239,7 @@ export async function applyDuePendingDecisions(db: Db): Promise<number> {
   let applied = 0;
   for (const { id, docId } of waiting) {
     await db.transaction(async (tx) => {
-      await tx.select({ id: s.documents.id }).from(s.documents).where(eq(s.documents.id, docId)).for('update');
+      await lockDoc(tx, docId);
       await applyPendingDecision(tx, docId);
       const [after] = await tx.select({ status: s.changeRequests.status }).from(s.changeRequests).where(eq(s.changeRequests.id, id));
       if (after?.status === 'implemented') applied++;
@@ -386,6 +407,13 @@ async function implementChange(tx: Tx, req: ChangeRow, doc: DocRow, actorId: str
  * nothing is written otherwise.
  */
 export async function applyChangeDecision(tx: Tx, id: string, decision: { accepted: boolean; ecoRef?: string | null; modifierId?: string | null; note?: string | null }, actorId: string): Promise<ChangeDecisionResult> {
+  const [asked] = await tx.select({ docId: s.changeRequests.docId }).from(s.changeRequests).where(eq(s.changeRequests.id, id));
+  if (!asked) return { error: 'not_found' };
+  // Row locked: what the acceptance waits for (lock, open revision) is read on the document that putInForce,
+  // cancelOpenRevisions, releaseHold and restoring an archive update before looking at the pending decisions. Either
+  // they see the acceptance once recorded, or it sees the document they left and applies at once: never left waiting.
+  // The request is read again once the document is locked: two decisions on it (a retried call) never both apply.
+  const doc = await lockDoc(tx, asked.docId);
   const [req] = await tx.select().from(s.changeRequests).where(eq(s.changeRequests.id, id));
   if (!req || req.status !== 'submitted') return { error: 'not_found' };
   const at = nowStamp();
@@ -394,10 +422,6 @@ export async function applyChangeDecision(tx: Tx, id: string, decision: { accept
     await audit(tx, actorId, req.kind === 'modification' ? 'ecr' : 'obsolete', req.docId, `${id} · ✕`);
     return { status: 'rejected' };
   }
-  // Row locked: what the acceptance waits for (lock, open revision) is read on the document that putInForce,
-  // cancelOpenRevisions, releaseHold and restoring an archive update before looking at the pending decisions. Either
-  // they see the acceptance once recorded, or it sees the document they left and applies at once: never left waiting.
-  const [doc] = await tx.select().from(s.documents).where(eq(s.documents.id, req.docId)).for('update');
   if (!doc) return { error: 'not_found' };
   if (req.kind === 'modification' && decision.modifierId && !(await mayDraft(tx, decision.modifierId, doc))) return { error: 'modifier_not_allowed' };
   const accepted = { ecoRef: decision.ecoRef ?? null, modifierId: req.kind === 'modification' ? decision.modifierId ?? null : null, decisionNote: decision.note ?? null };

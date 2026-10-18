@@ -100,7 +100,7 @@ async function runServer(url: string) {
   try {
     const plan = migrationPlan(await appliedMigrations(client), await readMigrations(MIGRATIONS));
     if (plan.fresh) throw new Error('la base du serveur est vide : démarrez Codex une fois pour la créer.');
-    if (plan.pending.length) throw new Error(`la base n'a pas encore les migrations ${plan.pending.join(', ')} : démarrez Codex une fois (il les applique), arrêtez-le, puis relancez la commande.`);
+    if (plan.pending.length) throw new Error(`la base n'a pas encore les migrations ${plan.pending.join(', ')} : appliquez-les (npm run db:migrate -- --no-backup, une fois le pg_dump fait), puis relancez la commande.`);
     const db = drizzleServer(pool, { schema }) as unknown as Db;
     await report(db, async () => {});
   } finally {
@@ -120,7 +120,7 @@ async function run() {
       const code = await readMigrations(MIGRATIONS);
       const plan = migrationPlan(await appliedMigrations(pg), code);
       if (plan.fresh) throw new Error(`la base de ${DATA_DIR} est vide : démarrez Codex une fois pour la créer.`);
-      if (plan.pending.length) throw new Error(`la base n'a pas encore les migrations ${plan.pending.join(', ')} : démarrez Codex une fois (il les applique, après une sauvegarde), arrêtez-le, puis relancez la commande.`);
+      if (plan.pending.length) throw new Error(`la base n'a pas encore les migrations ${plan.pending.join(', ')} : appliquez-les (npm run db:migrate, après une sauvegarde), puis relancez la commande.`);
       const db = drizzle(pg, { schema }) as unknown as Db;
       await report(db, async () => {
         if (NO_BACKUP) return;

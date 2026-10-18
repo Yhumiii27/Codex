@@ -1,7 +1,7 @@
 'use server';
 
 import { createHmac, randomBytes } from 'node:crypto';
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { cookies } from 'next/headers';
 import { refresh } from 'next/cache';
 import { getDb, schema as s } from '@/db';
@@ -14,7 +14,7 @@ import { checkFilesNow } from './integrity';
 import { COOKIE_LANG, COOKIE_ROLE, COOKIE_USER, getCtx, type Ctx } from './context';
 import { addDays, fmtDate, fmtDateTime, fmtSize, loc, localized, nowStamp, parisStamp, parseIsoDay, todayIso } from './format';
 import { ATTACHMENTS, CONF_LEVELS, ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLES, ORIGINS, PERMS, SEARCH_SCOPES, SIM_ROLES, SIMULATED_MATRIX_ROLES, type Perm, type TKey } from './i18n';
-import { addLink, applyChangeDecision, applyPendingDecision, approverCheck, approveRevision, audit, circuitExclusions, catchUpEffectiveDates, journalConsultation, journalLink, linkBetween, lockOf, refreshHeadline, type ModifierSwap, type Tx } from './lifecycle';
+import { addLink, applyChangeDecision, applyPendingDecision, approverCheck, approveRevision, audit, circuitExclusions, catchUpEffectiveDates, journalConsultation, journalLink, linkBetween, lockDoc, lockDocs, lockOf, refreshHeadline, type ModifierSwap, type Tx } from './lifecycle';
 import { changes, entryChanges, familyJournal, functionJournal, retentionValue, typeJournal } from './journal-values';
 import { isLinkRel, linkIssue, otherEnd, replacementIssue, storedLink } from './links';
 import { logger, traceAction } from './log';
@@ -434,9 +434,11 @@ async function createDocumentNow(fd: FormData): Promise<ActionResult> {
     });
     if (f.attachment === 'project' && f.projectCode && expectedId) {
       // A document filed for a piece Keystone expects fills that piece (only if it is still missing).
-      const [exp] = await tx.select().from(s.projectExpected).where(and(eq(s.projectExpected.id, expectedId), eq(s.projectExpected.projectCode, f.projectCode)));
-      if (exp && !exp.docId && (!exp.typeCode || exp.typeCode === f.typeCode)) {
-        await tx.update(s.projectExpected).set({ docId: id }).where(eq(s.projectExpected.id, exp.id));
+      // Filled only if still empty when written: two documents filed for the same piece at once never both take it.
+      const [exp] = await tx.update(s.projectExpected).set({ docId: id })
+        .where(and(eq(s.projectExpected.id, expectedId), eq(s.projectExpected.projectCode, f.projectCode), isNull(s.projectExpected.docId), or(isNull(s.projectExpected.typeCode), eq(s.projectExpected.typeCode, f.typeCode))))
+        .returning();
+      if (exp) {
         const label = typeof exp.label === 'string' ? { fr: exp.label, en: exp.label } : exp.label;
         // No document ID in the project feed: every reader of the project sees it, the draft is visible to its circle only.
         await tx.insert(s.projectEvents).values({ projectCode: f.projectCode, at: nowStamp(), text: { fr: `Pièce « ${label.fr} » déposée`, en: `“${label.en}” filed` } });
@@ -503,7 +505,7 @@ async function addWorkingVersionNow(fd: FormData): Promise<ActionResult> {
   const comment = str(fd, 'comment');
   const res = await withStaged(staged, () => db.transaction(async (tx): Promise<{ err: TKey } | { behind: ActionResult } | { label: string }> => {
     // Checked again inside the transaction: a validation request or another upload may have come in during the upload.
-    const [cur] = await tx.select().from(s.documents).where(eq(s.documents.id, docId));
+    const cur = await lockDoc(tx, docId);
     if (!cur) return { err: 'not_found' };
     const locked = lockOf(cur);
     if (locked) return { err: locked };
@@ -584,7 +586,7 @@ async function restoreWorkingVersionNow(docId: string, versionId: number, base: 
   }
   const res = await withStaged(staged, () => db.transaction(async (tx): Promise<{ err: TKey } | { behind: ActionResult } | { label: string }> => {
     // Checked again inside the transaction: a validation request or another upload may have come in meanwhile.
-    const [cur] = await tx.select().from(s.documents).where(eq(s.documents.id, docId));
+    const cur = await lockDoc(tx, docId);
     if (!cur) return { err: 'not_found' };
     const locked = lockOf(cur);
     if (locked) return { err: locked };
@@ -836,7 +838,7 @@ async function recordReviewNow(docId: string, next: string | null, comment = '')
   const ix = await getAccessIndex(ctx);
   const db = await getDb();
   const res = await db.transaction(async (tx): Promise<{ err: TKey; field?: string } | { date: string }> => {
-    const [d] = await tx.select().from(s.documents).where(eq(s.documents.id, docId));
+    const d = await lockDoc(tx, docId);
     // Access first: a document the user cannot see gives nothing away, not even its lock.
     if (!d || !canRead(ctx, d, ix)) return { err: 'not_found' };
     if (!mayRecordReview(ctx, d)) return { err: 'review_reserved' };
@@ -903,7 +905,7 @@ async function requestValidationNow(docId: string, effectiveAt: string | null, b
 
   type Res = { id: string } | { href: string } | { err: TKey; extra?: string } | { date: DateIssue } | { behind: ActionResult };
   const res = await db.transaction(async (tx): Promise<Res> => {
-    const [d] = await tx.select().from(s.documents).where(eq(s.documents.id, docId));
+    const d = await lockDoc(tx, docId);
     if (!d || !canRead(ctx, d, ix)) return { err: 'not_found' };
     if (!mayWorkOnDraft(ctx, d, ix)) return { err: 'not_allowed' };
     const lock = lockOf(d);
@@ -965,6 +967,18 @@ async function requestValidationNow(docId: string, effectiveAt: string | null, b
   return { ok: true, href: `/validations?f=requested&r=${encodeURIComponent(res.id)}` };
 }
 
+/**
+ * loadWorkflow inside a transaction that decides on the circuit: the row of its document locked first (lockDoc), then
+ * the circuit read, so that two decisions on it (a double click, two approvers' tabs) or a decision and a change of the
+ * document (archive, hold, withdrawal) never both act on what they read before the other committed.
+ */
+async function lockWorkflow(tx: Tx, id: string) {
+  const [w] = await tx.select({ docId: s.workflows.docId }).from(s.workflows).where(eq(s.workflows.id, id));
+  if (!w) return null;
+  await lockDoc(tx, w.docId);
+  return loadWorkflow(tx, id);
+}
+
 async function loadWorkflow(tx: Tx, id: string) {
   const [w] = await tx.select().from(s.workflows).where(eq(s.workflows.id, id));
   if (!w) return null;
@@ -999,7 +1013,7 @@ async function decideStepNow(workflowId: string, approve: boolean, expectedStep:
   const { why } = motive;
   const db = await getDb();
   const err = await db.transaction(async (tx): Promise<TKey | null> => {
-    const wf = await loadWorkflow(tx, workflowId);
+    const wf = await lockWorkflow(tx, workflowId);
     if (!wf) return 'not_found';
     const { w, steps } = wf;
     if (w.outcome || w.step !== expectedStep) return 'wrong_step';
@@ -1063,7 +1077,7 @@ async function recallValidationNow(workflowId: string, expectedStep: number, rea
   const ix = await getAccessIndex(ctx);
   const db = await getDb();
   const err = await db.transaction(async (tx): Promise<TKey | null> => {
-    const wf = await loadWorkflow(tx, workflowId);
+    const wf = await lockWorkflow(tx, workflowId);
     if (!wf) return 'not_found';
     const { w } = wf;
     const [[d], [rev]] = await Promise.all([
@@ -1103,7 +1117,7 @@ async function delegateStepNow(workflowId: string, toUserId: string, expectedSte
   if (!ctx.screens.workflow) return fail(ctx, 'forbidden');
   const db = await getDb();
   const err = await db.transaction(async (tx): Promise<TKey | null> => {
-    const wf = await loadWorkflow(tx, workflowId);
+    const wf = await lockWorkflow(tx, workflowId);
     if (!wf) return 'not_found';
     if (wf.w.outcome || wf.w.step !== expectedStep) return 'wrong_step';
     const cur = wf.steps[wf.w.step];
@@ -1146,7 +1160,7 @@ async function reassignStepNow(workflowId: string, toUserId: string, expectedSte
   if (typeof workflowId !== 'string' || typeof toUserId !== 'string') return fail(ctx);
   const db = await getDb();
   const err = await db.transaction(async (tx): Promise<TKey | null> => {
-    const wf = await loadWorkflow(tx, workflowId);
+    const wf = await lockWorkflow(tx, workflowId);
     if (!wf) return 'not_found';
     if (wf.w.outcome || wf.w.step !== expectedStep) return 'wrong_step';
     const cur = wf.steps[wf.w.step];
@@ -1224,7 +1238,7 @@ async function requestChangeNow(docId: string, kind: 'modification' | 'obsolesce
   const ix = await getAccessIndex(ctx);
   const db = await getDb();
   const res = await db.transaction(async (tx): Promise<{ err: TKey; extra?: string; field?: string } | { id: string }> => {
-    const [d] = await tx.select().from(s.documents).where(eq(s.documents.id, docId));
+    const d = await lockDoc(tx, docId);
     if (!d || !canRead(ctx, d, ix)) return { err: 'not_found' };
     const lock = lockOf(d);
     if (lock) return { err: lock };
@@ -1286,8 +1300,10 @@ async function graftChangeNow(requestId: string): Promise<ActionResult> {
   const ix = await getAccessIndex(ctx);
   const db = await getDb();
   const res = await db.transaction(async (tx): Promise<{ err: TKey } | { ref: string; letter: string }> => {
-    const [req] = await tx.select().from(s.changeRequests).where(eq(s.changeRequests.id, requestId));
-    const [d] = req ? await tx.select().from(s.documents).where(eq(s.documents.id, req.docId)) : [];
+    const [asked] = await tx.select({ docId: s.changeRequests.docId }).from(s.changeRequests).where(eq(s.changeRequests.id, requestId));
+    // The document locked first, then the request read: a Vigie decision or another graft on it has committed by then.
+    const d = asked ? await lockDoc(tx, asked.docId) : undefined;
+    const [req] = d ? await tx.select().from(s.changeRequests).where(eq(s.changeRequests.id, requestId)) : [];
     if (!req || !d || !canRead(ctx, d, ix)) return { err: 'not_found' };
     // Locked against a concurrent validation request: a revision is grafted onto while drafted, never once in review.
     const [rev] = await tx.select().from(s.revisions).where(and(eq(s.revisions.docId, d.id), inArray(s.revisions.status, ['draft', 'in_review', 'approved']))).for('update');
@@ -1336,10 +1352,12 @@ async function addDocLinkNow(docId: string, rel: string, otherId: string): Promi
   const ix = await getAccessIndex(ctx);
   const db = await getDb();
   const res = await db.transaction(async (tx): Promise<{ err: TKey; field?: string } | { ok: true }> => {
-    const [d] = await tx.select().from(s.documents).where(eq(s.documents.id, docId));
+    // Both ends locked, in the order of their IDs: the link rules read their state (withdrawn, active, held).
+    const locked = await lockDocs(tx, other ? [docId, other] : [docId]);
+    const d = locked.find((x) => x.id === docId);
     if (!d || !canRead(ctx, d, ix)) return { err: 'not_found' };
     if (!mayEditLinks(ctx, d)) return { err: 'link_reserved' };
-    const [o] = other ? await tx.select().from(s.documents).where(eq(s.documents.id, other)) : [];
+    const o = other ? locked.find((x) => x.id === other) : undefined;
     if (!o || !canRead(ctx, o, ix)) return { err: 'link_not_found', field: 'other' };
     if (!mayEditLinks(ctx, o)) return { err: 'link_reserved', field: 'other' };
     if (d.legalHold || o.legalHold) return { err: 'link_hold' };
@@ -1372,10 +1390,14 @@ async function removeDocLinkNow(docId: string, linkId: number): Promise<ActionRe
   const ix = await getAccessIndex(ctx);
   const db = await getDb();
   const res = await db.transaction(async (tx): Promise<{ err: TKey } | { ok: true }> => {
-    const [d] = await tx.select().from(s.documents).where(eq(s.documents.id, docId));
+    // Both ends locked, in the order of their IDs (the other end read from the link first), then read.
+    const [seen] = Number.isInteger(linkId) ? await tx.select().from(s.documentLinks).where(eq(s.documentLinks.id, linkId)) : [];
+    const ends = seen && (seen.sourceId === docId || seen.targetId === docId) ? [docId, otherEnd(seen, docId)] : [docId];
+    const locked = await lockDocs(tx, ends);
+    const d = locked.find((x) => x.id === docId);
     if (!d || !canRead(ctx, d, ix)) return { err: 'not_found' };
-    const [l] = Number.isInteger(linkId) ? await tx.select().from(s.documentLinks).where(eq(s.documentLinks.id, linkId)) : [];
-    const [o] = l && (l.sourceId === d.id || l.targetId === d.id) ? await tx.select().from(s.documents).where(eq(s.documents.id, otherEnd(l, d.id))) : [];
+    const [l] = seen ? await tx.select().from(s.documentLinks).where(eq(s.documentLinks.id, seen.id)) : [];
+    const o = l && (l.sourceId === d.id || l.targetId === d.id) ? locked.find((x) => x.id === otherEnd(l, d.id)) : undefined;
     if (!l || !o || !canRead(ctx, o, ix)) return { err: 'link_not_found' };
     if (!mayEditLinks(ctx, d) || !mayEditLinks(ctx, o)) return { err: 'link_reserved' };
     if (d.legalHold || o.legalHold) return { err: 'link_hold' };
@@ -1411,8 +1433,12 @@ async function archiveDocumentsNow(ids: string[]): Promise<ActionResult> {
   const skipped = await db.transaction(async (tx) => {
     const today = todayIso();
     let skipped = 0;
+    // Every document locked first, in the order of their IDs, then each read again.
+    const locked = new Map((await lockDocs(tx, docs.map((d) => d.id))).map((d) => [d.id, d]));
     for (const d of docs.filter((x) => x.state !== 'archived')) {
-      const [cur] = await tx.select().from(s.documents).where(eq(s.documents.id, d.id));
+      const cur = locked.get(d.id);
+      // Archived meanwhile by someone else: done already, neither archived nor journaled again.
+      if (cur?.state === 'archived') continue;
       // Frozen documents, documents under approval and approved revisions waiting for their effective date stay where they are.
       if (!cur || cur.legalHold || (await activeWorkflow(tx, d.id)) || (await workingRevision(tx, d.id))?.status === 'approved') { skipped++; continue; }
       await tx.update(s.documents).set({ state: 'archived', archivedAt: today, modifiedAt: today }).where(eq(s.documents.id, d.id));
@@ -1437,7 +1463,8 @@ async function holdDocumentsNow(ids: string[]): Promise<ActionResult> {
   const docs = await visibleDocs(db, ctx, ids);
   await db.transaction(async (tx) => {
     const today = todayIso();
-    for (const d of docs.filter((x) => !x.legalHold)) {
+    // Locked and read again: a hold put meanwhile by someone else is not put (nor journaled) twice.
+    for (const d of (await lockDocs(tx, docs.map((x) => x.id))).filter((x) => !x.legalHold)) {
       await tx.update(s.documents).set({ legalHold: true, legalHoldAt: today }).where(eq(s.documents.id, d.id));
       await audit(tx, ctx.user.id, 'hold', d.id, d.typeCode);
     }
@@ -1474,7 +1501,7 @@ async function releaseHoldNow(docId: string): Promise<ActionResult> {
   const [d] = await visibleDocs(db, ctx, [docId]);
   if (!d) return fail(ctx, 'not_found');
   const swap = await db.transaction(async (tx) => {
-    const [cur] = await tx.select().from(s.documents).where(eq(s.documents.id, docId));
+    const cur = await lockDoc(tx, docId);
     if (!cur?.legalHold) return null;
     await tx.update(s.documents).set({ legalHold: false, legalHoldAt: null }).where(eq(s.documents.id, docId));
     // A revision approved during the hold enters into force today at the earliest, never on a date in the past.
@@ -1502,7 +1529,7 @@ async function restoreArchivedNow(docId: string): Promise<ActionResult> {
   const [d] = await visibleDocs(db, ctx, [docId]);
   if (!d) return fail(ctx, 'not_found');
   const swap = await db.transaction(async (tx) => {
-    const [cur] = await tx.select().from(s.documents).where(eq(s.documents.id, docId));
+    const cur = await lockDoc(tx, docId);
     if (!cur || cur.state !== 'archived' || cur.legalHold) return null;
     // obsoleteAt is only written by an accepted withdrawal (lib/lifecycle.ts) and never cleared.
     const back = cur.obsoleteAt ? 'obsolete' : 'active';
@@ -1833,10 +1860,12 @@ async function togglePermissionNow(role: string, perm: string): Promise<ActionRe
   if (perm === 'admin' && role === MATRIX_ROLE[ctx.role]) return fail(ctx, 'admin_lockout');
   const db = await getDb();
   await db.transaction(async (tx) => {
-    const [row] = await tx.select().from(s.rolePermissions).where(and(eq(s.rolePermissions.role, role), eq(s.rolePermissions.perm, perm)));
+    // A missing row is a permission not granted: created as such, then locked, so that two toggles at once give back the
+    // first state rather than both turning it the same way.
+    await tx.insert(s.rolePermissions).values({ role, perm, granted: false }).onConflictDoNothing();
+    const [row] = await tx.select().from(s.rolePermissions).where(and(eq(s.rolePermissions.role, role), eq(s.rolePermissions.perm, perm))).for('update');
     const before = row?.granted ?? false;
-    if (row) await tx.update(s.rolePermissions).set({ granted: !before }).where(and(eq(s.rolePermissions.role, role), eq(s.rolePermissions.perm, perm)));
-    else await tx.insert(s.rolePermissions).values({ role, perm, granted: true });
+    await tx.update(s.rolePermissions).set({ granted: !before }).where(and(eq(s.rolePermissions.role, role), eq(s.rolePermissions.perm, perm)));
     await audit(tx, ctx.user.id, 'perm', { kind: 'permission', id: `${role}:${perm}` }, '', null, { changes: [{ field: 'granted', before, after: !before }] });
   });
   refresh();
@@ -1989,7 +2018,7 @@ async function setDepartmentFeaturedNow(code: string, featured: string[] | null)
   const journal = (v: string[] | null): AuditValue => v ?? 'default';
   const db = await getDb();
   await db.transaction(async (tx) => {
-    const [cur] = await tx.select().from(s.departments).where(eq(s.departments.code, code));
+    const [cur] = await tx.select().from(s.departments).where(eq(s.departments.code, code)).for('update');
     if (!cur) return;
     await tx.update(s.departments).set({ featured: next }).where(eq(s.departments.code, code));
     const changed = changes([['featured', journal(cur.featured), journal(next)]]);
@@ -2354,7 +2383,7 @@ async function updateTypeNow(fd: FormData): Promise<ActionResult> {
   if (fixed) return fail(ctx, fixed);
   const db = await getDb();
   const res = await db.transaction(async (tx): Promise<ActionResult> => {
-    const [cur] = await tx.select().from(s.docTypes).where(eq(s.docTypes.code, original));
+    const [cur] = await tx.select().from(s.docTypes).where(eq(s.docTypes.code, original)).for('update');
     if (!cur) return fail(ctx, 'reg_not_found');
     if (next.code !== original && (await registryUsage(tx)).types.has(original)) return { ok: false, error: ctx.t.reg_type_in_use, field: 'code' };
     const narrower = cur.origins.some((o) => !next.origins.includes(o)) || cur.attachments.some((a) => !next.attachments.includes(a)) || cur.confAllowed.some((c) => !next.confAllowed.includes(c));
@@ -2422,7 +2451,7 @@ async function deleteTypeNow(code: string): Promise<ActionResult> {
   if (no) return no;
   const db = await getDb();
   const res = await db.transaction(async (tx): Promise<ActionResult> => {
-    const [cur] = await tx.select().from(s.docTypes).where(eq(s.docTypes.code, String(code)));
+    const [cur] = await tx.select().from(s.docTypes).where(eq(s.docTypes.code, String(code))).for('update');
     if (!cur) return fail(ctx, 'reg_not_found');
     if ((await registryUsage(tx)).types.has(cur.code)) return fail(ctx, 'reg_type_in_use');
     await tx.delete(s.docTypes).where(eq(s.docTypes.code, cur.code));
@@ -2474,7 +2503,7 @@ async function updateFamilyNow(fd: FormData): Promise<ActionResult> {
   if (bad) return { ok: false, error: ctx.t[bad], field: 'key' };
   const db = await getDb();
   const res = await db.transaction(async (tx): Promise<ActionResult> => {
-    const [cur] = await tx.select().from(s.families).where(eq(s.families.key, original));
+    const [cur] = await tx.select().from(s.families).where(eq(s.families.key, original)).for('update');
     if (!cur) return fail(ctx, 'reg_not_found');
     if (next.key !== original && (await registryUsage(tx)).families.has(original)) return { ok: false, error: ctx.t.reg_family_in_use, field: 'key' };
     await tx.update(s.families).set(next).where(eq(s.families.key, original));
@@ -2498,7 +2527,7 @@ async function deleteFamilyNow(key: string): Promise<ActionResult> {
   if (no) return no;
   const db = await getDb();
   const res = await db.transaction(async (tx): Promise<ActionResult> => {
-    const [cur] = await tx.select().from(s.families).where(eq(s.families.key, String(key)));
+    const [cur] = await tx.select().from(s.families).where(eq(s.families.key, String(key))).for('update');
     if (!cur) return fail(ctx, 'reg_not_found');
     if ((await registryUsage(tx)).families.has(cur.key)) return fail(ctx, 'reg_family_in_use');
     await tx.delete(s.families).where(eq(s.families.key, cur.key));
@@ -2559,7 +2588,7 @@ async function updateFunctionNow(fd: FormData): Promise<ActionResult> {
   if (fixed) return { ok: false, error: ctx.t[fixed], field: 'scope' };
   const db = await getDb();
   const res = await db.transaction(async (tx): Promise<ActionResult> => {
-    const [cur] = await tx.select().from(s.functions).where(eq(s.functions.key, original));
+    const [cur] = await tx.select().from(s.functions).where(eq(s.functions.key, original)).for('update');
     if (!cur) return fail(ctx, 'reg_not_found');
     if (next.key !== original && (await registryUsage(tx)).functions.has(original)) return { ok: false, error: ctx.t.reg_function_in_use, field: 'key' };
     if (next.scope !== cur.scope) {
@@ -2587,7 +2616,7 @@ async function deleteFunctionNow(key: string): Promise<ActionResult> {
   if (no) return no;
   const db = await getDb();
   const res = await db.transaction(async (tx): Promise<ActionResult> => {
-    const [cur] = await tx.select().from(s.functions).where(eq(s.functions.key, String(key)));
+    const [cur] = await tx.select().from(s.functions).where(eq(s.functions.key, String(key))).for('update');
     if (!cur) return fail(ctx, 'reg_not_found');
     if ((await registryUsage(tx)).functions.has(cur.key)) return fail(ctx, 'reg_function_in_use');
     await tx.delete(s.functions).where(eq(s.functions.key, cur.key));
@@ -2653,7 +2682,7 @@ async function updateProgramNow(fd: FormData): Promise<ActionResult> {
   if (!programManagerOk(ctx, next.managerId)) return { ok: false, error: ctx.t.reg_manager_invalid, field: 'managerId' };
   const db = await getDb();
   const res = await db.transaction(async (tx): Promise<ActionResult> => {
-    const [cur] = await tx.select().from(s.researchPrograms).where(eq(s.researchPrograms.code, original));
+    const [cur] = await tx.select().from(s.researchPrograms).where(eq(s.researchPrograms.code, original)).for('update');
     if (!cur) return fail(ctx, 'reg_not_found');
     if (next.code !== original && (await registryUsage(tx)).programs.has(original)) return { ok: false, error: ctx.t.reg_program_in_use, field: 'code' };
     await tx.update(s.researchPrograms).set(next).where(eq(s.researchPrograms.code, original));
@@ -2677,7 +2706,7 @@ async function deleteProgramNow(code: string): Promise<ActionResult> {
   if (no) return no;
   const db = await getDb();
   const res = await db.transaction(async (tx): Promise<ActionResult> => {
-    const [cur] = await tx.select().from(s.researchPrograms).where(eq(s.researchPrograms.code, String(code)));
+    const [cur] = await tx.select().from(s.researchPrograms).where(eq(s.researchPrograms.code, String(code))).for('update');
     if (!cur) return fail(ctx, 'reg_not_found');
     if ((await registryUsage(tx)).programs.has(cur.code)) return fail(ctx, 'reg_program_in_use');
     await tx.delete(s.researchPrograms).where(eq(s.researchPrograms.code, cur.code));

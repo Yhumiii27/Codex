@@ -17,6 +17,7 @@
     "db:generate": "drizzle-kit generate",
     "db:reset": "rm -rf .data",
     "db:check": "drizzle-kit check",
+    "db:migrate": "tsx --conditions=react-server scripts/codex-migrate.mts",
     "registry:apply": "tsx scripts/codex-registry.mts",
     "seed:large": "tsx --conditions=react-server scripts/codex-seed-large.mts",
     "perf": "node scripts/codex-perf.mjs",

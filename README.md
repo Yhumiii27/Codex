@@ -41,6 +41,9 @@ Les fichiers déposés sont stockés dans `.data/files/` (ou dans SharePoint, vo
      laisse la base intacte. Une base faite par un autre schéma (migration inconnue, modifiée ou sautée) est refusée
      avant toute écriture (`src/db/migrations.ts`). Pas de `db:reset`. `CODEX_MIGRATION_BACKUP=off` migre sans
      sauvegarde (déconseillé).
+  - Au déploiement, `npm run db:migrate` les applique avant de démarrer (`-- --check` dit lesquelles sont en
+    attente ; même sauvegarde, journalisée ; serveur arrêté ; `docs/exploitation.md` §7) ; sans elle, le démarrage
+    le fait.
   - Retour arrière : arrêter le serveur, revenir à la version précédente de Codex (git), `npm run restore --
     <archive> --replace` avec l'archive écrite avant la migration.
   - Les fonctions et déclencheurs de la base (journal en ajout seul, version des documents, termes de recherche)
