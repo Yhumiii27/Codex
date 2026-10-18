@@ -5,7 +5,7 @@ import { Icon } from '@/components/ui/Icon';
 import { Seg } from '@/components/ui/Seg';
 import { ActionButton, DialogButton } from '@/components/ui/client';
 import { mayBackUp, mayCheckIntegrity, mayCleanStorage, mayExportAll, mayLinkTemplate, mayTransferHoldings } from '@/lib/access';
-import { backUpData, checkFileIntegrity, purgeOrphanFiles, removeFunctionHolder, togglePermission } from '@/lib/actions';
+import { backUpData, checkFileIntegrity, purgeOrphanFiles, removeFunctionHolder, renameProvisionalFiles, togglePermission } from '@/lib/actions';
 import { antivirusStatus } from '@/lib/antivirus';
 import { backupList, backupSettings } from '@/lib/backup';
 import { getCtx, type Ctx } from '@/lib/context';
@@ -16,6 +16,7 @@ import { ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLE_LABEL, MATRIX_ROLES, PERMS, SI
 import { AUDIT_ID_MAX, auditPage, getMatrix, integrityL, latestIntegrityCheck, listFunctionHolders, listTemplates, orgUsage, registryUsage, retentionByType, typeView, type AuditFilter, type RegistryUsage } from '@/lib/queries';
 import { fmtDateTime, fmtSize, parisStamp, parseIsoDay } from '@/lib/format';
 import { MAX_PER_RUN, orphanReport, type OrphanScan } from '@/lib/orphans';
+import { provisionalReport, type ProvisionalScan } from '@/lib/provisional';
 import { schedulerOverview, type TaskView } from '@/lib/scheduler';
 import { inUse } from '@/lib/org-rules';
 import { DEPARTMENT_HEAD_FUNCTION } from '@/lib/registry-rules';
@@ -547,6 +548,76 @@ async function Orphans({ ctx, open }: { ctx: Ctx; open: boolean }) {
 }
 
 /**
+ * Files left under their provisional name (lib/provisional.ts), for a records manager: a link that runs the dry run
+ * (?provisional=1, nothing changes), then the list and the button that renames those listed.
+ */
+async function Provisional({ ctx, open }: { ctx: Ctx; open: boolean }) {
+  const { t, lang } = ctx;
+  if (!open) {
+    return (
+      <p className={`${styles.filesPolicy} text-muted`}>
+        <strong>{t.prov_title}</strong>
+        <Link href="/administration?tab=audit&provisional=1" className="link-plain" scroll={false}>{t.prov_find}</Link>
+      </p>
+    );
+  }
+  const report = await provisionalReport();
+  const h = String(report.graceHours);
+  const counts = (x: ProvisionalScan) => [
+    t.prov_found.replace('{n}', String(x.due.length)),
+    ...(x.recent ? [t.prov_recent.replace('{n}', String(x.recent))] : []),
+    ...(x.missing ? [t.prov_missing.replace('{n}', String(x.missing))] : []),
+  ].join(' · ');
+  const list = (x: ProvisionalScan) => x.due.length > 0 && (
+    <table className={`table ${styles.orphanTable}`}>
+      <thead><tr><th>{t.file}</th><th>{t.prov_new_name}</th><th>{t.orphans_touched}</th></tr></thead>
+      <tbody>
+        {x.due.slice(0, MAX_PER_RUN).map((f) => (
+          <tr key={`${f.versionId}`}>
+            <td className={styles.orphanKey}>{f.key}</td>
+            <td className={styles.orphanKey}>{f.name}</td>
+            <td className="nowrap tabnum text-muted">{f.touched == null ? '—' : fmtDateTime(parisStamp(new Date(f.touched).toISOString()), lang)}</td>
+          </tr>
+        ))}
+        {x.due.length > MAX_PER_RUN && <tr><td colSpan={3} className="text-muted">{t.orphans_more.replace('{n}', String(x.due.length - MAX_PER_RUN))}</td></tr>}
+      </tbody>
+    </table>
+  );
+  const sp = report.sharepoint && !('error' in report.sharepoint) ? report.sharepoint : null;
+  // The rename is given the keys shown here (both stores, at most MAX_PER_RUN): nothing found since is renamed with them.
+  const shown = [...report.local.due, ...(sp?.due ?? [])].slice(0, MAX_PER_RUN).map((f) => f.key);
+  const n = shown.length;
+  const any = (x: ProvisionalScan) => x.due.length || x.recent || x.missing;
+  return (
+    <section className={styles.orphans} aria-label={t.prov_title}>
+      <div className={styles.orphansHead}>
+        <strong>{t.prov_title}</strong>
+        <span style={{ flex: 1 }} />
+        {n > 0 && (
+          <ActionButton action={renameProvisionalFiles.bind(null, shown)} className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} confirm={t.prov_confirm.replace('{n}', String(n))} after="/administration?tab=audit&provisional=1">
+            {t.prov_rename.replace('{n}', String(n))}
+          </ActionButton>
+        )}
+        <Link href="/administration?tab=audit" className="btn btn-ghost" style={{ fontSize: 12 }} scroll={false}>{t.close}</Link>
+      </div>
+      <p className="text-muted">{t.prov_hint.replace('{h}', h)}</p>
+      <p><span className={styles.orphanStore}>{t.orphans_store_local}</span>{any(report.local) ? counts(report.local) : t.prov_none}</p>
+      {list(report.local)}
+      {report.sharepoint && (
+        'error' in report.sharepoint
+          ? <p><span className={styles.orphanStore}>{t.orphans_store_sharepoint}</span><span className={styles.filesOff}>{t.orphans_sp_error}</span></p>
+          : (
+            <>
+              <p><span className={styles.orphanStore}>{t.orphans_store_sharepoint}</span>{any(report.sharepoint) ? counts(report.sharepoint) : t.prov_none} · <span className="text-muted">{t.prov_sp_untested}</span></p>
+              {list(report.sharepoint)}
+            </>
+          )
+      )}
+    </section>
+  );
+}
+
+/**
  * Backups (lib/backup.ts), for a records manager: the date of the latest archive and a link that lists them
  * (?backups=1), with what each holds and the button that backs up now. Restoring is a command (npm run restore).
  */
@@ -679,6 +750,7 @@ function runSummary(ctx: Ctx, x: TaskView): string {
   const n = (key: TKey, v: unknown) => (typeof v === 'number' ? t[key].replace('{n}', String(v)) : null);
   const parts = [
     n('sched_sum_promoted', sum.promoted), n('sched_sum_decisions', sum.decisions),
+    n('sched_sum_renamed', sum.renamed), n('sched_sum_provisional', sum.provisional),
     n('sched_sum_removed', sum.removed), sum.bytes ? fmtSize(Number(sum.bytes), lang) : null, sum.failed ? n('sched_sum_failed', sum.failed) : null, n('sched_sum_left', sum.left),
     n('sched_sum_checked', sum.checked), sum.altered ? n('sched_sum_altered', sum.altered) : null, sum.missing ? n('sched_sum_missing', sum.missing) : null,
     typeof sum.archive === 'string' ? t.sched_sum_archive.replace('{v}', sum.archive) : null, sum.size ? fmtSize(Number(sum.size), lang) : null, n('sched_sum_files', sum.files),
@@ -744,6 +816,7 @@ async function Audit({ ctx, sp }: { ctx: Ctx; sp: Record<string, string | undefi
     <>
       <FilesPolicy ctx={ctx} />
       {mayCleanStorage(ctx) && <Orphans ctx={ctx} open={sp.orphans === '1'} />}
+      {mayCleanStorage(ctx) && <Provisional ctx={ctx} open={sp.provisional === '1'} />}
       {mayBackUp(ctx) && <Backups ctx={ctx} open={sp.backups === '1'} />}
       {mayCheckIntegrity(ctx) && <Integrity ctx={ctx} />}
       {mayExportAll(ctx) && <FullExport ctx={ctx} />}

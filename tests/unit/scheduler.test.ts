@@ -23,7 +23,7 @@ describe('intervals', () => {
   });
 
   it('runs only the deferred entry into force by default, every 5 minutes', () => {
-    expect(Object.fromEntries(TASK_NAMES.map((t) => [t, intervalOf(t, {})]))).toEqual({ promote: 300_000, orphans: null, integrity: null, backup: null, export: null });
+    expect(Object.fromEntries(TASK_NAMES.map((t) => [t, intervalOf(t, {})]))).toEqual({ promote: 300_000, orphans: null, renames: null, integrity: null, backup: null, export: null });
   });
 
   it('turns a maintenance task on by its variable, and keeps the default for a value it cannot read', () => {
@@ -36,7 +36,7 @@ describe('intervals', () => {
   it('stops every task with CODEX_SCHEDULER=off', () => {
     expect(schedulerEnabled({ CODEX_SCHEDULER: 'off' })).toBe(false);
     expect(schedulerEnabled({ CODEX_SCHEDULER: 'on' })).toBe(true);
-    expect(TASK_NAMES.map((t) => intervalOf(t, { CODEX_SCHEDULER: '0', CODEX_SCHEDULE_BACKUP: '1d' }))).toEqual([null, null, null, null, null]);
+    expect(TASK_NAMES.map((t) => intervalOf(t, { CODEX_SCHEDULER: '0', CODEX_SCHEDULE_BACKUP: '1d' }))).toEqual([null, null, null, null, null, null]);
   });
 });
 

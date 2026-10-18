@@ -421,6 +421,15 @@ Points 46 et 36 de `docs/reste-a-faire.md`.
   - Pas de commande npm : PGlite n'ouvre la base que dans un seul processus, celui du serveur. Le planificateur
     lance la même suppression quand `CODEX_SCHEDULE_ORPHANS` en donne la fréquence (désactivée par défaut ;
     `docs/exploitation.md` §4).
+- **Fichiers restés sous un nom provisoire** (même écran, gestionnaire documentaire avec l'accès Administration) : un
+  fichier est stocké sous un nom provisoire avant la transaction qui l'enregistre, puis renommé `{ID}_{version}.{ext}`
+  (`nameStoredFile`) ; un arrêt entre les deux, ou un stockage injoignable, laisse un enregistrement qui pointe vers le
+  nom provisoire (le fichier reste servi). « Fichiers sous un nom provisoire › Rechercher » les liste sans rien changer
+  (`src/lib/provisional.ts` : clés `<uuid>-upload.<ext>` en local, éléments de `_staging` sur SharePoint, touchés
+  depuis plus de `CODEX_ORPHAN_GRACE_HOURS`), puis « Renommer ces fichiers » donne leur nom aux seuls fichiers listés,
+  chacun revérifié juste avant, 200 au plus, journalisé (« Fichiers renommés », noms montrés aux seuls gestionnaires).
+  Le planificateur le fait quand `CODEX_SCHEDULE_RENAMES` en donne la fréquence (désactivé par défaut). Sur
+  SharePoint, le renommage passe par la même interface que le dépôt, jamais essayée sur un vrai tenant (O-01).
 
 ## Sauvegarde et restauration
 

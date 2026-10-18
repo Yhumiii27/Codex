@@ -1571,7 +1571,7 @@ export function auditTextL(ctx: Ctx, x: AuditText): string {
 export function auditDetailL(ctx: Ctx, a: Pick<AuditRow, 'detail' | 'data' | 'targetId'>): string {
   const x = a.data;
   const link = x?.link ? `${ctx.t[`link_${x.link.rel}`]} ${x.link.other}${x.link.skipped ? ` : ${ctx.t[`link_skip_${x.link.skipped}`]}` : ''}` : '';
-  return [x?.text ? auditTextL(ctx, x.text) || a.detail : a.detail, link, x?.changes?.length ? x.changes.map((c) => changeL(ctx, c)).join(' ; ') : '', x?.export ? exportL(ctx, a.targetId, x.export) : '', x?.file ? refusedFileL(ctx, a.targetId, x.file) : '', x?.purge ? purgeL(ctx, x.purge) : '', x?.backup ? backupL(ctx, x.backup) : '', x?.archive ? archiveL(ctx, x.archive) : '', x?.integrity ? integrityL(ctx, x.integrity) : '', x?.transfer ? transferL(ctx, x.transfer) : '', x?.sha256 ? `SHA-256 ${x.sha256.slice(0, 16)}…` : ''].filter(Boolean).join(' · ');
+  return [x?.text ? auditTextL(ctx, x.text) || a.detail : a.detail, link, x?.changes?.length ? x.changes.map((c) => changeL(ctx, c)).join(' ; ') : '', x?.export ? exportL(ctx, a.targetId, x.export) : '', x?.file ? refusedFileL(ctx, a.targetId, x.file) : '', x?.purge ? purgeL(ctx, x.purge) : '', x?.rename ? renameL(ctx, x.rename) : '', x?.backup ? backupL(ctx, x.backup) : '', x?.archive ? archiveL(ctx, x.archive) : '', x?.integrity ? integrityL(ctx, x.integrity) : '', x?.transfer ? transferL(ctx, x.transfer) : '', x?.sha256 ? `SHA-256 ${x.sha256.slice(0, 16)}…` : ''].filter(Boolean).join(' · ');
 }
 
 /**
@@ -1657,6 +1657,19 @@ function purgeL(ctx: Ctx, p: NonNullable<AuditData['purge']>): string {
     t.purge_files.replace('{n}', String(p.files.length)).replace('{size}', fmtSize(p.bytes, lang)),
     p.failed ? t.purge_failed.replace('{n}', String(p.failed)) : '',
     ctx.seesAll ? p.files.map((f) => f.key).join(', ') : '',
+  ].filter(Boolean).join(' · ');
+}
+
+/**
+ * Files given their final name (lib/provisional.ts): how many, failures; which ones (document, version, old → new key)
+ * to records managers only, since they give drafts' IDs and versions (D-14).
+ */
+function renameL(ctx: Ctx, r: NonNullable<AuditData['rename']>): string {
+  const { t } = ctx;
+  return [
+    t.rename_files.replace('{n}', String(r.files.length)),
+    r.failed ? t.rename_failed.replace('{n}', String(r.failed)) : '',
+    ctx.seesAll ? r.files.map((f) => `${f.doc} ${f.label} : ${f.from} → ${f.to}`).join(', ') : '',
   ].filter(Boolean).join(' · ');
 }
 

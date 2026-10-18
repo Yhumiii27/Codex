@@ -1522,6 +1522,12 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     transactions refusées) ; plusieurs documents verrouillés dans l'ordre de leurs identifiants ; une action en
     double reçoit la réponse qu'aurait eue la seconde après la première (« étape déjà décidée », « demande en
     attente ») ; **plusieurs processus** laissés comme limite documentée ;
+  - **noms provisoires** (point 36) : même écran et mêmes droits que les orphelins (gestionnaire documentaire avec
+    l'accès Administration), simulation d'abord, seuls les fichiers listés renommés, **même délai de grâce**
+    (`CODEX_ORPHAN_GRACE_HOURS`, 24 h) ; nom donné sous l'**identifiant actuel** du document (après un reclassement)
+    et `{lettre}.{n}` comme `renameDocFiles` ; un fichier qui occupe déjà le nom final n'est jamais remplacé (sauf le
+    même fichier, lien laissé par un renommage arrêté) ; tâche du planificateur **désactivée par défaut** ; sur
+    SharePoint, l'interface du dépôt, sans essai réel (O-01) ;
 - **Git** (D-23) : premier commit sur une branche `codex-ged-v2` plutôt que sur `main`.
 
 ## Ce qui est explicitement hors périmètre

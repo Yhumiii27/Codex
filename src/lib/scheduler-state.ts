@@ -27,7 +27,7 @@ export function schedulerPromotes(): boolean {
 
 // ── Settings ────────────────────────────────────────────────────────────
 
-export type TaskName = 'promote' | 'orphans' | 'integrity' | 'backup' | 'export';
+export type TaskName = 'promote' | 'orphans' | 'renames' | 'integrity' | 'backup' | 'export';
 
 /**
  * Each task's variable and its interval when the variable is unset. Only the deferred entry into force is on by
@@ -36,6 +36,7 @@ export type TaskName = 'promote' | 'orphans' | 'integrity' | 'backup' | 'export'
 export const SCHEDULE: Record<TaskName, { env: string; def: string }> = {
   promote: { env: 'CODEX_SCHEDULE_PROMOTE', def: '5m' },
   orphans: { env: 'CODEX_SCHEDULE_ORPHANS', def: 'off' },
+  renames: { env: 'CODEX_SCHEDULE_RENAMES', def: 'off' },
   integrity: { env: 'CODEX_SCHEDULE_INTEGRITY', def: 'off' },
   backup: { env: 'CODEX_SCHEDULE_BACKUP', def: 'off' },
   export: { env: 'CODEX_SCHEDULE_EXPORT', def: 'off' },

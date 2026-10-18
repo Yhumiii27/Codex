@@ -657,6 +657,12 @@ export type AuditData = {
    */
   purge?: { files: { key: string; size: number; touched: string }[]; bytes: number; failed?: number };
   /**
+   * Files given their name {ID}_{version}.{ext} after being left under their provisional one (action 'files_renamed',
+   * lib/provisional.ts): each one's old and new key, its document and version, the files that could not be renamed.
+   * IDs and versions of drafts: shown to records managers only (D-14).
+   */
+  rename?: { files: { from: string; to: string; doc: string; label: string }[]; failed?: number };
+  /**
    * An archive written (action 'backup_created': Administration, or npm run backup) or restored ('backup_restored': npm
    * run restore, journaled in the restored database), lib/backup-core.mjs: its name, size and SHA-256 (of the whole
    * file when written), what it holds (documents, local files and their size, files the store lacked, files kept by

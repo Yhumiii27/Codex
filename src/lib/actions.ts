@@ -25,6 +25,7 @@ import { cleanFeatured } from './departments';
 import { inUse, isOrgKind, lastActiveIssue, orgLabels, parseOrgForm, type OrgKind } from './org-rules';
 import { fileIssueReason, fileIssueText, fileRules } from './filetypes';
 import { MAX_PER_RUN, purgeOrphans } from './orphans';
+import { renameProvisional } from './provisional';
 import {
   builtInScopeIssue, builtInTypeIssue, departmentCodeIssue, keyIssue, outsideType, parseFamilyForm, parseFunctionForm, parseProgramForm, parseRetentionRule, parseTypeForm, programCodeIssue, PROJECT_MANAGER_FUNCTIONS,
   SUBTYPE_MAX, SUBTYPES_MAX, typeCodeIssue, type CodeSpace, type FormIssue, type ProgramValues, type TypeValues,
@@ -1763,6 +1764,36 @@ async function purgeOrphanFilesNow(keys: string[]): Promise<ActionResult> {
       res.kept ? t.orphans_kept.replace('{n}', String(res.kept)) : '',
       res.failed ? t.orphans_failures.replace('{n}', String(res.failed)) : '',
       res.left - res.failed > 0 ? t.orphans_left.replace('{n}', String(res.left)) : '',
+    ].filter(Boolean).join(' '),
+  };
+}
+
+/**
+ * Gives their name {ID}_{version}.{ext} to the files Administration listed as left under their provisional name
+ * (lib/provisional.ts): `keys`, those the dry run showed, of which only the ones still to rename go, each looked at again
+ * just before. A records manager with access to Administration (mayCleanStorage: the names carry IDs and versions of
+ * drafts, D-14). Journaled ('files_renamed').
+ */
+export async function renameProvisionalFiles(...args: Parameters<typeof renameProvisionalFilesNow>): Promise<ActionResult> {
+  return traceAction('renameProvisionalFiles', () => renameProvisionalFilesNow(...args));
+}
+async function renameProvisionalFilesNow(keys: string[]): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  if (!mayCleanStorage(ctx)) return fail(ctx, 'forbidden');
+  if (!Array.isArray(keys) || !keys.length || keys.length > MAX_PER_RUN || !keys.every((k) => typeof k === 'string' && k.length > 0 && k.length <= 512)) return fail(ctx);
+  const res = await renameProvisional(ctx.user.id, { keys });
+  if (res === 'busy') return fail(ctx, 'orphans_busy');
+  const { t } = ctx;
+  refresh();
+  return {
+    ok: true,
+    message: [
+      t.prov_done.replace('{n}', String(res.renamed.length)),
+      res.kept ? t.prov_kept.replace('{n}', String(res.kept)) : '',
+      res.failed ? t.prov_failures.replace('{n}', String(res.failed)) : '',
+      res.left - res.failed > 0 ? t.prov_left.replace('{n}', String(res.left)) : '',
     ].filter(Boolean).join(' '),
   };
 }

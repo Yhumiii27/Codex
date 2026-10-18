@@ -148,6 +148,7 @@ describe('administration', () => {
     expect(view.tasks.map((x) => [x.task, x.interval, x.status, x.next])).toEqual([
       ['promote', FIVE_MIN, 'ok', '2026-10-10 08:05:00+00'],
       ['orphans', null, null, null],
+      ['renames', null, null, null],
       ['integrity', null, null, null],
       ['backup', 86_400_000, null, null],
       ['export', null, null, null],

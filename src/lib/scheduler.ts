@@ -10,6 +10,7 @@ import { checkFilesNow } from './integrity';
 import { applyDuePendingDecisions, promoteDue } from './lifecycle';
 import { logger, serializeError } from './log';
 import { purgeOrphans } from './orphans';
+import { renameProvisional } from './provisional';
 import { intervalOf, SCHEDULE, schedulerEnabled, schedulerState, TASK_NAMES, type TaskName } from './scheduler-state';
 
 export { intervalOf, MIN_INTERVAL_MS, parseInterval, SCHEDULE, schedulerEnabled, TASK_NAMES, type TaskName } from './scheduler-state';
@@ -20,8 +21,8 @@ export { intervalOf, MIN_INTERVAL_MS, parseInterval, SCHEDULE, schedulerEnabled,
 //
 // Only the deferred entry into force runs by default (every 5 minutes): approved revisions whose effective date has come
 // enter into force, and acceptances of Vigie that nothing holds any more apply. The maintenance tasks (orphan files,
-// integrity check, backup, full export) are off: how often they should run, and where archives should go, belong to the
-// hosting, which is not decided (M22).
+// files left under a provisional name, integrity check, backup, full export) are off: how often they should run, and
+// where archives should go, belong to the hosting, which is not decided (M22).
 //
 // One run at a time per task, whatever the number of Codex processes on the database (a PostgreSQL server may serve
 // several): a process runs a task under a lease in the table scheduler_runs, renewed while it runs and taken over once
@@ -52,6 +53,13 @@ export const TASKS: Record<TaskName, { run: (db: Db) => Promise<TaskOutcome> }> 
       const r = await purgeOrphans(SCHEDULER_ACTOR);
       if (r === 'busy') return { status: 'skipped', summary: { reason: 'busy' } };
       return { status: 'ok', summary: { removed: r.removed.length, bytes: r.bytes, failed: r.failed, left: r.left } };
+    },
+  },
+  renames: {
+    run: async () => {
+      const r = await renameProvisional(SCHEDULER_ACTOR);
+      if (r === 'busy') return { status: 'skipped', summary: { reason: 'busy' } };
+      return { status: 'ok', summary: { renamed: r.renamed.length, failed: r.failed, provisional: r.left } };
     },
   },
   integrity: {

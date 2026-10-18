@@ -126,7 +126,16 @@ const local: FileStore = {
   },
   async rename(key, storedName) {
     const next = `${path.basename(key).slice(0, UUID_LEN)}-${safeName(storedName)}`;
-    await link(path.join(FILES_DIR, path.basename(key)), path.join(FILES_DIR, next));
+    const from = path.join(FILES_DIR, path.basename(key)), to = path.join(FILES_DIR, next);
+    try {
+      await link(from, to);
+    } catch (err) {
+      // The final name is already there: a rename that linked it and stopped before the record changed (point 36), or
+      // one running at the same time. The same file (same inode) is that rename's link; any other is never replaced.
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+      const [a, b] = await Promise.all([stat(from), stat(to)]);
+      if (a.ino !== b.ino || a.dev !== b.dev) throw err;
+    }
     return next;
   },
   async get(key) {
@@ -447,16 +456,32 @@ export function fileColumns(f: StagedFile): StoredFile {
  */
 export async function nameStoredFile(f: StagedFile, docId: string, label: string): Promise<void> {
   try {
-    const key = await stores(f.storage).rename(f.fileKey, `${docId}_${label}${f.ext}`, docId);
-    if (key !== f.fileKey) {
-      const db = await getDb();
-      await db.update(s.workingVersions).set({ fileKey: key }).where(eq(s.workingVersions.fileKey, f.fileKey));
-      await stores(f.storage).remove(f.fileKey);
-    }
+    await renameStoredFile(f, docId, label);
   } catch (err) {
     log.error('file left under its provisional name', { store: f.storage, key: f.fileKey, err });
   }
 }
+
+/**
+ * nameStoredFile, its failure thrown: the file named {ID}_{label}.{ext}, the records that point to its old key moved to
+ * the new one, then the old key removed. Returns the key the records now point to. Safe to run again on a file left
+ * half-way (the final name already linked to it: lib/provisional.ts).
+ */
+export async function renameStoredFile(f: Pick<StagedFile, 'storage' | 'fileKey' | 'ext'>, docId: string, label: string): Promise<string> {
+  const key = await stores(f.storage).rename(f.fileKey, `${docId}_${label}${f.ext}`, docId);
+  if (key !== f.fileKey) {
+    const db = await getDb();
+    await db.update(s.workingVersions).set({ fileKey: key }).where(eq(s.workingVersions.fileKey, f.fileKey));
+    await stores(f.storage).remove(f.fileKey);
+  }
+  return key;
+}
+
+/**
+ * A local key Codex gave at upload and never replaced by the final name (lib/storage.ts stageFile: `{uuid}-upload.ext`).
+ * A SharePoint file under its provisional name is in `_staging`: only its listing tells (FileStore.list).
+ */
+export const PROVISIONAL_LOCAL_KEY = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-upload(\.[\w.-]+)?$/;
 
 /**
  * After a reclassification (new ID), gives every stored file of the document its name under the new ID:
