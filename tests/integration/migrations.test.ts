@@ -25,7 +25,8 @@ async function lastSnapshot() {
 
 /** Tables, columns, constraints and indexes of the public schema, as the catalogue writes them. */
 async function structure(pg: Pick<SqlQueryable, 'query'>) {
-  const q = async (sql: string) => (await pg.query<Record<string, unknown>>(sql)).rows.map((r) => Object.values(r).join(' | '));
+  // Sorted here, not by the server: its collation (C, en_US…) orders "document_terms" and "documents" differently.
+  const q = async (sql: string) => (await pg.query<Record<string, unknown>>(sql)).rows.map((r) => Object.values(r).join(' | ')).sort();
   return {
     columns: await q(`select table_name, column_name, data_type, udt_name, is_nullable, coalesce(column_default, '') from information_schema.columns where table_schema = 'public' order by 1, 2`),
     constraints: await q(`select conrelid::regclass::text, conname, pg_get_constraintdef(oid) from pg_constraint where connamespace = 'public'::regnamespace order by 1, 2`),
