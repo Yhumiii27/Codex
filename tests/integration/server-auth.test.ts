@@ -12,7 +12,13 @@ import { addDoc, fixClock, getChange, setClock, setupDb } from '../support/db';
 // docs/api.md, « Authentification ») : HMAC signature of the Vigie webhook and of the import, with a window and a
 // replay check; two values accepted during a rotation; the registry open by default, closed by CODEX_REGISTRY_TOKEN.
 
-vi.mock('@/db', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/db')>()), getDb: async () => (await import('../support/db')).currentDb() }));
+// The signed multipart import stores its file for real: in a throwaway FILES_DIR, never in .data/ (absent in the CI).
+vi.mock('@/db', async (importOriginal) => {
+  const { mkdtempSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  return { ...(await importOriginal<typeof import('@/db')>()), FILES_DIR: mkdtempSync(join(tmpdir(), 'codex-server-auth-')), getDb: async () => (await import('../support/db')).currentDb() };
+});
 
 const db = setupDb();
 fixClock('2026-10-18T08:00:00Z');
