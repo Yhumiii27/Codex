@@ -13,8 +13,8 @@ Inventaire du 9 octobre 2026, sur la branche `codex-ged-v2-vkmf4l`, tenu à jour
 | Attend des données de l'utilisateur | 2 | 0 | 0 | 2 |
 | Demande une session sur macOS | 9 | 0 | 0 | 9 |
 
-Les lignes « Préparé » (103, 113 à 118 ; 36 pour son reste) et « Avancé » (87, 88, 94) du lot 10 ne changent pas ce
-compte : ces points attendent toujours leur décision.
+Les lignes « Préparé » (103, 106, 113 à 118 ; 36 pour son reste) et « Avancé » (87, 88, 94) du lot 10 ne changent pas
+ce compte : ces points attendent toujours leur décision.
 
 Le lot 10 (18 octobre) prépare les réponses de l'utilisateur sans rien trancher : fiches de décision
 (`docs/fiches-decision.md`), cahiers de validation du registre et de l'organigramme (`npm run registry:review`,
@@ -22,7 +22,9 @@ Le lot 10 (18 octobre) prépare les réponses de l'utilisateur sans rien tranche
 SharePoint essayé sans tenant (points 36 et 103). L'étape 4 a revérifié les constats des points 70 à 120 dans le code
 (ligne « Revérifié le 18 octobre 2026 » quand le constat ou ses références avaient changé), recompté ci-dessous les
 points par question, et fait sans décision ce que les points 87, 88 et 94 permettaient (ligne « Avancé le 18 octobre
-2026 ») : aucun point bloqué ne change d'état.
+2026 ») : aucun point bloqué ne change d'état. L'étape 5 a ajouté quatre parcours de bout en bout (rejet, rappel,
+demande Vigie, import ; point 57, déjà fait, « Avancé ») et la simulation d'import `POST /api/import?dryRun=1` (point
+106, « Préparé », toujours bloqué).
 
 Les 69 points développables sans décision ont tous été traités (lots 1 à 9, du 10 au 18 octobre). L'étape 9 du lot 9 a
 repris les restes qui ne dépendaient de rien (points 36, 43, 46, 47, 50, 51, 52 et 57) : 43, 52 et 57 sont faits, les
@@ -1119,6 +1121,7 @@ Constaté. src/db/seed-docs.ts contient 63 entrées `title:`. package.json n'a a
 
 - **Fait en partie le 10 octobre 2026** : Vitest (`npm test`) lance des tests unitaires des règles pures (`tests/unit/`) et des tests d'intégration des règles métier et des Server Actions sur un PGlite en mémoire (`tests/integration/`, base ouverte par `openDb` dans `src/db/index.ts`, `next/headers` et `next/cache` simulés), dont le handler du webhook `/api/integrations/vigie`. Le 11 octobre, `tests/integration/files.test.ts` appelle les handlers `POST /api/import` et `GET`/`HEAD /api/documents/[id]/file` : type de fichier enregistré, `Content-Type` et `Content-Disposition` servis, nom proposé, aperçu correspondant. Restent : les autres réponses de ces deux routes par leurs handlers (401, 400, 413, 415 et 409 de l'import, dont seuls les cas 409 sont testés, par `importDocument` ; 404 de la route fichier pour un document ou une version non visibles, la règle étant testée par `readerMaySeeVersion` ; 502 du stockage ; ligne de journal d'un téléchargement), les parcours Playwright, et l'atomicité des compteurs entre connexions (PGlite n'a qu'une connexion : il faut un Postgres serveur).
 - **Complété le 18 octobre 2026** (lot 9, étape 9) : `tests/integration/route-errors.test.ts` appelle les handlers : `POST /api/import` répond 401 sans jeton ou avec un autre, 415 à un corps ni JSON ni multipart et à un format de fichier refusé, 400 à un corps illisible, sans métadonnées, à un JSON invalide, à un « fichier » qui est un champ texte et à des métadonnées qui ne tiennent pas, 413 à un fichier au-delà de la limite et à un corps coupé en lecture, 409 au rejeu d'une référence et à une référence qui est un identifiant Codex, 500 avec l'identifiant de la requête sans la cause ; `GET`/`HEAD /api/documents/[id]/file` répondent 404 au document inconnu comme au document illisible, à une version invalide, d'un autre document ou que le lecteur n'a pas (D-14), à un aperçu demandé à tort, au fichier absent du stockage, et 502 au stockage injoignable (lien en boucle en local, SharePoint sans réglages), sans rien journaliser ; un téléchargement et une consultation sont journalisés (personne, fichier, révision), un `HEAD` non. Parcours de bout en bout `npm run e2e` (`scripts/codex-e2e.mts`, playwright-core, outillage commun avec `npm run a11y` dans `scripts/codex-browser.mts`, base de démo jetable) : création d'un document avec son PDF, aperçu paginé téléchargé une fois, demande de validation, chaque étape approuvée par son titulaire lu à l'écran, document en vigueur ; 15 à 17 s, cinq passages identiques : ajouté à la CI après `npm run a11y`. L'atomicité des compteurs entre connexions est testée sur PostgreSQL depuis le point 51. Reste : d'autres parcours (rejet, rappel, demande Vigie, import) si on les juge utiles.
+- **Avancé le 18 octobre 2026** (lot 10, étape 5) : `npm run e2e` compte cinq parcours indépendants : approbation, rejet avec motif puis nouvelle version de travail et nouvelle demande, rappel par le demandeur, demande de modification acceptée par la simulation Vigie (révision suivante ouverte, puis une deuxième modification en attente et greffée pendant la rédaction, une troisième en attente seulement pendant la validation, D-26) et import par l'API (simulation `?dryRun=1`, import réel au même identifiant, document vu dans l'application, brouillon importé vu de son seul propriétaire) ; chacun vérifie qu'une lectrice hors du cercle de rédaction ne voit pas le brouillon (D-14). 72 à 73 s, trois passages identiques, tous dans la CI. `tests/integration/import-dry-run.test.ts` couvre la simulation d'import. Reste : WebKit (app Mac, session macOS) et les parcours des autres écrans si on les juge utiles.
 - **Effort** : important
 
 Le manque est réel. Il faut une base de tests, sans changer le périmètre :
@@ -1986,6 +1989,7 @@ Constaté : src/lib/retention.ts:12-26 (triggerDate : default → null pour proj
 
 - **Effort** : moyen · **Références** : O-11, D-21
 - **Revérifié le 18 octobre 2026** : constat inchangé : une seule révision par document à l'import (src/lib/importer.ts:193 et 423) ; un document par appel (src/app/api/import/route.ts:8), corps lu en entier (l.66 et 98), dans la limite commune `maxFileBytes` (point 98).
+- **Préparé le 18 octobre 2026** (lot 10, étape 5) : `POST /api/import?dryRun=1` simule un import sans rien enregistrer (mêmes contrôles et mêmes refus, identifiant prévu et avertissements ; [api.md](api.md), « Simulation ») : l'outil de migration peut vérifier un lot avant de l'envoyer. Rien de ce que demande ce point n'est fait : toujours une révision et un document par appel, corps lu en entier ; le point reste bloqué par O-11.
 
 Le point est confirmé. `POST /api/import` crée une seule révision, en vigueur, approuvée ou brouillon (importer.ts:349-354), avec au plus une version de travail. L'historique des révisions remplacées ne peut donc pas être repris. Il n'y a pas d'appel par lot (route.ts:4), et chaque fichier est chargé entièrement en mémoire (route.ts:44). Si l'utilisateur veut garder l'historique, ou si les volumes l'exigent (O-11), l'API devra accepter :
 - plusieurs révisions par document, dont les révisions « Remplacé » avec leur date ;

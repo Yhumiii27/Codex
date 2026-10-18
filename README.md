@@ -87,9 +87,15 @@ Les fichiers déposés sont stockés dans `.data/files/` (ou dans SharePoint, vo
   est dans `src/fonts/`, servie par `next/font/local`, licence OFL dans `src/fonts/inter/OFL.txt`), puis
   `npm run a11y` (accessibilité : axe-core dans Chromium sur les écrans et dialogues principaux du build, base de démo
   jetable ; `docs/accessibilite.md`) et `npm run e2e` (parcours de bout en bout dans Chromium, même build, base de démo
-  jetable : document créé avec son PDF, aperçu paginé téléchargé une fois, demande de validation, chaque étape
-  approuvée par son titulaire, document en vigueur ; une vingtaine de secondes ; `CODEX_E2E_SHOTS=<dossier>` garde une
-  capture de l'aperçu).
+  jetable, jeton d'import tiré pour ce serveur seul ; cinq parcours indépendants : **approbation** (document créé avec
+  son PDF, aperçu paginé téléchargé une fois, chaque étape approuvée par son titulaire, document en vigueur),
+  **rejet** (étape rejetée avec son motif, nouvelle version de travail, nouvelle demande), **rappel** (demande rappelée
+  par son demandeur), **vigie** (demande de modification acceptée par la simulation Vigie : révision suivante ouverte ;
+  une deuxième, acceptée pendant sa rédaction, greffée ; une troisième, pendant sa validation, en attente, D-26) et
+  **import** (`POST /api/import?dryRun=1` puis import réel, même identifiant, document vu dans l'app, brouillon importé
+  vu de son seul propriétaire) ; chacun vérifie qu'une personne hors du cercle de rédaction ne voit pas le brouillon
+  (D-14) ; 75 s environ ; `-- --only rejet,rappel` pour certains parcours, `CODEX_E2E_SHOTS=<dossier>` garde une
+  capture de l'aperçu et de l'écran d'un parcours en échec).
 - Intégration continue GitHub Actions (`.github/workflows/ci.yml`) : `npm ci`, `npm run deps:audit`, `npm run db:check`
   puis ces contrôles, `npm run a11y` et `npm run e2e` compris (après `npx playwright-core install --with-deps
   chromium`), sous la version de référence de Node (`.nvmrc` : 22), à chaque push et PR ; `npm run test:pg` sur un
@@ -188,10 +194,11 @@ migration n'en demande pas : l'app sauvegarde sa base puis la migre au démarrag
 | `/administration` | Registre des types (création et modification complète des types et des familles, dont la périodicité de revue), fonctions & circuits (fonctions, titulaires, programmes de recherche), rôles & droits, organisation (départements et sites : ajout, renommage FR/EN, désactivation ou suppression d'une valeur inutilisée ; filtres mis en avant des départements), vocabulaires (organismes sources et mots-clés : ajout, renommage, fusion de doublons, valeurs sans terme ; sous-types hors de la liste de leur type, à ajouter au registre), reprise des responsabilités d'une personne qui part (simulation puis transfert journalisé à un remplaçant choisi : propriété de documents et de processus, auteur désigné, étapes en attente, titulariats, lecteurs désignés ; gestionnaires documentaires), modèles (QMS), leurs types cibles et leurs utilisations (documents créés depuis chacun, parmi ceux que le lecteur peut lire), journal d'audit (filtres par document ou cible, personne, action et période ; 100 entrées par page ; export CSV complet), sauvegardes, planificateur (tâches, dernière et prochaine exécution), export complet de toutes les données et de tous les fichiers (archive ZIP, gestionnaires documentaires) |
 | `/aide` | Aide, en français et en anglais, ouverte à tous les rôles (lien « Aide » au-dessus de « Notes de conception » dans la barre latérale) : les parcours courants pas à pas (créer un document, déposer et restaurer une version de travail, demander une validation, valider, rejeter ou déléguer, demander une modification ou un retrait à Vigie, comparer, confidentialité, recherche), avec ce qui est simulé ; un lien vers l'écran où chaque parcours commence, si le rôle y a accès |
 
-API : `/api/registry` (lu par Keystone), `/api/import` (outil de migration), `/api/integrations/vigie` (décisions
-Vigie), `/api/documents/[id]/file` (fichier d'une version de travail), `/api/documents/[id]/approval?rev=B` (fiche de
-visa d'une révision approuvée, PDF tiré du journal), `/api/export/search` et `/api/export/audit` (CSV),
-`/api/export/full` (export complet, archive ZIP : `docs/export.md`). Entre serveurs : jeton et/ou signature HMAC
+API : `/api/registry` (lu par Keystone), `/api/import` (outil de migration ; `?dryRun=1` simule sans rien
+enregistrer), `/api/integrations/vigie` (décisions Vigie), `/api/documents/[id]/file` (fichier d'une version de
+travail), `/api/documents/[id]/approval?rev=B` (fiche de visa d'une révision approuvée, PDF tiré du journal),
+`/api/export/search` et `/api/export/audit` (CSV), `/api/export/full` (export complet, archive ZIP :
+`docs/export.md`). Entre serveurs : jeton et/ou signature HMAC
 (horodatage, anti-rejeu, rotation par `…_NEXT`) pour l'import et le webhook Vigie, registre ouvert sauf
 `CODEX_REGISTRY_TOKEN` (`docs/api.md`, « Authentification »).
 
@@ -706,7 +713,7 @@ scripts/
   codex-seed-large.mts commande npm run seed:large : volume synthétique pour les mesures (docs/performances.md)
   codex-perf.mjs       commande npm run perf : temps des écrans et routes principaux d'un serveur lancé
   codex-a11y.mts       commande npm run a11y : contrôle d'accessibilité (axe-core, Chromium), docs/accessibilite.md
-  codex-e2e.mts        commande npm run e2e : parcours de bout en bout (créer, déposer, valider, en vigueur)
+  codex-e2e.mts        commande npm run e2e : parcours de bout en bout (approbation, rejet, rappel, Vigie, import)
   codex-browser.mts    serveur jetable et Chromium, communs à a11y et e2e
   codex-migrate.mts    commande npm run db:migrate : migrations au déploiement (docs/exploitation.md §7)
   codex-audit.mjs      commande npm run deps:audit : vulnérabilités connues des dépendances (CI)

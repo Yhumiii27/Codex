@@ -2813,6 +2813,7 @@ présentent l'état du code et recueillent les réponses ; rien n'est prérégl�
 | 2. Cahiers de validation du registre et de l'organigramme | commit « Lot 10, étape 2 », qui suit `79d2dc2` | 113 à 118 (préparation, toujours bloqués) | `npm run registry:review` (cahiers `types.csv` et `fonctions.csv`, contrôle d'un cahier rempli et écart avec le code) ; modèle `docs/modeles/organigramme.csv` et `npm run org:check` | Cahiers tirés du code, pas d'une base ; réponses vides ; aucune table société ; rien n'est écrit ni en base ni dans `registry.ts`, `seed-org.ts` |
 | 3. SharePoint sans tenant | commits « Lot 10, étape 3 » (deux) | 36, 103 (préparation, O-01 toujours ouverte) | Faux Microsoft Graph et 26 tests du pilote ; quatre défauts corrigés (délai d'envoi non entier, jeton refusé gardé en cache, `Retry-After`, corps des réponses de limitation) ; `npm run storage:check` ; procédure d'essai sur un tenant (`docs/exploitation.md` §8) | `CODEX_STORAGE` reste `local` par défaut ; aucune suppression sur SharePoint ; pas de session d'envoi ; plafond de 250 Mo inchangé |
 | 4. Constats remis à jour et corrections neutres | commit « Lot 10, étape 4 » | 70 à 120 (constats), 87, 88, 94 (avancés, toujours bloqués) | 50 constats revérifiés ; état récapitulatif recompté par question (O-01 : 5 points au lieu de 11, O-11 : 2 au lieu de 9) et annexe B des fiches alignée ; vocabulaires : un terme non proposé est traité comme inconnu, comptes réservés aux gestionnaires (D-14) ; indicateur « En retard » des circuits ; chiffrement au repos documenté ; bouton « Copier le lien du document » ; JUR dans la question 1 du registre | Aucune question tranchée ; délai de 7 jours, relances et « À traiter » inchangés ; rien de chiffré par Codex |
+| 5. Parcours de bout en bout et simulation d'import | commit « Lot 10, étape 5 » | 57 (avancé), 106 (préparé, toujours bloqué) | `npm run e2e` : cinq parcours indépendants (approbation, rejet avec motif puis nouvelle demande, rappel, demande Vigie acceptée puis greffe ou attente, import simulé puis réel), chacun avec le contrôle D-14 hors du cercle de rédaction ; `POST /api/import?dryRun=1` | Simulation : transaction annulée, aucun fichier stocké, rien au journal d'audit, aucun champ ni limite de plus ; paramètre d'adresse inconnu refusé ; identifiant prévu non réservé ; parcours lancés tous dans la CI (stables sur trois passages) |
 
 ### 19.1 Cahiers de validation du registre et de l'organigramme
 
@@ -2940,3 +2941,66 @@ Rien de ce qui suit ne tranche une question ouverte ; aucun point bloqué ne cha
   aucun circuit terminé ; même étiquette sur l'onglet Validation de `FDS-HLT-026-001` et sur la page du département
   QUA, « Overdue » en anglais ; un collaborateur hors de ces circuits n'en voit aucun ni sur la fiche ni sur la page
   du département.
+
+### 19.4 Parcours de bout en bout et simulation d'import (lot 10, étape 5)
+
+Rien de ce qui suit ne tranche une question ouverte ; aucun point bloqué ne change d'état.
+
+- **Parcours** (`scripts/codex-e2e.mts`, outillage commun `scripts/codex-browser.mts` : build de production, base de
+  démonstration jetable dans un dossier temporaire, jamais `.data/`) : cinq parcours indépendants, chacun dans son
+  propre contexte de navigateur et sur ses propres documents ; un parcours en échec n'arrête pas les autres (code de
+  sortie 1, capture de l'écran avec `CODEX_E2E_SHOTS`) ; `-- --only <noms>` en lance certains.
+  - **approbation** (celui du lot 9) : création avec un PDF, aperçu paginé téléchargé une fois, chaque étape approuvée
+    par son titulaire lu à l'écran, document en vigueur, alors visible de la lectrice hors du cercle ;
+  - **rejet** : l'étape tenue par Gabriel Comte est rejetée avec un motif (obligatoire dans le dialogue) ; la fiche
+    dit qui a rejeté et pourquoi, le circuit se dit « Rejeté », la révision revient en rédaction ; nouvelle version de
+    travail A.2, nouvelle demande de validation (nouveau circuit) ;
+  - **rappel** : Julien Wagner (collaborateur, pas gestionnaire) crée et soumet un document, puis rappelle sa demande
+    avec un motif ; circuit « Rappelé », révision en rédaction, le titulaire de l'étape n'a plus rien à décider ;
+  - **vigie** : un document en vigueur de Julien Wagner (préparé par l'import), une demande de modification acceptée
+    par la simulation Vigie (gestionnaire documentaire, `simulateVigieDecision`) ouvre la révision B en brouillon pour
+    lui ; une deuxième demande, acceptée pendant la rédaction de B, est **en attente** et la fiche propose la
+    **greffe**, que Julien Wagner fait ; une troisième, acceptée une fois B.1 déposée et B en validation, est en
+    attente **sans** greffe proposée (« en cours de validation »). C'est le comportement de l'application, testé tel
+    quel : l'attente vaut par défaut, la greffe se choisit sur la fiche tant que la révision est en rédaction (D-26 et
+    ses interprétations non confirmées) ;
+  - **import** : `POST /api/import?dryRun=1` avec le jeton tiré pour ce serveur (variables posées pour la base jetable
+    seulement), identifiant prévu, rien créé (la fiche répond 404) ; import réel : même identifiant, révision C en
+    vigueur avec son fichier, vue avec son aperçu par la gestionnaire et la lectrice hors du cercle, ancienne référence
+    résolue ; rejeu 409 ; brouillon importé vu de son seul propriétaire.
+  - **D-14 dans chaque parcours** : Léa Marchand (collaboratrice PRJ, lectrice des documents du groupe, hors de ces
+    circuits) reçoit « Vous n'avez pas accès à ce document » sur la fiche d'un brouillon et 404 sur son fichier ; sur
+    le document en vigueur du parcours vigie, elle ne voit que la révision A : ni « Rév. B en cours », ni version B, ni
+    révision ouverte ou greffée dans les demandes, ni bouton de greffe.
+  - Durées (build de production, ce conteneur) : 72 à 73 s au total dont 5 s de démarrage ; approbation 15 s, rejet
+    14 s, rappel 8 s, vigie 22 s, import 6 s ; 32 étapes, identiques sur trois passages : tous les parcours sont dans la
+    CI.
+  - Défauts trouvés par les parcours : aucun dans l'application. Un piège de l'outil corrigé en route (le parcours
+    vigie cliquait la greffe sous l'identité de la lectrice laissée par le contrôle D-14 : bouton absent, comme il se
+    doit).
+- **Simulation d'import** (`POST /api/import?dryRun=1`, [api.md](api.md) « Simulation ») : mêmes contrôles que
+  l'import (jeton, signature, débit, corps, fichier dont l'antivirus, métadonnées, rejeu, identifiant, avertissements),
+  réponse **200** `{dryRun, id, warnings}`, mêmes refus. `importDocument(raw, file, { dryRun })` (`src/lib/importer.ts`)
+  contrôle le fichier sans le déposer (`checkFile`, extrait de `stageFile` dans `src/lib/storage.ts`) puis exécute la
+  même transaction, annulée à la fin par une exception qui porte le résultat (comme `simulateTransfer`,
+  `src/lib/transfer.ts`) : ni document, ni compteur, ni terme de vocabulaire, ni entrée d'audit ; un fichier infecté
+  n'est noté qu'au journal technique. Une ligne `import simulated (dry run), nothing written` au journal technique.
+  - L'identifiant prévu n'est pas réservé : un document créé entre-temps le prend, l'import reçoit le suivant (testé et
+    documenté).
+  - La signature ne couvre pas l'adresse : la même requête signée renvoyée sans `?dryRun=1` est refusée comme rejeu
+    (testé) ; l'import qui suit est signé à nouveau. La mémoire anti-rejeu (`integration_signatures`) est la seule
+    ligne écrite par une simulation signée.
+  - Paramètres : `dryRun` seul, valeurs `1`/`true`/`0`/`false` ; tout autre paramètre ou valeur → 400 `invalid_query`
+    avant la lecture du corps (une faute de frappe n'importe pas pour de bon).
+  - Aucun champ ni aucune limite de plus (ni état, ni gel, ni approbation d'origine, ni plusieurs révisions : points 99
+    et 106 toujours bloqués par O-11).
+  - Tests : `tests/integration/import-dry-run.test.ts` (10 tests, FILES_DIR jetable, clamd simulé) : réponse,
+    avertissements identiques à ceux de l'import, aucun fichier stocké, toutes les tables inchangées (contenu de chaque
+    table comparé avant et après), identifiant égal à celui de l'import qui suit, identifiant au format Codex,
+    brouillon, fichier identique à un fichier en vigueur, identifiant pris entre-temps, mêmes réponses que l'import sur
+    huit refus, 409, 422 sans journal d'audit, 503, signature et rejeu, paramètres d'adresse.
+- **Documentation** : [api.md](api.md) (section « Simulation », réponses, exemple), README (`npm run e2e`, API), CI
+  (commentaire), [reste-a-faire.md](reste-a-faire.md) (points 57 et 106).
+- **Vérifié** : `npm run typecheck`, `npm run lint`, `npm run db:check`, `npm test` (106 fichiers dont 1 sauté, 1 431
+  tests passés, 13 sautés, aussi avec `.data` déplacé), `npm run build`, `npm run a11y` (30 écrans et 20 dialogues, 0
+  violation), `npm run e2e` trois fois (5 parcours sur 5, 32 étapes, 72 à 73 s).

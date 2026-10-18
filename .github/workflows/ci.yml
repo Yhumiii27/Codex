@@ -49,8 +49,10 @@ jobs:
       # served by the build above on a throwaway demo database; fails on a serious or critical violation (about 1 min).
       - run: npx playwright-core install --with-deps chromium
       - run: npm run a11y
-      # End-to-end path (scripts/codex-e2e.mts): a document created with its file, its paged preview fetched once, sent
-      # for approval, approved by each step's holder, in force; same build, a throwaway demo database (about 20 s).
+      # End-to-end paths (scripts/codex-e2e.mts), same build, a throwaway demo database: approval step by step, a
+      # rejection with its reason then a new request, a recall, a change accepted by the Vigie simulation then grafted or
+      # waiting (D-26), an import simulated then real; each checks that the draft stays hidden outside its drafting
+      # circle (D-14). About 75 s, stable over three runs.
       - run: npm run e2e
 
   # The whole suite again on a PostgreSQL server (option DATABASE_URL, docs/postgres.md): each test file gets a database
