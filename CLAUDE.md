@@ -32,6 +32,8 @@ numéro, sans les trancher à la place de l'utilisateur.
 | `docs/sources/deck-ged-epc2i.md` | Texte intégral du deck. L'original est `docs/sources/creation-ged-epc2i.pptx`. |
 | `docs/historique.md` | Chronologie du travail : construction, audit, modèle v2, revues, app Mac, GitHub. |
 | `docs/avancement-v2.md` | État d'avancement et reste à faire. |
+| `docs/postgres.md` | PostgreSQL serveur en option (`DATABASE_URL`), limites, `npm run test:pg`. |
+| `docs/performances.md` | Mesures sur gros volume (`npm run seed:large`, `npm run perf`). |
 | `docs/reste-a-faire.md` | Inventaire vérifié du 9 octobre 2026 : 129 points ouverts, classés selon ce qui les bloque (rien, décision, données, macOS). |
 | `docs/registre-points-ouverts.md` | Points à arbitrer sur le registre des types (69 types, 23 familles). |
 | `docs/api.md` | API d'intégration : registre, import de migration, webhook Vigie. |
@@ -115,7 +117,8 @@ npm run typecheck && npm run lint && npm run build
     `getDb()` ouvrirait `.data/pglite`. S'il appelle des Server Actions, il simule aussi `next/headers` et
     `next/cache`, et choisit l'utilisateur avec `actAs()` (`tests/support/session.ts`). Les `vi.mock` à copier
     sont en tête de `tests/integration/locks.test.ts`.
-  - PGlite sérialise les transactions : les tests « simultanés » ne prouvent pas l'atomicité entre connexions.
+  - PGlite sérialise les transactions : les tests « simultanés » ne prouvent pas l'atomicité entre connexions ;
+    `npm run test:pg` rejoue la suite sur un PostgreSQL serveur (voir `docs/postgres.md`).
 
 ## Limites en session cloud (conteneur Linux)
 
