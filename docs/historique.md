@@ -3173,7 +3173,9 @@ de `pub_journal.objet` ; plan § 4.5 et § 6 (verrou d'écriture, `migrate.ts`).
 - Image Docker : voir [exploitation.md](exploitation.md) §10 (refus de la vieille base, `rm -rf /data/pglite`, démarrage
   sous `node`, `HEALTHCHECK` sain ; même image sur le serveur).
 - `npm test` (PGlite, `.data` déplacé) et `npm run test:pg` (bases disposées comme le socle : rôle sans `CREATE` ni
-  `TEMPORARY`, `pg_trgm` dans `extensions`) : voir le rapport du lot ; nouveaux tests `partage.test.ts` (contrat des
+  `TEMPORARY`, `pg_trgm` dans `extensions`) : 1 454 tests réussis et 13 sautés sur PGlite (avec et sans `.data`, laissé
+  intact), 1 464 réussis et 3 sautés sur PostgreSQL 18.3, 109 fichiers, aucune base ni aucun rôle d'essai laissé ;
+  nouveaux tests `partage.test.ts` (contrat des
   vues), `empty-database.test.ts`, reprise et refus dans `migrations.test.ts`, règles des migrations dans
   `tests/unit/migrations.test.ts`. `npm run a11y` (0 violation) et `npm run e2e` (5 parcours) passent.
 - **Coolify, à faire** : rien sur le port ni le volume ; supprimer `/data/pglite` (procédure §10) ; la case « disponible
