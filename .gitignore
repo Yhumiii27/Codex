@@ -32,6 +32,8 @@ passwords.*
 .netrc
 # local Claude Code settings (may hold machine-specific permissions)
 .claude/settings.local.json
+# git worktrees of other agents
+.claude/worktrees/
 
 # ── Dependencies ─────────────────────────────────────────
 /node_modules
@@ -64,6 +66,12 @@ next-env.d.ts
 # ── Local data ───────────────────────────────────────────
 # local database and uploaded files (PGlite)
 /.data
+# their backups (npm run backup, Administration; default CODEX_BACKUP_DIR)
+/.data-backups
+# full exports (npm run export without --out)
+/.data-exports
+# synthetic volume for the measurements (npm run seed:large, docs/performances.md)
+/.data-large
 # design source archives (extracted in design/)
 /*.zip
 

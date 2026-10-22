@@ -1,6 +1,7 @@
 import 'server-only';
-import { like } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { schema as s } from '@/db';
+import { nextNumber } from './codification';
 import { nowStamp } from './format';
 import type { Tx } from './lifecycle';
 
@@ -13,19 +14,31 @@ export function vigieUrl(id?: string): string {
   return id ? `${base}/changements/${encodeURIComponent(id)}` : base;
 }
 
+/**
+ * True when Vigie's address is configured (NEXT_PUBLIC_VIGIE_URL). Without it, vigieUrl falls back on Vigie's local
+ * port, where a request may not exist: a link offered only « si configuré » is then left out.
+ */
+export function vigieLinkConfigured(): boolean {
+  return !!process.env.NEXT_PUBLIC_VIGIE_URL?.trim();
+}
+
 /** True while no real Vigie endpoint is configured: decisions are simulated from Codex. */
 export function vigieSimulated(): boolean {
   return !process.env.VIGIE_API_URL;
 }
 
-export type ChangeInput = { kind: 'modification' | 'obsolescence'; docId: string; requesterId: string; reason: string; description: string; source?: string };
+/**
+ * A request as Codex sends it. `replacementId`: for a withdrawal, the document proposed to replace this one, kept by
+ * Codex and linked when the withdrawal applies (lib/lifecycle.ts); what Vigie should receive of it is not settled (O-10).
+ */
+export type ChangeInput = { kind: 'modification' | 'obsolescence'; docId: string; requesterId: string; reason: string; description: string; replacementId?: string | null; source?: string };
 
 /** Registers a request with Vigie and mirrors it; returns its Vigie reference. */
 export async function submitChange(tx: Tx, input: ChangeInput): Promise<string> {
   const at = nowStamp();
   const year = at.slice(0, 4);
-  const rows = await tx.select({ id: s.changeRequests.id }).from(s.changeRequests).where(like(s.changeRequests.id, `ECR-${year}-%`));
-  const id = `ECR-${year}-${String(rows.reduce((m, r) => Math.max(m, Number(r.id.split('-')[2]) || 0), 0) + 1).padStart(3, '0')}`;
+  const seq = await nextNumber(tx, `ecr:${year}`, `ECR-${year}-`, sql`select ${s.changeRequests.id} from ${s.changeRequests}`);
+  const id = `ECR-${year}-${String(seq).padStart(3, '0')}`;
   // Real integration: POST {VIGIE_API_URL}/change-requests and use the id Vigie returns.
   await tx.insert(s.changeRequests).values({ id, ...input, source: input.source ?? 'codex', status: 'submitted', createdAt: at });
   return id;

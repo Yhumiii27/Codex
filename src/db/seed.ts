@@ -1,11 +1,15 @@
 import { and, eq } from 'drizzle-orm';
 import { contextOf, formatId, lettersUpTo, nextLetter } from '@/lib/codes';
+import { parisToUtc } from '@/lib/format';
+import { relOf } from '@/lib/links';
 import { MATRIX_ROLE, type SimRole } from '@/lib/i18n';
+import type { SeedMode } from '@/lib/seed-mode';
+import { cleanTerm, vocabKey } from '@/lib/vocab-rules';
 import type { Db } from './index';
 import * as s from './schema';
 import type { Attachment, Conf, Origin, RevStatus } from './schema';
 import { FAMILIES, TYPES } from './registry';
-import { CHANGES, DEMO_DOCS, EVENTS, EXPECTED, VCOMMENTS, type DemoDoc } from './seed-docs';
+import { CHANGES, DEMO_DOCS, EVENTS, EXPECTED, LINKS, VCOMMENTS, type DemoDoc } from './seed-docs';
 import { DEPARTMENTS, FUNCTIONS, HOLDERS, MATRIX, PERM_KEYS, PROGRAMS, PROJECTS, ROLE_KEYS, SAVED, SITES, USERS } from './seed-org';
 
 const loc = ([fr, en]: [string, string]) => ({ fr, en });
@@ -33,7 +37,49 @@ const later = (a: string, b: string) => (a > b ? a : b);
 
 const stamp = (date: string, seed: string) => `${date} ${String(8 + (hash(seed) % 10)).padStart(2, '0')}:${String(hash(`${seed}m`) % 60).padStart(2, '0')}:00`;
 
-export async function seed(db: Db) {
+type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
+
+/**
+ * The initial administrator of a minimal database (CODEX_SEED=minimal): the one person to log in with, a records
+ * manager (permission « Administrer » in the matrix), until the org chart (O-04) and the authentication (O-02) bring the
+ * real people. Not a system actor: the simulated session needs a person (lib/context.ts getCtx).
+ */
+export const INITIAL_ADMIN = { id: 'admin', name: 'Administrateur Codex', role: 'gestionnaire', initials: 'AC', title: { fr: 'Administrateur initial', en: 'Initial administrator' } };
+
+const initialsOf = (name: string) => name.split(/[\s-]+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+
+/**
+ * The reference data, the same in every mode: the provisional organisation (departments and sites, D-19, O-04), the
+ * system actors (Codex, Keystone, Vigie: the journal's automatic entries), the register of families and types
+ * (src/db/registry.ts), the approval functions and the permission matrix. No holder of a function: they are people.
+ */
+async function seedReference(tx: Tx) {
+  await tx.insert(s.departments).values(DEPARTMENTS.map(([code, labelFr, labelEn], sort) => ({ code, labelFr, labelEn, sort })));
+  await tx.insert(s.sites).values(SITES.map(([key, labelFr, labelEn], sort) => ({ key, labelFr, labelEn, sort })));
+  await tx.insert(s.users).values(USERS.filter((u) => u.system).map((u) => ({ id: u.id, name: u.name, role: u.role, isSystem: true, initials: initialsOf(u.name) })));
+  await tx.insert(s.families).values(FAMILIES.map((f, sort) => ({ key: f.key, labelFr: f.label_fr, labelEn: f.label_en, grp: f.group, sort })));
+  await tx.insert(s.docTypes).values(TYPES.map((t, sort) => ({
+    code: t.code, labelFr: t.label_fr, labelEn: t.label_en, family: t.family, origins: t.origins, attachments: t.attachments,
+    subtypes: t.subtypes, circuit: t.circuit, retentionYears: t.retention.years, retentionTrigger: t.retention.trigger,
+    retentionDisposition: t.retention.disposition, retentionBasis: t.retention.basis, retentionBasisEn: t.retention.basisEn ?? '', confAllowed: t.confAllowed, confDefault: t.confDefault,
+    iso: t.iso ?? null, clientDeliverable: !!t.clientDeliverable, source: t.source, sort,
+  })));
+  await tx.insert(s.functions).values(FUNCTIONS.map(([key, labelFr, labelEn, scope], sort) => ({ key, labelFr, labelEn, scope, sort })));
+  await tx.insert(s.rolePermissions).values(ROLE_KEYS.flatMap((role, i) => PERM_KEYS.map((perm, j) => ({ role, perm, granted: !!MATRIX[i][j] }))));
+}
+
+/**
+ * Fills a new database (src/db/index.ts, when it holds neither a person nor a type): the reference data, then the
+ * demonstration (`demo`, the default) or the initial administrator alone (`minimal`). One transaction: all or nothing.
+ */
+export async function seed(db: Db, mode: SeedMode = 'demo') {
+  if (mode === 'minimal') {
+    await db.transaction(async (tx) => {
+      await seedReference(tx);
+      await tx.insert(s.users).values({ ...INITIAL_ADMIN, isSystem: false, department: null, site: null });
+    });
+    return;
+  }
   const typeBy = new Map(TYPES.map((t) => [t.code, t]));
   const projectBy = new Map(PROJECTS.map((p) => [p.code, p]));
   const programBy = new Map(PROGRAMS.map((p) => [p.code, p]));
@@ -84,33 +130,23 @@ export async function seed(db: Db) {
   }
 
   await db.transaction(async (tx) => {
-    // Two server instances may start together: the write lock serialises this transaction, so the second one finds
-    // the users of the first and stops here.
-    if ((await tx.$count(s.users)) > 0) return;
-    await tx.insert(s.departments).values(DEPARTMENTS.map(([code, labelFr, labelEn], sort) => ({ code, labelFr, labelEn, sort })));
-    await tx.insert(s.sites).values(SITES.map(([key, label], sort) => ({ key, label, sort })));
-    await tx.insert(s.users).values(USERS.map((u) => ({
-      id: u.id, name: u.name, role: u.role, isSystem: !!u.system, department: u.dept ?? null, site: u.site ?? null,
-      title: u.title ? loc(u.title) : null,
-      initials: u.name.split(/[\s-]+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase(),
+    await seedReference(tx);
+    // ── Demonstration: fictitious people, holders, projects, programmes, searches, documents ──
+    await tx.insert(s.users).values(USERS.filter((u) => !u.system).map((u) => ({
+      id: u.id, name: u.name, role: u.role, isSystem: false, department: u.dept ?? null, site: u.site ?? null,
+      title: u.title ? loc(u.title) : null, initials: initialsOf(u.name),
     })));
-    await tx.insert(s.families).values(FAMILIES.map((f, sort) => ({ key: f.key, labelFr: f.label_fr, labelEn: f.label_en, grp: f.group, sort })));
-    await tx.insert(s.docTypes).values(TYPES.map((t, sort) => ({
-      code: t.code, labelFr: t.label_fr, labelEn: t.label_en, family: t.family, origins: t.origins, attachments: t.attachments,
-      subtypes: t.subtypes, circuit: t.circuit, retentionYears: t.retention.years, retentionTrigger: t.retention.trigger,
-      retentionDisposition: t.retention.disposition, retentionBasis: t.retention.basis, confAllowed: t.confAllowed, confDefault: t.confDefault,
-      iso: t.iso ?? null, clientDeliverable: !!t.clientDeliverable, source: t.source, sort,
-    })));
-    await tx.insert(s.functions).values(FUNCTIONS.map(([key, labelFr, labelEn, scope], sort) => ({ key, labelFr, labelEn, scope, sort })));
     await tx.insert(s.functionHolders).values(HOLDERS.map(([functionKey, scopeValue, userId]) => ({ functionKey, scopeValue, userId })));
     await tx.insert(s.projects).values(PROJECTS.map((p) => ({ code: p.code, name: p.name, client: p.client, stage: p.stage, managerId: p.manager, site: p.site, tiers: p.tiers, syncedAt: `${p.synced}:00` })));
     await tx.insert(s.researchPrograms).values(PROGRAMS.map((p) => ({ code: p.code, name: p.name, managerId: p.manager })));
-    await tx.insert(s.rolePermissions).values(ROLE_KEYS.flatMap((role, i) => PERM_KEYS.map((perm, j) => ({ role, perm, granted: !!MATRIX[i][j] }))));
-    await tx.insert(s.savedSearches).values(SAVED.map((x, i) => ({ label: loc(x.label), q: x.q, facets: x.facets, sort: i })));
+    await tx.insert(s.savedSearches).values(SAVED.map((x, i) => ({ label: loc(x.label), q: x.q, facets: x.facets, ownerId: x.owner, scope: 'group' as const, sort: i })));
 
     // ── Documents ──
     const seqs = new Map<string, number>();
     const idByKey = new Map<string, string>();
+    const ids: string[] = [];
+    /** Revision opened by each change order (ECO → revision id). */
+    const revByChange = new Map<string, number>();
     const audit: (typeof s.auditLog.$inferInsert)[] = [];
     let wfSeq = 300;
 
@@ -127,6 +163,7 @@ export async function seed(db: Db) {
       seqs.set(ctxKey, seq);
       const id = formatId(idIn, seq);
       if (demo.key) idByKey.set(demo.key, id);
+      ids.push(id);
 
       // Revisions in force so far (earlier letters superseded), then the working one. The last one entered into force
       // before the working revision was opened (its first version comes 2n days before `modified`); a single letter in
@@ -135,7 +172,7 @@ export async function seed(db: Db) {
       const lastInForce = demo.working ? later(addDays(demo.modified, -(2 * demo.working.n + 4)), demo.issued ?? '') : demo.modified;
       const dates = !demo.inForce ? [] : inForceLetters.length === 1 ? [demo.issued ?? lastInForce] : spread(demo.issued ?? lastInForce, lastInForce, inForceLetters.length);
       const createdAt = demo.issued ? addDays(demo.issued, -12) : addDays(demo.modified, -(5 + (hash(id) % 20)));
-      const revRows: { letter: string; status: RevStatus; inForceAt?: string; supersededAt?: string; approvedAt?: string; versions: number; date: string; createdAt?: string; modifierId?: string | null; changeRef?: string | null }[] = [];
+      const revRows: { letter: string; status: RevStatus; inForceAt?: string; supersededAt?: string; approvedAt?: string; versions: number; date: string; createdAt?: string; modifierId?: string | null; changeRef?: string | null; decided?: string }[] = [];
       inForceLetters.forEach((letter, i) => {
         const last = i === inForceLetters.length - 1;
         revRows.push({ letter, status: last ? 'in_force' : 'superseded', approvedAt: dates[i], inForceAt: dates[i], supersededAt: last ? undefined : dates[i + 1], versions: 1 + (hash(id + letter) % 2), date: dates[i] });
@@ -144,8 +181,7 @@ export async function seed(db: Db) {
         // A revision opened by an ECO exists from Vigie's decision on (lifecycle.applyChangeDecision).
         const change = demo.working.changeRef ? CHANGES.find((c) => c.eco === demo.working!.changeRef) : undefined;
         const letter = nextLetter(demo.inForce);
-        revRows.push({ letter, status: demo.working.status, versions: demo.working.n, date: demo.modified, createdAt: change?.decided?.slice(0, 10), modifierId: demo.working.modifier ?? null, changeRef: demo.working.changeRef ?? null });
-        if (change?.decided) audit.push({ at: change.decided, userId: 'vigie', action: 'ecr', docId: id, detail: `${change.eco} → ${letter}` });
+        revRows.push({ letter, status: demo.working.status, versions: demo.working.n, date: demo.modified, createdAt: change?.decided?.slice(0, 10), modifierId: demo.working.modifier ?? null, changeRef: demo.working.changeRef ?? null, decided: change?.decided });
       }
       const inForce = revRows.find((r) => r.status === 'in_force');
       const working = revRows.find((r) => r.status === 'draft' || r.status === 'in_review');
@@ -167,15 +203,19 @@ export async function seed(db: Db) {
         createdAt, modifiedAt: demo.modified,
       });
       if (demo.readers?.length) await tx.insert(s.documentReaders).values(demo.readers.map((userId) => ({ docId: id, userId })));
-      audit.push({ at: stamp(createdAt, `${id}c`), userId: demo.owner, action: 'upload', docId: id, detail: 'A.1' });
+      if (demo.templateFor?.length) await tx.insert(s.templateTypes).values(demo.templateFor.map((typeCode) => ({ docId: id, typeCode })));
 
-      for (const r of revRows) {
+      for (const [ri, r] of revRows.entries()) {
         // A revision exists before its first working version.
         const revCreated = r.approvedAt ? addDays(r.approvedAt, -10) : r.createdAt ?? addDays(r.date, -2 * r.versions - 1);
         const [rev] = await tx.insert(s.revisions).values({
           docId: id, letter: r.letter, status: r.status, approvedAt: r.approvedAt ?? null, inForceAt: r.inForceAt ?? null, supersededAt: r.supersededAt ?? null,
           modifierId: r.modifierId ?? null, changeRef: r.changeRef ?? null, createdAt: revCreated,
         }).returning();
+        if (r.changeRef) revByChange.set(r.changeRef, rev.id);
+        // Journal entries carry the revision they are about (lib/access.ts, readerMaySeeEntry).
+        if (ri === 0) audit.push({ at: stamp(createdAt, `${id}c`), userId: demo.owner, action: 'upload', docId: id, detail: 'A.1', revisionId: rev.id });
+        if (r.decided) audit.push({ at: r.decided, userId: 'vigie', action: 'ecr', docId: id, detail: `${r.changeRef} → ${r.letter}`, revisionId: rev.id });
         const vdates = spread(later(addDays(r.date, -2 * r.versions), revCreated), r.date, r.versions);
         await tx.insert(s.workingVersions).values(Array.from({ length: r.versions }, (_, i) => ({
           revisionId: rev.id, docId: id, n: i + 1, authorId: r.modifierId ?? demo.owner, date: vdates[i],
@@ -183,7 +223,7 @@ export async function seed(db: Db) {
           pages: 2 + (hash(id + r.letter) % 14),
         })));
         // Entry into force closes the day, after any approval stamped that day (stamp() stays before 18:00).
-        if (r.inForceAt) audit.push({ at: `${r.inForceAt} 18:00:00`, userId: 'codex', action: 'in_force', docId: id, detail: r.letter });
+        if (r.inForceAt) audit.push({ at: `${r.inForceAt} 18:00:00`, userId: 'codex', action: 'in_force', docId: id, detail: r.letter, revisionId: rev.id });
 
         if (r.status === 'in_review' && demo.working) {
           // Running workflow: the type's circuit, resolved as the app would; `done` steps already signed off.
@@ -195,13 +235,25 @@ export async function seed(db: Db) {
           const sdates = spread(addDays(r.date, -4), r.date, done);
           await tx.insert(s.workflows).values({ id: wid, docId: id, revisionId: rev.id, requesterId: requester, due: addDays(r.date, 10), step: done, createdAt: sdates[0] });
           await tx.insert(s.workflowSteps).values(steps.map((st, idx) => ({ workflowId: wid, idx, ...st, date: idx < done ? sdates[Math.min(idx, sdates.length - 1)] : null })));
-          audit.push({ at: stamp(sdates[0], `${wid}r`), userId: requester, action: 'request', docId: id, detail: `${wid} · ${r.letter}` });
-          for (let i = 1; i < done; i++) audit.push({ at: stamp(sdates[i], `${wid}${i}`), userId: steps[i].assigneeId, action: 'approve', docId: id, detail: wid });
+          audit.push({ at: stamp(sdates[0], `${wid}r`), userId: requester, action: 'request', docId: id, detail: `${wid} · ${r.letter}`, revisionId: rev.id });
+          for (let i = 1; i < done; i++) audit.push({ at: stamp(sdates[i], `${wid}${i}`), userId: steps[i].assigneeId, action: 'approve', docId: id, detail: wid, revisionId: rev.id });
           if (hash(wid) % 2 === 0) {
             await tx.insert(s.workflowComments).values({ workflowId: wid, authorId: requester, at: sdates[0], text: { fr: 'Révision prête pour vérification, modifications surlignées en jaune.', en: 'Revision ready for review, changes highlighted in yellow.' } });
           }
         }
       }
+    }
+
+    // Documents created from a template (the uses counted in Administration › Modèles): its ID, and the comment of A.1
+    // as createDocument writes it. Templates come after the documents in DEMO_DOCS: set once every ID is known.
+    const docIdOf = new Map(DEMO_DOCS.map((d, i) => [d, ids[i]]));
+    for (const demo of DEMO_DOCS.filter((d) => d.fromTemplate)) {
+      const id = docIdOf.get(demo)!, tplId = idByKey.get(demo.fromTemplate!)!;
+      const tpl = DEMO_DOCS.find((d) => d.key === demo.fromTemplate)!;
+      await tx.update(s.documents).set({ templateId: tplId }).where(eq(s.documents.id, id));
+      const [a] = await tx.select({ id: s.revisions.id }).from(s.revisions).where(and(eq(s.revisions.docId, id), eq(s.revisions.letter, 'A')));
+      await tx.update(s.workingVersions).set({ comment: { fr: `Créé depuis le modèle ${tplId} « ${tpl.title} »`, en: `Created from template ${tplId} “${tpl.title}”` } })
+        .where(and(eq(s.workingVersions.revisionId, a.id), eq(s.workingVersions.n, 1)));
     }
 
     // A few completed workflows so the "Terminées" view tells the history of recent revisions.
@@ -214,20 +266,68 @@ export async function seed(db: Db) {
       const steps = circuitSteps(type, demo, demo.owner, demo.owner);
       const wid = `W-${++wfSeq}`;
       const sdates = spread(addDays(rev.inForceAt!, -6), rev.inForceAt!, steps.length);
-      await tx.insert(s.workflows).values({ id: wid, docId: id, revisionId: rev.id, requesterId: demo.owner, due: addDays(rev.inForceAt!, 3), step: steps.length, outcome: 'approved', createdAt: sdates[0] });
+      await tx.insert(s.workflows).values({
+        id: wid, docId: id, revisionId: rev.id, requesterId: demo.owner, due: addDays(rev.inForceAt!, 3), step: steps.length, outcome: 'approved',
+        closedBy: steps[steps.length - 1].assigneeId, closedAt: sdates[sdates.length - 1], createdAt: sdates[0],
+      });
       await tx.insert(s.workflowSteps).values(steps.map((st, idx) => ({ workflowId: wid, idx, ...st, date: sdates[idx] })));
-      audit.push({ at: stamp(sdates[0], `${wid}r`), userId: demo.owner, action: 'request', docId: id, detail: `${wid} · ${rev.letter}` });
-      steps.slice(1).forEach((st, i) => audit.push({ at: stamp(sdates[i + 1], `${wid}${i}`), userId: st.assigneeId, action: 'approve', docId: id, detail: wid }));
+      audit.push({ at: stamp(sdates[0], `${wid}r`), userId: demo.owner, action: 'request', docId: id, detail: `${wid} · ${rev.letter}`, revisionId: rev.id });
+      steps.slice(1).forEach((st, i) => audit.push({ at: stamp(sdates[i + 1], `${wid}${i}`), userId: st.assigneeId, action: 'approve', docId: id, detail: wid, revisionId: rev.id }));
     }
 
+    // An implemented change is carried by the revision it opened (lifecycle.implementChange).
     await tx.insert(s.changeRequests).values(CHANGES.map((c) => ({
       id: c.id, kind: c.kind, docId: idByKey.get(c.doc)!, requesterId: c.requester, reason: c.reason, description: c.description ?? '',
-      status: c.status, ecoRef: c.eco ?? null, modifierId: c.modifier ?? null, createdAt: c.created, decidedAt: c.decided ?? null,
+      status: c.status, ecoRef: c.eco ?? null, modifierId: c.modifier ?? null, revisionId: c.status === 'implemented' && c.eco ? revByChange.get(c.eco) ?? null : null,
+      createdAt: c.created, decidedAt: c.decided ?? null,
     })));
     CHANGES.forEach((c) => audit.push({ at: c.created, userId: c.requester, action: c.kind === 'modification' ? 'ecr' : 'obsolete', docId: idByKey.get(c.doc)!, detail: c.id }));
 
+    // Links between documents, journaled on both ends as lib/lifecycle.ts journalLink does.
+    for (const [from, to, kind, by, day] of LINKS) {
+      const sourceId = idByKey.get(from)!, targetId = idByKey.get(to)!;
+      await tx.insert(s.documentLinks).values({ sourceId, targetId, kind, createdBy: by, createdAt: day });
+      const at = stamp(day, `${from}>${to}`);
+      const link = { sourceId, targetId, kind };
+      audit.push({ at, userId: by, action: 'link', docId: sourceId, detail: '', data: { link: { rel: relOf(link, sourceId), other: targetId } } });
+      audit.push({ at, userId: by, action: 'link', docId: targetId, detail: '', data: { link: { rel: relOf(link, targetId), other: sourceId } } });
+    }
+
     await tx.insert(s.projectExpected).values(EXPECTED.map((x, sort) => ({ projectCode: x.project, label: loc(x.label), typeCode: x.type, docId: x.doc ? idByKey.get(x.doc)! : null, later: !!x.later, sort })));
     await tx.insert(s.projectEvents).values(EVENTS.map((e) => ({ projectCode: e.project, at: `${e.at}:00`, text: loc(e.text) })));
-    await tx.insert(s.auditLog).values(audit.sort((a, b) => a.at.localeCompare(b.at)));
+    // Demo entries are written in Paris time; the journal stores UTC instants.
+    await tx.insert(s.auditLog).values(audit.sort((a, b) => a.at.localeCompare(b.at)).map((a) => ({ ...a, at: parisToUtc(a.at) })));
+    await seedVocabularies(tx);
   });
+}
+
+/**
+ * Terms of the controlled vocabularies (lib/vocab.ts) for the values the documents carry that no term stands for yet, as
+ * the migration took up those of an existing database (drizzle/0003_vocabulaires.sql): one term per key, under the most
+ * frequent spelling, dated by the first document that carries it. Without journal entries. Returns how many were added.
+ */
+export async function seedVocabularies(tx: Tx | Db): Promise<number> {
+  const docs = await tx.select({ org: s.documents.sourceOrg, kw: s.documents.keywords, at: s.documents.createdAt }).from(s.documents);
+  let added = 0;
+  for (const [table, values] of [
+    [s.sourceOrgs, docs.flatMap((d) => (d.org ? [[d.org, d.at] as const] : []))],
+    [s.keywordTerms, docs.flatMap((d) => d.kw.map((k) => [k, d.at] as const))],
+  ] as const) {
+    const known = new Set((await tx.select({ name: table.name, aliases: table.aliases }).from(table)).flatMap((x) => [x.name, ...x.aliases].map(vocabKey)));
+    const byKey = new Map<string, { names: Map<string, number>; at: string }>();
+    for (const [raw, at] of values) {
+      const name = cleanTerm(raw), key = vocabKey(name);
+      if (!key || known.has(key)) continue;
+      const x = byKey.get(key) ?? { names: new Map<string, number>(), at };
+      x.names.set(name, (x.names.get(name) ?? 0) + 1);
+      if (at < x.at) x.at = at;
+      byKey.set(key, x);
+    }
+    for (const [key, x] of byKey) {
+      const name = [...x.names].sort((p, q) => q[1] - p[1] || (p[0] < q[0] ? -1 : 1))[0][0];
+      await tx.insert(table).values({ name, key, createdAt: x.at }).onConflictDoNothing();
+      added++;
+    }
+  }
+  return added;
 }

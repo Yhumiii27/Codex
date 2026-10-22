@@ -11,6 +11,8 @@ NODE="$(command -v node || true)"
 for candidate in /opt/homebrew/bin/node /usr/local/bin/node; do [[ -z "$NODE" && -x "$candidate" ]] && NODE="$candidate"; done
 [[ -x "$NODE" ]] || { echo "Node.js introuvable" >&2; exit 1; }
 NODE="$(cd "$(dirname "$NODE")" && pwd -P)/$(basename "$NODE")" # resolve symlinks once, at build time
+# The version package.json asks for ("engines"; reference version in .nvmrc): stops here with a message otherwise.
+"$NODE" scripts/codex-node-check.mjs
 VERSION="$("$NODE" -p "require('./package.json').version")"
 ARCH="$(uname -m)"
 APP="$HOME/Applications/Codex.app"

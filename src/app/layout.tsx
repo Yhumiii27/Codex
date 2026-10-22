@@ -1,47 +1,58 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
 import './nocturne.css';
 import './globals.css';
 import { AppProvider } from '@/components/shell/AppProvider';
 import { Header } from '@/components/shell/Header';
+import { EmptyDatabase } from '@/components/shell/EmptyDatabase';
 import { Sidebar } from '@/components/shell/Sidebar';
+import { databaseIsEmpty } from '@/lib/empty-database';
 import type { DialogData } from '@/components/dialogs/types';
+import { interClassName } from '@/fonts/inter';
 import { getCtx } from '@/lib/context';
+import { ERROR_EN, ERROR_FR } from '@/lib/i18n-errors';
+import { fileRules } from '@/lib/filetypes';
 import { CONF_LEVELS, MATRIX_ROLE, type SimRole, type TKey } from '@/lib/i18n';
 import { keystoneUrl } from '@/lib/keystone';
-import { getMatrix, listAudit, listDocs, listTemplates, listWorkflows, typeView } from '@/lib/queries';
+import { getMatrix, listTemplates, myTodo, recentActivity, typeView, vocabSuggestions } from '@/lib/queries';
 
-const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' });
-
-export const metadata: Metadata = {
-  title: 'Codex — GED Groupe',
-  description: 'Gestion électronique des documents du groupe',
-};
+/** Title and description in the user's language; each screen names itself (lib/titles.ts screenTitle, WCAG 2.4.2). */
+export async function generateMetadata(): Promise<Metadata> {
+  if (await databaseIsEmpty()) return { title: `${ERROR_FR.empty_title} · ${ERROR_EN.empty_title} — Codex` };
+  const { t } = await getCtx();
+  return { title: `${t.title_suffix} — ${t.brand_sub}`, description: t.app_description };
+}
 
 export default async function RootLayout({ children }: LayoutProps<'/'>) {
+  // A server database left empty (no CODEX_SEED): one page that says how to fill it, in place of the shell and of every
+  // screen, which need a person to act as (getCtx leads them to /base-vide).
+  if (await databaseIsEmpty()) {
+    return (
+      <html lang="fr" className={interClassName}>
+        <body><EmptyDatabase /></body>
+      </html>
+    );
+  }
   const ctx = await getCtx();
   const fr = ctx.lang === 'fr';
-  const [workflows, templates, visible, audit, matrix] = await Promise.all([listWorkflows(ctx), listTemplates(ctx), listDocs(ctx), listAudit(ctx, { limit: 60 }), getMatrix()]);
-  // Approvals waiting for me: running workflows whose current step is mine, on a document not locked, for a role that
-  // reaches the Validations screen (the bell never points to a screen the role cannot open).
-  const mine = ctx.screens.workflow ? workflows.filter((w) => w.mine && !w.locked) : [];
-  // Recent activity only on documents the simulated user may see.
-  const seen = new Set(visible.map((d) => d.id));
-  const recent = audit.filter((a) => seen.has(a.docId)).slice(0, 5);
+  // What waits for me (approval steps, revisions to draft, grafts, review and expiry dates): the badge and the bell list
+  // the same items as the home's « À traiter », each linking to where to act (myTodo, AppProvider).
+  // Only what the shell shows is read (lib/queries.ts): the documents and workflows « À traiter » may come from, the
+  // templates, the five latest entries of the 60 latest about documents the user may see (each under its current ID).
+  const [todo, templates, recent, matrix, vocab] = await Promise.all([myTodo(ctx), listTemplates(ctx), recentActivity(ctx, 5, 60), getMatrix(), vocabSuggestions(ctx)]);
   const data: DialogData = {
-    templates: templates.map((x) => ({ id: x.id, label: x.label, rev: x.rev, owner: x.owner })),
+    templates: templates.map((x) => ({ id: x.id, label: x.label, rev: x.rev, owner: x.owner, types: x.types, uses: x.uses })),
     types: ctx.types.map((x) => {
       const v = typeView(ctx, x);
       return {
         code: v.code, label: v.label, family: v.family, familyLabel: v.familyLabel, origins: v.origins, attachments: v.attachments,
-        subtypes: v.subtypesL, confAllowed: v.confAllowed, confDefault: v.confDefault, circuitL: v.circuitL, active: v.active,
+        subtypes: v.subtypesL, confAllowed: v.confAllowed, confDefault: v.confDefault, circuitL: v.circuitL, active: v.active, reviewMonths: v.reviewMonths,
       };
     }),
     families: ctx.families.map((x) => ({ key: x.key, label: fr ? x.labelFr : x.labelEn })),
-    departments: ctx.departments.map((x) => ({ key: x.code, label: fr ? x.labelFr : x.labelEn })),
-    sites: ctx.sites.map((x) => ({ key: x.key, label: x.label })),
+    departments: ctx.departments.map((x) => ({ key: x.code, label: fr ? x.labelFr : x.labelEn, active: x.active })),
+    sites: ctx.sites.map((x) => ({ key: x.key, label: fr ? x.labelFr : x.labelEn, active: x.active })),
     projects: ctx.projects.map((x) => ({ key: x.code, label: x.name })),
-    programs: ctx.programs.map((x) => ({ key: x.code, label: x.name })),
+    programs: ctx.programs.map((x) => ({ key: x.code, label: x.name, active: x.active })),
     confs: CONF_LEVELS.map((c) => ({ key: c, label: ctx.t[`conf_${c}` as TKey] })),
     users: [...ctx.users.values()].filter((u) => !u.isSystem).sort((a, b) => a.name.localeCompare(b.name, ctx.lang))
       .map((u) => ({ id: u.id, name: u.name, initials: u.initials, role: u.role, department: u.department, approver: !!matrix.get(`${MATRIX_ROLE[u.role as SimRole]}:approve`) })),
@@ -51,25 +62,27 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
     currentDepartment: ctx.user.department,
     perms: [...ctx.perms],
     seesAll: ctx.seesAll,
+    files: fileRules(process.env),
+    vocab,
   };
   return (
-    <html lang={ctx.lang} className={inter.variable}>
+    <html lang={ctx.lang} className={interClassName}>
       <body>
-        <AppProvider t={ctx.t} lang={ctx.lang} data={data}>
+        {/* First stop of the keyboard: jumps over the sidebar and the header to the screen (WCAG 2.4.1). */}
+        <a href="#contenu" className="skip-link">{ctx.t.skip_to_content}</a>
+        <AppProvider t={ctx.t} lang={ctx.lang} data={data} todo={todo}>
           <div className="app">
             <Sidebar
               screens={ctx.screens}
-              badge={mine.length}
               user={{ name: ctx.user.name, initials: ctx.user.initials }}
               roleTitle={ctx.t[`role_${ctx.role}`]}
               keystoneUrl={keystoneUrl()}
             />
             <div className="app-col">
               <Header notif={{
-                pending: mine.map((w) => ({ id: w.id, docId: w.docId, docTitle: w.docTitle, letter: w.letter, stepName: w.stepName, dueF: w.dueF, href: w.href })),
-                recent: recent.map((a) => ({ id: a.id, when: a.when, user: a.user, actionLabel: a.actionLabel, ref: a.ref, href: a.href })),
+                recent: recent.map((a) => ({ id: a.id, when: a.when, user: a.user, actionLabel: a.actionLabel, ref: a.currentId ?? a.ref, href: a.href })),
               }} />
-              <main className="app-main">{children}</main>
+              <main id="contenu" className="app-main" tabIndex={-1}>{children}</main>
             </div>
           </div>
         </AppProvider>

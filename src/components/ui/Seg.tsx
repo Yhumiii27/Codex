@@ -8,9 +8,10 @@ export type SegOption = { key: string; label: ReactNode; href?: string; count?: 
 /**
  * The design system's segmented control (`.seg` + `.seg-opt` on native radios).
  * Options with an `href` navigate (URL-driven screens); otherwise `onPick` is called.
+ * `wrap`: a screen's tab bar, which goes on to a second row when its row is narrower than it (`.seg-wrap`).
  */
 export function Seg({
-  name, options, value, onPick, ariaLabel, style, optStyle, countStyle,
+  name, options, value, onPick, ariaLabel, style, optStyle, countStyle, wrap,
 }: {
   name: string;
   options: SegOption[];
@@ -20,12 +21,13 @@ export function Seg({
   style?: CSSProperties;
   optStyle?: CSSProperties;
   countStyle?: CSSProperties;
+  wrap?: boolean;
 }) {
   const router = useRouter();
   const [, start] = useTransition();
   const [current, setCurrent] = useOptimistic(value);
   return (
-    <div className="seg" role="radiogroup" aria-label={ariaLabel} style={style}>
+    <div className={wrap ? 'seg seg-wrap' : 'seg'} role="radiogroup" aria-label={ariaLabel} style={style}>
       {options.map((o) => (
         <label key={o.key} className="seg-opt" style={optStyle}>
           <input

@@ -1,6 +1,12 @@
 /* Application layer on top of Nocturne (nocturne.css). Mirrors the design's <helmet> rules, then the
    small patterns every screen repeats. Screen-specific layout lives in each screen's CSS module. */
 
+/* Fallback of Inter (src/fonts/inter.ts): Arial resized to Inter's metrics, the values next/font/google declared. */
+@font-face {
+  font-family: 'Inter Fallback'; src: local('Arial');
+  ascent-override: 90.44%; descent-override: 22.52%; line-gap-override: 0%; size-adjust: 107.12%;
+}
+
 html, body { height: 100%; margin: 0; overflow: hidden; }
 :root { color-scheme: dark; }
 a { color: var(--color-accent); }
@@ -19,18 +25,41 @@ select.input option { background: var(--color-surface); color: var(--color-text)
 }
 .app-col { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .app-main { flex: 1; min-height: 0; position: relative; }
+/* The skip link brings the focus to <main>, which does not draw a ring of its own. */
+.app-main:focus { outline: none; }
+/* « Aller au contenu »: hidden until it has the keyboard focus, then drawn over the sidebar's brand (WCAG 2.4.1). */
+.skip-link {
+  position: fixed; left: 12px; top: 10px; z-index: 60; padding: 8px 14px; font-size: 13px;
+  background: var(--color-surface); color: var(--color-text); border-radius: var(--radius-md); box-shadow: var(--shadow-md);
+}
+.skip-link:not(:focus) { clip-path: inset(50%); width: 1px; height: 1px; padding: 0; overflow: hidden; white-space: nowrap; }
 
 /* — shared patterns — */
 .screen { position: absolute; inset: 0; }
 .ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Read by screen readers only (a column of buttons, for instance). */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+/* A column heading read by screen readers only stays in the flow of its cell: positioned against the screen instead,
+   past the right edge of a wide table that scrolls sideways, it made the page itself overflow the window (4 px on the
+   register at 1 440 px, hundreds at 200 % zoom), with nothing visible there. One pixel with a margin of -1 px: no room
+   taken, and the cell is not positioned (it would paint over the line under the headings). */
+th > .sr-only { position: static; display: block; }
 .tabnum { font-variant-numeric: tabular-nums; }
 .nowrap { white-space: nowrap; }
 .plain-btn { border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; text-align: left; padding: 0; }
 .hover-tint:hover { background: color-mix(in srgb, var(--color-text) 6%, transparent); }
+/* Muted text (55 %) on a hovered line of a dialog: 4.38:1 over the tint, under the 4.5:1 of 11 px text (a template's
+   reference in « Nouveau document »). One step up, the 60 % of table headings: 4.93:1, the tint unchanged. */
+.hover-tint:hover .text-muted { color: color-mix(in srgb, var(--color-text) 60%, transparent); }
 .sec-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }
 .sec-title { margin: 0; opacity: .7; }
+/* Section headings are <h2> (or <h3> under a page title) for the outline, drawn as Nocturne's h6. */
+.sec-title { font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; }
 .sec-link { font-size: 12px; text-decoration: none; white-space: nowrap; flex: none; }
 .sub { font-size: 11px; }
+/* Nocturne's card meta line is text at 50 %: 4.25:1 on a card, under the 4.5:1 WCAG AA asks of 11 px text; the muted
+   text's 55 % gives 4.83:1, with no visible change. */
+.card-meta { color: color-mix(in srgb, var(--color-text) 55%, transparent); }
 .hairline { border-bottom: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent); }
 .feed { display: flex; gap: 12px; align-items: baseline; }
 .feed-when { font-size: 11px; flex: none; width: 78px; font-variant-numeric: tabular-nums; }
@@ -42,6 +71,9 @@ select.input option { background: var(--color-surface); color: var(--color-text)
 .table tbody tr:has(a:focus-visible) { box-shadow: inset 2px 0 0 var(--color-accent); }
 .btn-sm { font-size: 12px; }
 .btn[aria-disabled='true'] { opacity: 0.45; cursor: not-allowed; }
+/* A screen's tab bar (Seg wrap) wider than its row (narrow window, zoom: WCAG 1.4.10) goes on to a second row instead
+   of pushing the screen past the window's edge; on a desktop window it fits, unchanged. */
+.seg-wrap { flex-wrap: wrap; max-width: 100%; }
 /* v2 statuses ("En vigueur", "En révision") are two words: a tag never breaks across lines. */
 .tag { white-space: nowrap; }
 
@@ -57,12 +89,16 @@ select.input option { background: var(--color-surface); color: var(--color-text)
   padding: 10px 14px; font-size: 13px; display: flex; align-items: center; gap: 10px; max-width: 380px;
 }
 .toast-error { box-shadow: 0 0 0 1px var(--color-accent-400), 0 6px 18px rgba(0,0,0,0.55); }
+/* Done, with something to know (a file identical to one already filed): the second accent, left on screen longer. */
+.toast-warn { box-shadow: 0 0 0 1px var(--color-accent-2-400), 0 6px 18px rgba(0,0,0,0.55); }
 
 /* — form helpers inside dialogs — */
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .form-grid .span-2 { grid-column: span 2; }
 .form-error { color: var(--color-accent-300); font-size: 12px; margin: 0; }
 .field-hint { font-size: 11px; margin-top: 4px; }
+/* A field the server refused: the error ring of `.toast-error`, the message under the field. */
+.input[aria-invalid="true"] { border-color: var(--color-accent-400); }
 /* Label of a field whose content is a group (segments, radios, read-only value): same look as `.field > label`. */
 .field > .field-label { display: block; font-size: 12px; margin-bottom: 5px; color: color-mix(in srgb, var(--color-text) 70%, transparent); }
 .file-drop {

@@ -1,10 +1,15 @@
 CREATE TABLE "codex"."audit_log" (
 	"id" serial PRIMARY KEY NOT NULL,
-	"at" timestamp NOT NULL,
+	"at" timestamp with time zone NOT NULL,
 	"user_id" text NOT NULL,
 	"action" text NOT NULL,
-	"doc_id" text NOT NULL,
-	"detail" text DEFAULT '' NOT NULL
+	"doc_id" text,
+	"target_kind" text,
+	"target_id" text,
+	"detail" text DEFAULT '' NOT NULL,
+	"data" jsonb,
+	"revision_id" integer,
+	CONSTRAINT "audit_log_subject" CHECK ("codex"."audit_log"."doc_id" is not null or ("codex"."audit_log"."target_kind" is not null and "codex"."audit_log"."target_id" is not null))
 );
 --> statement-breakpoint
 CREATE TABLE "codex"."change_requests" (
@@ -17,17 +22,22 @@ CREATE TABLE "codex"."change_requests" (
 	"status" text NOT NULL,
 	"eco_ref" text,
 	"modifier_id" text,
+	"revision_id" integer,
 	"decision_note" text,
+	"replacement_id" text,
 	"source" text DEFAULT 'codex' NOT NULL,
 	"created_at" timestamp NOT NULL,
-	"decided_at" timestamp
+	"decided_at" timestamp,
+	CONSTRAINT "change_requests_replacement" CHECK ("codex"."change_requests"."replacement_id" is null or ("codex"."change_requests"."kind" = 'obsolescence' and "codex"."change_requests"."replacement_id" <> "codex"."change_requests"."doc_id"))
 );
 --> statement-breakpoint
 CREATE TABLE "codex"."departments" (
 	"code" text PRIMARY KEY NOT NULL,
 	"label_fr" text NOT NULL,
 	"label_en" text NOT NULL,
-	"sort" integer DEFAULT 0 NOT NULL
+	"sort" integer DEFAULT 0 NOT NULL,
+	"featured" jsonb,
+	"active" boolean DEFAULT true NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "codex"."doc_types" (
@@ -43,13 +53,27 @@ CREATE TABLE "codex"."doc_types" (
 	"retention_trigger" text NOT NULL,
 	"retention_disposition" text NOT NULL,
 	"retention_basis" text DEFAULT '' NOT NULL,
+	"retention_basis_en" text DEFAULT '' NOT NULL,
 	"conf_allowed" jsonb NOT NULL,
 	"conf_default" text NOT NULL,
+	"review_months" integer,
 	"iso" text,
 	"client_deliverable" boolean DEFAULT false NOT NULL,
 	"source" text DEFAULT 'deck' NOT NULL,
 	"active" boolean DEFAULT true NOT NULL,
-	"sort" integer DEFAULT 0 NOT NULL
+	"sort" integer DEFAULT 0 NOT NULL,
+	CONSTRAINT "doc_types_review_months" CHECK ("codex"."doc_types"."review_months" is null or "codex"."doc_types"."review_months" between 1 and 240)
+);
+--> statement-breakpoint
+CREATE TABLE "codex"."document_links" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"source_id" text NOT NULL,
+	"target_id" text NOT NULL,
+	"kind" text NOT NULL,
+	"created_by" text NOT NULL,
+	"created_at" date NOT NULL,
+	CONSTRAINT "document_links_kind" CHECK ("codex"."document_links"."kind" in ('replaces', 'see_also')),
+	CONSTRAINT "document_links_distinct" CHECK ("codex"."document_links"."source_id" <> "codex"."document_links"."target_id")
 );
 --> statement-breakpoint
 CREATE TABLE "codex"."document_readers" (
@@ -58,9 +82,16 @@ CREATE TABLE "codex"."document_readers" (
 	CONSTRAINT "document_readers_doc_id_user_id_pk" PRIMARY KEY("doc_id","user_id")
 );
 --> statement-breakpoint
+CREATE TABLE "codex"."document_terms" (
+	"doc_id" text NOT NULL,
+	"field" text NOT NULL,
+	"term" text NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "codex"."documents" (
 	"id" text PRIMARY KEY NOT NULL,
 	"aliases" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"legacy_ref" text,
 	"title" text NOT NULL,
 	"origin" text NOT NULL,
 	"attachment" text NOT NULL,
@@ -87,6 +118,8 @@ CREATE TABLE "codex"."documents" (
 	"retention_years" integer,
 	"retention_trigger" text NOT NULL,
 	"retention_disposition" text NOT NULL,
+	"retention_override" boolean DEFAULT false NOT NULL,
+	"retention_event_at" date,
 	"source_org" text,
 	"external_ref" text,
 	"received_at" date,
@@ -102,7 +135,10 @@ CREATE TABLE "codex"."documents" (
 	"obsolete_at" date,
 	"archived_at" date,
 	"created_at" date NOT NULL,
-	"modified_at" date NOT NULL
+	"modified_at" date NOT NULL,
+	"version" integer DEFAULT 1 NOT NULL,
+	"template_id" text,
+	CONSTRAINT "documents_legacy_ref_unique" UNIQUE("legacy_ref")
 );
 --> statement-breakpoint
 CREATE TABLE "codex"."families" (
@@ -126,6 +162,25 @@ CREATE TABLE "codex"."functions" (
 	"label_en" text NOT NULL,
 	"scope" text NOT NULL,
 	"sort" integer DEFAULT 0 NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "codex"."id_counters" (
+	"scope" text PRIMARY KEY NOT NULL,
+	"last" integer NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "codex"."integration_signatures" (
+	"digest" text PRIMARY KEY NOT NULL,
+	"endpoint" text NOT NULL,
+	"expires_at" timestamp with time zone NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "codex"."keyword_terms" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"name" text NOT NULL,
+	"key" text NOT NULL,
+	"aliases" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"created_at" date NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "codex"."project_events" (
@@ -159,7 +214,8 @@ CREATE TABLE "codex"."projects" (
 CREATE TABLE "codex"."research_programs" (
 	"code" text PRIMARY KEY NOT NULL,
 	"name" text NOT NULL,
-	"manager_id" text NOT NULL
+	"manager_id" text NOT NULL,
+	"active" boolean DEFAULT true NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "codex"."revisions" (
@@ -188,13 +244,49 @@ CREATE TABLE "codex"."saved_searches" (
 	"label" jsonb NOT NULL,
 	"q" text DEFAULT '' NOT NULL,
 	"facets" jsonb NOT NULL,
-	"sort" integer DEFAULT 0 NOT NULL
+	"owner_id" text NOT NULL,
+	"scope" text DEFAULT 'personal' NOT NULL,
+	"department" text,
+	"period" jsonb,
+	"order_by" text,
+	"sort" integer DEFAULT 0 NOT NULL,
+	CONSTRAINT "saved_searches_scope" CHECK ("codex"."saved_searches"."scope" in ('personal', 'department', 'group')),
+	CONSTRAINT "saved_searches_order_by" CHECK ("codex"."saved_searches"."order_by" in ('relevance', 'modified', 'issued', 'due', 'id', 'title')),
+	CONSTRAINT "saved_searches_department" CHECK (("codex"."saved_searches"."scope" = 'department') = ("codex"."saved_searches"."department" is not null))
+);
+--> statement-breakpoint
+CREATE TABLE "codex"."scheduler_runs" (
+	"task" text PRIMARY KEY NOT NULL,
+	"lease_owner" text,
+	"lease_until" timestamp with time zone,
+	"started_at" timestamp with time zone,
+	"finished_at" timestamp with time zone,
+	"status" text,
+	"summary" jsonb,
+	"error" text,
+	"next_at" timestamp with time zone
 );
 --> statement-breakpoint
 CREATE TABLE "codex"."sites" (
 	"key" text PRIMARY KEY NOT NULL,
-	"label" text NOT NULL,
-	"sort" integer DEFAULT 0 NOT NULL
+	"label_fr" text NOT NULL,
+	"label_en" text NOT NULL,
+	"sort" integer DEFAULT 0 NOT NULL,
+	"active" boolean DEFAULT true NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "codex"."source_orgs" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"name" text NOT NULL,
+	"key" text NOT NULL,
+	"aliases" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"created_at" date NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "codex"."template_types" (
+	"doc_id" text NOT NULL,
+	"type_code" text NOT NULL,
+	CONSTRAINT "template_types_doc_id_type_code_pk" PRIMARY KEY("doc_id","type_code")
 );
 --> statement-breakpoint
 CREATE TABLE "codex"."users" (
@@ -206,6 +298,19 @@ CREATE TABLE "codex"."users" (
 	"department" text,
 	"site" text,
 	"is_system" boolean DEFAULT false NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "codex"."version_previews" (
+	"working_version_id" integer PRIMARY KEY NOT NULL,
+	"status" text NOT NULL,
+	"file_key" text,
+	"size" integer,
+	"pages" integer,
+	"sha256" text,
+	"error" text,
+	"converter" text NOT NULL,
+	"at" timestamp with time zone NOT NULL,
+	CONSTRAINT "version_previews_status" CHECK (("codex"."version_previews"."status" = 'ready' and "codex"."version_previews"."file_key" is not null) or ("codex"."version_previews"."status" = 'failed' and "codex"."version_previews"."file_key" is null))
 );
 --> statement-breakpoint
 CREATE TABLE "codex"."workflow_comments" (
@@ -235,6 +340,9 @@ CREATE TABLE "codex"."workflows" (
 	"due" date NOT NULL,
 	"step" integer NOT NULL,
 	"outcome" text,
+	"closed_by" text,
+	"closed_at" date,
+	"reason" text,
 	"created_at" date NOT NULL
 );
 --> statement-breakpoint
@@ -251,16 +359,23 @@ CREATE TABLE "codex"."working_versions" (
 	"file_name" text,
 	"mime" text,
 	"size" integer,
-	"pages" integer
+	"pages" integer,
+	"sha256" text
 );
 --> statement-breakpoint
 ALTER TABLE "codex"."audit_log" ADD CONSTRAINT "audit_log_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "codex"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "codex"."change_requests" ADD CONSTRAINT "change_requests_doc_id_documents_id_fk" FOREIGN KEY ("doc_id") REFERENCES "codex"."documents"("id") ON DELETE no action ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE "codex"."change_requests" ADD CONSTRAINT "change_requests_requester_id_users_id_fk" FOREIGN KEY ("requester_id") REFERENCES "codex"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "codex"."change_requests" ADD CONSTRAINT "change_requests_modifier_id_users_id_fk" FOREIGN KEY ("modifier_id") REFERENCES "codex"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."change_requests" ADD CONSTRAINT "change_requests_revision_id_revisions_id_fk" FOREIGN KEY ("revision_id") REFERENCES "codex"."revisions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."change_requests" ADD CONSTRAINT "change_requests_replacement_id_documents_id_fk" FOREIGN KEY ("replacement_id") REFERENCES "codex"."documents"("id") ON DELETE no action ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE "codex"."doc_types" ADD CONSTRAINT "doc_types_family_families_key_fk" FOREIGN KEY ("family") REFERENCES "codex"."families"("key") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."document_links" ADD CONSTRAINT "document_links_source_id_documents_id_fk" FOREIGN KEY ("source_id") REFERENCES "codex"."documents"("id") ON DELETE no action ON UPDATE cascade;--> statement-breakpoint
+ALTER TABLE "codex"."document_links" ADD CONSTRAINT "document_links_target_id_documents_id_fk" FOREIGN KEY ("target_id") REFERENCES "codex"."documents"("id") ON DELETE no action ON UPDATE cascade;--> statement-breakpoint
+ALTER TABLE "codex"."document_links" ADD CONSTRAINT "document_links_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "codex"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "codex"."document_readers" ADD CONSTRAINT "document_readers_doc_id_documents_id_fk" FOREIGN KEY ("doc_id") REFERENCES "codex"."documents"("id") ON DELETE no action ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE "codex"."document_readers" ADD CONSTRAINT "document_readers_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "codex"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."document_terms" ADD CONSTRAINT "document_terms_doc_id_documents_id_fk" FOREIGN KEY ("doc_id") REFERENCES "codex"."documents"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE "codex"."documents" ADD CONSTRAINT "documents_project_code_projects_code_fk" FOREIGN KEY ("project_code") REFERENCES "codex"."projects"("code") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "codex"."documents" ADD CONSTRAINT "documents_program_code_research_programs_code_fk" FOREIGN KEY ("program_code") REFERENCES "codex"."research_programs"("code") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "codex"."documents" ADD CONSTRAINT "documents_family_families_key_fk" FOREIGN KEY ("family") REFERENCES "codex"."families"("key") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -270,6 +385,7 @@ ALTER TABLE "codex"."documents" ADD CONSTRAINT "documents_site_sites_key_fk" FOR
 ALTER TABLE "codex"."documents" ADD CONSTRAINT "documents_owner_id_users_id_fk" FOREIGN KEY ("owner_id") REFERENCES "codex"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "codex"."documents" ADD CONSTRAINT "documents_author_id_users_id_fk" FOREIGN KEY ("author_id") REFERENCES "codex"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "codex"."documents" ADD CONSTRAINT "documents_process_owner_id_users_id_fk" FOREIGN KEY ("process_owner_id") REFERENCES "codex"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."documents" ADD CONSTRAINT "documents_template_id_documents_id_fk" FOREIGN KEY ("template_id") REFERENCES "codex"."documents"("id") ON DELETE no action ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE "codex"."function_holders" ADD CONSTRAINT "function_holders_function_key_functions_key_fk" FOREIGN KEY ("function_key") REFERENCES "codex"."functions"("key") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "codex"."function_holders" ADD CONSTRAINT "function_holders_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "codex"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "codex"."project_events" ADD CONSTRAINT "project_events_project_code_projects_code_fk" FOREIGN KEY ("project_code") REFERENCES "codex"."projects"("code") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -280,8 +396,13 @@ ALTER TABLE "codex"."projects" ADD CONSTRAINT "projects_manager_id_users_id_fk" 
 ALTER TABLE "codex"."research_programs" ADD CONSTRAINT "research_programs_manager_id_users_id_fk" FOREIGN KEY ("manager_id") REFERENCES "codex"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "codex"."revisions" ADD CONSTRAINT "revisions_doc_id_documents_id_fk" FOREIGN KEY ("doc_id") REFERENCES "codex"."documents"("id") ON DELETE no action ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE "codex"."revisions" ADD CONSTRAINT "revisions_modifier_id_users_id_fk" FOREIGN KEY ("modifier_id") REFERENCES "codex"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."saved_searches" ADD CONSTRAINT "saved_searches_owner_id_users_id_fk" FOREIGN KEY ("owner_id") REFERENCES "codex"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."saved_searches" ADD CONSTRAINT "saved_searches_department_departments_code_fk" FOREIGN KEY ("department") REFERENCES "codex"."departments"("code") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."template_types" ADD CONSTRAINT "template_types_doc_id_documents_id_fk" FOREIGN KEY ("doc_id") REFERENCES "codex"."documents"("id") ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
+ALTER TABLE "codex"."template_types" ADD CONSTRAINT "template_types_type_code_doc_types_code_fk" FOREIGN KEY ("type_code") REFERENCES "codex"."doc_types"("code") ON DELETE no action ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE "codex"."users" ADD CONSTRAINT "users_department_departments_code_fk" FOREIGN KEY ("department") REFERENCES "codex"."departments"("code") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "codex"."users" ADD CONSTRAINT "users_site_sites_key_fk" FOREIGN KEY ("site") REFERENCES "codex"."sites"("key") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."version_previews" ADD CONSTRAINT "version_previews_working_version_id_working_versions_id_fk" FOREIGN KEY ("working_version_id") REFERENCES "codex"."working_versions"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "codex"."workflow_comments" ADD CONSTRAINT "workflow_comments_workflow_id_workflows_id_fk" FOREIGN KEY ("workflow_id") REFERENCES "codex"."workflows"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "codex"."workflow_comments" ADD CONSTRAINT "workflow_comments_author_id_users_id_fk" FOREIGN KEY ("author_id") REFERENCES "codex"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "codex"."workflow_steps" ADD CONSTRAINT "workflow_steps_workflow_id_workflows_id_fk" FOREIGN KEY ("workflow_id") REFERENCES "codex"."workflows"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -289,11 +410,42 @@ ALTER TABLE "codex"."workflow_steps" ADD CONSTRAINT "workflow_steps_assignee_id_
 ALTER TABLE "codex"."workflows" ADD CONSTRAINT "workflows_doc_id_documents_id_fk" FOREIGN KEY ("doc_id") REFERENCES "codex"."documents"("id") ON DELETE no action ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE "codex"."workflows" ADD CONSTRAINT "workflows_revision_id_revisions_id_fk" FOREIGN KEY ("revision_id") REFERENCES "codex"."revisions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "codex"."workflows" ADD CONSTRAINT "workflows_requester_id_users_id_fk" FOREIGN KEY ("requester_id") REFERENCES "codex"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "codex"."workflows" ADD CONSTRAINT "workflows_closed_by_users_id_fk" FOREIGN KEY ("closed_by") REFERENCES "codex"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "codex"."working_versions" ADD CONSTRAINT "working_versions_revision_id_revisions_id_fk" FOREIGN KEY ("revision_id") REFERENCES "codex"."revisions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "codex"."working_versions" ADD CONSTRAINT "working_versions_doc_id_documents_id_fk" FOREIGN KEY ("doc_id") REFERENCES "codex"."documents"("id") ON DELETE no action ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE "codex"."working_versions" ADD CONSTRAINT "working_versions_author_id_users_id_fk" FOREIGN KEY ("author_id") REFERENCES "codex"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "audit_log_at" ON "codex"."audit_log" USING btree ("at","id");--> statement-breakpoint
+CREATE INDEX "audit_log_doc" ON "codex"."audit_log" USING btree ("doc_id","user_id","action","at");--> statement-breakpoint
+CREATE INDEX "audit_log_user" ON "codex"."audit_log" USING btree ("user_id","at","id");--> statement-breakpoint
+CREATE INDEX "audit_log_action" ON "codex"."audit_log" USING btree ("action","at","id");--> statement-breakpoint
+CREATE INDEX "audit_log_revision" ON "codex"."audit_log" USING btree ("revision_id") WHERE "codex"."audit_log"."revision_id" is not null;--> statement-breakpoint
 CREATE UNIQUE INDEX "change_requests_pending" ON "codex"."change_requests" USING btree ("doc_id") WHERE "codex"."change_requests"."status" in ('submitted', 'accepted');--> statement-breakpoint
+CREATE INDEX "change_requests_doc" ON "codex"."change_requests" USING btree ("doc_id");--> statement-breakpoint
+CREATE INDEX "change_requests_replacement" ON "codex"."change_requests" USING btree ("replacement_id") WHERE "codex"."change_requests"."replacement_id" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "document_links_pair" ON "codex"."document_links" USING btree (least("source_id", "target_id"),greatest("source_id", "target_id"));--> statement-breakpoint
+CREATE INDEX "document_links_source" ON "codex"."document_links" USING btree ("source_id");--> statement-breakpoint
+CREATE INDEX "document_links_target" ON "codex"."document_links" USING btree ("target_id");--> statement-breakpoint
+CREATE INDEX "document_readers_user" ON "codex"."document_readers" USING btree ("user_id");--> statement-breakpoint
+CREATE INDEX "document_terms_doc" ON "codex"."document_terms" USING btree ("doc_id");--> statement-breakpoint
+CREATE INDEX "document_terms_term" ON "codex"."document_terms" USING gin ("term" gin_trgm_ops);--> statement-breakpoint
+CREATE INDEX "documents_aliases" ON "codex"."documents" USING gin ("aliases" jsonb_path_ops);--> statement-breakpoint
+CREATE INDEX "documents_template" ON "codex"."documents" USING btree ("template_id") WHERE "codex"."documents"."template_id" is not null;--> statement-breakpoint
+CREATE INDEX "integration_signatures_expires" ON "codex"."integration_signatures" USING btree ("expires_at");--> statement-breakpoint
+CREATE UNIQUE INDEX "keyword_terms_key" ON "codex"."keyword_terms" USING btree ("key");--> statement-breakpoint
+CREATE INDEX "project_expected_project" ON "codex"."project_expected" USING btree ("project_code");--> statement-breakpoint
+CREATE INDEX "project_expected_doc" ON "codex"."project_expected" USING btree ("doc_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "revisions_doc_letter" ON "codex"."revisions" USING btree ("doc_id","letter");--> statement-breakpoint
 CREATE UNIQUE INDEX "revisions_in_force" ON "codex"."revisions" USING btree ("doc_id") WHERE "codex"."revisions"."status" = 'in_force';--> statement-breakpoint
+CREATE INDEX "revisions_open_modifier" ON "codex"."revisions" USING btree ("modifier_id") WHERE "codex"."revisions"."status" in ('draft', 'in_review', 'approved');--> statement-breakpoint
+CREATE UNIQUE INDEX "source_orgs_key" ON "codex"."source_orgs" USING btree ("key");--> statement-breakpoint
+CREATE INDEX "version_previews_file_key" ON "codex"."version_previews" USING btree ("file_key");--> statement-breakpoint
+CREATE INDEX "workflow_comments_workflow" ON "codex"."workflow_comments" USING btree ("workflow_id");--> statement-breakpoint
+CREATE INDEX "workflow_steps_assignee" ON "codex"."workflow_steps" USING btree ("assignee_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "workflows_running" ON "codex"."workflows" USING btree ("revision_id") WHERE "codex"."workflows"."outcome" is null;--> statement-breakpoint
-CREATE UNIQUE INDEX "working_versions_rev_n" ON "codex"."working_versions" USING btree ("revision_id","n");
+CREATE INDEX "workflows_doc" ON "codex"."workflows" USING btree ("doc_id");--> statement-breakpoint
+CREATE INDEX "workflows_revision" ON "codex"."workflows" USING btree ("revision_id");--> statement-breakpoint
+CREATE INDEX "workflows_requester" ON "codex"."workflows" USING btree ("requester_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "working_versions_rev_n" ON "codex"."working_versions" USING btree ("revision_id","n");--> statement-breakpoint
+CREATE INDEX "working_versions_doc" ON "codex"."working_versions" USING btree ("doc_id");--> statement-breakpoint
+CREATE INDEX "working_versions_file_key" ON "codex"."working_versions" USING btree ("file_key");--> statement-breakpoint
+CREATE INDEX "working_versions_sha256" ON "codex"."working_versions" USING btree ("sha256");

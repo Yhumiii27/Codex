@@ -1,22 +1,23 @@
-import type { DialogSpec } from '@/components/dialogs/types';
-import type { Conf } from '@/db/schema';
-import type { Lang } from '@/lib/i18n';
+import type { DialogSpec, RetentionByType } from '@/components/dialogs/types';
+import type { docTypes } from '@/db/schema';
 
 // Helpers shared by the management screens (archivage, administration).
 
-type TypeRow = {
-  code: string; labelFr: string; labelEn: string; circuit: string[]; confAllowed: Conf[]; confDefault: Conf;
-  retentionYears: number | null; retentionTrigger: string; retentionDisposition: string; retentionBasis: string; active: boolean;
-};
+type TypeRow = typeof docTypes.$inferSelect;
 
-/** The 'type' dialog (circuit, confidentiality, retention of a register type). */
-export function typeSpec(x: TypeRow, lang: Lang): DialogSpec {
+/**
+ * The 'type' dialog with every setting of a register type. `used`: documents or projects refer to it (lib/queries.ts
+ * registryUsage): its code no longer changes and it cannot be deleted. `retention`: the retention classes of its documents
+ * (lib/queries.ts retentionByType), for the dialog to preview what applying a new rule to them would change.
+ */
+export function typeSpec(x: TypeRow, used: boolean, retention?: RetentionByType): DialogSpec {
   return {
     kind: 'type',
     type: {
-      code: x.code, label: lang === 'fr' ? x.labelFr : x.labelEn, circuit: x.circuit, confAllowed: x.confAllowed, confDefault: x.confDefault,
-      retentionYears: x.retentionYears, retentionTrigger: x.retentionTrigger, retentionDisposition: x.retentionDisposition,
-      retentionBasis: x.retentionBasis, active: x.active,
+      code: x.code, labelFr: x.labelFr, labelEn: x.labelEn, family: x.family, origins: x.origins, attachments: x.attachments, subtypes: x.subtypes,
+      circuit: x.circuit, confAllowed: x.confAllowed, confDefault: x.confDefault, retentionYears: x.retentionYears, retentionTrigger: x.retentionTrigger,
+      retentionDisposition: x.retentionDisposition, retentionBasis: x.retentionBasis, retentionBasisEn: x.retentionBasisEn, reviewMonths: x.reviewMonths, iso: x.iso,
+      clientDeliverable: x.clientDeliverable, active: x.active, used, retention,
     },
   };
 }

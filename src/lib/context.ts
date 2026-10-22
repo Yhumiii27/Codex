@@ -2,18 +2,22 @@ import 'server-only';
 import { cache } from 'react';
 import { asc } from 'drizzle-orm';
 import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
 import { getDb, schema as s } from '@/db';
 import { DICT, MATRIX_ROLE, SIM_ROLES, type Lang, type Perm, type SimRole, type T } from './i18n';
 import { promoteDue } from './lifecycle';
+import { schedulerPromotes } from './scheduler-state';
 
 export const COOKIE_LANG = 'codex-lang';
 export const COOKIE_USER = 'codex-user';
 export const COOKIE_ROLE = 'codex-role';
 export const DEFAULT_USER = 'cbardet'; // reference user of the design: Claire Bardet, HSE and records manager
+/** Where every page leads while the database is empty (src/app/base-vide/page.tsx). */
+export const EMPTY_DATABASE_PATH = '/base-vide';
 
 export type User = typeof s.users.$inferSelect;
 export type DocType = typeof s.docTypes.$inferSelect;
-export type Screen = 'home' | 'explorer' | 'search' | 'workflow' | 'retention' | 'admin';
+export type Screen = 'home' | 'explorer' | 'search' | 'departments' | 'workflow' | 'retention' | 'admin';
 export type LabelAxis = 'department' | 'site' | 'family' | 'type' | 'function' | 'project' | 'program';
 
 export type Ctx = {
@@ -46,13 +50,15 @@ export type Ctx = {
 export const getCtx = cache(async (): Promise<Ctx> => {
   const jar = await cookies();
   const db = await getDb();
-  // Approved revisions whose effective date has come enter into force before anything is read.
-  await promoteDue(db);
+  // Approved revisions whose effective date has come enter into force before anything is read, unless the scheduler of
+  // this process does it (lib/scheduler.ts, every 5 minutes by default): then requests no longer pay for it.
+  if (!schedulerPromotes()) await promoteDue(db);
   const lang: Lang = jar.get(COOKIE_LANG)?.value === 'en' ? 'en' : 'fr';
   const [users, departments, sites, families, types, functions, projects, programs, rows] = await Promise.all([
     db.select().from(s.users),
-    db.select().from(s.departments).orderBy(asc(s.departments.sort)),
-    db.select().from(s.sites).orderBy(asc(s.sites.sort)),
+    // Code or key break a tie of ranks: the order must not follow a row's place in the table, which an update changes.
+    db.select().from(s.departments).orderBy(asc(s.departments.sort), asc(s.departments.code)),
+    db.select().from(s.sites).orderBy(asc(s.sites.sort), asc(s.sites.key)),
     db.select().from(s.families).orderBy(asc(s.families.sort)),
     db.select().from(s.docTypes).orderBy(asc(s.docTypes.sort), asc(s.docTypes.code)),
     db.select().from(s.functions).orderBy(asc(s.functions.sort)),
@@ -60,6 +66,9 @@ export const getCtx = cache(async (): Promise<Ctx> => {
     db.select().from(s.researchPrograms).orderBy(asc(s.researchPrograms.code)),
     db.select().from(s.rolePermissions),
   ]);
+  // A database left empty (a server without CODEX_SEED nor CODEX_SEED_DEMO: src/db/index.ts seedIfEmpty) has nobody to
+  // act as: /base-vide says how to fill it (the root layout renders that page instead of the shell, EmptyDatabase).
+  if (!users.some((u) => !u.isSystem)) redirect(EMPTY_DATABASE_PATH);
   const byId = new Map(users.map((u) => [u.id, u]));
   // System actors (Codex, Keystone, Vigie) are never a simulated person: the audit trail keeps them for automatic actions.
   const fromCookie = byId.get(jar.get(COOKIE_USER)?.value ?? '');
@@ -70,7 +79,7 @@ export const getCtx = cache(async (): Promise<Ctx> => {
   const fr = lang === 'fr';
   const labels = new Map<string, string>();
   departments.forEach((x) => labels.set(`department:${x.code}`, fr ? x.labelFr : x.labelEn));
-  sites.forEach((x) => labels.set(`site:${x.key}`, x.label));
+  sites.forEach((x) => labels.set(`site:${x.key}`, fr ? x.labelFr : x.labelEn));
   families.forEach((x) => labels.set(`family:${x.key}`, fr ? x.labelFr : x.labelEn));
   types.forEach((x) => labels.set(`type:${x.code}`, fr ? x.labelFr : x.labelEn));
   functions.forEach((x) => labels.set(`function:${x.key}`, fr ? x.labelFr : x.labelEn));
@@ -82,7 +91,7 @@ export const getCtx = cache(async (): Promise<Ctx> => {
     label: (axis, key) => (key ? labels.get(`${axis}:${key}`) ?? key : '—'),
     can: (p) => perms.has(p),
     seesAll: role === 'gestionnaire',
-    screens: { home: true, explorer: true, search: true, workflow: role !== 'auditeur', retention: role !== 'collaborateur', admin: perms.has('admin') },
+    screens: { home: true, explorer: true, search: true, departments: true, workflow: role !== 'auditeur', retention: role !== 'collaborateur', admin: perms.has('admin') },
     userName: (id) => (id ? byId.get(id)?.name ?? id : '—'),
   };
 });

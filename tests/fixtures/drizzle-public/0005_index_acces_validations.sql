@@ -1,0 +1,2 @@
+CREATE INDEX "revisions_open_modifier" ON "revisions" USING btree ("modifier_id") WHERE "revisions"."status" in ('draft', 'in_review', 'approved');--> statement-breakpoint
+CREATE INDEX "workflows_requester" ON "workflows" USING btree ("requester_id");

@@ -3,6 +3,8 @@
 import { Fragment, useEffect, useId, useRef, useState, useTransition, type CSSProperties, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import type { ActionResult } from '@/lib/actions';
+import { acceptAttr, fileIssue, fileIssueText, fmtMax } from '@/lib/filetypes';
+import { failureText } from '@/lib/errors';
 import { fmtSize } from '@/lib/format';
 import { useApp } from '@/components/shell/AppProvider';
 
@@ -57,31 +59,51 @@ export function Modal({ title, children, actions, width = 520, style }: { title:
   );
 }
 
-/** Runs a server action from a dialog: pending state, inline error, then close, navigate and toast. */
+/**
+ * Runs a server action from a dialog: pending state, inline error, then close, navigate and toast. An error about one
+ * field (`field`) is returned as such, for the dialog to show it under that field, which gets the focus in `form`.
+ */
 export function useSubmit() {
   const { t, close, toast } = useApp();
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [field, setField] = useState<string | null>(null);
+  const [outdated, setOutdated] = useState(false);
   /** `staleError`: an error meaning the page is out of date (the step moved on): close, say so, refresh the page. */
-  const run = (fn: () => Promise<ActionResult>, opts: { keepOpen?: boolean; staleError?: string } = {}) =>
+  const run = (fn: () => Promise<ActionResult>, opts: { keepOpen?: boolean; staleError?: string; form?: HTMLFormElement } = {}) =>
     start(async () => {
       setError(null);
+      setField(null);
+      setOutdated(false);
       try {
         const r = await fn();
         if (!r.ok) {
           if (opts.staleError && r.error === opts.staleError) { close(); toast(r.error, true); router.refresh(); return; }
           setError(r.error);
+          // The record changed since the dialog opened: the entries stay on screen until the user chooses to reload.
+          setOutdated(!!r.stale);
+          const input = r.field ? opts.form?.elements.namedItem(r.field) : null;
+          if (r.field && input instanceof HTMLElement) {
+            setField(r.field);
+            input.focus();
+          }
           return;
         }
         if (!opts.keepOpen) close();
         if (r.href) router.push(r.href);
         if (r.message) toast(r.message);
-      } catch {
-        setError(t.error);
+        if (r.warning) toast(r.warning, 'warn');
+      } catch (err) {
+        // Never the error's message: a reference the technical log carries (lib/errors.ts).
+        setError(failureText(t, err));
       }
     });
-  return { pending, error, run };
+  /** After a refusal from an outdated view (ActionResult `stale`): closes the dialog and reloads the record; else undefined. */
+  const reload = outdated ? () => { close(); router.refresh(); } : undefined;
+  /** Forgets the last refusal: the entries it was about have changed. */
+  const clear = () => { setError(null); setField(null); setOutdated(false); };
+  return { pending, error, field, run, reload, clear };
 }
 
 export type SelectOption = { key: string; label: string; group?: string };
@@ -119,15 +141,42 @@ export function Select({ id, name, value, onChange, options, defaultValue, requi
   );
 }
 
+/**
+ * File input of the upload dialogs: offers the admitted formats and gives the largest size (lib/filetypes.ts); a file
+ * whose name or size the server would refuse is said at once, and the form is not sent with it. The server checks again,
+ * content and virus scan included (lib/storage.ts stageFile).
+ */
 export function FilePicker({ label, required }: { label: string; required?: boolean }) {
-  const { lang } = useApp();
+  const { lang, t, data } = useApp();
+  const rules = data.files;
   const [file, setFile] = useState<File | null>(null);
+  const [issue, setIssue] = useState<string | null>(null);
+  const errorId = useId();
   return (
-    <label className="file-drop" style={{ position: 'relative' }}>
-      <input type="file" name="file" required={required} onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--color-accent)', flex: 'none' }}><path d="M12 16V4M7 9l5-5 5 5M4 20h16" /></svg>
-      <span className="ellipsis" style={{ flex: 1 }}>{file ? file.name : label}</span>
-      {file && <span className="text-muted sub">{fmtSize(file.size, lang)}</span>}
-    </label>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <label className="file-drop" style={{ position: 'relative' }}>
+        <input
+          type="file"
+          name="file"
+          required={required}
+          accept={acceptAttr(rules)}
+          aria-invalid={issue ? true : undefined}
+          aria-describedby={issue ? errorId : undefined}
+          onChange={(e) => {
+            const input = e.currentTarget;
+            const f = input.files?.[0] ?? null;
+            const found = f ? fileIssue(f.name, f.size, null, rules) : null;
+            const text = found ? fileIssueText(t, lang, found, rules) : null;
+            input.setCustomValidity(text ?? '');
+            setFile(f);
+            setIssue(text);
+          }}
+        />
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--color-accent)', flex: 'none' }}><path d="M12 16V4M7 9l5-5 5 5M4 20h16" /></svg>
+        <span className="ellipsis" style={{ flex: 1 }}>{file ? file.name : label}</span>
+        <span className="text-muted sub nowrap">{file ? fmtSize(file.size, lang) : t.file_max_hint.replace('{max}', fmtMax(rules.maxBytes, lang))}</span>
+      </label>
+      {issue && <p id={errorId} className="form-error" role="alert">{issue}</p>}
+    </div>
   );
 }

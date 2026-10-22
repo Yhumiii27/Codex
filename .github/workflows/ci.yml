@@ -1,0 +1,105 @@
+# Checks run on every branch push and pull request: clean install, known vulnerabilities, migrations, types, lint, tests,
+# production build, accessibility of the built app and an end-to-end path through it.
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: ['**']
+
+permissions:
+  contents: read
+
+# A newer run for the same branch (or pull request) cancels the one still in progress.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Typecheck, lint, tests, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # The reference version (.nvmrc), which satisfies "engines" in package.json (Vite 7, used by Vitest, needs Node
+          # 20.19+ or 22.12+); the job "node-minimum" below runs the tests on the lowest version engines admits.
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+      # Known vulnerabilities (scripts/codex-audit.mjs): high or critical in the application's dependencies fail, and in
+      # the development tools unless accepted there with why (no fixed version published).
+      - run: npm run deps:audit
+      # The migrations folder (drizzle/): snapshots chained, no two migrations at the same place. That the schema has its
+      # migration, and that the chain gives its structure, is tested by tests/integration/migrations.test.ts.
+      - run: npm run db:check
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      # Inter is served from the repository (src/fonts, next/font/local): the build needs no network.
+      - run: npm run build
+      # Accessibility (docs/accessibilite.md): axe-core in Chromium on the main screens and dialogs, French interface,
+      # served by the build above on a throwaway demo database; fails on a serious or critical violation (about 1 min).
+      - run: npx playwright-core install --with-deps chromium
+      - run: npm run a11y
+      # End-to-end paths (scripts/codex-e2e.mts), same build, a throwaway demo database: approval step by step, a
+      # rejection with its reason then a new request, a recall, a change accepted by the Vigie simulation then grafted or
+      # waiting (D-26), an import simulated then real; each checks that the draft stays hidden outside its drafting
+      # circle (D-14). About 75 s, stable over three runs.
+      - run: npm run e2e
+
+  # The whole suite again on a PostgreSQL server (option DATABASE_URL, docs/postgres.md): each test file gets a database
+  # of its own there (CODEX_TEST_DATABASE_URL), and tests/integration/postgres-server.test.ts races transactions between
+  # connections, which PGlite cannot. PostgreSQL 18, as PGlite 0.5 (codex_fold needs the pg_unicode_fast collation).
+  postgres:
+    name: Tests on PostgreSQL 18
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: codex-ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      CODEX_TEST_DATABASE_URL: postgres://postgres:codex-ci@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+      - run: npm run test:pg
+
+  # The lowest Node.js that "engines" admits: @types/node follows the reference version (.nvmrc), so the types would not
+  # catch an API that Node 20.19 lacks; the tests run there.
+  node-minimum:
+    name: Tests on Node 20.19
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.0
+          cache: npm
+
+      - run: npm ci
+      - run: node scripts/codex-node-check.mjs
+      - run: npm test

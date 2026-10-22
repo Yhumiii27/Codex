@@ -1,33 +1,92 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useApp } from '@/components/shell/AppProvider';
+import { recordConsultation, restoreWorkingVersion } from '@/lib/actions';
+import { ActionButton } from '@/components/ui/client';
 import { Icon } from '@/components/ui/Icon';
 import type { VersionLite } from '@/components/dialogs/types';
+import { previewKind } from '@/lib/filetypes';
 import styles from './document.module.css';
 
 type PreviewDoc = { id: string; title: string; revLabel: string; departmentL: string; owner: string; dateF: string };
 type PreviewFile = { url: string; mime: string; name: string; sizeF: string };
 
 /**
- * Centre pane: the stored file when the browser can show it (PDF, image, plain text); a download panel for any other
- * stored file (no conversion exists); the design's paper mock-up only for a version without a file. `pages` is null
- * when the PDF's page count is unknown: the browser's own viewer then pages through it.
+ * Journals that the record was opened (lib/actions.ts recordConsultation), once it is shown in the browser: a prefetch
+ * renders the page without running this. Repeated openings are folded together on the server.
  */
-export function Preview({ doc, file, pages, hasVersion }: { doc: PreviewDoc; file: PreviewFile | null; pages: number | null; hasVersion: boolean }) {
+export function RecordConsultation({ docId }: { docId: string }) {
+  useEffect(() => {
+    recordConsultation(docId).catch(() => {});
+  }, [docId]);
+  return null;
+}
+
+/**
+ * The file at `src`, fetched once and kept in this page's memory as a blob: URL while it shows, so that the paged viewer
+ * changes page without downloading it again (point 46). A draft or a confidential file is served `no-store` (D-14): the
+ * browser keeps it in no cache nor history, and neither does this copy, released when the record closes or shows
+ * another file. `failed`: the fetch did not succeed; the viewer then opens the address itself, as before.
+ */
+function useLocalCopy(src: string | null): { url: string | null; failed: boolean } {
+  const [copy, setCopy] = useState<{ src: string; url: string | null; failed: boolean } | null>(null);
+  useEffect(() => {
+    if (!src) return;
+    let gone = false;
+    let made: string | null = null;
+    fetch(src, { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(String(r.status)))))
+      .then((b) => {
+        if (gone) return;
+        // The viewer opens a blob by its type: a PDF, whatever the response called it.
+        made = URL.createObjectURL(b.type === 'application/pdf' ? b : new Blob([b], { type: 'application/pdf' }));
+        setCopy({ src, url: made, failed: false });
+      })
+      .catch(() => {
+        if (!gone) setCopy({ src, url: null, failed: true });
+      });
+    return () => {
+      gone = true;
+      if (made) URL.revokeObjectURL(made);
+    };
+  }, [src]);
+  return copy && copy.src === src ? copy : { url: null, failed: false };
+}
+
+/** PDF rendering of an Office file (lib/office-preview.ts): its address, and its page count once it is made. */
+type PreviewRender = { url: string; pages: number | null };
+
+/**
+ * Centre pane: the stored file when the file route serves it inline (PDF, PNG/JPEG/GIF/WebP image, plain text); the PDF
+ * rendering of an Office file when a conversion service is configured (`render`, point 15), with the design's note
+ * `preview_note` under it; a download panel for any other stored file, or one whose conversion failed lately or that
+ * is too large to convert (`renderNote` says so); the design's paper mock-up only for a version without a file. `pages` is null when the PDF's page
+ * count is unknown: the browser's own viewer then pages through it.
+ */
+export function Preview({ doc, file, pages, render, renderNote, hasVersion }: { doc: PreviewDoc; file: PreviewFile | null; pages: number | null; render?: PreviewRender | null; renderNote?: string | null; hasVersion: boolean }) {
   const { t } = useApp();
   const [page, setPage] = useState(1);
-  const isPdf = file?.mime === 'application/pdf';
-  const isImage = !!file && file.mime.startsWith('image/') && file.mime !== 'image/svg+xml';
-  const isText = file?.mime === 'text/plain';
+  // Only what the file route serves inline: any other image (image/vnd.dwg, image/tiff…) would show as a broken one.
+  const kind = previewKind(file?.mime);
+  const rendered = !kind && !!file && !!render;
+  const pageCount = rendered ? render.pages : pages;
+  const isPdf = kind === 'pdf' || rendered;
+  const isImage = kind === 'image';
+  const isText = kind === 'text';
   const shown = isPdf || isImage || isText;
-  const paged = isPdf && pages != null;
+  const paged = isPdf && pageCount != null;
+  const source = isPdf ? (rendered ? render.url : file!.url) : null;
+  const local = useLocalCopy(paged ? source : null);
   const rev = doc.revLabel ? `${t.rev_short} ${doc.revLabel}` : '';
   return (
     <div className={styles.previewCol}>
       <div className={styles.previewScroll}>
-        {isPdf ? (
-          <iframe key={page} title={doc.title} src={paged ? `${file!.url}#page=${page}&toolbar=0` : file!.url} className={styles.pdf} />
+        {isPdf && paged && !local.url && !local.failed ? (
+          <div className={styles.unavailable} role="status"><div className="text-muted" style={{ fontSize: 13 }}>{t.preview_loading}</div></div>
+        ) : isPdf ? (
+          // Paged: a new frame per page (only a new document takes the #page fragment), on the copy kept in memory.
+          <iframe key={page} title={doc.title} src={(paged && local.url ? local.url : source!) + (paged ? `#page=${page}&toolbar=0` : '')} className={styles.pdf} />
         ) : isImage ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={file!.url} alt={doc.title} className={styles.image} />
@@ -37,7 +96,7 @@ export function Preview({ doc, file, pages, hasVersion }: { doc: PreviewDoc; fil
           <div className={styles.unavailable}>
             <div style={{ fontSize: 14, wordBreak: 'break-all' }}>{file.name}</div>
             <div className="text-muted" style={{ fontSize: 12 }}>{file.sizeF}</div>
-            <div style={{ fontSize: 13 }}>{t.preview_unavailable}</div>
+            <div style={{ fontSize: 13 }}>{renderNote ?? t.preview_unavailable}</div>
             <a href={`${file.url}&download=1`} className="btn btn-secondary"><Icon name="download" size={14} />{t.download}</a>
           </div>
         ) : (
@@ -58,11 +117,11 @@ export function Preview({ doc, file, pages, hasVersion }: { doc: PreviewDoc; fil
         {paged && (
           <>
             <button type="button" className="btn btn-ghost btn-icon" style={{ width: 28, height: 28 }} aria-label={t.prev_page} disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}><Icon name="chevronLeft" size={13} sw={1.8} /></button>
-            <span className="tabnum" style={{ fontSize: 12 }}>{t.page} {page} {t.of} {pages}</span>
-            <button type="button" className="btn btn-ghost btn-icon" style={{ width: 28, height: 28 }} aria-label={t.next_page} disabled={page >= pages!} onClick={() => setPage((p) => Math.min(pages!, p + 1))}><Icon name="chevronRight" size={13} sw={1.8} /></button>
+            <span className="tabnum" style={{ fontSize: 12 }}>{t.page} {page} {t.of} {pageCount}</span>
+            <button type="button" className="btn btn-ghost btn-icon" style={{ width: 28, height: 28 }} aria-label={t.next_page} disabled={page >= pageCount!} onClick={() => setPage((p) => Math.min(pageCount!, p + 1))}><Icon name="chevronRight" size={13} sw={1.8} /></button>
           </>
         )}
-        <span className="text-muted" style={{ fontSize: 11, marginLeft: paged ? 12 : 0 }}>{shown ? t.original_file : file ? file.name : hasVersion ? t.no_file : t.no_version}</span>
+        <span className="text-muted" style={{ fontSize: 11, marginLeft: paged ? 12 : 0 }}>{rendered ? t.preview_note : shown ? t.original_file : file ? file.name : hasVersion ? t.no_file : t.no_version}</span>
       </div>
     </div>
   );
@@ -75,17 +134,31 @@ export type RevItem = {
   lines: string[];
   /** Working versions newest first (drafting circle); outside it, only the final file of the revision in force; null otherwise. */
   versions: RevVersion[] | null;
+  /** Address of its approval record (PDF), once approved; null otherwise. */
+  visa: string | null;
 };
 
 /**
- * Revisions tab: each revision (newest first) with its working versions. Click a version to compare it with the
- * current file (defaults to the newest other version).
+ * « Restaurer »: the draft revision being written, the last working version its author saw (`base`) and the label the
+ * restored copy takes, the versions that may be restored (earlier ones of that revision, with a file), and why the user
+ * may not (lock, permission, author designated by Vigie). Null without a draft in the user's drafting circle.
  */
-export function RevisionsTab({ docId, revisions, current }: { docId: string; revisions: RevItem[]; current: VersionLite | null }) {
+export type RestoreSpec = { revisionId: number; base: { revisionId: number; n: number }; nextLabel: string; versions: number[]; denied?: string } | null;
+
+/**
+ * Revisions tab: each revision (newest first) with its working versions. Click a version to compare it with the
+ * current file (defaults to the newest other version), or to restore it as the next working version of the draft.
+ */
+export function RevisionsTab({ docId, revisions, current, restore }: { docId: string; revisions: RevItem[]; current: VersionLite | null; restore: RestoreSpec }) {
   const { t, open } = useApp();
   const [selected, setSelected] = useState<number | null>(null);
   const all = revisions.flatMap((r) => r.versions ?? []);
   const other = all.find((v) => v.id === selected && !v.current) ?? all.find((v) => !v.current) ?? null;
+  // Restored: the version selected, when it is an earlier one of the draft; the button says why not otherwise.
+  const pick = selected != null ? all.find((v) => v.id === selected) ?? null : null;
+  const restorable = !!pick && !!restore?.versions.includes(pick.id);
+  const inDraft = !!pick && !!restore && !!revisions.find((r) => r.id === restore.revisionId)?.versions?.some((v) => v.id === pick.id);
+  const restoreTitle = restore?.denied ?? (restorable ? undefined : !pick ? t.restore_pick : !inDraft ? t.restore_draft_only : pick.fileName ? t.restore_latest : t.restore_no_file);
   return (
     <>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -94,24 +167,33 @@ export function RevisionsTab({ docId, revisions, current }: { docId: string; rev
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <span style={{ fontSize: 13, fontWeight: 500 }}>{t.rev_short} {r.letter}</span>
               <span className={r.tagClass} style={{ fontSize: 10.5, padding: '2px 8px' }}>{r.statusLabel}</span>
+              {r.visa && (
+                <a href={r.visa} className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 8px', marginLeft: 'auto' }} title={t.visa_hint} aria-label={`${t.visa} ${r.letter}`}>
+                  <Icon name="download" size={12} />{t.visa}
+                </a>
+              )}
             </div>
             {r.lines.map((l) => <div key={l} className="text-muted" style={{ fontSize: 11, marginTop: 3 }}>{l}</div>)}
             {r.versions && r.versions.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', marginTop: 4 }}>
                 {r.versions.map((v) => (
+                  // The whole row selects the version with the mouse; the keyboard reaches its label, a toggle button (a row
+                  // with role="button" would hold the download link: nested controls).
                   <div
                     key={v.id}
                     className={`hairline ${styles.versionRow}`}
                     data-selected={v.id === selected && !v.current ? 'true' : undefined}
+                    data-selectable={v.current ? undefined : 'true'}
                     onClick={() => !v.current && setSelected(v.id)}
-                    role={v.current ? undefined : 'button'}
-                    tabIndex={v.current ? undefined : 0}
-                    onKeyDown={(e) => { if (!v.current && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setSelected(v.id); } }}
                   >
-                    <div className={styles.versionBox}>{v.label}</div>
+                    {v.current
+                      ? <div className={styles.versionBox}>{v.label}</div>
+                      : <button type="button" className={styles.versionBox} aria-pressed={v.id === selected} aria-label={t.version_select.replace('{v}', v.label)}>{v.label}</button>}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 13 }}>{v.commentL}</div>
                       <div className="text-muted" style={{ fontSize: 11 }}>{v.author} · {v.dateF}{v.fileName ? ` · ${v.fileName}` : ''}{v.fileName && v.sizeF !== '—' ? ` · ${v.sizeF}` : ''}</div>
+                      {/* Fingerprint recorded when the file entered Codex: compare it with a copy (sha256sum, Get-FileHash). */}
+                      {v.sha256 && <div className={`text-muted ${styles.sha}`} title={t.sha256_hint}>SHA-256 <span className={styles.shaValue}>{v.sha256}</span></div>}
                       {v.current && <span className="tag tag-accent" style={{ marginTop: 6 }}>{t.current}</span>}
                     </div>
                     <a
@@ -132,7 +214,16 @@ export function RevisionsTab({ docId, revisions, current }: { docId: string; rev
         ))}
       </div>
       <div style={{ display: 'flex', gap: 8, marginTop: 14, alignItems: 'center', flexWrap: 'wrap' }}>
-        <button type="button" className="btn btn-secondary" disabled={!current || !other} onClick={() => current && other && open({ kind: 'compare', current, other })}>{t.compare}</button>
+        <button type="button" className="btn btn-secondary" disabled={!current || !other} onClick={() => current && other && open({ kind: 'compare', docId, current, other })}>{t.compare}</button>
+        {restore && (
+          <ActionButton
+            className="btn btn-ghost"
+            disabled={!restorable || !!restore.denied}
+            title={restoreTitle}
+            confirm={pick ? t.restore_confirm.replace('{from}', pick.label).replace('{next}', restore.nextLabel) : undefined}
+            action={() => restoreWorkingVersion(docId, pick!.id, restore.base)}
+          >{t.restore}</ActionButton>
+        )}
       </div>
     </>
   );

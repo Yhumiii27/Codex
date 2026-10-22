@@ -1,0 +1,19 @@
+﻿Nature;Code;Nom;Libellé FR;Libellé EN;Société;Département;Site;Responsable;Rôle Codex
+département;DIR;;Direction générale;Executive management;;;;;
+département;COM;;Commercial;Sales;;;;;
+département;PRJ;;Projets & contrôle;Projects & controls;;;;;
+département;ING;;Ingénierie;Engineering;;;;;
+département;MEP;;Lots techniques (MEP);MEP;;;;;
+département;CHA;;Opérations chantier;Site operations;;;;;
+département;QUA;;Qualité;Quality;;;;;
+département;HSE;;HSE;HSE;;;;;
+département;ACH;;Achats & stock;Procurement & stock;;;;;
+département;RHU;;Ressources humaines;Human resources;;;;;
+département;FIN;;Finance & administration;Finance & administration;;;;;
+département;JUR;;Juridique;Legal;;;;;
+département;DSI;;Systèmes d’information;Information systems;;;;;
+département;CMN;;Communication;Communication;;;;;
+département;RDI;;Recherche & innovation;Research & innovation;;;;;
+site;lyon;;Lyon — siège et atelier;Lyon — head office and workshop;;;;;
+site;le_havre;;Le Havre — magasin;Le Havre — warehouse;;;;;
+site;marseille;;Marseille — magasin;Marseille — warehouse;;;;;

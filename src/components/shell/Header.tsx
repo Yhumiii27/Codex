@@ -6,20 +6,21 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Icon } from '@/components/ui/Icon';
 import { Seg } from '@/components/ui/Seg';
 import { setLang } from '@/lib/actions';
+import { searchUrlWith } from '@/lib/search';
 import { useApp } from './AppProvider';
 import { activeScreen } from './Sidebar';
+import { TODO_ICON } from './todo';
 import styles from './Header.module.css';
 
-const TITLE = { home: 'sc_home', explorer: 'sc_explorer', document: 'sc_document', search: 'sc_search', workflow: 'sc_workflow', retention: 'sc_retention', admin: 'sc_admin' } as const;
+const TITLE = { home: 'sc_home', explorer: 'sc_explorer', document: 'sc_document', search: 'sc_search', departments: 'sc_departments', workflow: 'sc_workflow', retention: 'sc_retention', admin: 'sc_admin', help: 'sc_help' } as const;
 
 export type Notif = {
-  /** Running workflows whose current step is assigned to the simulated user. */
-  pending: { id: string; docId: string; docTitle: string; letter: string; stepName: string; dueF: string; href: string }[];
   recent: { id: number; when: string; user: string; actionLabel: string; ref: string; href: string }[];
 };
 
 export function Header({ notif }: { notif: Notif }) {
-  const { t, lang } = useApp();
+  // What waits for the simulated user (AppProvider), as the home's « À traiter » and the sidebar badge list it.
+  const { t, lang, todo: pending } = useApp();
   const pathname = usePathname();
   const params = useSearchParams();
   const router = useRouter();
@@ -44,13 +45,11 @@ export function Header({ notif }: { notif: Notif }) {
     return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
   }, [notifOpen]);
 
+  // Another text starts the results again from their first page, as the screen's own field does.
   const go = (value: string, replace: boolean) => {
     const onSearch = window.location.pathname === '/recherche';
     if (replace && !onSearch) return; // the user left the search screen before the debounce fired
-    const next = new URLSearchParams(onSearch ? window.location.search : '');
-    if (value.trim()) next.set('q', value.trim()); else next.delete('q');
-    const qs = next.toString();
-    const url = `/recherche${qs ? `?${qs}` : ''}`;
+    const url = searchUrlWith(onSearch ? window.location.search : '', { q: value.trim() });
     if (replace) router.replace(url, { scroll: false }); else router.push(url);
   };
   // On the search screen the header field drives the results live, like the design's shared query.
@@ -64,7 +63,7 @@ export function Header({ notif }: { notif: Notif }) {
 
   return (
     <header className={styles.header}>
-      <h5 className={styles.title}>{t[TITLE[sc]]}</h5>
+      <h1 className={styles.title}>{t[TITLE[sc]]}</h1>
       <div className={styles.search}>
         <Icon name="search" size={15} style={{ position: 'absolute', left: 10, top: 10, opacity: 0.6 }} />
         <input
@@ -89,22 +88,27 @@ export function Header({ notif }: { notif: Notif }) {
         <div style={{ position: 'relative' }} ref={popRef}>
           <button type="button" className="btn btn-secondary btn-icon" aria-label={t.notif} aria-expanded={notifOpen} onClick={() => setNotifOpen((v) => !v)} style={{ position: 'relative', width: 34, height: 34 }}>
             <Icon name="bell" />
-            {notif.pending.length > 0 && <span className={styles.dot} />}
+            {pending.length > 0 && <span className={styles.dot} />}
           </button>
           {notifOpen && (
             <div className="popover" style={{ right: 0, top: 42 }} role="dialog" aria-label={t.notif}>
-              <h6 className="sec-title">{t.notif_pending}</h6>
-              {notif.pending.length === 0 && <div className="text-muted" style={{ fontSize: 12.5 }}>{t.notif_empty}</div>}
-              {notif.pending.map((p) => (
-                <Link key={p.id} href={p.href} className={`link-plain ${styles.notifRow}`} onClick={() => setNotifOpen(false)}>
-                  <Icon name="check" size={15} style={{ flex: 'none', color: 'var(--color-accent)', marginTop: 2 }} />
-                  <span style={{ minWidth: 0 }}>
-                    <span className="ellipsis" style={{ display: 'block', color: 'var(--color-text)' }}>{p.docTitle}</span>
-                    <span className="text-muted sub">{p.docId}{p.letter ? ` · ${t.revision} ${p.letter}` : ''} · {t.step} : {p.stepName} · {t.due} {p.dueF}</span>
-                  </span>
-                </Link>
-              ))}
-              <h6 className="sec-title" style={{ marginTop: 4 }}>{t.notif_recent}</h6>
+              <h2 className="sec-title">{t.todo}</h2>
+              {pending.length === 0 && <div className="text-muted" style={{ fontSize: 12.5 }}>{t.todo_empty}</div>}
+              {pending.length > 0 && (
+                <div className={styles.pending}>
+                  {pending.map((p) => (
+                    <Link key={p.key} href={p.href} className={`link-plain ${styles.notifRow}`} onClick={() => setNotifOpen(false)}>
+                      <Icon name={TODO_ICON[p.kind]} size={15} style={{ flex: 'none', color: 'var(--color-accent)', marginTop: 2 }} />
+                      <span style={{ minWidth: 0 }}>
+                        <span className="ellipsis" style={{ display: 'block', color: 'var(--color-text)' }}>{p.docTitle}</span>
+                        <span className="text-muted sub">{p.detail}</span>
+                        {p.note && <span className="sub" style={{ display: 'block', color: 'var(--color-text)', overflowWrap: 'anywhere', marginTop: 2 }}>{p.note}</span>}
+                      </span>
+                    </Link>
+                  ))}
+                </div>
+              )}
+              <h2 className="sec-title" style={{ marginTop: 4 }}>{t.notif_recent}</h2>
               {notif.recent.length === 0 && <div className="text-muted" style={{ fontSize: 12.5 }}>{t.notif_empty}</div>}
               {notif.recent.map((a) => (
                 <div key={a.id} className="feed" style={{ fontSize: 12 }}>

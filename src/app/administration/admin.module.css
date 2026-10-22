@@ -9,4 +9,38 @@
 .remove:hover { opacity: 1; color: var(--color-accent); }
 .remove:disabled { cursor: progress; }
 .split { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 28px; align-items: start; }
-@media (max-width: 1100px) { .split { grid-template-columns: minmax(0, 1fr); } }
+/* One column below the width where the departments table (with its featured filters) fits beside the sites. */
+@media (max-width: 1360px) { .split { grid-template-columns: minmax(0, 1fr); } }
+/* A wide table scrolls within its grid column instead of spilling over the next one. */
+.tableScroll { overflow-x: auto; min-width: 0; }
+/* Journal tab: its filters above the table, its pages below it. */
+.auditFilters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 0 12px; font-size: 12.5px; }
+.auditFilters :global(.input) { min-height: 30px; font-size: 12.5px; padding: 3px 10px; }
+.auditFilters select:global(.input) { padding-right: 28px; }
+.auditDay { display: inline-flex; align-items: center; gap: 6px; }
+.auditPager { display: flex; align-items: center; gap: 8px; padding: 12px 0 0; }
+/* Journal tab: what Codex checks on the files it receives (formats, size, virus scan). */
+.filesPolicy { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 2px 0 6px; font-size: 12px; }
+.filesPolicy strong { font-weight: 500; color: var(--color-text); }
+.filesOff { color: var(--color-accent-300); }
+/* Journal tab: orphan files of the store (lib/orphans.ts), the dry run and its removal. */
+.orphans { margin: 4px 0 14px; padding: 10px 14px 12px; border: 1px solid var(--color-divider); border-radius: var(--radius-md); font-size: 12.5px; display: flex; flex-direction: column; gap: 6px; }
+.orphans p { margin: 0; }
+.orphansHead { display: flex; align-items: center; gap: 8px; }
+.orphansHead strong { font-weight: 500; }
+.orphanStore { font-weight: 500; margin-right: 8px; }
+.orphanTable { font-size: 12px; }
+.orphanKey { word-break: break-all; }
+/* Reprise tab (point 19): the choice of the two people, the simulation by kind, what the transfer leaves to others. */
+.transfer { display: flex; flex-direction: column; gap: 18px; }
+.transferHead { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; font-size: 13px; }
+.transferTable { font-size: 12.5px; }
+.transferTable td:first-child { width: 60%; }
+.transferStatus { font-size: 12px; }
+.transferNotes { margin: 0; padding-left: 18px; font-size: 12.5px; color: var(--color-neutral-400); display: flex; flex-direction: column; gap: 4px; }
+/* Vocabulaires tab (point 59): each vocabulary with its terms, then the values documents carry without a term. */
+.vocab { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.vocabHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.vocabUnlisted { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; }
+.vocabSplit { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; align-items: start; }
+@media (max-width: 1360px) { .vocabSplit { grid-template-columns: minmax(0, 1fr); } }

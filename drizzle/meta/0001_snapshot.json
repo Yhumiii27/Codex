@@ -1,6 +1,6 @@
 {
-  "id": "4fd9f4d8-4861-470f-900c-3614afdf055e",
-  "prevId": "b1c864db-5759-4b01-86e2-4cc05bedcf85",
+  "id": "1937ac6a-fd34-48e6-80a2-c266fbb127d8",
+  "prevId": "eb2b5413-282c-4cc8-8ad4-e2b699f62a5c",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -16,7 +16,7 @@
         },
         "at": {
           "name": "at",
-          "type": "timestamp",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true
         },
@@ -36,7 +36,19 @@
           "name": "doc_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
+        },
+        "target_kind": {
+          "name": "target_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "target_id": {
+          "name": "target_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "detail": {
           "name": "detail",
@@ -44,9 +56,42 @@
           "primaryKey": false,
           "notNull": true,
           "default": "''"
+        },
+        "data": {
+          "name": "data",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revision_id": {
+          "name": "revision_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
+        "audit_log_at": {
+          "name": "audit_log_at",
+          "columns": [
+            {
+              "expression": "at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "audit_log_at_idx": {
           "name": "audit_log_at_idx",
           "columns": [
@@ -58,6 +103,109 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "audit_log_doc": {
+          "name": "audit_log_doc",
+          "columns": [
+            {
+              "expression": "doc_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "action",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "audit_log_user": {
+          "name": "audit_log_user",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "audit_log_action": {
+          "name": "audit_log_action",
+          "columns": [
+            {
+              "expression": "action",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "audit_log_revision": {
+          "name": "audit_log_revision",
+          "columns": [
+            {
+              "expression": "revision_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"codex\".\"audit_log\".\"revision_id\" is not null",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -82,7 +230,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "audit_log_subject": {
+          "name": "audit_log_subject",
+          "value": "\"codex\".\"audit_log\".\"doc_id\" is not null or (\"codex\".\"audit_log\".\"target_kind\" is not null and \"codex\".\"audit_log\".\"target_id\" is not null)"
+        }
+      },
       "isRLSEnabled": false
     },
     "codex.change_requests": {
@@ -144,8 +297,20 @@
           "primaryKey": false,
           "notNull": false
         },
+        "revision_id": {
+          "name": "revision_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "decision_note": {
           "name": "decision_note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "replacement_id": {
+          "name": "replacement_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -183,6 +348,37 @@
           ],
           "isUnique": true,
           "where": "\"codex\".\"change_requests\".\"status\" in ('submitted', 'accepted')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "change_requests_doc": {
+          "name": "change_requests_doc",
+          "columns": [
+            {
+              "expression": "doc_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "change_requests_replacement": {
+          "name": "change_requests_replacement",
+          "columns": [
+            {
+              "expression": "replacement_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"codex\".\"change_requests\".\"replacement_id\" is not null",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -230,12 +426,45 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "change_requests_revision_id_revisions_id_fk": {
+          "name": "change_requests_revision_id_revisions_id_fk",
+          "tableFrom": "change_requests",
+          "tableTo": "revisions",
+          "schemaTo": "codex",
+          "columnsFrom": [
+            "revision_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "change_requests_replacement_id_documents_id_fk": {
+          "name": "change_requests_replacement_id_documents_id_fk",
+          "tableFrom": "change_requests",
+          "tableTo": "documents",
+          "schemaTo": "codex",
+          "columnsFrom": [
+            "replacement_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "cascade"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "change_requests_replacement": {
+          "name": "change_requests_replacement",
+          "value": "\"codex\".\"change_requests\".\"replacement_id\" is null or (\"codex\".\"change_requests\".\"kind\" = 'obsolescence' and \"codex\".\"change_requests\".\"replacement_id\" <> \"codex\".\"change_requests\".\"doc_id\")"
+        }
+      },
       "isRLSEnabled": false
     },
     "codex.departments": {
@@ -266,6 +495,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": 0
+        },
+        "featured": {
+          "name": "featured",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
         },
         "active": {
           "name": "active",
@@ -360,6 +595,13 @@
           "notNull": true,
           "default": "''"
         },
+        "retention_basis_en": {
+          "name": "retention_basis_en",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
         "conf_allowed": {
           "name": "conf_allowed",
           "type": "jsonb",
@@ -371,6 +613,12 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "review_months": {
+          "name": "review_months",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
         },
         "iso": {
           "name": "iso",
@@ -427,7 +675,165 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "doc_types_review_months": {
+          "name": "doc_types_review_months",
+          "value": "\"codex\".\"doc_types\".\"review_months\" is null or \"codex\".\"doc_types\".\"review_months\" between 1 and 240"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "codex.document_links": {
+      "name": "document_links",
+      "schema": "codex",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "source_id": {
+          "name": "source_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_id": {
+          "name": "target_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "document_links_pair": {
+          "name": "document_links_pair",
+          "columns": [
+            {
+              "expression": "least(\"source_id\", \"target_id\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "greatest(\"source_id\", \"target_id\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "document_links_source": {
+          "name": "document_links_source",
+          "columns": [
+            {
+              "expression": "source_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "document_links_target": {
+          "name": "document_links_target",
+          "columns": [
+            {
+              "expression": "target_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "document_links_source_id_documents_id_fk": {
+          "name": "document_links_source_id_documents_id_fk",
+          "tableFrom": "document_links",
+          "tableTo": "documents",
+          "schemaTo": "codex",
+          "columnsFrom": [
+            "source_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "cascade"
+        },
+        "document_links_target_id_documents_id_fk": {
+          "name": "document_links_target_id_documents_id_fk",
+          "tableFrom": "document_links",
+          "tableTo": "documents",
+          "schemaTo": "codex",
+          "columnsFrom": [
+            "target_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "cascade"
+        },
+        "document_links_created_by_users_id_fk": {
+          "name": "document_links_created_by_users_id_fk",
+          "tableFrom": "document_links",
+          "tableTo": "users",
+          "schemaTo": "codex",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "document_links_kind": {
+          "name": "document_links_kind",
+          "value": "\"codex\".\"document_links\".\"kind\" in ('replaces', 'see_also')"
+        },
+        "document_links_distinct": {
+          "name": "document_links_distinct",
+          "value": "\"codex\".\"document_links\".\"source_id\" <> \"codex\".\"document_links\".\"target_id\""
+        }
+      },
       "isRLSEnabled": false
     },
     "codex.document_readers": {
@@ -447,7 +853,23 @@
           "notNull": true
         }
       },
-      "indexes": {},
+      "indexes": {
+        "document_readers_user": {
+          "name": "document_readers_user",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "document_readers_doc_id_documents_id_fk": {
           "name": "document_readers_doc_id_documents_id_fk",
@@ -492,6 +914,84 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "codex.document_terms": {
+      "name": "document_terms",
+      "schema": "codex",
+      "columns": {
+        "doc_id": {
+          "name": "doc_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "field": {
+          "name": "field",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "term": {
+          "name": "term",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "document_terms_doc": {
+          "name": "document_terms_doc",
+          "columns": [
+            {
+              "expression": "doc_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "document_terms_term": {
+          "name": "document_terms_term",
+          "columns": [
+            {
+              "expression": "term",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "gin_trgm_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "document_terms_doc_id_documents_id_fk": {
+          "name": "document_terms_doc_id_documents_id_fk",
+          "tableFrom": "document_terms",
+          "tableTo": "documents",
+          "schemaTo": "codex",
+          "columnsFrom": [
+            "doc_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "codex.documents": {
       "name": "documents",
       "schema": "codex",
@@ -508,6 +1008,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'[]'::jsonb"
+        },
+        "legacy_ref": {
+          "name": "legacy_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "title": {
           "name": "title",
@@ -666,6 +1172,19 @@
           "primaryKey": false,
           "notNull": true
         },
+        "retention_override": {
+          "name": "retention_override",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "retention_event_at": {
+          "name": "retention_event_at",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
         "source_org": {
           "name": "source_org",
           "type": "text",
@@ -763,6 +1282,19 @@
           "primaryKey": false,
           "notNull": true
         },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "template_id": {
+          "name": "template_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "distribution": {
           "name": "distribution",
           "type": "text",
@@ -783,7 +1315,40 @@
           "notNull": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "documents_aliases": {
+          "name": "documents_aliases",
+          "columns": [
+            {
+              "expression": "aliases",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "jsonb_path_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        },
+        "documents_template": {
+          "name": "documents_template",
+          "columns": [
+            {
+              "expression": "template_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"codex\".\"documents\".\"template_id\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "documents_project_code_projects_code_fk": {
           "name": "documents_project_code_projects_code_fk",
@@ -910,10 +1475,32 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "documents_template_id_documents_id_fk": {
+          "name": "documents_template_id_documents_id_fk",
+          "tableFrom": "documents",
+          "tableTo": "documents",
+          "schemaTo": "codex",
+          "columnsFrom": [
+            "template_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "cascade"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "documents_legacy_ref_unique": {
+          "name": "documents_legacy_ref_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "legacy_ref"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {
         "documents_review_months_check": {
@@ -1077,6 +1664,138 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "codex.id_counters": {
+      "name": "id_counters",
+      "schema": "codex",
+      "columns": {
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "last": {
+          "name": "last",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "codex.integration_signatures": {
+      "name": "integration_signatures",
+      "schema": "codex",
+      "columns": {
+        "digest": {
+          "name": "digest",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "endpoint": {
+          "name": "endpoint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "integration_signatures_expires": {
+          "name": "integration_signatures_expires",
+          "columns": [
+            {
+              "expression": "expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "codex.keyword_terms": {
+      "name": "keyword_terms",
+      "schema": "codex",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "aliases": {
+          "name": "aliases",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "keyword_terms_key": {
+          "name": "keyword_terms_key",
+          "columns": [
+            {
+              "expression": "key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "codex.project_events": {
       "name": "project_events",
       "schema": "codex",
@@ -1178,7 +1897,38 @@
           "default": 0
         }
       },
-      "indexes": {},
+      "indexes": {
+        "project_expected_project": {
+          "name": "project_expected_project",
+          "columns": [
+            {
+              "expression": "project_code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "project_expected_doc": {
+          "name": "project_expected_doc",
+          "columns": [
+            {
+              "expression": "doc_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "project_expected_project_code_projects_code_fk": {
           "name": "project_expected_project_code_projects_code_fk",
@@ -1326,6 +2076,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
         }
       },
       "indexes": {},
@@ -1459,6 +2216,22 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "revisions_open_modifier": {
+          "name": "revisions_open_modifier",
+          "columns": [
+            {
+              "expression": "modifier_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"codex\".\"revisions\".\"status\" in ('draft', 'in_review', 'approved')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -1565,12 +2338,152 @@
           "primaryKey": false,
           "notNull": true
         },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'personal'"
+        },
+        "department": {
+          "name": "department",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "period": {
+          "name": "period",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "order_by": {
+          "name": "order_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "sort": {
           "name": "sort",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "saved_searches_owner_id_users_id_fk": {
+          "name": "saved_searches_owner_id_users_id_fk",
+          "tableFrom": "saved_searches",
+          "tableTo": "users",
+          "schemaTo": "codex",
+          "columnsFrom": [
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "saved_searches_department_departments_code_fk": {
+          "name": "saved_searches_department_departments_code_fk",
+          "tableFrom": "saved_searches",
+          "tableTo": "departments",
+          "schemaTo": "codex",
+          "columnsFrom": [
+            "department"
+          ],
+          "columnsTo": [
+            "code"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "saved_searches_scope": {
+          "name": "saved_searches_scope",
+          "value": "\"codex\".\"saved_searches\".\"scope\" in ('personal', 'department', 'group')"
+        },
+        "saved_searches_order_by": {
+          "name": "saved_searches_order_by",
+          "value": "\"codex\".\"saved_searches\".\"order_by\" in ('relevance', 'modified', 'issued', 'due', 'id', 'title')"
+        },
+        "saved_searches_department": {
+          "name": "saved_searches_department",
+          "value": "(\"codex\".\"saved_searches\".\"scope\" = 'department') = (\"codex\".\"saved_searches\".\"department\" is not null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "codex.scheduler_runs": {
+      "name": "scheduler_runs",
+      "schema": "codex",
+      "columns": {
+        "task": {
+          "name": "task",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "lease_owner": {
+          "name": "lease_owner",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lease_until": {
+          "name": "lease_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "finished_at": {
+          "name": "finished_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "summary": {
+          "name": "summary",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "next_at": {
+          "name": "next_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},
@@ -1591,8 +2504,14 @@
           "primaryKey": true,
           "notNull": true
         },
-        "label": {
-          "name": "label",
+        "label_fr": {
+          "name": "label_fr",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "label_en": {
+          "name": "label_en",
           "type": "text",
           "primaryKey": false,
           "notNull": true
@@ -1603,11 +2522,140 @@
           "primaryKey": false,
           "notNull": true,
           "default": 0
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
         }
       },
       "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "codex.source_orgs": {
+      "name": "source_orgs",
+      "schema": "codex",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "aliases": {
+          "name": "aliases",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "source_orgs_key": {
+          "name": "source_orgs_key",
+          "columns": [
+            {
+              "expression": "key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "codex.template_types": {
+      "name": "template_types",
+      "schema": "codex",
+      "columns": {
+        "doc_id": {
+          "name": "doc_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type_code": {
+          "name": "type_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "template_types_doc_id_documents_id_fk": {
+          "name": "template_types_doc_id_documents_id_fk",
+          "tableFrom": "template_types",
+          "tableTo": "documents",
+          "schemaTo": "codex",
+          "columnsFrom": [
+            "doc_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        },
+        "template_types_type_code_doc_types_code_fk": {
+          "name": "template_types_type_code_doc_types_code_fk",
+          "tableFrom": "template_types",
+          "tableTo": "doc_types",
+          "schemaTo": "codex",
+          "columnsFrom": [
+            "type_code"
+          ],
+          "columnsTo": [
+            "code"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {
+        "template_types_doc_id_type_code_pk": {
+          "name": "template_types_doc_id_type_code_pk",
+          "columns": [
+            "doc_id",
+            "type_code"
+          ]
+        }
+      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
@@ -1723,6 +2771,109 @@
       },
       "isRLSEnabled": false
     },
+    "codex.version_previews": {
+      "name": "version_previews",
+      "schema": "codex",
+      "columns": {
+        "working_version_id": {
+          "name": "working_version_id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "file_key": {
+          "name": "file_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "size": {
+          "name": "size",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pages": {
+          "name": "pages",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sha256": {
+          "name": "sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "converter": {
+          "name": "converter",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "at": {
+          "name": "at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "version_previews_file_key": {
+          "name": "version_previews_file_key",
+          "columns": [
+            {
+              "expression": "file_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "version_previews_working_version_id_working_versions_id_fk": {
+          "name": "version_previews_working_version_id_working_versions_id_fk",
+          "tableFrom": "version_previews",
+          "tableTo": "working_versions",
+          "schemaTo": "codex",
+          "columnsFrom": [
+            "working_version_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "version_previews_status": {
+          "name": "version_previews_status",
+          "value": "(\"codex\".\"version_previews\".\"status\" = 'ready' and \"codex\".\"version_previews\".\"file_key\" is not null) or (\"codex\".\"version_previews\".\"status\" = 'failed' and \"codex\".\"version_previews\".\"file_key\" is null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "codex.workflow_comments": {
       "name": "workflow_comments",
       "schema": "codex",
@@ -1758,7 +2909,23 @@
           "notNull": true
         }
       },
-      "indexes": {},
+      "indexes": {
+        "workflow_comments_workflow": {
+          "name": "workflow_comments_workflow",
+          "columns": [
+            {
+              "expression": "workflow_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "workflow_comments_workflow_id_workflows_id_fk": {
           "name": "workflow_comments_workflow_id_workflows_id_fk",
@@ -1843,7 +3010,23 @@
           "default": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "workflow_steps_assignee": {
+          "name": "workflow_steps_assignee",
+          "columns": [
+            {
+              "expression": "assignee_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "workflow_steps_workflow_id_workflows_id_fk": {
           "name": "workflow_steps_workflow_id_workflows_id_fk",
@@ -1934,6 +3117,24 @@
           "primaryKey": false,
           "notNull": false
         },
+        "closed_by": {
+          "name": "closed_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "closed_at": {
+          "name": "closed_at",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "date",
@@ -1954,6 +3155,51 @@
           ],
           "isUnique": true,
           "where": "\"codex\".\"workflows\".\"outcome\" is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "workflows_doc": {
+          "name": "workflows_doc",
+          "columns": [
+            {
+              "expression": "doc_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "workflows_revision": {
+          "name": "workflows_revision",
+          "columns": [
+            {
+              "expression": "revision_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "workflows_requester": {
+          "name": "workflows_requester",
+          "columns": [
+            {
+              "expression": "requester_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -1995,6 +3241,20 @@
           "schemaTo": "codex",
           "columnsFrom": [
             "requester_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "workflows_closed_by_users_id_fk": {
+          "name": "workflows_closed_by_users_id_fk",
+          "tableFrom": "workflows",
+          "tableTo": "users",
+          "schemaTo": "codex",
+          "columnsFrom": [
+            "closed_by"
           ],
           "columnsTo": [
             "id"
@@ -2090,6 +3350,12 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": false
+        },
+        "sha256": {
+          "name": "sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -2110,6 +3376,51 @@
             }
           ],
           "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "working_versions_doc": {
+          "name": "working_versions_doc",
+          "columns": [
+            {
+              "expression": "doc_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "working_versions_file_key": {
+          "name": "working_versions_file_key",
+          "columns": [
+            {
+              "expression": "file_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "working_versions_sha256": {
+          "name": "working_versions_sha256",
+          "columns": [
+            {
+              "expression": "sha256",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}

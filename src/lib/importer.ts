@@ -1,43 +1,40 @@
 import 'server-only';
-import { createHash, timingSafeEqual } from 'node:crypto';
 import { eq, or, sql } from 'drizzle-orm';
 import { getDb, schema as s, type Db } from '@/db';
 import type { Attachment, Conf, Origin, RevStatus } from '@/db/schema';
 import { readersApply } from './access';
-import { contextOf, nextDocId, seqWidth } from './codification';
-import { fmtSize, parseIsoDay, todayIso } from './format';
+import { contextOf, nextDocId, reserveDocId, seqWidth } from './codification';
+import { dateIssues, dateIssueText } from './dates';
+import { parseIsoDay, todayIso } from './format';
 import { ATTACHMENTS, CONF_LEVELS, DICT, ORIGINS } from './i18n';
 import { audit, refreshHeadline, type Tx } from './lifecycle';
-import { discardFile, fileColumns, nameStoredFile, stageFile, type StagedFile } from './storage';
+import { logger } from './log';
+import { sameFiles } from './queries';
+import { checkFile, discardFile, FileRejectedError, fileColumns, nameStoredFile, stageFile, type CheckedFile, type FileRejection, type StagedFile } from './storage';
+import { addTerms, loadTerms, readTerms } from './vocab';
+import { canonicalSubtype, cleanTerm, docLang, VOCAB_MAX } from './vocab-rules';
 
-// Integration endpoints (docs/api.md): bearer-token check shared by /api/import and /api/integrations/vigie, and the
+// Integration endpoints (docs/api.md; their authentication: lib/server-auth.ts): the
 // import of one legacy document for the migration tool. The business rules repeat those of actions.validateFields,
 // which needs a user session and so cannot be called from a route handler.
 
 /** System user that the migration is recorded under in the audit trail. */
 export const IMPORT_ACTOR = 'codex';
 
+/**
+ * Whom the duplicate warning of an import is computed for (queries.ts sameFiles): a reader with the "read" permission
+ * and no department, project or named access, outside every drafting circle. It names only a document whose file in
+ * force any reader of the group has (Public, Restreint, Interne): the migration tool is outside Codex, and D-14 keeps
+ * drafts, working versions and confidential documents from it.
+ */
+const IMPORT_VIEWER = {
+  user: { id: IMPORT_ACTOR, name: 'Codex', initials: 'CX', role: 'system', title: null, department: null, site: null, isSystem: true, matricule: null },
+  seesAll: false,
+  can: (p: string) => p === 'read',
+};
+
 export function json(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
   return Response.json(body, { status, headers: { 'Cache-Control': 'no-store', ...headers } });
-}
-
-// ── Integration tokens ──────────────────────────────────────────────────
-
-const digest = (v: string) => createHash('sha256').update(v).digest();
-
-/**
- * Null when the request carries `Authorization: Bearer <token>` matching the environment variable `envVar`.
- * Otherwise the response to send: 503 while the variable is unset (endpoint disabled), 401 for a missing or wrong token.
- */
-export function checkBearer(req: Request, envVar: 'CODEX_IMPORT_TOKEN' | 'VIGIE_WEBHOOK_TOKEN'): Response | null {
-  const expected = process.env[envVar]?.trim();
-  if (!expected) return json({ error: 'disabled' }, 503);
-  const m = /^Bearer[ \t]+(\S+)[ \t]*$/i.exec(req.headers.get('authorization') ?? '');
-  // Comparing fixed-length digests keeps the check constant-time whatever the length of the token sent.
-  if (!m || !timingSafeEqual(digest(m[1]), digest(expected))) {
-    return json({ error: 'unauthorized' }, 401, { 'WWW-Authenticate': 'Bearer realm="codex"' });
-  }
-  return null;
 }
 
 // ── Validation of the import metadata ───────────────────────────────────
@@ -51,6 +48,7 @@ const MESSAGES: Record<string, string> = {
   invalid_date: 'Date attendue au format AAAA-MM-JJ.',
   invalid_value: 'Valeur non admise.',
   invalid_letter: 'Lettre de révision attendue (A, B … Z, AA …).',
+  duplicate_file: 'Fichier identique au fichier en vigueur de {docs} : importé quand même.',
   unknown_type: 'Type absent du registre ou inactif.',
   unknown_department: 'Département inconnu.',
   unknown_site: 'Site inconnu.',
@@ -62,6 +60,9 @@ const MESSAGES: Record<string, string> = {
   source_required: DICT.fr.source_required,
   readers_conf: 'Lecteurs désignés réservés aux documents confidentiels ou très confidentiels.',
   ignored: 'Champ ignoré : il ne s’applique pas à ce document (origine, rattachement ou statut).',
+  invalid_lang: 'Langue attendue : fr, en ou vide.',
+  subtype_unlisted: 'Sous-type absent de la liste du type : gardé tel quel, proposé aux administrateurs du registre (Administration › Vocabulaires).',
+  term_added: 'Terme ajouté au vocabulaire contrôlé : {terms}.',
 };
 
 type TypeRow = typeof s.docTypes.$inferSelect;
@@ -110,6 +111,17 @@ export type ImportInput = {
 };
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+
+/**
+ * Dates of the imported revision as they are recorded: in force on `inForceAt` (by default the issue date, then the
+ * day of the import), approved until that date when it is still to come; the issue date defaults to that entry into
+ * force, once it has happened.
+ */
+function recordedDates(v: Pick<ImportInput, 'status' | 'inForceAt' | 'issuedAt'>, today: string) {
+  const inForceAt = v.status === 'in_force' ? v.inForceAt ?? v.issuedAt ?? today : null;
+  const revStatus: RevStatus = v.status === 'draft' ? 'draft' : inForceAt! > today ? 'approved' : 'in_force';
+  return { inForceAt, revStatus, issuedAt: v.issuedAt ?? (revStatus === 'in_force' ? inForceAt : null) };
+}
 
 /** Validates the `meta` part: shape, then the rules of the register (type admits origin, attachment, confidentiality…). */
 function parseImportMeta(raw: unknown, refs: Refs): { value: ImportInput | null; issues: Issue[]; warnings: Issue[] } {
@@ -160,7 +172,7 @@ function parseImportMeta(raw: unknown, refs: Refs): { value: ImportInput | null;
     if (v == null || v === '') return [];
     const items = typeof v === 'string' ? v.split(',') : Array.isArray(v) && v.every((x) => typeof x === 'string') ? (v as string[]) : null;
     if (!items) { issue(k, 'invalid_type'); return []; }
-    const out = [...new Set(items.map((x) => x.trim()).filter(Boolean))];
+    const out = [...new Set(items.map(cleanTerm).filter(Boolean))];
     if (out.length > maxItems || out.some((x) => x.length > maxLen)) { issue(k, 'too_long'); return []; }
     return out;
   };
@@ -198,13 +210,21 @@ function parseImportMeta(raw: unknown, refs: Refs): { value: ImportInput | null;
   const readers = list('readers', 200, 64);
   if (readers.some((u) => !refs.users.get(u) || refs.users.get(u)!.isSystem)) issue('readers', 'unknown_user');
 
+  // Controlled values (point 59): a language fr, en or none; a sub-type in its type's spelling when it folds to one of its
+  // labels, kept otherwise (the list stays open, MET-17) with a warning; keywords and source organisation are read
+  // against their vocabularies when the document is written (importDocument).
+  const lang = docLang(text('lang', 10));
+  if (lang === undefined) issue('lang', 'invalid_lang');
+  const subtype = canonicalSubtype(type?.subtypes ?? [], text('subtype', 200));
+  if (type && !subtype.listed) warnings.push({ field: 'subtype', code: 'subtype_unlisted', message: MESSAGES.subtype_unlisted });
+  const sourceOrgRaw = text('sourceOrg', VOCAB_MAX.source_org);
   const f = {
-    subtype: text('subtype', 200),
-    keywords: list('keywords', 50, 100),
-    lang: text('lang', 10)?.toLowerCase() ?? null,
+    subtype: subtype.value,
+    keywords: list('keywords', 50, VOCAB_MAX.keyword),
+    lang: lang ?? null,
     issuedAt: date('issuedAt'), inForceAt: date('inForceAt'), reviewDueAt: date('reviewDueAt'), expiresAt: date('expiresAt'),
     createdAt: date('createdAt'), modifiedAt: date('modifiedAt'),
-    sourceOrg: text('sourceOrg'), externalRef: text('externalRef', 200), receivedAt: date('receivedAt'),
+    sourceOrg: sourceOrgRaw ? cleanTerm(sourceOrgRaw) || null : null, externalRef: text('externalRef', 200), receivedAt: date('receivedAt'),
     projectPhase: text('projectPhase', 100), workPackage: text('workPackage', 100), discipline: text('discipline', 100),
     researchTheme: text('researchTheme', 200), studyId: text('studyId', 100), ipStatus: text('ipStatus', 100),
     comment: text('comment', 2000),
@@ -249,6 +269,18 @@ function parseImportMeta(raw: unknown, refs: Refs): { value: ImportInput | null;
     inForceAt: drop('inForceAt', f.inForceAt, status !== 'draft'),
   };
 
+  // Coherence of the dates as they will be recorded, defaults included (lib/dates.ts: issue ≤ effect ≤ expiry…). A
+  // document not issued yet will be on its entry into force still to come, or, for a draft, today at the earliest.
+  if (status) {
+    const today = todayIso();
+    const rec = recordedDates({ status, inForceAt: value.inForceAt, issuedAt: f.issuedAt }, today);
+    const effective = rec.inForceAt ? { letter, at: rec.inForceAt } : null;
+    const from = rec.issuedAt ? null : rec.inForceAt ?? today;
+    for (const i of dateIssues({ issuedAt: rec.issuedAt, issueFrom: from, effective, reviewDueAt: f.reviewDueAt, expiresAt: f.expiresAt, receivedAt: value.receivedAt }, today)) {
+      issues.push({ field: i.field === 'effective' ? 'inForceAt' : i.field, code: i.rule, message: dateIssueText(DICT.fr, 'fr', i) });
+    }
+  }
+
   if (issues.length || !legacyRef || !title || !typeCode || !origin || !attachment || !department || !ownerId || !conf || !status) {
     return { value: null, issues, warnings };
   }
@@ -261,11 +293,18 @@ export type ImportFile = { buf: Buffer; name: string; mime: string };
 
 export type ImportResult =
   | { kind: 'created'; id: string; revision: string; version: string | null; revStatus: RevStatus; file: boolean; warnings: Issue[] }
+  /** A simulation (`dryRun`) that would have created the document `id`: nothing was stored nor written. */
+  | { kind: 'dry_run'; id: string; warnings: Issue[] }
   | { kind: 'invalid'; issues: Issue[]; warnings: Issue[] }
   /** The legacy reference was already imported: the document it became. */
   | { kind: 'duplicate'; id: string }
-  /** The legacy reference is the current ID of another document, which was not imported from it. */
-  | { kind: 'conflict'; id: string };
+  /**
+   * The legacy reference is a Codex ID, current or former (an alias left by a reclassification), of another document,
+   * which was not imported from it: id is that document's current ID.
+   */
+  | { kind: 'conflict'; id: string }
+  /** The file was refused (format, size, virus scan: lib/storage.ts stageFile); nothing was imported. */
+  | { kind: 'file_rejected'; rejection: FileRejection };
 
 /** `legacyRef` as parseImportMeta reads it, or null when it is missing or invalid. */
 function legacyRefOf(raw: unknown): string | null {
@@ -276,13 +315,16 @@ function legacyRefOf(raw: unknown): string | null {
 }
 
 /**
- * Who already answers to this legacy reference: a document imported from it (one of its aliases) is a replay; a document
- * whose current ID merely equals it is a conflict, never to be recorded as the migrated document.
+ * Who already answers to this legacy reference: the document imported from it (documents.legacy_ref) is a replay; a
+ * document whose ID, current or former (an alias left by a reclassification), merely equals it is a conflict, never to
+ * be recorded as the migrated document. Aliases alone cannot tell the two apart: they hold both kinds of reference.
  */
 async function findByRef(tx: Tx, ref: string): Promise<Extract<ImportResult, { kind: 'duplicate' | 'conflict' }> | null> {
-  const [alias] = await tx.select({ id: s.documents.id }).from(s.documents).where(sql`${s.documents.aliases} @> ${JSON.stringify([ref])}::jsonb`).limit(1);
-  if (alias) return { kind: 'duplicate', id: alias.id };
-  const [same] = await tx.select({ id: s.documents.id }).from(s.documents).where(eq(s.documents.id, ref)).limit(1);
+  const [imported] = await tx.select({ id: s.documents.id }).from(s.documents).where(eq(s.documents.legacyRef, ref)).limit(1);
+  if (imported) return { kind: 'duplicate', id: imported.id };
+  const [same] = await tx.select({ id: s.documents.id }).from(s.documents)
+    .where(or(eq(s.documents.id, ref), sql`${s.documents.aliases} @> ${JSON.stringify([ref])}::jsonb`))
+    .orderBy(sql`${s.documents.id} = ${ref} desc`).limit(1);
   return same ? { kind: 'conflict', id: same.id } : null;
 }
 
@@ -301,12 +343,25 @@ async function importId(tx: Tx, v: ImportInput): Promise<string> {
   return nextDocId(tx, v);
 }
 
+/** Thrown to roll the transaction of a simulated import back with what it would have answered (as lib/transfer.ts). */
+class DryRun extends Error {
+  constructor(readonly result: ImportResult) {
+    super('dry run');
+  }
+}
+
 /**
- * Creates one migrated document: ID TYPE-CONTEXTE-SEQ, the legacy reference kept as an alias, its revision (in force,
- * approved with a future effective date, or in draft) and working version n°1 carrying the file, stored as
- * {ID}_{letter}.{ext} ({ID}_{letter}.1.{ext} for a draft).
+ * Creates one migrated document: ID TYPE-CONTEXTE-SEQ, the legacy reference recorded (legacy_ref) and kept as an alias,
+ * its revision (in force, approved with a future effective date, or in draft) and working version n°1 carrying the
+ * file, stored as {ID}_{letter}.{ext} ({ID}_{letter}.1.{ext} for a draft).
+ *
+ * `dryRun` (POST /api/import?dryRun=1, docs/api.md « Simulation »): the same checks, file included (format, size, virus
+ * scan), and the same transaction, rolled back once it has computed the ID and the warnings: no file stored, no row
+ * written (document, counters, vocabularies, audit trail), an infected file not journaled. The ID given is the one a
+ * real import would get if nothing changes in between.
  */
-export async function importDocument(raw: unknown, file: ImportFile | null): Promise<ImportResult> {
+export async function importDocument(raw: unknown, file: ImportFile | null, o: { dryRun?: boolean } = {}): Promise<ImportResult> {
+  const dryRun = !!o.dryRun;
   const db = await getDb();
   // A replay answers 409 whatever the register has become since the first run (a type deactivated meanwhile…).
   const ref = legacyRefOf(raw);
@@ -319,27 +374,67 @@ export async function importDocument(raw: unknown, file: ImportFile | null): Pro
   const today = todayIso();
 
   // In force on its date; a date still to come leaves the revision approved until lifecycle.promoteDue puts it in force.
-  const inForceAt = v.status === 'in_force' ? v.inForceAt ?? v.issuedAt ?? today : null;
-  const revStatus: RevStatus = v.status === 'draft' ? 'draft' : inForceAt! > today ? 'approved' : 'in_force';
+  const { inForceAt, revStatus, issuedAt } = recordedDates(v, today);
   const createdAt = v.createdAt ?? v.issuedAt ?? (revStatus === 'in_force' ? inForceAt! : today);
   const modifiedAt = [v.modifiedAt ?? (revStatus === 'in_force' ? inForceAt! : today), createdAt].sort().at(-1)!;
   const label = revStatus === 'draft' ? `${v.letter}.1` : v.letter;
 
-  // The file goes to the store before the transaction (an upload never holds the database), then gets its name.
-  const staged: StagedFile | null = file ? await stageFile(file.buf, file.name, file.mime) : null;
+  // The file goes to the store before the transaction (an upload never holds the database), then gets its name. A
+  // simulation checks it the same way and stores nothing.
+  let staged: StagedFile | null = null;
+  let checked: CheckedFile | null = null;
+  if (file) {
+    const origin = { userId: IMPORT_ACTOR, entry: 'import', ref: v.legacyRef } as const;
+    try {
+      if (dryRun) checked = await checkFile(file.buf, file.name, file.mime, origin, { journal: false });
+      else checked = staged = await stageFile(file.buf, file.name, file.mime, origin);
+    } catch (err) {
+      if (err instanceof FileRejectedError) return { kind: 'file_rejected', rejection: err.rejection };
+      throw err;
+    }
+    // Not blocking: the same file may rightly be filed twice (a form attached to two projects).
+    try {
+      const same = await sameFiles(IMPORT_VIEWER, checked!.sha256);
+      if (same.length) {
+        const docs = same.map((x) => `${x.docId} ${x.label}`).join(', ');
+        warnings.push({ field: 'file', code: 'duplicate_file', message: MESSAGES.duplicate_file.replace('{docs}', docs) });
+      }
+    } catch (err) {
+      logger('import').warn('duplicate check failed', { err });
+    }
+  }
   let res: ImportResult;
   try {
     res = await db.transaction(async (tx): Promise<ImportResult> => {
-      // Checked again inside the transaction: two imports of the same reference may run at once.
+      // Imports run one at a time (a no-op on PGlite's single connection): two imports of the same reference cannot both
+      // find it free, and the two counter rows an import may lock (its legacy reference's scope, its own) are never
+      // taken in crossed order by another import.
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext('codex:import'))`);
+      // The legacy reference stays as an alias, and may become the ID: its number is reserved before the checks below,
+      // which then see any document that drew it from the counter, and no counter hands it out again.
+      await reserveDocId(tx, v.legacyRef);
+      // Checked again inside the transaction: a concurrent import of the same reference has committed by now.
       const existing = await findByRef(tx, v.legacyRef);
+      // A simulation rolls back the reservation above too.
+      if (existing && dryRun) throw new DryRun(existing);
       if (existing) return existing;
       const id = await importId(tx, v);
+      // Unknown terms are added (controlled addition, journaled under the import), never refused: the existing ones
+      // give their spelling (« SIEMENS » → « Siemens »), a merged duplicate the term it was merged into.
+      for (const [kind, field, values] of [['source_org', 'sourceOrg', v.sourceOrg ? [v.sourceOrg] : []], ['keyword', 'keywords', v.keywords]] as const) {
+        const read = readTerms(await loadTerms(tx, kind), values);
+        if (kind === 'source_org') v.sourceOrg = read.values[0] ?? null;
+        else v.keywords = read.values;
+        if (!read.added.length) continue;
+        await addTerms(tx, kind, read.added, IMPORT_ACTOR, v.legacyRef);
+        warnings.push({ field, code: 'term_added', message: MESSAGES.term_added.replace('{terms}', read.added.map((x) => `« ${x} »`).join(', ')) });
+      }
       await tx.insert(s.documents).values({
-        id, aliases: [v.legacyRef], title: v.title, origin: v.origin, attachment: v.attachment,
+        id, aliases: [v.legacyRef], legacyRef: v.legacyRef, title: v.title, origin: v.origin, attachment: v.attachment,
         projectCode: v.projectCode, programCode: v.programCode, family: type.family, typeCode: type.code, subtype: v.subtype,
         department: v.department, site: v.site, ownerId: v.ownerId, authorId: v.authorId, authorText: v.authorText,
         conf: v.conf, keywords: v.keywords, lang: v.lang, status: revStatus,
-        issuedAt: v.issuedAt ?? (revStatus === 'in_force' ? inForceAt : null), reviewDueAt: v.reviewDueAt, expiresAt: v.expiresAt,
+        issuedAt, reviewDueAt: v.reviewDueAt, expiresAt: v.expiresAt,
         retentionYears: type.retentionYears, retentionTrigger: type.retentionTrigger, retentionDisposition: type.retentionDisposition,
         sourceOrg: v.sourceOrg, externalRef: v.externalRef, receivedAt: v.receivedAt,
         projectPhase: v.projectPhase, workPackage: v.workPackage, discipline: v.discipline,
@@ -355,7 +450,7 @@ export async function importDocument(raw: unknown, file: ImportFile | null): Pro
     const stored = staged;
     // A revision that has been approved is represented by its last working version, even without a file (as in the seed);
     // a draft without a file waits for its first working version, as after createDocument.
-    const withVersion = !!stored || revStatus !== 'draft';
+    const withVersion = !!checked || revStatus !== 'draft';
     if (withVersion) {
       await tx.insert(s.workingVersions).values({
         revisionId: rev.id, docId: id, n: 1, authorId: v.authorId ?? v.ownerId, date: revStatus === 'in_force' ? inForceAt! : modifiedAt,
@@ -365,10 +460,21 @@ export async function importDocument(raw: unknown, file: ImportFile | null): Pro
     }
     if (v.readers.length) await tx.insert(s.documentReaders).values(v.readers.map((userId) => ({ docId: id, userId })));
     await refreshHeadline(tx, id);
-    await audit(tx, IMPORT_ACTOR, 'import', id, `${v.legacyRef} → ${withVersion ? label : v.letter}${stored ? ` · ${fmtSize(stored.size, 'fr')}` : ''}`);
-    return { kind: 'created', id, revision: v.letter, version: withVersion ? `${v.letter}.1` : null, revStatus, file: !!stored, warnings };
+    await audit(tx, IMPORT_ACTOR, 'import', id, `${v.legacyRef} → ${withVersion ? label : v.letter}`, rev.id, {
+      ...(stored ? { sha256: stored.sha256 } : {}),
+      text: { code: 'import', params: { ref: v.legacyRef, label: withVersion ? label : v.letter, ...(stored ? { size: stored.size } : {}) } },
+    });
+    const created: ImportResult = { kind: 'created', id, revision: v.letter, version: withVersion ? `${v.letter}.1` : null, revStatus, file: !!checked, warnings };
+    // A simulation stops here: everything written above is rolled back.
+    if (dryRun) throw new DryRun(created);
+    return created;
     });
   } catch (err) {
+    if (err instanceof DryRun) {
+      const r = err.result;
+      logger('import').info('import simulated (dry run), nothing written', { ref: v.legacyRef, result: r.kind === 'created' ? r.id : r.kind });
+      return r.kind === 'created' ? { kind: 'dry_run', id: r.id, warnings: r.warnings } : r;
+    }
     await discardFile(staged);
     throw err;
   }
