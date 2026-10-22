@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GET as approvalGET } from '@/app/api/documents/[id]/approval/route';
+import { GET as compareGET } from '@/app/api/documents/[id]/compare/route';
 import { GET as fileGET, HEAD as fileHEAD } from '@/app/api/documents/[id]/file/route';
 import { GET as auditExport, HEAD as auditExportHEAD } from '@/app/api/export/audit/route';
 import { GET as searchExport, HEAD as searchExportHEAD } from '@/app/api/export/search/route';
@@ -212,6 +213,23 @@ describe('browser endpoints, per user as resolved from the session', () => {
     expect(await journaled('download')).toEqual(['owner']);
   });
 
+  it('content comparison (CODEX_RATE_COMPARE): its own budget; a refused one reads no file and journals nothing', async () => {
+    await addDoc(db(), { id: ID });
+    const [v] = await db().select().from(s.workingVersions).where(eq(s.workingVersions.docId, ID));
+    vi.stubEnv('CODEX_RATE_COMPARE', '1/1m');
+    await as('auditor');
+    const compare = `/api/documents/${ID}/compare?a=${v.id}&b=${v.id}`;
+    expect((await compareGET(browser(compare), params)).status).toBe(200);
+    const views = async () => (await db().select().from(s.auditLog).where(eq(s.auditLog.action, 'view'))).length;
+    expect(await views()).toBe(1);
+    const refused = await compareGET(browser(compare), params);
+    await expect429(refused);
+    expect(await refused.text()).toBe(DICT.fr.rate_limited.replace('{n}', '60'));
+    expect(await views()).toBe(1);
+    // The file route keeps its own budget.
+    expect((await fileGET(browser(`/api/documents/${ID}/file`), params)).status).toBe(200);
+  });
+
   it('CSV exports (CODEX_RATE_EXPORTS): a refused export runs no search and journals nothing, HEAD included', async () => {
     vi.stubEnv('CODEX_RATE_EXPORTS', '1/1m');
     await as('manager');
@@ -274,12 +292,13 @@ describe('Server Actions that write (CODEX_RATE_WRITES), per simulated user', ()
     // The exports of lib/actions.ts that write: all of them but the language and the simulated user, which only set
     // cookies. A new action must be added here, and so must its call to throttled().
     const WRITES = [
-      'createDocument', 'addWorkingVersion', 'updateMeta', 'setReaders', 'recordReview', 'requestValidation', 'decideStep',
+      'createDocument', 'addWorkingVersion', 'updateMeta', 'setReaders', 'setTemplateTypes', 'recordReview', 'requestValidation', 'decideStep',
       'recallValidation', 'delegateStep', 'addComment', 'requestChange', 'simulateVigieDecision', 'graftChange', 'addDocLink',
       'removeDocLink', 'archiveDocuments', 'holdDocuments', 'releaseHold', 'restoreArchived', 'saveSearch', 'deleteSavedSearch',
       'togglePermission', 'addOrgValue', 'updateOrgValue', 'deleteOrgValue', 'setDepartmentFeatured', 'addFunctionHolder', 'removeFunctionHolder', 'createType', 'updateType',
       'deleteType', 'createFamily', 'updateFamily', 'deleteFamily', 'createFunction', 'updateFunction', 'deleteFunction', 'createProgram',
-      'updateProgram', 'deleteProgram', 'purgeOrphanFiles', 'backUpData',
+      'updateProgram', 'deleteProgram', 'purgeOrphanFiles', 'renameProvisionalFiles', 'backUpData', 'checkFileIntegrity', 'recordConsultation', 'setRetentionEvent', 'setRetentionClass',
+      'reassignStep', 'transferHoldings', 'addVocabTerm', 'renameVocabTerm', 'mergeVocabTerms', 'adoptSubtype', 'restoreWorkingVersion',
     ];
     const all = actions as unknown as Record<string, unknown>;
     const exported = Object.keys(all).filter((k) => typeof all[k] === 'function');

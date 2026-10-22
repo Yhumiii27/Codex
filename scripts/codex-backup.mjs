@@ -17,11 +17,11 @@
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
-import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
 import nextEnv from '@next/env';
+import { pgliteOptions } from '../src/lib/pglite-options.mjs';
 import {
-  BackupError, LOCK_FILE, backupDirOf, createBackup, journal, journalData, keepOf, listBackups, lockForCommand, pendingMigrations,
-  readMigrations, restoreBackup, unlock, verifyArchive,
+  BackupError, LOCK_FILE, backupDirOf, createBackup, journal, journalData, keepOf, listBackups, lockForCommand, lockPid, pendingMigrations,
+  readMigrations, restoreBackup, serverDatabaseRefusal, unlock, verifyArchive,
 } from '../src/lib/backup-core.mjs';
 
 const DEV = process.argv.includes('--dev') || process.env.NODE_ENV === 'development';
@@ -75,8 +75,8 @@ function explain(err) {
     case 'busy': {
       const lock = /** @type {{ lock?: { kind: string, pid: number } }} */ (/** @type {unknown} */ (err)).lock;
       return lock?.kind === 'server'
-        ? `Le serveur Codex tourne (processus ${lock.pid}) et tient la base de ${DATA_DIR}.\nArrêtez-le (npm run dev, npm run start ou l'app Mac), ou sauvegardez depuis Administration › Journal d'audit › Sauvegardes.\nSi aucun serveur ne tourne plus, supprimez ${path.join(DATA_DIR, LOCK_FILE)}.`
-        : `Une autre commande (${lock?.kind ?? d}) travaille sur ${DATA_DIR} (processus ${lock?.pid ?? '?'}).\nSi aucune commande ne tourne plus, supprimez ${path.join(DATA_DIR, LOCK_FILE)} (sinon il est ignoré 10 minutes après son dernier rafraîchissement).`;
+        ? `Le serveur Codex tourne (processus ${lockPid(lock)}) et tient la base de ${DATA_DIR}.\nArrêtez-le (npm run dev, npm run start ou l'app Mac), ou sauvegardez depuis Administration › Journal d'audit › Sauvegardes.\nSi aucun serveur ne tourne plus, supprimez ${path.join(DATA_DIR, LOCK_FILE)}.`
+        : `Une autre commande (${lock?.kind ?? d}) travaille sur ${DATA_DIR} (processus ${lockPid(lock)}).\nSi aucune commande ne tourne plus, supprimez ${path.join(DATA_DIR, LOCK_FILE)} (sinon il est ignoré 10 minutes après son dernier rafraîchissement).`;
     }
     case 'no_database': return `Aucune base Codex dans ${DATA_DIR} : rien à sauvegarder${d ? ` (${d})` : ''}.`;
     case 'backup_dir': return `Le dossier des sauvegardes (${d}) ne peut pas être dans la base ni dans les fichiers, ni les contenir : choisissez un autre CODEX_BACKUP_DIR.`;
@@ -144,11 +144,13 @@ async function appVersion() {
 }
 
 async function create() {
+  const refusal = serverDatabaseRefusal(process.env, 'npm run backup', "Sauvegardez la base avec les outils du serveur (pg_dump, instantanés de l'hébergeur) et le dossier des fichiers à part.");
+  if (refusal) throw new Error(refusal);
   const dbDir = path.join(DATA_DIR, 'pglite');
   if (!(await stat(path.join(dbDir, 'PG_VERSION')).then(() => true, () => false))) throw new BackupError('no_database');
   await lockForCommand(DATA_DIR, 'backup');
   try {
-    const pg = new PGlite({ dataDir: dbDir, extensions: { pg_trgm } });
+    const pg = new PGlite(pgliteOptions(dbDir));
     try {
       await pg.waitReady;
       const res = await createBackup({
@@ -180,10 +182,12 @@ async function check(arg) {
  * @param {boolean} replace
  */
 async function restore(arg, replace) {
+  const refusal = serverDatabaseRefusal(process.env, 'npm run restore', 'Une archive de Codex contient une base PGlite : elle ne se restaure pas dans un serveur. Restaurez la sauvegarde du serveur (pg_restore).');
+  if (refusal) throw new Error(refusal);
   const file = await archivePath(arg);
   await lockForCommand(DATA_DIR, 'restore');
   try {
-    const res = await restoreBackup({ archive: file, dataDir: DATA_DIR, replace, PGlite, extensions: { pg_trgm }, migrations: await readMigrations(MIGRATIONS) });
+    const res = await restoreBackup({ archive: file, dataDir: DATA_DIR, replace, PGlite, options: pgliteOptions(undefined), migrations: await readMigrations(MIGRATIONS) });
     console.log(`Base et fichiers restaurés dans ${DATA_DIR} depuis ${file}\n${describe(res.manifest)}`);
     if (res.aside) console.log(`  Base et fichiers remplacés mis de côté dans ${res.aside} (à supprimer une fois la restauration vérifiée).`);
     if (res.pending.length) console.log(`  Migrations appliquées au prochain démarrage : ${res.pending.join(', ')}`);

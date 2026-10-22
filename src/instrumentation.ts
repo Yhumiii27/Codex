@@ -8,11 +8,15 @@ import type { Instrumentation } from 'next';
 /**
  * Checks the configuration (lib/config-check.ts) and writes what it finds to the technical log. A configuration refused
  * (an error while CODEX_CONFIG_CHECK is strict, the default in production) stops the server before it serves anything.
+ * Then starts the scheduler (lib/scheduler.ts), whose first look comes a few seconds later: deferred entry into force,
+ * and the maintenance tasks its variables turn on.
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME !== 'nodejs') return;
   const { checkAtStart } = await import('./lib/config-check');
   await checkAtStart();
+  const { startScheduler } = await import('./lib/scheduler');
+  startScheduler();
 }
 
 /** Every server error Next.js catches (page rendering, Server Action, route handler, proxy), in the technical log. */

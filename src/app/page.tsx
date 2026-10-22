@@ -5,9 +5,10 @@ import { TODO_ICON } from '@/components/shell/todo';
 import { Icon } from '@/components/ui/Icon';
 import { ClickRow, DialogButton } from '@/components/ui/client';
 import { getCtx } from '@/lib/context';
-import { addDays, todayIso, todayLong } from '@/lib/format';
-import { deadlines, listAudit, listDocs, myTodo } from '@/lib/queries';
+import { todayLong } from '@/lib/format';
+import { dueDeadlines, inForceThisWeek, myTodo, recentActivity, recentDocs } from '@/lib/queries';
 import styles from './home.module.css';
+import { screenTitle } from '@/lib/titles';
 
 /** A KPI card: a link when the role may open its screen, otherwise a plain card (never a dead end). */
 function Kpi({ href, ok, children }: { href: string; ok: boolean; children: ReactNode }) {
@@ -15,25 +16,28 @@ function Kpi({ href, ok, children }: { href: string; ok: boolean; children: Reac
   return ok ? <Link href={href} className={cls}>{children}</Link> : <div className={cls}>{children}</div>;
 }
 
+export function generateMetadata() {
+  return screenTitle('nav_home');
+}
+
 export default async function HomePage() {
   const ctx = await getCtx();
   const { t, lang } = ctx;
-  const [docs, todo, audit] = await Promise.all([listDocs(ctx), myTodo(ctx), listAudit(ctx, { limit: 500, docsOnly: true })]);
+  // Only what the home shows is read (lib/queries.ts): no list of every document.
+  const [recents, todo, due, inForceWeek, activity] = await Promise.all([
+    recentDocs(ctx, 5),
+    myTodo(ctx),
+    dueDeadlines(ctx),
+    // Revisions that entered into force in the last 7 days and are still the ones in force.
+    inForceThisWeek(ctx),
+    // Activity of the group, limited to documents the user may see, each under its current ID.
+    recentActivity(ctx, 6, 500),
+  ]);
   const actions = todo.items;
-  const visible = new Map(docs.map((d) => [d.id, d]));
 
   // Everything waiting for me, as the sidebar badge and the bell list it (myTodo, handed to them by TodoSync); the KPI
   // counts the approval steps.
   const toApprove = actions.filter((a) => a.kind === 'step').length;
-  const due = deadlines(ctx, docs);
-  // Revisions that entered into force in the last 7 days and are still the ones in force.
-  const weekAgo = addDays(todayIso(), -7);
-  const inForceWeek = new Set(
-    audit.filter((a) => a.action === 'in_force' && a.local.slice(0, 10) >= weekAgo && !!a.currentId && visible.get(a.currentId)?.revInForce === a.detail).map((a) => a.currentId),
-  ).size;
-  const recents = docs.slice(0, 5);
-  // Activity of the group, limited to documents the user may see, each under its current ID.
-  const activity = audit.filter((a) => a.currentId && visible.has(a.currentId)).slice(0, 6);
   const noUpload = ctx.can('upload') ? undefined : `${t.not_allowed} : ${t.perm_upload}`;
 
   return (
@@ -62,7 +66,7 @@ export default async function HomePage() {
           <div className={styles.col}>
             <section>
               {/* The list is whole: no « Tout voir » towards Validations, which only holds the approval steps. */}
-              <div className="sec-head"><h6 className="sec-title">{t.todo}</h6></div>
+              <div className="sec-head"><h2 className="sec-title">{t.todo}</h2></div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {actions.map((a) => (
                   <div key={a.key} className={`card ${styles.todo}`}>
@@ -85,7 +89,7 @@ export default async function HomePage() {
               </div>
             </section>
             <section>
-              <div className="sec-head" style={{ marginBottom: 6 }}><h6 className="sec-title">{t.recents}</h6><Link href="/explorateur" className="sec-link">{t.see_all}</Link></div>
+              <div className="sec-head" style={{ marginBottom: 6 }}><h2 className="sec-title">{t.recents}</h2><Link href="/explorateur" className="sec-link">{t.see_all}</Link></div>
               <table className="table" style={{ fontSize: 13 }}>
                 <thead><tr><th>{t.title_label}</th><th>{t.type}</th><th>{t.revision}</th><th>{t.status}</th><th>{t.modified}</th></tr></thead>
                 <tbody>
@@ -105,7 +109,7 @@ export default async function HomePage() {
 
           <div className={styles.col}>
             <section>
-              <div className="sec-head"><h6 className="sec-title">{t.ret_due}</h6>{ctx.screens.retention && <Link href="/archivage" className="sec-link">{t.see_all}</Link>}</div>
+              <div className="sec-head"><h2 className="sec-title">{t.ret_due}</h2>{ctx.screens.retention && <Link href="/archivage" className="sec-link">{t.see_all}</Link>}</div>
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 {due.slice(0, 4).map((d) => (
                   <Link key={`${d.id}:${d.kind}`} href={d.href} className={`link-plain hairline ${styles.expRow}`}>
@@ -119,7 +123,7 @@ export default async function HomePage() {
               </div>
             </section>
             <section>
-              <div className="sec-head"><h6 className="sec-title">{t.activity}</h6>{ctx.screens.admin && <Link href="/administration?tab=audit" className="sec-link">{t.see_all}</Link>}</div>
+              <div className="sec-head"><h2 className="sec-title">{t.activity}</h2>{ctx.screens.admin && <Link href="/administration?tab=audit" className="sec-link">{t.see_all}</Link>}</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {activity.map((a) => (
                   <div key={a.id} className="feed">

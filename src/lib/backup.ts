@@ -1,6 +1,7 @@
 import 'server-only';
 import path from 'node:path';
 import { DATA_DIR, FILES_DIR, getDb } from '@/db';
+import { embedded } from '@/db/sql-client';
 import { backupDirOf, createBackup, journalData, keepOf, listBackups, readMigrations, type BackupResult } from './backup-core.mjs';
 import { audit } from './lifecycle';
 import { logger } from './log';
@@ -8,7 +9,8 @@ import { appVersion } from './version';
 
 // Backups while the server runs (Administration › Journal d'audit › Sauvegardes): the archive of lib/backup-core.mjs,
 // made from this process, which holds the database. Restoring needs the server stopped: npm run restore
-// (docs/sauvegarde.md). Nothing is scheduled: how often, and where archives should live, are not decided.
+// (docs/sauvegarde.md). Scheduled only when CODEX_SCHEDULE_BACKUP says how often (lib/scheduler.ts): how often, and
+// where archives should live, are not decided.
 
 const log = logger('backup');
 
@@ -36,32 +38,38 @@ export async function backupList(manifests = true) {
   }
 }
 
-let running = false;
+// On globalThis: the scheduler (lib/scheduler.ts) runs in the bundle of src/instrumentation.ts, apart from the Server
+// Actions; both must see a run in progress.
+const busy = ((globalThis as unknown as { __codexBusy?: Set<string> }).__codexBusy ??= new Set<string>());
 
 /**
  * Writes an archive now, journals it by `userId` (action 'backup_created', target the archive: its size, SHA-256 and
  * counts, no document named), and rotates the oldest out. 'busy' while another backup runs in this process; `recent`
  * (the latest archive's instant, and from when the next may be made) within ONLINE_MIN_INTERVAL_MS of the latest
- * archive. Writes wait while the database is dumped (seconds); the files are read afterwards.
+ * archive. Writes wait while the database is dumped (seconds); the files are read afterwards. 'server' on a PostgreSQL
+ * server (DATABASE_URL): Codex's archives copy PGlite's data directory, a server is backed up by its own tools
+ * (docs/postgres.md).
  */
-export async function backUpNow(userId: string): Promise<BackupResult | 'busy' | { recent: string; next: string }> {
-  if (running) return 'busy';
-  running = true;
+export async function backUpNow(userId: string): Promise<BackupResult | 'busy' | 'server' | { recent: string; next: string }> {
+  if (busy.has('backup')) return 'busy';
+  const db = await getDb();
+  const pglite = embedded(db.$client);
+  if (!pglite) return 'server';
+  busy.add('backup');
   try {
     const { dir, keep } = backupSettings();
     const latest = (await listBackups(dir, { manifests: false }))[0]?.createdAt;
     const age = latest ? Date.now() - Date.parse(latest) : NaN;
     // An archive dated in the future (a clock set back) does not hold the next one.
     if (latest && age >= 0 && age < ONLINE_MIN_INTERVAL_MS) return { recent: latest, next: new Date(Date.parse(latest) + ONLINE_MIN_INTERVAL_MS).toISOString() };
-    const db = await getDb();
     const res = await createBackup({
-      pg: db.$client, filesDir: FILES_DIR, dbDir: path.join(DATA_DIR, 'pglite'), backupDir: dir, keep, mode: 'online', by: userId,
+      pg: pglite, filesDir: FILES_DIR, dbDir: path.join(DATA_DIR, 'pglite'), backupDir: dir, keep, mode: 'online', by: userId,
       migrations: await readMigrations(path.join(/*turbopackIgnore: true*/ process.cwd(), 'drizzle')), app: await appVersion(),
     });
     await audit(db, userId, 'backup_created', { kind: 'backup', id: res.name }, '', null, { backup: journalData(res.manifest, res) });
     log.info('backup created', { path: res.path, size: res.size, sha256: res.sha256, rotatedOut: res.removed.length ? res.removed : undefined });
     return res;
   } finally {
-    running = false;
+    busy.delete('backup');
   }
 }

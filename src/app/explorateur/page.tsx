@@ -11,6 +11,7 @@ import {
 } from '@/lib/queries';
 import { oneEach, pageOf } from '@/lib/search';
 import styles from './explorer.module.css';
+import { screenTitle } from '@/lib/titles';
 
 // Classification axes (docs/modele-cible.md §2), status filters and dates past due of the explorer: lib/queries.ts
 // explorerDocs counts and pages the documents the user may see. Dates past due are the record's indicators
@@ -40,6 +41,10 @@ function axisNodes(ctx: Ctx, axis: Axis): { key: string; label: string }[] {
     case 'type': return ctx.types.map((ty) => ({ key: ty.code, label: ctx.label('type', ty.code) })).sort((a, b) => a.label.localeCompare(b.label, ctx.lang));
     case 'origin': return [{ key: 'interne', label: t.or_interne }, { key: 'externe', label: t.or_externe }];
   }
+}
+
+export function generateMetadata() {
+  return screenTitle('nav_explorer');
 }
 
 export default async function ExplorerPage({ searchParams }: PageProps<'/explorateur'>) {
@@ -83,6 +88,15 @@ export default async function ExplorerPage({ searchParams }: PageProps<'/explora
   const here: Params = { ...base, node, sub };
   const atPage: Params = { ...here, page: page > 1 ? String(page) : undefined };
   const noUpload = ctx.can('upload') ? undefined : `${t.not_allowed} : ${t.perm_upload}`;
+  // « Déposer » and « Nouveau » propose what the tree selects (design: « Déposer » in this bar): the department or the
+  // family chosen, the type chosen (node of the Type axis, or a type under another node). Only proposals: the dialog
+  // keeps what the register and the organisation admit, and the user may change them.
+  const typeKey = axis === 'type' ? node : sub;
+  const treePreset = {
+    ...(axis === 'department' && node ? { department: node } : {}),
+    ...(axis === 'family' && node ? { family: node } : {}),
+    ...(typeKey && ctx.typeByCode.has(typeKey) ? { typeCode: typeKey } : {}),
+  };
   const axisLabel: Record<Axis, { short: string; full: string }> = {
     family: { short: t.family, full: t.family },
     department: { short: t.ax_department_short, full: t.department },
@@ -93,9 +107,9 @@ export default async function ExplorerPage({ searchParams }: PageProps<'/explora
 
   return (
     <div className="screen" style={{ display: 'flex', minWidth: 0 }} data-screen-label="Explorateur">
-      <aside className={styles.tree}>
+      <aside className={styles.tree} aria-label={t.classification}>
         <div style={{ padding: '14px 14px 10px' }}>
-          <h6 className="sec-title" style={{ marginBottom: 8 }}>{t.classification}</h6>
+          <h2 className="sec-title" style={{ marginBottom: 8 }}>{t.classification}</h2>
           <Seg
             name="axis"
             value={axis}
@@ -132,7 +146,7 @@ export default async function ExplorerPage({ searchParams }: PageProps<'/explora
           ))}
         </div>
         <div className={styles.due}>
-          <h6 className="sec-title" style={{ padding: '0 6px', marginBottom: 6 }}>{t.facet_overdue}</h6>
+          <h2 className="sec-title" style={{ padding: '0 6px', marginBottom: 6 }}>{t.facet_overdue}</h2>
           {DUES.map((k) => {
             const on = due === k;
             return (
@@ -159,7 +173,8 @@ export default async function ExplorerPage({ searchParams }: PageProps<'/explora
             optStyle={{ padding: '5px 10px', fontSize: 12, whiteSpace: 'nowrap' }}
             options={STATUSES.map((k) => ({ key: k, label: t[`f_${k}`], href: href({ ...here, sel, status: k === 'all' ? undefined : k }) }))}
           />
-          <DialogButton spec={{ kind: 'new' }} className="btn btn-primary" icon="plus" iconSw={1.8} deniedTitle={noUpload}>{t.new_doc_btn}</DialogButton>
+          <DialogButton spec={{ kind: 'new', preset: { mode: 'file', ...treePreset } }} icon="upload" deniedTitle={noUpload}>{t.upload}</DialogButton>
+          <DialogButton spec={{ kind: 'new', preset: treePreset }} className="btn btn-primary" icon="plus" iconSw={1.8} deniedTitle={noUpload}>{t.new_doc_btn}</DialogButton>
         </div>
         {/* A page opens at its top: the list is mounted again for each page. */}
         <div key={page} style={{ flex: 1, overflow: 'auto', padding: '0 20px 20px' }}>
@@ -206,9 +221,9 @@ export default async function ExplorerPage({ searchParams }: PageProps<'/explora
       </section>
 
       {selDoc && (
-        <aside className={styles.quick}>
+        <aside className={styles.quick} aria-label={t.quick_view}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h6 className="sec-title">{t.quick_view}</h6>
+            <h2 className="sec-title">{t.quick_view}</h2>
             <Link href={href(atPage)} className="btn btn-ghost btn-icon" style={{ width: 28, height: 28 }} aria-label={t.close} scroll={false}><Icon name="close" size={14} /></Link>
           </div>
           <div>

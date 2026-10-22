@@ -7,7 +7,8 @@ export type RegistryFamily = { key: string; label_fr: string; label_en: string; 
 export type RegistryType = {
   code: string; label_fr: string; label_en: string; family: string; origins: Origin[]; attachments: Attachment[];
   subtypes: { fr: string; en: string }[]; circuit: string[];
-  retention: { years: number | null; trigger: RetentionTrigger; disposition: Disposition; basis: string };
+  /** `basis`: what the rule rests on, in French; `basisEn`: its English wording, when written (empty until then). */
+  retention: { years: number | null; trigger: RetentionTrigger; disposition: Disposition; basis: string; basisEn?: string };
   confAllowed: Conf[]; confDefault: Conf; iso?: string; clientDeliverable?: boolean; source: 'deck' | 'keystone' | 'both';
 };
 

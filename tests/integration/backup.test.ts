@@ -3,7 +3,7 @@ import { closeSync, existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, ope
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
-import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
+import { pgliteOptions } from '@/lib/pglite-options.mjs';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DATA_DIR, FILES_DIR, openDb, schema as s } from '@/db';
@@ -13,7 +13,7 @@ import type { Ctx } from '@/lib/context';
 import { DICT } from '@/lib/i18n';
 import { auditDetailL } from '@/lib/queries';
 import { getCtx } from '@/lib/context';
-import { addDoc, setClock, setupDb } from '../support/db';
+import { addDoc, pgliteOf, setClock, setupDb } from '../support/db';
 import { actAs } from '../support/session';
 
 // Backup and restore (point 48 of docs/reste-a-faire.md, lib/backup-core.mjs): an archive of the test database and of
@@ -42,7 +42,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 });
 const fsError = (code: string, p: string) => Object.assign(new Error(`${code}: simulated, rename '${p}'`), { code });
 
-const db = setupDb();
+const db = setupDb({ engine: 'pglite' });
 const scratch = mkdtempSync(path.join(tmpdir(), 'codex-backup-'));
 const BACKUPS = path.join(scratch, 'backups');
 let migrations: Migration[];
@@ -88,13 +88,13 @@ type Pg = Parameters<typeof createBackup>[0]['pg'];
 function backup(opts: Partial<Parameters<typeof createBackup>[0]> = {}) {
   n++;
   return createBackup({
-    pg: db().$client, filesDir: FILES_DIR, dbDir: null, backupDir: BACKUPS, keep: 7, mode: 'offline', by: 'cli', migrations,
+    pg: pgliteOf(db()), filesDir: FILES_DIR, dbDir: null, backupDir: BACKUPS, keep: 7, mode: 'offline', by: 'cli', migrations,
     now: new Date(Date.UTC(2026, 9, 15, 8, 0, n)), ...opts,
   });
 }
 
 const restore = (archive: string, dataDir: string, extra: Partial<Parameters<typeof restoreBackup>[0]> = {}) =>
-  restoreBackup({ archive, dataDir, PGlite, extensions: { pg_trgm }, migrations, ...extra });
+  restoreBackup({ archive, dataDir, PGlite, options: pgliteOptions(undefined), migrations, ...extra });
 
 /** Overwrites one byte of a file. */
 function flip(file: string, at: number) {
@@ -125,6 +125,17 @@ describe('createBackup', () => {
     expect(readdirSync(BACKUPS)).toEqual([res.name]);
   });
 
+  it('archives the PDF renderings of the preview (version_previews) with the files', async () => {
+    await withFile('PRO-QUA-0001', key(1, 'PRO-QUA-0001_A.1.pdf'), '%PDF-one');
+    const render = key(5, 'PRO-QUA-0001_A.apercu.pdf');
+    put(render, '%PDF-render');
+    const [v] = await db().select().from(s.workingVersions).where(eq(s.workingVersions.docId, 'PRO-QUA-0001'));
+    await db().insert(s.versionPreviews).values({ workingVersionId: v.id, status: 'ready', fileKey: render, size: 11, pages: 1, sha256: 'b'.repeat(64), converter: 'gotenberg', at: '2026-10-15T08:00:00Z' });
+    const res = await backup();
+    expect(res.manifest.files).toMatchObject({ count: 2, missing: [] });
+    expect(res.manifest.entries.map((e) => e.name)).toContain(`files/${render}`);
+  });
+
   it('records a referenced file the store does not have, and still writes the archive', async () => {
     await withFile('PRO-QUA-0001', key(1, 'PRO-QUA-0001_A.1.pdf'), '%PDF-one');
     rmSync(path.join(FILES_DIR, key(1, 'PRO-QUA-0001_A.1.pdf')));
@@ -136,7 +147,7 @@ describe('createBackup', () => {
     const before = key(1, 'upload.pdf');
     const after = key(1, 'PRO-QUA-0001_A.1.pdf');
     await withFile('PRO-QUA-0001', before, '%PDF-renamed');
-    const real = db().$client;
+    const real = pgliteOf(db());
     // What nameStoredFile does once the database is free again: link the new name, point the record to it, remove the old one.
     const pg = {
       transaction: async (cb: Parameters<typeof real.transaction>[0]) => {
@@ -336,7 +347,7 @@ describe('restoreBackup', () => {
 
   it('refuses a database that does not match its manifest, and leaves the target as it was', async () => {
     await fill();
-    const real = db().$client;
+    const real = pgliteOf(db());
     // A manifest that counts one document more than the dump holds.
     const pg = {
       transaction: (cb: Parameters<typeof real.transaction>[0]) => real.transaction((tx) => cb({

@@ -1,6 +1,7 @@
 import { asc, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeEach, vi } from 'vitest';
 import { openDb, schema as s, type Db } from '@/db';
+import { embedded } from '@/db/sql-client';
 import type { Conf, DocState, RevStatus } from '@/db/schema';
 import { refreshHeadline } from '@/lib/lifecycle';
 import { insertFixtures, TYPES, type Person } from './fixtures';
@@ -8,26 +9,36 @@ import { insertFixtures, TYPES, type Person } from './fixtures';
 // In-memory database for the integration tests: the schema of drizzle/ and the append-only journal (openDb in
 // src/db/index.ts), plus the reference data of fixtures.ts. Opening PGlite takes seconds, so each test file opens one
 // database, and every test starts from it emptied and filled with the fixtures again (a few milliseconds).
+// With CODEX_TEST_DATABASE_URL (npm run test:pg, docs/postgres.md), the database of a test file is a new database on that
+// PostgreSQL server instead, dropped after its last test; a file that tests what only PGlite does (the backups) asks
+// for PGlite with setupDb({ engine: 'pglite' }).
 
 let opened: Promise<Db> | null = null;
 let current: Db | null = null;
 
 /**
- * Empties every table of the application, the journal included, and writes the fixtures again. The journal refuses
- * TRUNCATE (src/db/index.ts): session_replication_role = replica skips its trigger for this one transaction (SET
- * LOCAL), and the trigger itself stays in place for the test.
+ * Empties every table of the schema codex but the journal of the migrations, the audit journal included. The journal
+ * refuses TRUNCATE (src/db/index.ts): its trigger is disabled for this one transaction, which its owner may do (the
+ * role of a test database on a server is no superuser: npm run test:pg), and is enabled again before it commits.
  */
-export async function reset(db: Db): Promise<void> {
-  const { rows } = await db.$client.query<{ name: string }>(`select quote_ident(tablename) as name from pg_tables where schemaname = 'public'`);
+export async function emptyTables(db: Db): Promise<void> {
+  const { rows } = await db.$client.query<{ name: string }>(`select quote_ident(tablename) as name from pg_tables where schemaname = 'codex' and tablename <> '__drizzle_migrations'`);
   await db.$client.transaction(async (tx) => {
-    await tx.exec(`set local session_replication_role = replica; truncate ${rows.map((r) => r.name).join(', ')} restart identity cascade;`);
+    await tx.exec(`alter table audit_log disable trigger audit_log_no_truncate;
+      truncate ${rows.map((r) => r.name).join(', ')} restart identity cascade;
+      alter table audit_log enable trigger audit_log_no_truncate;`);
   });
+}
+
+/** Empties every table (emptyTables) and writes the fixtures again. */
+export async function reset(db: Db): Promise<void> {
+  await emptyTables(db);
   await insertFixtures(db);
 }
 
 /** The test file's database, emptied and filled with the fixtures: migrated, with the journal trigger, no document. */
-async function freshDb(): Promise<Db> {
-  opened ??= openDb();
+async function freshDb(engine?: 'pglite'): Promise<Db> {
+  opened ??= openDb(engine === 'pglite' ? 'memory://' : undefined);
   const db = await opened;
   await reset(db);
   return db;
@@ -37,9 +48,9 @@ async function freshDb(): Promise<Db> {
  * Gives every test of the file a fresh database (freshDb), returned by the getter and by currentDb(), which a test
  * file that mocks getDb() hands to the code under test. Closed after the last test of the file.
  */
-export function setupDb(): () => Db {
+export function setupDb(opts: { engine?: 'pglite' } = {}): () => Db {
   beforeEach(async () => {
-    current = await freshDb();
+    current = await freshDb(opts.engine);
   });
   afterEach(() => {
     current = null;
@@ -54,6 +65,13 @@ export function setupDb(): () => Db {
 /** Hands `db` to currentDb() (a database the test file opened and filled itself, the demo seed for one), or none. */
 export function useDb(db: Db | null): void {
   current = db;
+}
+
+/** The PGlite behind a test database opened with setupDb({ engine: 'pglite' }) (the backups copy its data directory). */
+export function pgliteOf(db: Db) {
+  const pg = embedded(db.$client);
+  if (!pg) throw new Error('not a PGlite database: setupDb({ engine: \'pglite\' })');
+  return pg;
 }
 
 /** The database of the running test, for a mocked getDb(). */

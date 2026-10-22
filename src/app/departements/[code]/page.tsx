@@ -7,6 +7,7 @@ import { getCtx } from '@/lib/context';
 import { markInactive } from '@/lib/org-rules';
 import { departmentPage } from '@/lib/queries';
 import { FACET_LABEL } from '@/lib/search';
+import { titled } from '@/lib/titles';
 import { DepartmentPicker } from '../DepartmentPicker';
 import styles from '../departments.module.css';
 
@@ -18,6 +19,14 @@ const DUE_SHOWN = 8;
 function Kpi({ href, children }: { href?: string; children: ReactNode }) {
   const cls = `card ${styles.kpi}`;
   return href ? <Link href={href} className={cls}>{children}</Link> : <div className={cls}>{children}</div>;
+}
+
+/** « Qualité — Codex »: the department's label (reference data, the same for every user); an unknown code, the screen's name. */
+export async function generateMetadata({ params }: PageProps<'/departements/[code]'>) {
+  const { code } = await params;
+  const ctx = await getCtx();
+  const known = ctx.departments.some((d) => d.code === code);
+  return titled(known ? ctx.label('department', code) : ctx.t.nav_departments);
 }
 
 export default async function DepartmentPage({ params }: PageProps<'/departements/[code]'>) {
@@ -58,7 +67,7 @@ export default async function DepartmentPage({ params }: PageProps<'/departement
         <div className={styles.cols}>
           <div className={styles.col}>
             <section>
-              <div className="sec-head" style={{ marginBottom: 6 }}><h6 className="sec-title">{t.dept_in_force}</h6><Link href={page.href.inForce} className="sec-link">{t.see_all}</Link></div>
+              <div className="sec-head" style={{ marginBottom: 6 }}><h2 className="sec-title">{t.dept_in_force}</h2><Link href={page.href.inForce} className="sec-link">{t.see_all}</Link></div>
               {docs.length ? (
                 <table className="table" style={{ fontSize: 13 }}>
                   <thead><tr><th>{t.title_label}</th><th>{t.type}</th><th>{t.revision}</th><th>{t.modified}</th></tr></thead>
@@ -76,7 +85,7 @@ export default async function DepartmentPage({ params }: PageProps<'/departement
               ) : <p className={`text-muted ${styles.empty}`}>{t.dept_in_force_empty}</p>}
             </section>
             <section>
-              <div className="sec-head"><h6 className="sec-title">{t.dept_wf}</h6></div>
+              <div className="sec-head"><h2 className="sec-title">{t.dept_wf}</h2></div>
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 {page.workflows.map((w) => (
                   <Link key={w.id} href={ctx.screens.workflow ? w.href : `/documents/${encodeURIComponent(w.docId)}`} className={`link-plain hairline ${styles.row}`}>
@@ -85,6 +94,7 @@ export default async function DepartmentPage({ params }: PageProps<'/departement
                       <div className="ellipsis">{w.docTitle}</div>
                       <div className="text-muted ellipsis sub">{w.docId} · {t.rev_short} {w.letter} · {t.step}{colon}{w.stepName} · {t.due} {w.dueF}</div>
                     </div>
+                    {w.lateL && <span className="tag tag-outline" style={{ flex: 'none' }} title={w.lateTitle ?? undefined}>{w.lateL}</span>}
                     <span className="tag tag-outline" style={{ flex: 'none' }}>{w.progress}</span>
                   </Link>
                 ))}
@@ -95,7 +105,7 @@ export default async function DepartmentPage({ params }: PageProps<'/departement
 
           <div className={styles.col}>
             <section>
-              <div className="sec-head"><h6 className="sec-title">{t.featured_filters}</h6>{ctx.screens.admin && <Link href="/administration?tab=org" className="sec-link">{t.featured_set}</Link>}</div>
+              <div className="sec-head"><h2 className="sec-title">{t.featured_filters}</h2>{ctx.screens.admin && <Link href="/administration?tab=org" className="sec-link">{t.featured_set}</Link>}</div>
               {page.featured.length ? (
                 <div className={styles.facets}>
                   {page.featured.map((f) => (
@@ -116,7 +126,7 @@ export default async function DepartmentPage({ params }: PageProps<'/departement
               ) : <p className={`text-muted ${styles.empty}`}>{page.featuredKeys.length ? t.featured_empty : t.featured_none_set}</p>}
             </section>
             <section>
-              <div className="sec-head"><h6 className="sec-title">{t.saved}</h6><Link href="/recherche" className="sec-link">{t.adv_search}</Link></div>
+              <div className="sec-head"><h2 className="sec-title">{t.saved}</h2><Link href="/recherche" className="sec-link">{t.adv_search}</Link></div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 {page.saved.map((x) => (
                   <Link key={x.id} href={x.href} className={styles.saved} title={x.title}>
@@ -129,7 +139,7 @@ export default async function DepartmentPage({ params }: PageProps<'/departement
               </div>
             </section>
             <section>
-              <div className="sec-head"><h6 className="sec-title">{t.ret_due}</h6>{ctx.screens.retention && <Link href="/archivage" className="sec-link">{t.see_all}</Link>}</div>
+              <div className="sec-head"><h2 className="sec-title">{t.ret_due}</h2>{ctx.screens.retention && <Link href="/archivage" className="sec-link">{t.see_all}</Link>}</div>
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 {page.deadlines.slice(0, DUE_SHOWN).map((d) => (
                   <Link key={`${d.id}:${d.kind}`} href={d.href} className={`link-plain hairline ${styles.row}`}>

@@ -351,7 +351,9 @@ Règles de lecture :
 - **Décision retenue** : chaque type porte dans le registre une règle de conservation (durée, événement déclencheur,
   sort final, justification), que le document reçoit de son type et qu'un gestionnaire peut modifier.
 - **Mise en œuvre** : `retention` de chaque type dans `src/db/registry.ts`, `src/lib/retention.ts`, écran Archivage,
-  `docs/modele-cible.md` §8.
+  `docs/modele-cible.md` §8. Classe modifiable par document, date d'événement et répercussion de la règle du type
+  (17 octobre) : `setRetentionClass`, `setRetentionEvent` et `updateType` dans `src/lib/actions.ts` ; choix non
+  confirmés dans « Choix de l'assistant non validés explicitement ».
 - **Provisoire** : les durées sont des propositions issues de la fusion deck + Keystone. L'utilisateur ne les a pas
   validées une à une (O-07).
 
@@ -732,12 +734,12 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
   - l'export du journal est inscrit à la fin du téléchargement (ou à son interruption, avec le nombre de lignes
     envoyées) : un arrêt brutal du serveur pendant l'export ne laisse pas de trace. Une requête HEAD sur un export
     ne journalise rien ;
-  - le déclencheur qui rend le journal en ajout seul est posé à chaque démarrage (`src/db/index.ts`), pas dans la
-    migration, que l'on régénère tant qu'il n'y a pas de base de production.
+  - le déclencheur qui rend le journal en ajout seul est posé à chaque démarrage (`src/db/index.ts`), pas dans les
+    migrations (régénérées jusqu'au 17 octobre 2026, incrémentales depuis).
 - **Authentification cible Entra ID** : proposée le 7 octobre à 12:40 (« passer à l'authentification Entra ID ») et à
   17:33 (lot 4 « Authentification Entra ID et organigramme »). L'utilisateur n'en a jamais parlé (O-02).
-  `docs/modele-cible.md` §1, `docs/api.md`, `docs/avancement-v2.md` et le commentaire de
-  `src/app/api/registry/route.ts` la présentent pourtant comme la cible.
+  `docs/modele-cible.md` (en tête et §1) la présente comme « proposé, non confirmé » ; `docs/api.md`,
+  `docs/avancement-v2.md` et `src/app/api/registry/route.ts` ne la mentionnent plus.
 - **API d'import** pour l'outil de migration (D-21).
 - **Autres applications** (D-16) : créer un module ECR/ECO dans Vigie, et faire pointer vers Vigie le module ECO de
   Keystone et sa spec.
@@ -846,7 +848,8 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     eux, l'aperçu paginé retélécharge encore tout le fichier à chaque page (point 46, reste) ;
   - un téléchargement (`?download=1`) est journalisé quand sa réponse part du premier octet (200, ou 206 à partir de
     0) : la reprise d'un téléchargement interrompu n'ajoute pas d'entrée. Il ne reçoit jamais 304 : il est toujours
-    envoyé, donc toujours journalisé. La consultation dans l'aperçu n'est pas journalisée, comme avant ;
+    envoyé, donc toujours journalisé. La consultation dans l'aperçu n'était pas journalisée ; elle l'est depuis le
+    17 octobre (« Consultations », plus bas) ;
   - plusieurs plages dans une requête reçoivent le fichier entier (pas de `multipart/byteranges`) ; une plage mal
     formée reçoit 416, comme une plage au-delà du fichier ;
   - le nettoyage des fichiers orphelins est une action d'administration réservée aux gestionnaires documentaires qui
@@ -857,7 +860,8 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     lien ou le dernier déplacement du fichier ; 200 fichiers au plus par passage, une entrée de journal par passage avec
     la liste ; seuls les noms que Codex donne sont examinés. SharePoint est listé, jamais nettoyé, tant que le pilote n'a pas été essayé sur un vrai
     tenant (O-01). Pas de commande npm : PGlite n'ouvre la base que dans un seul processus, celui du serveur ; le
-    planificateur (point 38 de `docs/reste-a-faire.md`) appellera la même fonction.
+    planificateur (point 38) appelle la même fonction quand `CODEX_SCHEDULE_ORPHANS` en donne la fréquence (désactivé
+    par défaut, voir « Planificateur interne »).
 - **Sauvegarde et restauration** (point 48 de `docs/reste-a-faire.md`, 15 octobre ; procédure dans
   `docs/sauvegarde.md`. Hébergement, fréquence, lieu de conservation, chiffrement, perte de données et délai de reprise
   tolérés (M22 de l'audit) non décidés ; SharePoint (O-01) non décidé) :
@@ -877,8 +881,8 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     `0600`) : la clé et la copie hors de la machine dépendent de l'hébergement. Rotation, après relecture de la
     nouvelle : les 7 plus récentes (`CODEX_BACKUP_KEEP`) et la plus récente de chacun des 7 derniers jours (UTC) où une
     sauvegarde a été faite, soit 14 au plus : des sauvegardes faites à la suite n'écartent jamais les jours d'avant ;
-  - aucune sauvegarde programmée, faute de fréquence décidée ; le planificateur (point 38) pourra appeler la même
-    fonction ;
+  - aucune sauvegarde programmée par défaut, faute de fréquence décidée ; le planificateur (point 38) appelle la même
+    fonction quand `CODEX_SCHEDULE_BACKUP` en donne la fréquence ;
   - sauvegarde depuis Administration (serveur en marche) réservée aux gestionnaires documentaires ayant l'accès
     Administration, comme le nettoyage du stockage : l'archive contient tous les brouillons et son manifeste nomme les
     fichiers (D-14). Entrée de journal « Sauvegarde créée » avec l'archive, sa taille, le début de son SHA-256 et des
@@ -944,7 +948,7 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     requête de base en échec (le message de Drizzle est réduit au SQL paramétré, la valeur citée par PostgreSQL masquée)
     ni le `detail` d'une erreur de base. Une Server Action qui échoue ainsi remet à Next.js une erreur refaite sans ces
     valeurs, puisque Next.js imprime lui-même, dans la même sortie, l'erreur entière ; une erreur pendant le rendu d'une
-    page reste imprimée par Next.js telle quelle (limite signalée dans `docs/exploitation.md` §4). Une requête d'API
+    page reste imprimée par Next.js telle quelle (limite signalée dans `docs/exploitation.md` §5). Une requête d'API
     qui lève une erreur répond 500 `{"error":"internal","requestId"}` au lieu de la page d'erreur de Next.js, comme
     `/api/import` et `/api/integrations/vigie` pour l'erreur qu'elles rattrapent. La 503 `disabled` d'un point
     d'entrée sans jeton, état par défaut, est écrite au niveau `info`, pas `error` : un client anonyme ne peut pas
@@ -1077,7 +1081,496 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     d'export programmé, pas de chiffrement : à décider avec l'hébergement ;
   - le téléchargement compte dans le budget des exports (`CODEX_RATE_EXPORTS`), sans autre limite : deux exports
     simultanés sont possibles (chacun sa copie temporaire).
+- **Empreinte SHA-256 des fichiers : intégrité et doublons** (point 31 de `docs/reste-a-faire.md`, 17 octobre ;
+  planification des contrôles (point 38), hébergement et alertes (M22), SharePoint (O-01) non décidés) :
+  - **calcul** sur les octets reçus, avant leur écriture au stockage, pour toute entrée (nouveau document, copie d'un
+    modèle, version de travail, import) ; gardée en hexadécimal minuscule sur la version de travail
+    (`working_versions.sha256`), jamais modifiée ensuite ;
+  - **fichiers déposés avant le calcul** : la première vérification enregistre l'empreinte des octets tels qu'ils sont
+    (rien de plus ancien n'en atteste), sauf si leur taille diffère déjà de celle enregistrée (le fichier est alors
+    signalé altéré). Le journal compte ces empreintes établies après coup ; la fiche de visa d'un fichier sans empreinte
+    dit « non calculée » ;
+  - **vérification** à la demande (et par le planificateur si `CODEX_SCHEDULE_INTEGRITY` en donne la fréquence,
+    désactivé par défaut) : Administration › Journal d'audit › Intégrité des fichiers (gestionnaires
+    documentaires ayant l'accès Administration, comme la sauvegarde : le résultat nomme des brouillons) et
+    `npm run integrity`, serveur arrêté, qui sort en erreur (code 1) s'il y a un écart, pour qu'un planificateur puisse
+    alerter. Rien n'est réparé ni supprimé : revenir à une copie saine (sauvegarde) reste une décision humaine. Le
+    résultat va au journal d'audit (« Vérification d'intégrité » : nombres et documents montrés aux seuls
+    gestionnaires, les autres lecteurs du journal lisent seulement s'il y a des écarts) et au journal technique (niveau
+    `error` en cas d'écart). Aucune notification : il n'y a pas encore de messagerie ;
+  - **téléchargement** : un fichier servi en entier est vérifié au passage ; altéré, il est interrompu avant ses
+    derniers octets (le destinataire n'a jamais un fichier altéré qui semble complet) et l'entrée « Fichier altéré
+    détecté » est écrite sur le document, avec l'utilisateur et la version (visible comme les autres entrées de la
+    révision, D-14). Une plage d'octets (aperçu, reprise) n'est pas vérifiée : il faudrait relire tout le fichier ; la
+    vérification d'ensemble couvre ce cas. La copie d'un modèle dont le fichier ne correspond plus est refusée ;
+  - **doublons** : avertissement non bloquant après le dépôt (message affiché plus longtemps), qui nomme au plus trois
+    documents, chacun avec la version concernée, seulement si l'utilisateur peut avoir ce fichier-là : hors du cercle
+    de rédaction, le fichier final de la révision en vigueur d'un document qu'il lit, jamais une version de travail, un
+    brouillon, une révision remplacée ni un document qu'il ne lit pas (D-14). Dans le cercle, une version antérieure
+    identique du même document est signalée aussi. La copie d'un modèle n'avertit pas (elle est identique au modèle
+    par construction). L'import renvoie l'avertissement `duplicate_file` pour un fichier en vigueur de niveau Public,
+    Restreint ou Interne seulement : l'outil de migration est hors de Codex ;
+  - **affichage** : empreinte complète sous chaque version de l'onglet Révisions (sélectionnable d'un clic, pour la
+    comparer à `sha256sum` ou `Get-FileHash`), début de l'empreinte dans la comparaison des versions, empreinte complète
+    du fichier approuvé dans la fiche de visa ; début de l'empreinte dans le journal des dépôts, au seul cercle de
+    rédaction (elle permettrait de reconnaître le fichier d'un brouillon) ;
+  - **export complet** : la colonne `sha256` est exportée ; un fichier dont les octets ne correspondent plus est
+    archivé tel quel et listé dans le manifeste (`files.altered`), compté dans le journal de l'export.
+- **Consultations et historique des métadonnées** (points 28 et 22 de `docs/reste-a-faire.md`, 17 octobre ; qui
+  consulte le journal et combien de temps on le garde (M05), valeur probante (O-02) non décidés) :
+  - **ce qui est journalisé** : l'ouverture d'une fiche (« Consultation de la fiche », avec la lettre de la révision
+    montrée) et un fichier affiché dans l'aperçu (« Consultation du fichier », avec la version et le format, comme un
+    téléchargement), pour tous les niveaux de confidentialité, pas seulement Confidentiel et Très confidentiel ;
+  - **dédoublonnage** : une entrée par personne, document, action, révision et version toutes les 30 minutes au plus
+    (`CONSULT_WINDOW_MINUTES`), comptées depuis la dernière entrée écrite : recharger la fiche, tourner les pages de
+    l'aperçu ou revalider la copie gardée par le navigateur n'ajoute rien dans ce délai, une lecture continue ajoute
+    une entrée par demi-heure. Pas de réglage par variable d'environnement tant que le besoin n'est pas exprimé ;
+  - **fichier** : journalisé sur la réponse entière, la première plage (à partir de l'octet 0) ou un 304 (le navigateur
+    affiche la copie qu'il a gardée) ; une plage plus loin dans le fichier et une requête HEAD n'écrivent rien. Comme
+    pour un téléchargement, le fichier n'est pas servi si l'entrée ne peut pas être écrite ;
+  - **fiche** : journalisée par le navigateur une fois la page affichée (Server Action `recordConsultation`), jamais
+    au rendu côté serveur, que le préchargement des liens déclencherait sans que personne n'ouvre la fiche. Cette
+    action compte dans le budget d'écritures de l'utilisateur (`CODEX_RATE_WRITES`) : au-delà, la consultation n'est
+    pas journalisée, rien n'est bloqué. Un document illisible n'écrit rien ;
+  - **qui les lit** : les règles existantes du journal (D-14). Chaque consultation est rattachée à une révision :
+    celle du fichier, ou pour une fiche la révision en vigueur (à défaut, la dernière remplacée, sinon la dernière) ;
+    elle est donc cachée hors du cercle de rédaction tant que cette révision est un brouillon. Les lecteurs du document
+    voient qui l'a consulté, comme ils voient déjà qui l'a téléchargé ; restreindre cette liste (gestionnaires,
+    propriétaire) est une question de M05, non tranchée ;
+  - **affichage** : les consultations sont retirées de l'activité de l'accueil, des notifications, de l'onglet
+    « Activité » de la fiche (et de son « Modifié par ») et de la fiche de visa ; l'onglet Historique de la fiche les
+    liste à part (« Consultations », 200 plus récentes), à côté de « Métadonnées » (modifications et reclassements, avec
+    l'avant et l'après déjà journalisés depuis l'étape 6) ; l'onglet Journal les filtre par action et l'export CSV
+    les contient. L'index `audit_log_doc` porte désormais (document, utilisateur, action, date) pour le
+    dédoublonnage.
+- **Auteur désigné** (point 4 de `docs/reste-a-faire.md`, MET-10, 17 octobre) :
+  - **choix** : à la création et dans « Modifier les métadonnées », une liste des personnes du groupe (acteurs système
+    exclus) avec une dernière option « Auteur externe (texte libre) » ; personne et texte s'excluent, une valeur
+    choisie est obligatoire, le texte tient en 200 caractères (comme à l'import). Par défaut, la personne qui crée le
+    document (comme avant), y compris pour un document externe ;
+  - **portée** : l'auteur est une métadonnée. Le désigner ne fait **pas** entrer la personne dans le cercle de rédaction
+    et ne lui donne aucun droit (pas de visibilité d'un brouillon, D-14) ; seul l'ECO de Vigie désigne un modificateur ;
+  - **reprise** : un document importé ou ancien sans auteur affiche toujours son propriétaire ; la boîte de dialogue
+    propose cette personne et l'enregistre à la première modification (journalisée). Un appel qui n'envoie pas
+    l'auteur le laisse inchangé ;
+  - **cohérence** : la fiche, la facette « Auteur » de la recherche, l'export CSV de la recherche (nouvelle colonne
+    « Auteur ») et l'export complet montrent le même auteur ; l'import l'accepte déjà (identifiant ou texte). Le
+    changement est journalisé (« Auteur », « Auteur (texte libre) », avant → après).
+- **Types cibles des modèles** (point 6 de `docs/reste-a-faire.md`, FON-12, 17 octobre) :
+  - **rattachement** : un modèle FRM peut viser un ou plusieurs types (table `template_types`), réglés par son
+    propriétaire ou un gestionnaire documentaire avec le droit Modifier, depuis la fiche du modèle ou Administration ›
+    Modèles (QMS) ; refusé sur un document gelé ; journalisé comme une modification de métadonnées (valeurs cachées
+    hors du cercle de rédaction tant que le modèle n'est pas en vigueur, D-14). Un type désactivé reste là où il est,
+    sans pouvoir être ajouté ; un type visé par un modèle compte comme utilisé (ni supprimé ni recodé) ; un document
+    reclassé hors de FRM perd ses types cibles (journalisé) ;
+  - **« Nouveau depuis un modèle »** : les modèles du type choisi viennent d'abord (« Modèles pour ce type »), les autres
+    restent proposés dessous (« Autres modèles », avec les types qu'ils visent). **Aucun refus côté serveur** d'un
+    modèle prévu pour d'autres types : c'était l'usage jusqu'ici ; le rendre obligatoire reste à décider. Tant que
+    l'utilisateur n'a pas choisi de type, choisir un modèle prend son premier type cible ; tant qu'il n'a pas choisi de
+    modèle, le premier modèle du type est proposé ;
+  - **non fait** : exclure le sous-type « Formulaire » de la liste des modèles (FRM couvre formulaires vierges et
+    modèles), modèle par défaut par type dans le registre ; les vrais modèles EPC2I restent à fournir (G06). Démo :
+    PV, procédure (PRO, MOP), rapport d'incident (RSQ) et compte rendu (MIN) rattachés.
+- **Conservation par document : date d'événement, dérogation, répercussion de la règle du type** (points 7 et 18 de
+  `docs/reste-a-faire.md`, D-20, 17 octobre ; durées (O-07) et sort final à échéance (M03) non décidés) :
+  - **date d'événement** : colonne `documents.retention_event_at`, pour les seuls déclencheurs que Codex ne peut pas
+    connaître, « fin de vie de l'actif » et « départ du salarié » (`EVENT_TRIGGERS`, `src/lib/retention.ts`). La fin
+    de projet n'est **pas** saisissable : elle attend Keystone (O-03). Saisie (action `setRetentionEvent`) par le
+    propriétaire avec le droit Modifier tant que la fiche est modifiable (ni archivée, ni obsolète, ni gelée), ou par
+    un gestionnaire (droit Archiver et écran Archivage) sur toute fiche qu'il lit, archivée ou obsolète comprise ;
+    refusée sous gel juridique. Un jour réel entre le 1er janvier 1900 et aujourd'hui (l'événement doit avoir eu lieu :
+    une fin de vie ou un départ prévus ne se saisissent pas) ; on peut l'effacer. La date est gardée si le déclencheur
+    change, mais n'est lue que pour ces deux déclencheurs ; la fiche l'affiche dès qu'elle existe. Journalisée
+    (« Date d'événement de conservation », avant → après) ;
+  - **durée nulle** : les 14 types « durée de vie de l'actif » n'ont pas de durée (`years: null`). Codex ne choisit pas
+    entre « 0 an après l'événement » et une durée à fixer (O-07) : la fin de conservation reste « Durée à fixer »
+    tant que le registre ou une dérogation n'en donne pas. Un gestionnaire peut fixer une durée document par document ;
+  - **dérogation** : action `setRetentionClass`, réservée au droit Archiver avec l'écran Archivage, refusée sous gel
+    juridique, possible sur un document archivé ou obsolète. Elle fixe durée, déclencheur et sort final ; une valeur
+    égale à la règle du type n'est pas une dérogation. Colonne booléenne `documents.retention_override`. Journal
+    (« Classe de conservation modifiée ») : la classe avant → après, la dérogation avant → après et la règle du type à
+    ce moment. « Revenir à la règle du type » remet la règle du type et lève la dérogation. Un changement de type
+    (métadonnées) applique la règle du nouveau type et lève la dérogation (journalisé). Pas de motif saisi (il serait
+    lu hors du cercle de rédaction comme le détail du journal) ;
+  - **répercussion** : dans le dialogue d'un type (Administration › Registre ou Archivage › Règles), une case
+    « Appliquer cette règle aux documents qui suivent la règle du type », **décochée par défaut** : sans elle, rien ne
+    change sur les documents. L'aperçu compte, d'après la règle saisie, les documents qui seraient mis à jour, les
+    dérogations et les documents gelés laissés tels quels. Cochée, elle met à jour tous les documents du type sans
+    dérogation dont la classe diffère, y compris archivés et obsolètes ; **les documents sous gel juridique ne sont pas
+    modifiés** (la fiche montre alors la règle du type « non appliquée à ce document », et un gestionnaire peut la
+    remettre). Une entrée par document (« Règle du type appliquée ») et une entrée sur le type (« Règle de conservation
+    appliquée aux documents », avec leur nombre) ;
+  - **affichage** : la fiche montre la classe (étiquette « Dérogation »), la règle du type quand elle diffère, la date
+    de l'événement et la fin de conservation (« Date de l'événement à saisir », « Durée à fixer ») ; Archivage a un
+    onglet « Dates d'événement » (documents lus par l'utilisateur, ceux sans date d'abord) et compte les dérogations
+    par type dans « Règles de conservation ». La fin calculée entre dans les échéances (90 jours) comme les autres ;
+  - **rien n'est archivé ni détruit automatiquement** : l'échéance reste une proposition (O-07, M03). La conservation
+    reste comptée par document (`docs/modele-cible.md` §8, O-09).
+- **Pages d'erreur et référence d'erreur** (point 44 de `docs/reste-a-faire.md`, 17 octobre ; hébergement et collecte
+  des journaux (M22), authentification (O-02) non décidés) :
+  - **ce que voit l'utilisateur** : jamais le message d'une erreur (il peut citer une requête, un chemin, une valeur),
+    mais « Une erreur est survenue », une référence à transmettre à l'administrateur, « Réessayer » et « Retour à
+    l'accueil ». Pour une action en échec, la référence est l'identifiant de requête de l'entrée « action failed » du
+    journal technique (posé comme digest de l'erreur, que Next.js garde) ; pour un rendu en échec, le digest calculé
+    par Next.js, que l'entrée « request failed » porte (`err.digest`). Une erreur survenue dans le navigateur n'a pas de
+    référence et **n'est pas remontée au serveur** : il faudrait une route qui écrive dans le journal sans
+    authentification (O-02) ; elle reste dans la console du navigateur ;
+  - **erreur du layout racine** (`global-error.tsx`) : la langue de l'utilisateur est lue par le layout qui a échoué,
+    donc la page est en français et en anglais côte à côte ; le retour à l'accueil recharge la page entière ;
+  - **introuvable** : une adresse inconnue et un identifiant de document qui ne correspond à aucun document (ni ancien
+    identifiant) répondent 404 avec une page dans le shell. Un document qui existe mais que l'utilisateur ne lit pas
+    garde son message « pas d'accès » (HTTP 200) : répondre 404 pour cacher son existence serait un choix de
+    confidentialité qui n'a pas été pris ;
+  - rien n'est envoyé à un service de suivi d'erreurs externe.
+- **Index de base** (point 39 de `docs/reste-a-faire.md`, 17 octobre) : 17 index ajoutés pour les requêtes ciblées et
+  les cascades d'un reclassement (détail et mesures dans `docs/reste-a-faire.md`) ; leur coût à l'écriture est accepté
+  (journal : environ 9 µs de plus par entrée sur PGlite). Aucun index sur les colonnes que filtrent les listes de
+  documents (département, type, statut…) : ces écrans parcourent encore toute la table, et l'index se choisira avec
+  les requêtes qui les remplaceront. Migration unique régénérée à ce moment-là ; migrations incrémentales depuis
+  (point 41, ci-dessous).
+- **Rechargement en boucle en développement** (lot 9, 17 octobre) : le cache disque de Turbopack pour `next dev`
+  (`experimental.turbopackFileSystemCacheForDev`, actif par défaut depuis Next.js 16) est **désactivé** dans
+  `next.config.ts`. Cause et mesures dans `docs/historique.md` (§18.1). Conséquence : chaque démarrage du serveur de
+  développement recompile les écrans à leur première visite (quelques secondes par écran). La production n'est pas
+  concernée (`turbopackFileSystemCacheForBuild` inchangé). Une montée de Next.js 16.4.0 vers 16.4.2 n'a pas été faite :
+  rien dans le JavaScript de 16.4.2 ne touche ce mécanisme, et un changement de version reste à décider.
+- **Lectures ciblées par écran** (point 47 de `docs/reste-a-faire.md`, 17 octobre) : rien ne change dans ce que voit
+  chaque utilisateur, avec deux précisions :
+  - le compteur « Mis en vigueur cette semaine » de l'accueil compte désormais **toute la semaine du journal** (agrégat
+    SQL), et non plus seulement les 500 dernières entrées : sur un journal chargé, il peut être plus élevé qu'avant ;
+    c'est la correction que demandait le point ;
+  - l'activité récente garde ses fenêtres : la cloche montre les 5 dernières entrées lisibles parmi les **60** dernières
+    entrées sur des documents, l'accueil les 6 dernières parmi les **500** dernières. Une personne qui ne lit presque
+    rien peut donc voir moins de 5 ou 6 lignes, comme avant ; élargir ces fenêtres changerait ce qu'elle voit.
+- **Police Inter dans le dépôt** (point 42 de `docs/reste-a-faire.md`, 17 octobre) : les sept fichiers que
+  `next/font/google` téléchargeait (Inter 4.001, Google Fonts v20, axe de graisse variable, sous-ensembles latin,
+  latin étendu, cyrillique, cyrillique étendu, grec, grec étendu, vietnamien), à l'octet près, avec leurs plages
+  Unicode, servis par `next/font/local` (`src/fonts/`, licence OFL 1.1 jointe). Seul le latin est préchargé, comme
+  avant. Police de secours : l'Arial ajustée que déclarait `next/font/google` (mêmes valeurs), pas celle que
+  `next/font/local` calculerait. Rendu identique ; les fichiers ne suivront plus les mises à jour de Google Fonts.
+- **Migrations incrémentales dès maintenant** (point 41, 17 octobre) : sans attendre la première base de production,
+  `drizzle/0000_init.sql` (celle du commit `c80d6ae`, égale au schéma) est figée et chaque changement de schéma ajoute
+  une migration. Choix prudents :
+  - avant d'appliquer des migrations à une base qui a des données, le serveur **sauvegarde** la base et ses fichiers
+    (archive de `npm run backup`) et **ne démarre pas** s'il n'y arrive pas (`CODEX_MIGRATION_BACKUP=off` pour s'en
+    passer) ; le retour arrière est la restauration de cette archive avec la version précédente de Codex (drizzle n'a
+    pas de migration descendante) ;
+  - une base faite par un autre schéma (migration inconnue, modifiée après coup ou sautée, journal hors d'ordre) est
+    **refusée** avant toute écriture, alors que drizzle seul l'aurait migrée de travers ou ignorée ;
+  - fonctions et déclencheurs restent posés à chaque démarrage, hors migrations ;
+  - `npm run db:check` (`drizzle-kit check`) est dans la CI ; l'équivalence « base créée par les migrations = schéma »
+    est un test (catalogue Postgres comparé, `tests/integration/migrations.test.ts`), `drizzle-kit` n'ayant pas de
+    commande qui compare une base PGlite au schéma sans faux écarts.
+- **Amorçage séparé** (point 45, 17 octobre) : `CODEX_SEED=demo|minimal`, **demo par défaut partout** (développement
+  et app Mac, qui tourne en production) pour que rien ne change ; une vraie installation doit poser `minimal`. Le
+  mode minimal garde l'organisation provisoire (départements et sites, D-19), les fonctions sans titulaire, la matrice
+  des droits, les acteurs système, et ajoute un **administrateur initial** fictif (`admin`, « Administrateur Codex »,
+  rôle gestionnaire documentaire) parce que l'application simulée a besoin d'une personne pour s'ouvrir ; il
+  disparaîtra avec l'authentification (O-02). Une base n'est amorcée que si elle n'a ni personne ni type. Une valeur
+  inconnue de `CODEX_SEED` est refusée (erreur du contrôle de configuration, serveur non démarré sur une base vide).
+- **Application du registre à une base existante** (point 60, 17 octobre) : `npm run registry:apply`, simulation par
+  défaut, `-- --apply` pour écrire (serveur arrêté, sauvegarde avant, chaque changement journalisé par Codex avec le
+  détail « npm run registry:apply »). Règles retenues :
+  - **l'Administration l'emporte**, d'après le journal (entrées écrites par une personne, depuis le 15 octobre) : un
+    champ modifié y garde sa valeur, une entrée créée, renommée ou supprimée y reste telle quelle (un réglage fait avant
+    que l'administration ne journalise, s'il y en a, n'est pas connu et serait écrasé : la simulation le montre) ;
+  - **codes figés** : aucun code n'est renommé ni supprimé ; un type que le registre n'a plus est **désactivé**, une
+    famille ou une fonction qu'il n'a plus est seulement signalée ; un nouveau code déjà pris par un département, un
+    projet, un programme ou `QMS` est refusé (O-05) ;
+  - un réglage qui ferait sortir des documents de leur type (origine, rattachement, confidentialité retirés) n'est pas
+    appliqué : à confirmer dans l'administration, qui montre les documents ; les documents suivent la famille de leur
+    type ; une fonction qui a des titulaires garde sa portée ; les documents gardent leur classe de conservation ;
+  - les fonctions de validation viennent de `src/db/seed-org.ts` (le registre n'en a pas) ; l'ordre d'affichage et la
+    périodicité de revue ne sont pas touchés ; départements et sites (organigramme, O-04) ne sont pas concernés.
+- **Serveur PostgreSQL en option** (point 51, 18 octobre) : l'hébergement n'est pas décidé (M22, O-03 non tranchée),
+  donc **PGlite reste la base par défaut** et rien ne change sans variable (développement, démonstration, app Mac).
+  Choix prudents, à confirmer :
+  - le serveur est choisi par `DATABASE_URL` ; pilote **node-postgres** avec un pool (10 connexions par défaut,
+    `CODEX_DB_POOL_MAX`), plutôt que postgres-js : ses résultats (`rows`) sont ceux de PGlite, ce qui garde le même
+    code ; les entiers `int8` sont lus comme des nombres, les dates à minuit UTC, et une marque d'ordre d'octets en
+    tête de texte est retirée, comme PGlite le fait ;
+  - **PostgreSQL 18 au moins**, refusé sinon (le repli de la recherche utilise la collation `pg_unicode_fast` de
+    PostgreSQL 18, comme PGlite 0.5) ; ICU et l'extension `pg_trgm` sont requis ;
+  - mêmes migrations, et mêmes fonctions et déclencheurs posés au démarrage, sous un **verrou consultatif** : plusieurs
+    processus qui démarrent sur la même base ne migrent pas en même temps, et une base neuve n'est amorcée qu'une fois ;
+  - une base serveur neuve reçoit le **référentiel minimal** par défaut (`CODEX_SEED=demo` pour la démonstration) :
+    une base serveur n'est pas une démonstration ;
+  - **Codex ne sauvegarde pas un serveur** : « Sauvegarder maintenant », `npm run backup` et `npm run restore`
+    refusent avec un message ; le serveur se sauvegarde avec ses outils (`pg_dump`, instantanés), à décider avec
+    l'hébergement. Une migration en attente sur une base serveur qui a des données n'est appliquée qu'avec
+    `CODEX_MIGRATION_BACKUP=off`, posé une fois la sauvegarde du serveur faite ;
+  - `npm run export` et `npm run integrity` refusent (l'export complet et le contrôle d'intégrité se font depuis
+    l'Administration, qui marchent sur un serveur) ; `npm run registry:apply` marche sur un serveur, mais `--apply`
+    y demande `--no-backup` ;
+  - l'export complet sur un serveur copie les tables en `REPEATABLE READ`, sur une connexion gardée pour lui ;
+  - les transactions restent en `READ COMMITTED` (défaut de PostgreSQL) : les compteurs d'identifiants, les verrous
+    de ligne (`FOR UPDATE`) déjà posés et le verrou consultatif de l'import couvrent les écritures concurrentes
+    vérifiées ; les autres transactions qui relisent avant d'écrire n'ont pas été revues une à une ;
+  - les fichiers restent dans le dossier de données (`CODEX_DATA_DIR/files`), et le verrou `codex.lock` y refuse un
+    second serveur sur le même dossier ; les limites de débit restent en mémoire, par processus.
+- **Volume de mesure** (point 56, 18 octobre) : `npm run seed:large` écrit dans une base à part (`.data-large/` par
+  défaut, ou ce que nomment `--data-dir` ou `--database-url`, jamais `DATABASE_URL` ni `CODEX_DATA_DIR`), refuse une
+  base qui a déjà des documents sans `--append`, et charge la démonstration avant le volume synthétique (200
+  personnes fictives de plus par défaut). Les fichiers ne sont pas créés (versions de travail sans fichier). Les
+  volumes cibles restent à fixer (M18, O-11) : 10 000 documents ont servi aux mesures de `docs/performances.md`.
+- **Planificateur interne** (point 38 de `docs/reste-a-faire.md`, 18 octobre) : une boucle dans le processus du
+  serveur (`src/lib/scheduler.ts`, lancée par `src/instrumentation.ts`), sans route `/api/cron` ni cron externe, pour
+  qu'une installation sans hébergement décidé (app Mac, poste local) mette quand même en vigueur à la date. Choix
+  prudents, à confirmer :
+  - **seule la mise en vigueur différée tourne par défaut** (toutes les 5 minutes, `CODEX_SCHEDULE_PROMOTE`) ; la
+    mise en vigueur automatique elle-même reste la proposition non confirmée de D-11 (O-09) ; nettoyage des orphelins,
+    vérification d'intégrité, sauvegarde et export complet sont **désactivés** tant qu'une variable `CODEX_SCHEDULE_*`
+    n'en donne pas la fréquence, qui relève de l'hébergement (M22) ; les fréquences se comptent depuis le dernier départ,
+    pas à heure fixe ;
+  - les pages ne mettent plus en vigueur quand le planificateur du processus le fait : une révision dont la date
+    d'effet est le jour même entre en vigueur au plus 5 minutes après minuit (heure de Paris), avec sa date d'effet
+    comme date d'entrée en vigueur ; `CODEX_SCHEDULER=off` rend l'ancien comportement ;
+  - la même tâche applique une acceptation de Vigie restée « acceptée » alors que plus rien ne la retient (filet de
+    sécurité ; un document obsolète reste exclu, comme au point 35) ;
+  - une exécution à la fois par tâche, même à plusieurs processus sur une base (bail de 2 minutes dans la table
+    `scheduler_runs`, repris quand il échoit) ; chaque exécution au journal technique, ce qu'elle change au journal
+    d'audit sous l'acteur Codex ; état dans Administration › Journal d'audit, visible de qui a accès à l'Administration ;
+  - l'export planifié va dans `<dossier de données>-exports` (comme `npm run export`), sous un nom à part, et seuls les
+    3 plus récents sont gardés (`CODEX_SCHEDULE_EXPORT_KEEP`) ; la sauvegarde planifiée garde la rotation et l'écart
+    minimal de 15 minutes de la sauvegarde manuelle, et est sautée sur un serveur PostgreSQL ;
+  - **aucune relance ni notification hors application**, faute de destinataires, d'échéances (M19) et de canal décidés
+    (Teams ou Outlook, non discuté), et aucun envoi vers Vigie ou Keystone (T-01, O-03, O-10) : seul le point
+    d'extension est prévu et documenté (`docs/exploitation.md` §4).
+- **Authentification entre serveurs** (point 23, 18 octobre) : sans décision sur Vigie et Keystone eux-mêmes (O-03,
+  O-10) ni sur le fournisseur d'identité (O-02), Codex vérifie un contrat qu'il fixe (`docs/api.md`,
+  « Authentification »). Choix prudents, à confirmer :
+  - signature **HMAC-SHA256** de `"<horodatage>." + corps brut`, en-têtes `X-Codex-Timestamp` (secondes Unix) et
+    `X-Codex-Signature: v1=<hex>`, fenêtre de **5 minutes** de part et d'autre (`CODEX_SIGNATURE_WINDOW_S`), et
+    **anti-rejeu** en base : une signature n'est acceptée qu'une fois, un nouvel essai doit être signé à nouveau ;
+  - jeton et signature se règlent séparément ; **tout ce qui est défini est exigé** ; un jeton seul se comporte comme
+    avant, rien n'est imposé par défaut (aucune variable : import et webhook désactivés, comme avant) ;
+  - rotation par une variable `…_NEXT` acceptée à côté de la première (plutôt qu'une liste séparée par des virgules) ;
+    secrets soumis à la même règle de longueur que les jetons ;
+  - **registre ouvert par défaut** pour ne pas couper Keystone ; `CODEX_REGISTRY_TOKEN` le ferme, et il répond alors
+    `Cache-Control: private` ; pas de signature sur ce `GET` ;
+  - Codex n'appelle pas encore Vigie : la même signature servira à ses envois (`signRequest`), sans file d'envoi tant
+    que les branchements réels ne sont pas faits (T-01).
+- **Comparaison du contenu des versions** (point 14 de `docs/reste-a-faire.md`, G05, 18 octobre) : ni le deck ni la
+  maquette ne fixent le niveau attendu ; choix prudents, à confirmer :
+  - comparaison du **texte**, ligne à ligne, pas de comparaison visuelle (elle demanderait deux aperçus côte à côte,
+    donc l'outil de conversion du point 15) ; de la version choisie (−) vers la version courante (+) ; blancs
+    regroupés et lignes vides ignorés, la mise en page n'est pas comparée ; deux lignes de contexte ;
+  - formats lus : PDF (couche texte, par la bibliothèque `unpdf` 1.7.0, licence MIT, qui embarque pdf.js), Word,
+    Excel, PowerPoint et OpenDocument (ZIP et XML lus par Codex, sans bibliothèque), texte ; pas les fichiers Office
+    97-2003, ni les images ou plans : le dialogue dit pourquoi, sans deviner ;
+  - bornes : fichier de 20 Mo (`CODEX_COMPARE_MAX_MB`), 15 s d'extraction, 20 000 lignes et 2 millions de caractères
+    par texte, 3 000 lignes ajoutées ou supprimées au plus, 2 000 lignes affichées ; trois comparaisons à la fois par
+    processus ; limite de débit propre (`CODEX_RATE_COMPARE`, 30 par minute) ;
+  - mêmes droits que la route fichier (D-14) : hors du cercle de rédaction, seule la révision en vigueur se lit, donc
+    rien d'autre ne se compare (404) ; chaque version comparée est journalisée comme une consultation ; un fichier
+    dont l'empreinte ne correspond plus à celle du dépôt n'est pas comparé.
+- **Aperçu des fichiers Office** (point 15, M12, 18 octobre) : choix prudents, à confirmer :
+  - **désactivé par défaut** : aucune conversion tant que ni LibreOffice (`CODEX_PREVIEW_SOFFICE`) ni Gotenberg
+    (`CODEX_PREVIEW_GOTENBERG_URL`) n'est configuré ; les deux à la fois : aucun ; le choix de l'outil relève de
+    l'hébergement ;
+  - conversion **à la première consultation**, puis gardée, plutôt qu'au dépôt : un dépôt n'attend pas la conversion,
+    et un fichier que personne n'ouvre n'est pas envoyé à l'outil ; deux conversions à la fois par processus ; 60 s et
+    20 Mo au plus ; un échec n'est retenté qu'une heure plus tard ;
+  - le rendu est gardé dans le **stockage local**, même quand les fichiers d'origine sont dans SharePoint : SharePoint
+    ne reçoit que le fichier, son nom et sa version (D-06) ; table `version_previews` (clé, pages, empreinte),
+    sauvegardée, laissée hors de l'export complet (donnée dérivée), comptée par le nettoyage des orphelins ; le
+    contrôle d'intégrité ne porte que sur les fichiers d'origine, le rendu étant vérifié à chaque envoi entier et
+    refait s'il est altéré ou manquant ;
+  - mêmes droits que le fichier ; rendu nommé `{ID}_{version}_APERCU.pdf` pour ne pas le confondre avec l'original ;
+    nombre de pages de la pagination calculé sur le rendu ; LibreOffice lancé sans les variables de Codex ; Gotenberg
+    appelé sans authentification, sur un réseau privé ;
+  - ni PDF/A, ni filigrane « Brouillon », ni en-têtes générés : ce sont les questions restées ouvertes de M12.
+- **Reprise des responsabilités d'une personne qui part** (point 19 de `docs/reste-a-faire.md`, A15, 18 octobre) :
+  Administration › Reprise (départ), `transferHoldings` et `reassignStep` dans `src/lib/actions.ts`,
+  `src/lib/transfer.ts`. Choix prudents, à confirmer :
+  - **aucun remplaçant proposé d'office** (la règle par défaut, manager ou gestionnaire, est la question A15) et
+    **aucun compte désactivé** ni indicateur « parti » ajouté : la désactivation et la détection des départs relèvent du
+    fournisseur d'authentification (O-02) ; la personne reste dans les listes ;
+  - réservé aux **gestionnaires documentaires ayant l'accès Administration** (`mayTransferHoldings`, comme la
+    sauvegarde) : la simulation nomme tous les documents de la personne, brouillons et confidentiels compris (D-14) ;
+    la réassignation d'une étape seule, aux gestionnaires documentaires ayant l'accès Validations (`mayReassignStep`) ;
+  - **simulation = le transfert lui-même dans une transaction annulée**, journal compris ; la confirmation renvoie
+    l'empreinte de la simulation (SHA-256 de la personne, du remplaçant et de chaque objet avec son issue) : un plan
+    qui se lit autrement au moment de confirmer est refusé sans rien écrire, et la page montre le nouveau ;
+  - transférés : propriété des documents **verrouillés compris** (archivés, obsolètes, sous gel : acte
+    d'administration), propriété de processus, lecteur désigné (une seule ligne si le remplaçant l'était déjà),
+    auteur désigné des révisions ouvertes (s'il peut rédiger le document, règle `mayDraft` d'un auteur désigné par
+    Vigie), étapes de circuit en attente (l'étape en cours et les suivantes, mêmes contrôles que `delegateStep` : pas
+    sur un document verrouillé, jamais le demandeur, l'auteur ou un auteur de version de travail, droit de valider du
+    rôle par défaut), titulariats de fonctions (droit de valider ; une seule ligne si le remplaçant tenait déjà la
+    fonction pour la même portée) ;
+  - **non transférés, avec la raison** : une propriété ou une rédaction qui ferait du remplaçant le juge de sa propre
+    révision (il valide le circuit en cours : réassigner d'abord son étape), et tout ce que les contrôles ci-dessus
+    refusent ; **listés pour information, non touchés** : l'auteur désigné par Vigie d'une modification acceptée (la
+    désignation appartient à Vigie, D-16), le chef de projet (Keystone, D-04), le responsable d'un programme de recherche
+    (son dialogue d'Administration) ; ni le demandeur des circuits en cours ni les recherches enregistrées ne changent ;
+  - journal : une entrée par objet transféré (`transfer`, avant → après ; celle d'un auteur ou d'une étape suit sa
+    révision, D-14), puis une entrée de synthèse sur la personne (`transfer_summary`, comptes visibles des seuls
+    gestionnaires documentaires) ; la date « Modifié » des documents ne change pas.
+- **Vocabulaires contrôlés** (point 59, MET-07, G32, G40, A21, 18 octobre) : tables `source_orgs` et `keyword_terms`
+  (migration `drizzle/0003_vocabulaires.sql`), `src/lib/vocab.ts`, `src/lib/vocab-rules.ts`, Administration ›
+  Vocabulaires. Qui gouverne les termes (A05) n'est pas décidé : le droit « Administrer » vaut en attendant. Choix
+  prudents, à confirmer :
+  - les documents **gardent le nom du terme en texte** (`documents.source_org`, `documents.keywords`) : recherche,
+    facettes, export complet et import lisent les mêmes colonnes qu'avant ;
+  - deux graphies sont le même terme à la **casse, aux accents et aux espaces près** ; « SIEMENS SAS » et « Siemens »
+    restent deux termes, que le formulaire signale comme proches et qu'un administrateur fusionne ; un terme renommé ou
+    fusionné garde ses anciennes graphies comme **alias**, qui le désignent encore ;
+  - dans les formulaires, une valeur inconnue est un **nouveau terme ajouté seulement après confirmation** (case à
+    cocher par terme, exigée aussi par le serveur), journalisé ; une valeur que le document porte déjà n'est pas
+    redemandée ; à l'import, un terme inconnu est **ajouté** (journalisé sous l'acteur `codex`, avertissement
+    `term_added`), jamais refusé ;
+  - les formulaires ne proposent que les termes portés par un document que l'utilisateur peut lire, ou par aucun
+    document (D-14) ; un terme qu'on ne lui propose pas est, s'il le saisit, **traité comme un terme inconnu** : la
+    même confirmation est demandée, avec le même message (appliqué depuis le 18 octobre, lot 10 étape 4, sur la revue
+    du lot 9 : avant, un appel sans case cochée réussissait si le terme existait et échouait sinon) ; une fois la case
+    cochée, le serveur écrit le terme existant, sans doublon ni entrée « terme ajouté » (sa graphie est alors reprise :
+    seule la casse ou les accents pourraient trahir son existence, après confirmation) ;
+  - Administration › Vocabulaires : le nombre de documents de chaque terme (brouillons et confidentiels compris) n'est
+    montré qu'aux gestionnaires documentaires, comme les chiffres du journal et du planificateur ; un autre
+    administrateur voit les termes sans compte (« — ») et, parmi les valeurs hors liste et les sous-types hors liste,
+    seulement ceux d'un document qu'il peut lire (lot 10 étape 4, D-14) ;
+  - renommer ou fusionner **met à jour les documents**, journalisé document par document (`vocab_apply`), sauf ceux
+    sous gel juridique, qui gardent leur valeur (résolue par l'alias) ; les archivés et obsolètes suivent, comme pour
+    l'application d'une règle de conservation ; leur date « Modifié » ne change pas ;
+  - reprise des valeurs existantes par la migration : un terme par valeur repliée, sous sa graphie la plus fréquente ;
+    les documents gardent leur graphie ;
+  - **langue** : `fr`, `en` ou vide, quelle que soit la casse, contrôlée par `validateFields` et par l'import ; une autre
+    valeur déjà portée par un document est gardée à sa modification (la migration n'a corrigé que la casse) ;
+  - **sous-types** : la liste n'est **pas fermée** côté serveur (MET-17, point 9 de O-05) ; une valeur qui se replie sur
+    un libellé du type prend sa graphie ; une autre est gardée (avertissement `subtype_unlisted` à l'import) et listée
+    dans Administration › Vocabulaires, où un administrateur l'**ajoute au type** (même libellé FR et EN, dans les
+    limites du registre : 120 caractères, 40 sous-types), journalisé comme un changement du type.
+- **Finitions de l'interface** (points 63 à 68 de `docs/reste-a-faire.md`, lot 9 étape 7, 18 octobre). Choix prudents,
+  à confirmer :
+  - **phases Keystone** (point 63) : frise compacte de 12 points dans l'onglet Projet (la maquette en a 4, nommés),
+    seule la phase courante nommée sous la frise, les autres au survol ; une phase reçue de Keystone hors de la liste
+    garde son étiquette, sans frise ; **libellés anglais écrits par Codex, provisoires** (`PROJECT_PHASES_EN`,
+    `src/lib/i18n.ts`), à aligner sur ceux de Keystone (O-03) ; la valeur enregistrée reste le libellé français de
+    Keystone ;
+  - **taille des fichiers** (point 64) : déjà traité le 15 octobre (une seule limite, contrôlée dans le sélecteur et
+    par le serveur) ; rien de changé ;
+  - **« Restaurer »** (point 65) : seulement une version de travail antérieure de la **révision en brouillon**, avec
+    un fichier, jamais la dernière ; elle crée la version suivante (« Restaurée depuis A.2 »), sans rien supprimer
+    (D-12) ; mêmes droits et refus que le dépôt d'une version de travail (droit Déposer, cercle de rédaction D-14,
+    auteur désigné par Vigie, verrou, brouillon, dernière version vue) ; le fichier est relu, comparé à son empreinte
+    SHA-256 et recontrôlé (format, taille, antivirus) comme un dépôt ; journalisé comme une version de travail
+    (`working`), avec la version d'origine ; une confirmation est demandée ; revenir à une révision en vigueur reste
+    une demande à Vigie (D-16) ;
+  - **compteur des modèles** (point 66) : colonne `documents.template_id`, remplie par `createDocument` **seulement
+    quand le fichier du modèle a été copié** (un fichier déposé l'emporte sur le modèle choisi, comme avant) ; compte
+    **limité aux documents que le lecteur peut lire** (même règle que les listes, `readableSql`), tous pour un
+    gestionnaire documentaire : le chiffre ne trahit ni brouillon ni document confidentiel invisible (D-14) ; reprise
+    des documents existants par la migration `0004_modele_source` **seulement quand trois indices concordent**
+    (commentaire de A.1 en français et en anglais, fin du détail « upload » du journal, modèle existant de type FRM),
+    sinon nul ; la base de démonstration existante n'en a pas (aucun document n'y avait été créé depuis un modèle) ;
+    le jeu de démonstration neuf rattache trois documents à leur modèle ;
+  - **onglet Projet toujours présent** (point 67) : sans projet, « Ce document n'est rattaché à aucun projet » et
+    « Rattacher à un projet » pour le propriétaire ou un gestionnaire, qui ouvre « Modifier les métadonnées » avec le
+    rattachement projet choisi si le type l'admet (sinon une note invite à changer de type dans le dialogue) ; après
+    la première approbation l'identifiant ne change pas (D-10), ce que l'onglet rappelle ; l'onglet par défaut reste
+    « Fiche » sans projet ;
+  - **dépôt depuis l'explorateur** (point 67) : « Déposer un fichier » à côté de « Nouveau document », les deux
+    préremplis avec le département, la famille ou le type choisis dans l'arbre (simples propositions, un département
+    inactif n'est pas proposé) ; un projet choisi n'est pas prérempli (il verrouillerait le rattachement) ;
+  - **fondement de conservation en anglais** (point 68) : colonne `doc_types.retention_basis_en`, vide pour tout le
+    registre : **aucun fondement juridique n'est traduit par Codex** (durées et fondements attendent leur revue, O-07) ;
+    en anglais, un fondement sans traduction s'affiche en français suivi de « (FR) » ; saisi dans Administration ›
+    Registre des types, journalisé, publié par `GET /api/registry` (`basisEn`), appliqué par `registry:apply` si le
+    registre du code en donne un (`basisEn`) ; les sites avaient déjà leurs libellés FR/EN (point 62) ;
+  - **journal bilingue** (point 68) : les entrées écrites depuis le 18 octobre dont le détail contenait des mots ou
+    des unités d'une langue (taille d'un fichier, lecteurs désignés, étape déléguée, réassignée ou transférée, auteur
+    écarté par Codex, import, restauration) portent un détail structuré (`audit_log.data.text` : code et paramètres)
+    rendu dans la langue du lecteur à l'écran et dans l'export CSV ; la colonne `detail` garde une forme sans mots
+    (ou celle que lit la fiche de visa pour les délégations) ; **les entrées antérieures ne sont pas réécrites** (journal
+    en ajout seul) ; les autres détails (identifiants, lettres, motifs saisis) n'ont pas de langue ;
+  - **titres des pages** (point 68, WCAG 2.4.2) : « {écran} — Codex » dans la langue choisie ; une fiche lisible
+    « {ID} · {titre} — Codex », une fiche illisible ou introuvable « Fiche document — Codex », sans distinguer les deux
+    (D-14).
+- **Accessibilité, aide et documentation** (lot 9, étape 8, 18 octobre ; points 53, 54, 55 et 69 de
+  `docs/reste-a-faire.md`, `docs/accessibilite.md`) :
+  - **cible** : WCAG 2.2 niveau AA comme démarche de qualité, contrôlée par axe-core (`npm run a11y`) ; ni RGAA ni
+    déclaration d'accessibilité, que ni le deck ni ce journal ne demandent ; le contrôle échoue sur les violations
+    qu'axe classe sérieuses ou critiques, liste les autres, et tourne dans la CI après le build ;
+  - **contrastes** : seules les couleurs qui échouaient changent, au plus près de la maquette (ligne d'information des
+    cartes à 55 % du texte comme `.text-muted` au lieu de 50 %, opacité 0,7 au lieu de 0,6, petites mentions de la page
+    maquette de l'aperçu entre deux gris de Nocturne) ; la copie de Nocturne (`src/app/nocturne.css`) n'est pas
+    modifiée, la correction est dans `src/app/globals.css` ; aucune taille de texte ne change, aucun thème clair ;
+  - **titres** : le nom de l'écran dans l'en-tête devient le `<h1>` de la page et les titres de section des `<h2>`,
+    dessinés comme avant ;
+  - **aide** (`/aide`) : ouverte à tous les rôles, liée dans la barre latérale au-dessus de « Notes de conception »,
+    qui restent (leur retrait en production attend l'authentification, O-02) ; elle ne décrit que ce que
+    l'application fait, dit ce qui est simulé (utilisateur, Vigie, Keystone) et ne mène à un écran que si le rôle y a
+    accès ; formation, utilisateurs clés, pilote et date d'interdiction des dépôts hors GED restent ouverts (M14) ;
+  - **aides contextuelles** ajoutées aux dialogues (origine, rattachement, version de travail, circuit, délégation) :
+    des rappels du modèle, sans nouvelle règle.
+- **Restes développables sans décision** (lot 9, étape 9, 18 octobre ; points 36, 43, 46, 47, 50, 51, 52 et 57 de
+  `docs/reste-a-faire.md`) :
+  - **version de Node** (point 43) : version de référence 22 (`.nvmrc`, celle de la CI), `@types/node` en `^22.12.0` ;
+    `engines` inchangé (`^20.19.0 || >=22.12.0`, alors que Node 20 n'est plus maintenu depuis avril 2026 : le retirer
+    est à l'utilisateur), d'où un job de la CI qui lance les tests sous Node 20.19 ; l'app Mac vérifie la version
+    (`scripts/codex-node-check.mjs`), sans essai sous macOS ;
+  - **audit des dépendances** (point 52) : échec de la CI sur un avis élevé ou critique, sans exception pour les
+    dépendances de l'application ; pour les outils de développement, une exception écrite dans
+    `scripts/codex-audit.mjs` avec sa raison, seulement sans version corrigée publiée (`braces`, lint) ; avis modérés
+    signalés sans échec (`esbuild` par `drizzle-kit`, dont la seule « correction » serait une version très antérieure) ;
+  - **index d'accès et Validations** (points 47 et 50) : index lu par requête pour la seule personne, **sans cache entre
+    requêtes** (un cache invalidé par la base imposerait un verrou commun à toutes les écritures ; rien n'y serait
+    périmé, mais le gain ne le justifie pas à ce volume) ; une question hors de la portée d'un index lève une erreur
+    plutôt que de répondre ; Validations par pages de **50 circuits**, ordre inchangé (échéance puis identifiant, les
+    terminés du plus récent au plus ancien, « Mes demandes » en cours d'abord), et la page qui contient le circuit
+    demandé quand l'adresse n'en donne pas ;
+  - **migrations au déploiement** (point 51) : `npm run db:migrate` en plus du démarrage, qui **migre toujours** si la
+    commande n'a pas été lancée (rien n'oblige à l'utiliser) ; même sauvegarde que le démarrage, refus d'un serveur
+    PostgreSQL qui a des données sans `--no-backup` ; la commande n'amorce rien (l'amorçage reste au premier
+    démarrage, selon `CODEX_SEED`) ;
+  - **transactions en `READ COMMITTED`** (point 51) : verrou de la ligne du document en tête de chaque transaction
+    qui relit l'état d'un document avant d'écrire, plutôt qu'un niveau `SERIALIZABLE` (qui demanderait de rejouer les
+    transactions refusées) ; plusieurs documents verrouillés dans l'ordre de leurs identifiants ; une action en
+    double reçoit la réponse qu'aurait eue la seconde après la première (« étape déjà décidée », « demande en
+    attente ») ; **plusieurs processus** laissés comme limite documentée ;
+  - **noms provisoires** (point 36) : même écran et mêmes droits que les orphelins (gestionnaire documentaire avec
+    l'accès Administration), simulation d'abord, seuls les fichiers listés renommés, **même délai de grâce**
+    (`CODEX_ORPHAN_GRACE_HOURS`, 24 h) ; nom donné sous l'**identifiant actuel** du document (après un reclassement)
+    et `{lettre}.{n}` comme `renameDocFiles` ; un fichier qui occupe déjà le nom final n'est jamais remplacé (sauf le
+    même fichier, lien laissé par un renommage arrêté) ; tâche du planificateur **désactivée par défaut** ; sur
+    SharePoint, l'interface du dépôt, sans essai réel (O-01) ;
+  - **aperçu paginé** (point 46) : copie du fichier **en mémoire de la page** (adresse `blob:`), plutôt qu'un cache
+    privé du navigateur pour les brouillons et les documents confidentiels, qui restent `no-store` (D-14) ; la copie
+    est libérée quand la fiche se ferme ; un téléchargement qui échoue rend l'ancien fonctionnement ; aucun rendu de
+    page côté serveur (il demanderait une bibliothèque de rendu) ; non essayé dans WebKit (app Mac, session macOS) ;
+  - **parcours de bout en bout** (point 57) : un seul parcours (créer avec un fichier, déposer, demander la
+    validation, valider, en vigueur), joué comme un utilisateur (boutons, dialogues), les personnes simulées par le
+    cookie de session comme le menu du profil ; ajouté à la CI parce qu'il est rapide (une vingtaine de secondes) et
+    a donné le même résultat à chaque passage ; Chromium seul ;
 - **Git** (D-23) : premier commit sur une branche `codex-ged-v2` plutôt que sur `main`.
+- **Réunion de la branche et de `main` (lot 11, 22 octobre ; décision M-01, qui ne se rediscute pas)** :
+  - **base de migrations refaite et figée** : `drizzle/0000_init.sql` régénérée (tout le schéma de la branche, dans
+    `codex`) puis `0001_partage.sql` (colonnes D01, D10, D18 et 7 vues `pub_` de `main`), plutôt que reprendre
+    `0000`/`0001` de `main` suivies des migrations de la branche régénérées : aucune base de production n'existe (la
+    seule en ligne, la démo Coolify, est déjà refusée) et une base faite par `main` après le 17 octobre n'a vécu qu'en
+    développement ; deux fichiers relus valent mieux qu'une longue migration de rattrapage. Les deux portent les noms
+    de `main` mais pas son contenu : une base faite par `main` est refusée, avec son remède ;
+  - **reprise automatique** d'une base PGlite de la branche d'avant le lot 11 (tables dans `public`, chaîne exacte
+    `0000` à `0005`, empreintes gardées dans `src/lib/backup-core.mjs`), après la sauvegarde automatique : `public`
+    renommé `codex`, journal remplacé par la nouvelle `0000_init`, puis `0001_partage`. Jugée sûre parce que la
+    structure obtenue est comparée à celle d'une base neuve par un test (`migrations.test.ts`) ; jamais sur un
+    serveur (Codex n'y renomme aucun schéma). Toute autre base dans `public` est refusée ;
+  - **remplissage** : `CODEX_SEED_DEMO=1` (variable de `main` et du socle Matrix) vaut `CODEX_SEED=demo` ; posée avec
+    un autre `CODEX_SEED`, le serveur refuse de démarrer. Sans l'une ni l'autre, `demo` en PGlite comme avant ; **rien
+    sur un serveur** (au lieu de `minimal` : rien n'est écrit sans qu'on l'ait demandé). La base reste vide et toutes
+    les pages mènent à `/base-vide`, qui nomme les variables à poser, plutôt qu'un démarrage automatique en `minimal` ;
+    `/api/health` répond 200 avec `empty: true` ;
+  - **verrous** : ceux de la branche (lignes verrouillées en `READ COMMITTED`, compteurs d'identifiants), pas le
+    verrou d'écriture global `codex.ecritures` de `main` ; clés des verrous de migration et de remplissage dérivées
+    du schéma (`codex.migrations`, `codex.seed`), comme le plan du dépôt Matrix le demande ;
+  - **`pg_trgm` sur le serveur commun** : installé une fois par son superutilisateur dans un schéma `extensions`, avec
+    `USAGE` pour `codex_app`, plutôt que dans `codex` (ses fonctions y seraient ouvertes à tous les outils, ce que
+    `droits.verifier()` refuse) ; correctif à porter dans le dépôt Matrix (`docs/postgres.md`) ;
+  - **export complet sur le serveur commun** : sans droit `TEMPORARY` (socle), l'instantané passe par des tables
+    `unlogged` du schéma `codex`, supprimées à la fin ;
+  - **image** : contrat Coolify gardé (port 3000, `/data`), serveur sous `node` (le point d'entrée rend à `node` un
+    volume créé par l'ancienne image root), sortie autonome, `HEALTHCHECK` ; `NEXT_PUBLIC_*` lues au lancement.
 
 ## Ce qui est explicitement hors périmètre
 
@@ -1150,8 +1643,9 @@ Les valeurs de la maquette n'existent plus dans le modèle v2 :
   - Au démarrage, il a écarté « Authentification réelle » au profit de « Rôle simulé (Recommandé) », dont la
     description disait « L'authentification réelle (SSO, etc.) viendra plus tard ».
   - L'assistant a ensuite proposé Entra ID, sans réponse.
-  - Les mentions d'Entra ID dans `docs/modele-cible.md`, `docs/api.md`, `docs/avancement-v2.md` et
-    `src/app/api/registry/route.ts` reflètent cette proposition, pas une décision.
+  - `docs/modele-cible.md` (en tête et §1) mentionne Entra ID comme « proposé, non confirmé » : c'est cette
+    proposition, pas une décision. `docs/api.md`, `docs/avancement-v2.md` et `src/app/api/registry/route.ts` ne le
+    mentionnent plus.
   - Question ouverte O-02.
 
 ### Liaison avec Keystone : API ou base partagée ?
@@ -1168,6 +1662,11 @@ Les valeurs de la maquette n'existent plus dans le modèle v2 :
   - La spec Keystone décrit un index synchronisé depuis Codex (« Real time (webhooks) »). Elle laisse elle aussi
     ouvert le contrat de dépôt (« deep link? API create? »).
   - Question ouverte O-03.
+- **Réponse partielle du 15 octobre 2026** (décision M-01, consignée dans le dépôt Matrix) : « Oui, je valide le
+  format postgreSQL commun avec un schema par outil ».
+  - Codex rejoint la base commune `epc2i`, dans son schéma `codex`, avec son rôle `codex_app`.
+  - Aucun outil ne lit le schéma d'un autre : la liaison avec Keystone reste une API.
+  - Le contrat de dépôt et de synchronisation des documents projet reste ouvert (O-03).
 
 ### Premier commit
 **Fait** (D-23, D-24).
@@ -1180,11 +1679,13 @@ Les valeurs de la maquette n'existent plus dans le modèle v2 :
 Toutes ces questions attendent une réponse de l'utilisateur. Ne pas les trancher à sa place. On peut les lui
 reposer, une fois, en citant leur numéro.
 
+Fiches d'aide à la décision (état du code, options, effort, ce qui deviendrait irréversible) : `docs/fiches-decision.md`. Elles ne tranchent rien.
+
 | N° | Question | Responsable | Suivi |
 |---|---|---|---|
 | O-01 | **SharePoint** : faut-il l'activer ? Si oui, faut-il un fichier par version, sans accès direct des utilisateurs à la bibliothèque ? Sans cette restriction, les utilisateurs pourraient contourner les droits de Codex. Avec elle, on modifie un fichier en le téléchargeant puis en le redéposant, sans édition Office en ligne. Posée 4 fois (7 oct. à 17:33, 18:07 et 23:18 ; 8 oct. à 06:18), jamais répondue. | utilisateur | `docs/modele-cible.md` §1 (provisoire : un fichier par version de travail, aucun accès direct) ; `src/lib/storage.ts` |
 | O-02 | **Fournisseur d'authentification** pour remplacer la simulation. Entra ID est proposé, non confirmé. | utilisateur | ce fichier ; `docs/avancement-v2.md` (Reste à faire) |
-| O-03 | **Liaison avec Keystone** : API ou base partagée ? Il faut aussi définir le contrat de dépôt et de synchronisation des documents projet. | utilisateur | ce fichier ; spec Keystone (dépôt Keystone) |
+| O-03 | **Liaison avec Keystone** : API ou base partagée ? Il faut aussi définir le contrat de dépôt et de synchronisation des documents projet. En partie répondue le 15 octobre 2026 (M-01) : base commune, un schéma par outil, sans accès croisé ; la liaison reste une API. Reste ouvert : le contrat de dépôt et de synchronisation. | utilisateur | ce fichier ; spec Keystone (dépôt Keystone) ; dépôt Matrix, `docs/architecture-postgres.md` |
 | O-04 | **Organigramme** : sociétés, sites, départements. | utilisateur | `src/db/seed-org.ts` (valeurs provisoires) |
 | O-05 | **Registre des types** : les 9 questions ouvertes et les choix de fusion à valider. | utilisateur | `docs/registre-points-ouverts.md` (seule liste qui fait foi) |
 | O-06 | **Matrice type → circuit et titulaires des fonctions** : ce sont des valeurs de démonstration. | utilisateur | `src/db/registry.ts` (`circuit`), `src/db/seed-org.ts` (`FUNCTIONS`, `HOLDERS`) |

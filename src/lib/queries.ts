@@ -1,22 +1,26 @@
 import 'server-only';
 import { cache } from 'react';
-import { and, asc, desc, eq, inArray, isNotNull, isNull, or, sql, type SQL, type SQLWrapper } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, notInArray, or, sql, type SQL, type SQLWrapper } from 'drizzle-orm';
 import { getDb, schema as s } from '@/db';
-import type { AuditChange, AuditData, AuditTargetKind, AuditValue, Conf, LinkRel, TermField } from '@/db/schema';
-import { canRead, changeAsSeen, deadlineActor, draftingCircleSql, draftTodo, followsCircuit, getAccessIndex, inDraftingCircle, isUsableTemplate, mayDeleteSearch, mayEditLinks, mayGetApprovalRecord, mayRecall, mayWorkOnDraft, openRevisionView, readableSql, readerMaySeeEntry, readerMaySeeRevision, savedSearchesSeenBy, type AccessIndex } from './access';
+import type { AuditChange, AuditData, AuditTargetKind, AuditText, AuditValue, Conf, LinkRel, RetentionTrigger, TermField } from '@/db/schema';
+import { canRead, changeAsSeen, CONSULT_ACTIONS, deadlineActor, draftingCircleSql, draftTodo, followsCircuit, getAccessIndex, inDraftingCircle, isUsableTemplate, mayDeleteSearch, mayTransferHoldings, mayEditLinks, mayGetApprovalRecord, mayRecall, mayWorkOnDraft, openRevisionView, readableSql, readerMaySeeEntry, readerMaySeeRevision, readerMaySeeVersion, savedSearchesSeenBy, type AccessIndex } from './access';
 import { visaCircuit, type VisaRecord } from './approval';
+import { isFinalStatus, TEMPLATE_TYPE } from './codes';
 import { revLabel } from './codification';
 import type { Ctx } from './context';
 import { extensionOf } from './filetypes';
 import { addDays, clip, daysBetween, fmtDate, fmtDateTime, fmtSize, fmtWhen, loc, nowStamp, parisStamp, parseIsoDay, TIME_ZONE, todayIso } from './format';
-import { CONF_LEVELS, MATRIX_ROLE_LABEL, TAGCLS, type T, type TKey } from './i18n';
+import { CONF_LEVELS, MATRIX_ROLE_LABEL, phaseLabel, retentionBasisL, TAGCLS, type T, type TKey } from './i18n';
 import { decisionWait, lockOf, type DecisionWait, type Tx } from './lifecycle';
 import { LINK_RELS, otherEnd, relOf } from './links';
 import { NO_USAGE, type OrgUsage } from './org-rules';
 import { BUILT_IN_FUNCTIONS, BUILT_IN_TYPES } from './registry-rules';
-import { retainUntil } from './retention';
-import { isExpired, isReviewOverdue } from './review';
+import { EVENT_TRIGGERS, isEventTrigger, retainUntil, retentionGap } from './retention';
+import { circuitDaysLate, isExpired, isReviewOverdue } from './review';
 import { featuredFilters, featuredOf } from './departments';
+import { simulateTransfer, type TransferPlan } from './transfer';
+import { bothDocumentValues, documentValues, loadTerms, type Term } from './vocab';
+import { canonicalSubtype, termKeys, vocabKey, type VocabKind } from './vocab-rules';
 import { DATE_LABEL, FACET_KEYS, FACET_LABEL, fold, hit, SCORE_WEIGHT, searchHref, SORT_LABEL, sortOf, wordStartPrefix, type DateField, type FacetKey, type Facets, type Period, type SearchDoc, type SearchInput, type SortKey } from './search';
 
 type DocRow = typeof s.documents.$inferSelect;
@@ -74,13 +78,21 @@ export function docView(ctx: Ctx, d: DocRow, workingL: string | null | undefined
     expired: isExpired(d, today),
     reviewOverdue: isReviewOverdue(d, today),
     retainUntil: until,
-    untilF: until ? fmtDate(until, lang) : d.retentionTrigger === 'permanent' || d.retentionDisposition === 'permanent' ? t.disp_permanent : '—',
+    untilF: until ? fmtDate(until, lang) : d.retentionTrigger === 'permanent' || d.retentionDisposition === 'permanent' ? t.disp_permanent : untilGapL(t, retentionGap(d)),
+    /** The trigger waits for a date entered on the record (end of life of the asset, departure of the employee). */
+    eventTrigger: isEventTrigger(d.retentionTrigger),
+    retentionEventF: fmtDate(d.retentionEventAt, lang),
     retentionL: `${years}${t[`trig_${d.retentionTrigger}` as TKey]} · ${t[`disp_${d.retentionDisposition}` as TKey]}`,
     path: `${contextL} › ${familyLabel} › ${typeLabel}`,
     href: `/documents/${encodeURIComponent(d.id)}`,
   };
 }
 export type DocView = ReturnType<typeof docView>;
+
+/** « Fin de conservation » of a document without one: what it waits for. */
+function untilGapL(t: Ctx['t'], gap: ReturnType<typeof retentionGap>): string {
+  return gap === 'event_missing' ? t.until_event_missing : gap === 'no_duration' ? t.until_no_duration : '—';
+}
 
 /**
  * Label ("B.2", or "B" before any working version) of the revision being drafted or reviewed, per document: of every
@@ -99,8 +111,11 @@ async function workingLabels(docIds?: string[]): Promise<Map<string, string>> {
   return new Map(revs.map((r) => [r.docId, maxN.has(r.id) ? revLabel(r.letter, r.status, maxN.get(r.id)) : r.letter]));
 }
 
+/** Changes to a document's retention (lib/actions.ts setRetentionClass, setRetentionEvent, updateType). */
+export const RETENTION_ACTIONS = ['retention', 'retention_type', 'retention_event'] as const;
+
 /** Journal actions on the record itself (no revision) that move documents.modified_at (a recorded review sets the next date). */
-const RECORD_ACTIONS = ['edit', 'reviewed', 'archive', 'restore'];
+const RECORD_ACTIONS = ['edit', 'reviewed', 'archive', 'restore', ...RETENTION_ACTIONS];
 
 /**
  * documents.modified_at also moves with drafting work (working versions, validation requests). Outside the drafting
@@ -122,18 +137,20 @@ async function visibleModified(ids: string[]): Promise<Map<string, string>> {
 }
 
 /**
- * Documents the current user may see (records managers: all), most recently modified first. Without option, the list is
- * loaded once per request and shared (the layout, its templates and « À traiter », the page): never sort or change it in
- * place.
+ * Documents the current user may see (records managers: all), most recently modified first. Every document is read:
+ * the screens read only what they show (visibleWhere and the functions built on it); this list stays the reference the
+ * tests compare them with. Without option, it is loaded once per request and shared: never sort or change it in place.
  */
 export function listDocs(ctx: Ctx, opts: { includeHidden?: boolean } = {}): Promise<DocView[]> {
   return opts.includeHidden ? loadDocs(ctx, true) : visibleDocs(ctx);
 }
 const visibleDocs = cache((ctx: Ctx) => loadDocs(ctx, false));
 
-async function loadDocs(ctx: Ctx, includeHidden: boolean): Promise<DocView[]> {
+/** `where`: only the documents it selects (a condition on documents), with what they need. */
+async function loadDocs(ctx: Ctx, includeHidden: boolean, where?: SQL): Promise<DocView[]> {
   const db = await getDb();
-  const [rows, ix, wl] = await Promise.all([db.select().from(s.documents).orderBy(desc(s.documents.modifiedAt), desc(s.documents.id)), getAccessIndex(), workingLabels()]);
+  const rows = await db.select().from(s.documents).where(where).orderBy(desc(s.documents.modifiedAt), desc(s.documents.id));
+  const [ix, wl] = await Promise.all([getAccessIndex(ctx), workingLabels(where ? rows.map((d) => d.id) : undefined)]);
   const shown = rows.filter((d) => includeHidden || canRead(ctx, d, ix)).map((d) => ({ d, circle: inDraftingCircle(ctx, d, ix) }));
   const vm = await visibleModified(shown.filter((x) => !x.circle && x.d.revWorking).map((x) => x.d.id));
   const docs = shown.map((x) => docView(ctx, x.d, wl.get(x.d.id), x.circle, vm.get(x.d.id)));
@@ -451,21 +468,215 @@ export async function explorerDocs(ctx: Ctx, f: { axis: ExplorerAxis; node?: str
   };
 }
 
+// ── Documents read for what a screen shows (the shell, home, Archivage, department pages, record) ──────
+// Each list is listDocs narrowed to the documents a condition selects, in its order, without reading the others
+// (tests/integration/targeted-reads.test.ts compares them with listDocs, person by person and role by role).
+
+/**
+ * Documents the user may see that `where` selects, in the order of listDocs, at most `limit`: listDocs filtered on the
+ * same condition. `where` is a condition on the columns of `vis0` (visibleCte): those of documents under their bare
+ * names (col), `circle`, `shown`, `expired`, `review_late`.
+ */
+async function visibleWhere(ctx: Ctx, where: SQL, limit?: number): Promise<DocView[]> {
+  const db = await getDb();
+  const { rows } = await db.execute<Listed>(sql`with ${visibleCte(ctx, todayIso())}
+    select ${col(D.id)} as id, circle, shown, null as effective from vis0 where ${where} order by ${LIST_ORDER} ${limit == null ? sql`` : sql`limit ${limit}`}`);
+  return viewsOf(ctx, rows);
+}
+
+/** The `n` documents the user may see that were modified last, as listDocs begins (home, « Récents »). */
+export function recentDocs(ctx: Ctx, n: number): Promise<DocView[]> {
+  return visibleWhere(ctx, ALL, n);
+}
+
+/**
+ * Date the retention of a document counts from, by trigger (lib/retention.ts triggerDate), as an SQL date; null where
+ * Codex does not know it (end of project, O-03) or keeps the document permanently. Typed on every trigger: a new one
+ * cannot be forgotten here.
+ */
+const TRIGGER_DATE_SQL: Record<RetentionTrigger, SQL | null> = {
+  creation: col(D.createdAt),
+  in_force: col(D.issuedAt),
+  superseded: sql`coalesce(${col(D.obsoleteAt)}, ${col(D.archivedAt)})`,
+  contract_end: col(D.expiresAt),
+  expiry: col(D.expiresAt),
+  fiscal_year_end: sql`make_date(extract(year from coalesce(${col(D.issuedAt)}, ${col(D.createdAt)}))::int, 12, 31)`,
+  asset_life: col(D.retentionEventAt),
+  employee_departure: col(D.retentionEventAt),
+  project_end: null,
+  permanent: null,
+};
+
+/**
+ * Documents that may have a date falling due by `limit` (deadlines): an expiry or a review of an active document, an
+ * end of retention. A superset (one day of margin on the retention): deadlines() decides on each.
+ */
+function mayFallDueSql(limit: string): SQL {
+  const known = Object.entries(TRIGGER_DATE_SQL).filter((e): e is [string, SQL] => e[1] != null);
+  const base = sql`(case ${col(D.retentionTrigger)} ${sql.join(known.map(([k, v]) => sql`when ${k} then ${v}`), sql` `)} end)`;
+  return sql`((${col(D.state)} = 'active' and ${col(D.expiresAt)} <= ${limit}::date)
+    or (${col(D.state)} = 'active' and coalesce(${col(D.revInForce)}, '') <> '' and ${col(D.reviewDueAt)} <= ${limit}::date)
+    or (${col(D.retentionDisposition)} <> 'permanent' and ${col(D.retentionYears)} is not null
+      and ${base} + make_interval(years => ${col(D.retentionYears)}) <= ${limit}::date + 1))`;
+}
+
+/** What falls due within DEADLINE_WINDOW_DAYS among the documents the user may see: deadlines over listDocs. */
+export async function dueDeadlines(ctx: Ctx) {
+  return deadlines(ctx, await visibleWhere(ctx, mayFallDueSql(addDays(todayIso(), DEADLINE_WINDOW_DAYS))));
+}
+
+/** Documents of a department the user may see, in the order of listDocs. */
+export function departmentDocs(ctx: Ctx, code: string): Promise<DocView[]> {
+  return visibleWhere(ctx, is(col(D.department), code));
+}
+
+/** Documents the user may see whose retention counts from a date entered on the record (Archivage, « Dates d'événement »). */
+export function eventDocs(ctx: Ctx): Promise<DocView[]> {
+  return visibleWhere(ctx, sql`${col(D.retentionTrigger)} in (${list(EVENT_TRIGGERS)})`);
+}
+
+/** Archived documents the user may see (Archivage, « Archives »). */
+export function archivedDocs(ctx: Ctx): Promise<DocView[]> {
+  return visibleWhere(ctx, sql`${col(D.state)} = 'archived'`);
+}
+
+/** Per type, the documents the user may see (`n`) and those holding a retention class of their own (`overrides`). */
+export async function typeCounts(ctx: Ctx): Promise<Map<string, { n: number; overrides: number }>> {
+  const db = await getDb();
+  const { rows } = await db.execute<{ code: string; n: number; overrides: number }>(sql`with ${visibleCte(ctx, todayIso())}
+    select ${col(D.typeCode)} as code, count(*)::int as n, (count(*) filter (where ${col(D.retentionOverride)}))::int as overrides from vis0 group by 1`);
+  return new Map(rows.map((r) => [r.code, { n: r.n, overrides: r.overrides }]));
+}
+
+/**
+ * The documents the user may see, as a record's dialogs offer them (a replacement on withdrawal, a link): ID, title,
+ * state, withdrawal date and owner only, by ID.
+ */
+export async function readableBriefs(ctx: Ctx): Promise<{ id: string; title: string; state: string; obsoleteAt: string | null; ownerId: string }[]> {
+  const db = await getDb();
+  const { rows } = await db.execute<{ id: string; title: string; state: string; obsolete_at: string | null; owner_id: string }>(sql`with ${visibleCte(ctx, todayIso())}
+    select ${col(D.id)} as id, ${col(D.title)} as title, ${col(D.state)} as state, ${col(D.obsoleteAt)}::text as obsolete_at, ${col(D.ownerId)} as owner_id from vis0`);
+  return rows.map((r) => ({ id: r.id, title: r.title, state: r.state, obsoleteAt: r.obsolete_at, ownerId: r.owner_id })).sort((a, b) => a.id.localeCompare(b.id));
+}
+
+/** Every document attached to a project, whether the user sees it or not (the record's checklist of expected pieces). */
+export function projectDocs(ctx: Ctx, code: string): Promise<DocView[]> {
+  return loadDocs(ctx, true, and(eq(s.documents.attachment, 'project'), eq(s.documents.projectCode, code)));
+}
+
+/**
+ * Documents the user may see whose revision in force entered into force in the last 7 days, Paris time (home, KPI):
+ * the journal's `in_force` entries of the week the user may read (auditForReader: outside the drafting circle, an entry
+ * whose revision is in force or superseded), each under the document's current ID, whose revision is still the one in
+ * force. Counted over the whole week, not over the last entries of the journal.
+ */
+export async function inForceThisWeek(ctx: Ctx): Promise<number> {
+  const db = await getDb();
+  const weekAgo = addDays(todayIso(), -7);
+  const { rows: [row] } = await db.execute<{ n: number }>(sql`with ${visibleCte(ctx, todayIso())},
+    entries as (
+      select coalesce((select d.id from ${D} d where d.aliases @> jsonb_build_array(a.doc_id) limit 1), a.doc_id) as cur, a.detail, a.revision_id
+      from ${s.auditLog} a where a.action = 'in_force' and a.doc_id is not null and (a.at at time zone ${TIME_ZONE})::date >= ${weekAgo}::date
+    )
+    select count(distinct e.cur)::int as n from entries e join vis0 v on v.${col(D.id)} = e.cur
+    where v.${col(D.revInForce)} = e.detail
+      and (v.circle or e.revision_id in (select r.id from ${s.revisions} r where r.status in ('in_force', 'superseded')))`);
+  return row?.n ?? 0;
+}
+
 /** One document, with what the user may do with its drafts. Returns `hidden` when it exists but is not visible. */
 export async function getDoc(ctx: Ctx, id: string): Promise<{ doc: DocView; circle: boolean; ix: AccessIndex } | 'hidden' | null> {
   const db = await getDb();
   let [d] = await db.select().from(s.documents).where(eq(s.documents.id, id));
   if (!d) {
-    // Former IDs (reclassification, migration) still resolve.
-    const all = await db.select().from(s.documents);
-    d = all.find((x) => x.aliases.includes(id))!;
+    // Former IDs (reclassification, migration) still resolve, through the index documents_aliases. An ID is never
+    // handed out again once kept as an alias (lib/codification.ts): one document at most holds it.
+    [d] = await db.select().from(s.documents).where(sql`${s.documents.aliases} @> ${JSON.stringify([id])}::jsonb`).limit(1);
     if (!d) return null;
   }
-  const ix = await getAccessIndex();
+  const ix = await getAccessIndex(ctx);
   if (!canRead(ctx, d, ix)) return 'hidden';
   const circle = inDraftingCircle(ctx, d, ix);
   const [wl, vm] = await Promise.all([workingLabels([d.id]), visibleModified(!circle && d.revWorking ? [d.id] : [])]);
   return { doc: docView(ctx, d, wl.get(d.id), circle, vm.get(d.id)), circle, ix };
+}
+
+/** The people named as readers of a document (document_readers), for its record; the caller has checked it may be read. */
+export async function namedReaders(docId: string): Promise<string[]> {
+  const db = await getDb();
+  const rows = await db.select({ userId: s.documentReaders.userId }).from(s.documentReaders).where(eq(s.documentReaders.docId, docId)).orderBy(asc(s.documentReaders.userId));
+  return rows.map((r) => r.userId);
+}
+
+/** A working version the user may have, as the file route serves it: the row and its label ("B", "B.2"). */
+export type ReadableVersion = { version: typeof s.workingVersions.$inferSelect; label: string };
+
+/**
+ * Those of the working versions `ids` of a document that the user may have, under the rules of the file route
+ * (src/app/api/documents/[id]/file/route.ts): a document they read, and, outside its drafting circle, only the final
+ * file of the revision in force (readerMaySeeVersion, D-14). A version of another document, unknown or withheld is
+ * simply absent. Null when the document is unknown or hidden from them. Used by the comparison of versions
+ * (lib/compare.ts).
+ */
+export async function readableVersions(ctx: Ctx, docId: string, ids: readonly number[]): Promise<{ doc: DocView; circle: boolean; versions: Map<number, ReadableVersion> } | null> {
+  const res = await getDoc(ctx, docId);
+  if (!res || res === 'hidden') return null;
+  const { doc, circle } = res;
+  const db = await getDb();
+  const [revs, versions] = await Promise.all([
+    db.select().from(s.revisions).where(eq(s.revisions.docId, doc.id)),
+    db.select().from(s.workingVersions).where(eq(s.workingVersions.docId, doc.id)).orderBy(asc(s.workingVersions.n)),
+  ]);
+  const out = new Map<number, ReadableVersion>();
+  for (const id of ids) {
+    const version = versions.find((v) => v.id === id);
+    const rev = version && revs.find((r) => r.id === version.revisionId);
+    if (!version || !rev) continue;
+    const isFinal = versions.findLast((v) => v.revisionId === rev.id)?.id === version.id;
+    if (!readerMaySeeVersion(circle, rev.status, isFinal)) continue;
+    out.set(id, { version, label: isFinalStatus(rev.status) && isFinal ? rev.letter : `${rev.letter}.${version.n}` });
+  }
+  return { doc, circle, versions: out };
+}
+
+/** A working version whose file has a given SHA-256, as sameFiles gives it: its document, label and title. */
+export type SameFile = { docId: string; label: string; title: string };
+
+/**
+ * Documents already holding a file with this SHA-256 (the duplicate warning of an upload or an import, point 31 of
+ * docs/reste-a-faire.md), among the files `viewer` may have: a document they read, and, outside its drafting circle,
+ * only the final file of the revision in force (readerMaySeeVersion, D-14): a draft, a working version or a document
+ * they cannot read is never named. One version per document (the newest they may have), at most `limit` documents.
+ * `viewer` may be another person than the user (lib/importer.ts, for the migration tool).
+ */
+export async function sameFiles(viewer: Pick<Ctx, 'user' | 'seesAll' | 'can'>, sha256: string, limit = 3): Promise<SameFile[]> {
+  const db = await getDb();
+  const rows = await db
+    .select({
+      docId: s.workingVersions.docId, n: s.workingVersions.n, letter: s.revisions.letter, status: s.revisions.status,
+      last: sql<number>`(select max(x.n) from working_versions x where x.revision_id = ${s.workingVersions.revisionId})::int`,
+    })
+    .from(s.workingVersions)
+    .innerJoin(s.revisions, eq(s.revisions.id, s.workingVersions.revisionId))
+    .where(eq(s.workingVersions.sha256, sha256))
+    .orderBy(asc(s.workingVersions.docId), desc(s.workingVersions.id));
+  if (!rows.length) return [];
+  const [docs, ix] = await Promise.all([
+    db.select().from(s.documents).where(anyOf(s.documents.id, [...new Set(rows.map((r) => r.docId))])),
+    getAccessIndex(viewer),
+  ]);
+  const docBy = new Map(docs.map((d) => [d.id, d]));
+  const out: SameFile[] = [];
+  for (const r of rows) {
+    if (out.length >= limit) break;
+    if (out.some((x) => x.docId === r.docId)) continue;
+    const d = docBy.get(r.docId);
+    if (!d || !canRead(viewer, d, ix)) continue;
+    const isFinal = r.n === r.last;
+    if (!readerMaySeeVersion(inDraftingCircle(viewer, d, ix), r.status, isFinal)) continue;
+    out.push({ docId: d.id, label: isFinal && isFinalStatus(r.status) ? r.letter : `${r.letter}.${r.n}`, title: d.title });
+  }
+  return out;
 }
 
 /**
@@ -529,7 +740,7 @@ export async function approvalRecord(ctx: Ctx, id: string, letter: string): Prom
   const db = await getDb();
   const [wfs, entries] = await Promise.all([
     db.select().from(s.workflows).where(eq(s.workflows.revisionId, rev.id)),
-    db.select().from(s.auditLog).where(eq(s.auditLog.revisionId, rev.id)).orderBy(asc(s.auditLog.at), asc(s.auditLog.id)),
+    db.select().from(s.auditLog).where(and(eq(s.auditLog.revisionId, rev.id), notInArray(s.auditLog.action, [...CONSULT_ACTIONS]))).orderBy(asc(s.auditLog.at), asc(s.auditLog.id)),
   ]);
   const ids = wfs.map((w) => w.id);
   const [steps, comments] = ids.length
@@ -553,6 +764,7 @@ export async function approvalRecord(ctx: Ctx, id: string, letter: string): Prom
     rev: {
       letter: rev.letter, status: rev.statusLabel, createdAt: rev.createdAt, approvedAt: rev.approvedAt, effectiveAt: rev.effectiveAt, inForceAt: rev.inForceAt,
       supersededAt: rev.supersededAt, modifier: rev.modifier, changeRefs: rev.changeRefs,
+      file: rev.file?.fileKey ? { name: rev.file.fileName ?? `${doc.id}_${rev.letter}`, size: rev.file.sizeF, sha256: rev.file.sha256 } : null,
     },
     imported: imported ? { at: imported.at, legacyRef: doc.legacyRef ?? imported.detail.split(' → ')[0], approved: !approvedInCodex } : null,
     circuits: [...wfs]
@@ -569,24 +781,51 @@ export async function approvalRecord(ctx: Ctx, id: string, letter: string): Prom
 // ── Workflows ────────────────────────────────────────────────────────────
 
 /**
- * Every workflow, with what the current user may see of it (`visible`). Loaded once per request and shared (the layout
- * through « À traiter », the page): never sort or change the list or its items in place, filter or copy it first.
+ * Every workflow, with what the current user may see of it (`visible`). Loaded once per request and shared (/validations
+ * and the pages that list them all): never sort or change the list or its items in place, filter or copy it first.
+ * Screens that need only some read them with workflowsWhere.
  */
-export const listWorkflows = cache(async (ctx: Ctx) => {
+export const listWorkflows = cache((ctx: Ctx) => workflowsWhere(ctx));
+
+/** `column` is one of the integers `values`, passed as one array. */
+const anyInt = (column: SQLWrapper, values: number[]) => sql`${column} = any(${sql.param(values)}::int[])`;
+
+/** Rows grouped by key, in their order. */
+function groupBy<T, K>(rows: T[], key: (r: T) => K): Map<K, T[]> {
+  const m = new Map<K, T[]>();
+  for (const r of rows) {
+    const k = key(r);
+    if (!m.has(k)) m.set(k, []);
+    m.get(k)!.push(r);
+  }
+  return m;
+}
+
+/**
+ * The workflows `where` selects (a condition on workflows; all of them without it), as listWorkflows gives them, in its
+ * order: only their steps, comments, documents and revisions are read.
+ */
+export async function workflowsWhere(ctx: Ctx, where?: SQL) {
   const db = await getDb();
-  const [wfs, steps, comments, docs, revs, ix] = await Promise.all([
-    db.select().from(s.workflows).orderBy(asc(s.workflows.due), asc(s.workflows.id)),
-    db.select().from(s.workflowSteps).orderBy(asc(s.workflowSteps.idx)),
-    db.select().from(s.workflowComments).orderBy(asc(s.workflowComments.id)),
-    db.select().from(s.documents),
-    db.select({ id: s.revisions.id, letter: s.revisions.letter, status: s.revisions.status }).from(s.revisions),
-    getAccessIndex(),
-  ]);
+  const wfs = await db.select().from(s.workflows).where(where).orderBy(asc(s.workflows.due), asc(s.workflows.id));
+  const ids = wfs.map((w) => w.id), docIds = [...new Set(wfs.map((w) => w.docId))], revIds = [...new Set(wfs.map((w) => w.revisionId))];
+  // Without a condition, the whole tables: a list of every ID would only weigh on the query.
+  const only = <C extends SQLWrapper>(column: C, values: string[]) => (where ? anyOf(column, values) : undefined);
+  const [steps, comments, docs, revs, ix] = wfs.length ? await Promise.all([
+    db.select().from(s.workflowSteps).where(only(s.workflowSteps.workflowId, ids)).orderBy(asc(s.workflowSteps.idx)),
+    db.select().from(s.workflowComments).where(only(s.workflowComments.workflowId, ids)).orderBy(asc(s.workflowComments.id)),
+    db.select().from(s.documents).where(only(s.documents.id, docIds)),
+    db.select({ id: s.revisions.id, letter: s.revisions.letter, status: s.revisions.status }).from(s.revisions).where(where ? anyInt(s.revisions.id, revIds) : undefined),
+    getAccessIndex(ctx),
+  ]) : [[], [], [], [], null];
+  if (!ix) return [];
+  const stepsBy = groupBy(steps, (x) => x.workflowId), commentsBy = groupBy(comments, (c) => c.workflowId);
   const docBy = new Map(docs.map((d) => [d.id, d]));
   const revBy = new Map(revs.map((r) => [r.id, r]));
   const { t, lang } = ctx;
+  const today = todayIso();
   return wfs.map((w) => {
-    const ws = steps.filter((x) => x.workflowId === w.id).map((st) => {
+    const ws = (stepsBy.get(w.id) ?? []).map((st) => {
       const state = st.idx < w.step ? 'done' : st.idx === w.step ? 'current' : 'todo';
       return {
         ...st,
@@ -601,6 +840,7 @@ export const listWorkflows = cache(async (ctx: Ctx) => {
     const doc = docBy.get(w.docId);
     const rev = revBy.get(w.revisionId);
     const outcomeL = w.outcome === 'approved' ? t.wf_approved : w.outcome === 'rejected' ? t.wf_rejected : w.outcome === 'recalled' ? t.wf_recalled : null;
+    const daysLate = circuitDaysLate({ outcome: w.outcome, done: !!w.outcome || w.step >= ws.length, due: w.due }, today);
     return {
       ...w,
       docTitle: doc?.title ?? w.docId,
@@ -611,6 +851,13 @@ export const listWorkflows = cache(async (ctx: Ctx) => {
       revStatus: rev?.status ?? null,
       requester: ctx.userName(w.requesterId),
       dueF: fmtDate(w.due, lang),
+      /**
+       * Running past its due day (lib/review.ts isCircuitLate, Paris time; point 87): how many days, 0 when not late,
+       * and the label of the indicator (« En retard », its title saying since when), or null. Display only.
+       */
+      daysLate,
+      lateL: daysLate ? t.wf_late : null,
+      lateTitle: daysLate ? t.wf_late_title.replace('{date}', fmtDate(w.due, lang)).replace('{n}', String(daysLate)) : null,
       steps: ws,
       current: cur ?? null,
       stepName: (w.outcome === 'rejected' || w.outcome === 'recalled') && outcomeL ? outcomeL : cur && !w.outcome ? cur.nameL : t.wf_finished,
@@ -632,15 +879,149 @@ export const listWorkflows = cache(async (ctx: Ctx) => {
        */
       visible: followsCircuit(ctx, w, ws) && (ctx.seesAll || (!!doc && canRead(ctx, doc, ix) && readerMaySeeRevision(inDraftingCircle(ctx, doc, ix), rev?.status))),
       progress: `${Math.min(w.step, ws.length)}/${ws.length}`,
-      comments: comments.filter((c) => c.workflowId === w.id).map((c) => {
+      comments: (commentsBy.get(w.id) ?? []).map((c) => {
         const who = ctx.userName(c.authorId);
         return { id: c.id, who, initials: ctx.users.get(c.authorId)?.initials ?? who.slice(0, 2), whenF: fmtDate(c.at, lang), text: loc(c.text, lang) };
       }),
       href: `/validations?r=${encodeURIComponent(w.id)}`,
     };
   });
-});
-export type WorkflowView = Awaited<ReturnType<typeof listWorkflows>>[number];
+}
+export type WorkflowView = Awaited<ReturnType<typeof workflowsWhere>>[number];
+
+// ── /validations, filtered and paged by the database ─────────────────────
+// The same circuits, in the same order and with the same counts as listWorkflows filtered in memory (the reference of
+// tests/integration/validations-sql.test.ts), without reading every circuit: visibility (followsCircuit, canRead,
+// readerMaySeeRevision) and the filters run as SQL; only the circuits of the page shown are read whole.
+
+export const WORKFLOW_FILTERS = ['mine', 'requested', 'active', 'done'] as const;
+export type WorkflowFilter = (typeof WORKFLOW_FILTERS)[number];
+/** Circuits listed per page in /validations. */
+export const VALIDATIONS_PAGE_SIZE = 50;
+
+const W = s.workflows;
+/** Steps of the circuit of the row: their number, as `ws.length` in workflowsWhere. */
+const stepCount = sql`(select count(*) from ${s.workflowSteps} y where y.workflow_id = ${W.id})`;
+const wfDoneSql = sql`(coalesce(${W.outcome}, '') <> '' or ${W.step} >= ${stepCount})`;
+
+/** The filters of /validations as SQL conditions on the workflow row (WorkflowView mine, requested, done). */
+function workflowFilterSql(ctx: Ctx, f: WorkflowFilter): SQL {
+  const me = ctx.user.id;
+  switch (f) {
+    case 'mine': return sql`(coalesce(${W.outcome}, '') = '' and exists (select 1 from ${s.workflowSteps} x where x.workflow_id = ${W.id} and x.idx = ${W.step} and x.assignee_id = ${me}))`;
+    case 'requested': return sql`${W.requesterId} = ${me}`;
+    case 'active': return sql`not ${wfDoneSql}`;
+    case 'done': return wfDoneSql;
+  }
+}
+
+/**
+ * WorkflowView `visible` as an SQL condition on workflows joined to their document (`documents`, not aliased) and
+ * revision (`revisions`): records managers every circuit; others those they requested or hold a step of, on a document
+ * they may read, whose revision they see (D-14: once a circuit is over, its approvers leave the drafting circle).
+ */
+function workflowVisibleSql(ctx: Ctx): SQL {
+  if (ctx.seesAll) return sql`true`;
+  const me = ctx.user.id;
+  const circle = draftingCircleSql(ctx);
+  return sql`((${W.requesterId} = ${me} or exists (select 1 from ${s.workflowSteps} x where x.workflow_id = ${W.id} and x.assignee_id = ${me}))
+    and ${readableSql(ctx, circle)} and (${circle} or coalesce(${s.revisions.status}, '') in ('in_force', 'superseded')))`;
+}
+
+/** Order of a filter's list: by due date then ID; the finished ones most recent first; mine requested, running first. */
+function workflowOrder(f: WorkflowFilter | null): SQL {
+  if (f === 'done') return sql`${W.due} desc, ${W.id} desc`;
+  if (f === 'requested') return sql`${wfDoneSql}, ${W.due} asc, ${W.id} asc`;
+  return sql`${W.due} asc, ${W.id} asc`;
+}
+
+/** IDs of the visible circuits `where` selects, in the order of `f`, one page (or all of them when `limit` is null). */
+async function workflowIds(ctx: Ctx, where: SQL | undefined, order: WorkflowFilter | null, limit: number | null, offset = 0): Promise<string[]> {
+  const db = await getDb();
+  const q = db.select({ id: W.id }).from(W)
+    .innerJoin(s.documents, eq(s.documents.id, W.docId))
+    .leftJoin(s.revisions, eq(s.revisions.id, W.revisionId))
+    .where(and(workflowVisibleSql(ctx), where))
+    .orderBy(workflowOrder(order));
+  const rows = limit == null ? await q : await q.limit(limit).offset(offset);
+  return rows.map((r) => r.id);
+}
+
+/** The circuits `ids`, as workflowsWhere gives them, in that order. */
+async function workflowsByIds(ctx: Ctx, ids: string[]): Promise<WorkflowView[]> {
+  if (!ids.length) return [];
+  const views = await workflowsWhere(ctx, anyOf(W.id, ids));
+  const by = new Map(views.map((w) => [w.id, w]));
+  return ids.flatMap((id) => (by.has(id) ? [by.get(id)!] : []));
+}
+
+export type ValidationsPage = {
+  /** Visible circuits per filter, and in all. */
+  counts: Record<WorkflowFilter, number>;
+  total: number;
+  /** The filter shown, its page (1-based) and number of pages, and the circuits of that page. */
+  filter: WorkflowFilter;
+  page: number;
+  pages: number;
+  list: WorkflowView[];
+  /** The circuit shown: the one asked for, else the first of the list, else the first visible one. */
+  selected: WorkflowView | null;
+  /**
+   * The circuit asked for (`r`) exists but is not visible: `took part` when the user requested it or held a step of it
+   * (an approver who left the drafting circle), else null for any other one. Undefined when nothing is hidden.
+   */
+  hidden?: { tookPart: boolean };
+};
+
+/**
+ * What /validations shows: counts of each filter, the page of the filter asked for (`filter`, else the one the circuit
+ * asked for `r` belongs to, else the first with something in it), and the circuit shown. `page`: asked for (from 1);
+ * without it, the page that holds `r`. `size`: circuits per page (VALIDATIONS_PAGE_SIZE; tests set fewer).
+ */
+export async function validationsPage(ctx: Ctx, opts: { filter?: WorkflowFilter | null; r?: string | null; page?: number | null; size?: number } = {}): Promise<ValidationsPage> {
+  const db = await getDb();
+  const size = opts.size ?? VALIDATIONS_PAGE_SIZE;
+  const visible = workflowVisibleSql(ctx);
+  const n = (f: WorkflowFilter) => sql<number>`(count(*) filter (where ${workflowFilterSql(ctx, f)}))::int`;
+  const [counted] = await db.select({ total: sql<number>`count(*)::int`, mine: n('mine'), requested: n('requested'), active: n('active'), done: n('done') })
+    .from(W)
+    .innerJoin(s.documents, eq(s.documents.id, W.docId))
+    .leftJoin(s.revisions, eq(s.revisions.id, W.revisionId))
+    .where(visible);
+  const counts = Object.fromEntries(WORKFLOW_FILTERS.map((f) => [f, Number(counted?.[f] ?? 0)])) as Record<WorkflowFilter, number>;
+  const total = Number(counted?.total ?? 0);
+  const landing: WorkflowFilter = WORKFLOW_FILTERS.find((f) => counts[f] > 0) ?? 'mine';
+
+  let requested: WorkflowView | undefined;
+  let hidden: ValidationsPage['hidden'];
+  if (opts.r) {
+    const [one] = await workflowsByIds(ctx, [opts.r]);
+    if (one?.visible) requested = one;
+    else if (one) hidden = { tookPart: one.requested || one.steps.some((st) => st.assigneeId === ctx.user.id) };
+  }
+  const filter: WorkflowFilter =
+    opts.filter ??
+    (requested ? (requested.mine ? 'mine' : requested.requested ? 'requested' : requested.done ? 'done' : 'active') : landing);
+  const pages = Math.max(1, Math.ceil(counts[filter] / size));
+  let page = opts.page && opts.page >= 1 ? Math.min(Math.floor(opts.page), pages) : 1;
+  if (!opts.page && requested) {
+    // The page of the filter's list that holds the circuit asked for, if it is in that list.
+    const ids = await db.execute<{ n: number }>(sql`select t.n::int as n from (
+      select ${W.id} as id, row_number() over (order by ${workflowOrder(filter)}) as n from ${W}
+      join ${s.documents} on ${s.documents.id} = ${W.docId} left join ${s.revisions} on ${s.revisions.id} = ${W.revisionId}
+      where ${visible} and ${workflowFilterSql(ctx, filter)}) t where t.id = ${requested.id}`);
+    const n = Number(ids.rows[0]?.n ?? 0);
+    if (n) page = Math.ceil(n / size);
+  }
+  const list = await workflowsByIds(ctx, await workflowIds(ctx, workflowFilterSql(ctx, filter), filter, size, (page - 1) * size));
+  const selected = requested ?? list[0] ?? (total ? (await workflowsByIds(ctx, await workflowIds(ctx, undefined, null, 1)))[0] ?? null : null);
+  return { counts, total, filter, page, pages, list, selected, ...(hidden ? { hidden } : {}) };
+}
+
+/** The circuits of a document, as listWorkflows gives them (the record). */
+export function docWorkflows(ctx: Ctx, docId: string): Promise<WorkflowView[]> {
+  return workflowsWhere(ctx, eq(s.workflows.docId, docId));
+}
 
 // ── Change requests (Vigie) ──────────────────────────────────────────────
 
@@ -656,7 +1037,7 @@ export async function listChangeRequests(ctx: Ctx, opts: { docId?: string; mine?
   const all = await db.select().from(s.changeRequests).where(where).orderBy(desc(s.changeRequests.createdAt), desc(s.changeRequests.id));
   const ids = [...new Set(all.flatMap((r) => (r.replacementId ? [r.docId, r.replacementId] : [r.docId])))];
   const revIds = [...new Set(all.flatMap((r) => (r.revisionId == null ? [] : [r.revisionId])))];
-  const ix = await getAccessIndex();
+  const ix = await getAccessIndex(ctx);
   const [docs, revs] = await Promise.all([
     ids.length ? db.select().from(s.documents).where(inArray(s.documents.id, ids)) : [],
     revIds.length ? db.select({ id: s.revisions.id, letter: s.revisions.letter, status: s.revisions.status, changeRef: s.revisions.changeRef }).from(s.revisions).where(inArray(s.revisions.id, revIds)) : [],
@@ -763,7 +1144,7 @@ export async function listDocLinks(ctx: Ctx, docId: string) {
   const db = await getDb();
   const rows = await db.select().from(s.documentLinks).where(or(eq(s.documentLinks.sourceId, docId), eq(s.documentLinks.targetId, docId)));
   const ids = [...new Set(rows.map((l) => otherEnd(l, docId)))];
-  const [docs, ix] = await Promise.all([ids.length ? db.select().from(s.documents).where(inArray(s.documents.id, ids)) : [], getAccessIndex()]);
+  const [docs, ix] = await Promise.all([ids.length ? db.select().from(s.documents).where(inArray(s.documents.id, ids)) : [], getAccessIndex(ctx)]);
   const docBy = new Map(docs.map((d) => [d.id, d]));
   return rows
     .flatMap((l) => {
@@ -837,23 +1218,61 @@ export type MyAction = { key: string; kind: ActionKind; docId: string; docTitle:
  *   of (deadlineActor: the process owner records a review, and only asks for a change on an expiry), with the edit
  *   permission; an overdue one is worded as the record's indicator. End of retention stays with records managers, in
  *   Archivage.
- * Ordered by kind (ACTION_ORDER), then by date. Cached per request (see myTodo).
+ * Ordered by kind (ACTION_ORDER), then by date. Only the documents and workflows an item may come from are read
+ * (actionsAmong decides). Cached per request (see myTodo).
  */
 export const myActions = cache(async (ctx: Ctx): Promise<MyAction[]> => {
   const db = await getDb();
-  const { t } = ctx;
   const me = ctx.user.id;
-  const [docs, workflows, open, pending, ix] = await Promise.all([
-    listDocs(ctx),
-    listWorkflows(ctx),
+  const { pending } = await todoSources();
+  // Revisions being drafted that may wait for the user (draftTodo): they were designated to write it, own the document,
+  // or wrote it before its last circuit sent it back (the first step of a circuit of it).
+  const drafts = await db.select({ id: s.revisions.id, docId: s.revisions.docId }).from(s.revisions).where(and(
+    eq(s.revisions.status, 'draft'),
+    or(
+      eq(s.revisions.modifierId, me),
+      sql`${s.revisions.docId} in (select d.id from ${s.documents} d where d.owner_id = ${me})`,
+      sql`${s.revisions.id} in (select w.revision_id from ${s.workflows} w join ${s.workflowSteps} x on x.workflow_id = w.id where x.idx = 0 and x.assignee_id = ${me})`,
+    ),
+  ));
+  // The workflows an item may come from: running ones holding a step of the user's, and every one of those revisions
+  // (the last one may have sent it back).
+  const workflows = await workflowsWhere(ctx, or(
+    drafts.length ? anyInt(s.workflows.revisionId, drafts.map((r) => r.id)) : undefined,
+    and(sql`coalesce(${s.workflows.outcome}, '') = ''`, sql`${s.workflows.id} in (select x.workflow_id from ${s.workflowSteps} x where x.assignee_id = ${me})`),
+  ));
+  // The documents an item may be about, among those the user may see: of these workflows and revisions, of the changes
+  // Vigie accepted, and the ones they own or own the process of that may fall due.
+  const ids = [...new Set([...workflows.map((w) => w.docId), ...drafts.map((r) => r.docId), ...pending.filter((c) => c.status === 'accepted').map((c) => c.docId)])];
+  const limit = addDays(todayIso(), DEADLINE_WINDOW_DAYS);
+  const docs = await visibleWhere(ctx, sql`(${anyOf(col(D.id), ids)} or ((${col(D.ownerId)} = ${me} or ${col(D.processOwnerId)} = ${me}) and ${mayFallDueSql(limit)}))`);
+  return actionsAmong(ctx, docs, workflows);
+});
+
+/** Open revisions and the changes Vigie has not closed yet: what « À traiter » starts from. Read once per request. */
+const todoSources = cache(async () => {
+  const db = await getDb();
+  const [open, pending] = await Promise.all([
     db.select().from(s.revisions).where(inArray(s.revisions.status, ['draft', 'in_review', 'approved'])),
     db.select().from(s.changeRequests).where(inArray(s.changeRequests.status, ['submitted', 'accepted'])),
-    getAccessIndex(),
   ]);
+  return { open, pending };
+});
+
+/**
+ * « À traiter » over `docs` (documents the user may see, in the order of listDocs) and `workflows` (as listWorkflows
+ * gives them): myActions hands it those its items may come from. Given every document and every workflow, it lists the
+ * same items (tests/integration/targeted-reads.test.ts).
+ */
+export async function actionsAmong(ctx: Ctx, docs: DocView[], workflows: WorkflowView[]): Promise<MyAction[]> {
+  const db = await getDb();
+  const { t } = ctx;
+  const me = ctx.user.id;
+  const [{ open, pending }, ix] = await Promise.all([todoSources(), getAccessIndex(ctx)]);
   const docBy = new Map(docs.map((d) => [d.id, d]));
   // Revisions being drafted that already have a working version (they may be sent for approval).
-  const draftIds = open.filter((r) => r.status === 'draft').map((r) => r.id);
-  const drafted = draftIds.length ? await db.selectDistinct({ revisionId: s.workingVersions.revisionId }).from(s.workingVersions).where(inArray(s.workingVersions.revisionId, draftIds)) : [];
+  const draftIds = open.filter((r) => r.status === 'draft' && docBy.has(r.docId)).map((r) => r.id);
+  const drafted = draftIds.length ? await db.selectDistinct({ revisionId: s.workingVersions.revisionId }).from(s.workingVersions).where(anyInt(s.workingVersions.revisionId, draftIds)) : [];
   const withVersions = new Set(drafted.map((v) => v.revisionId));
   const out: MyAction[] = [];
   const push = (kind: ActionKind, d: DocView, detail: string, href: string, due: string | null = null, key = d.id, note: string | null = null) =>
@@ -909,7 +1328,7 @@ export const myActions = cache(async (ctx: Ctx): Promise<MyAction[]> => {
 
   const rank = (a: MyAction) => ACTION_ORDER.indexOf(a.kind);
   return out.sort((a, b) => rank(a) - rank(b) || (a.due ?? '9999').localeCompare(b.due ?? '9999') || a.docId.localeCompare(b.docId));
-});
+}
 
 /** « À traiter » with the time it was computed (ms), so the shell keeps the most recent list it was given. */
 export type Todo = { at: number; items: MyAction[] };
@@ -967,7 +1386,7 @@ export async function auditForReader(ctx: Ctx, all: AuditRow[]): Promise<AuditEn
   const [docs, revs, ix] = await Promise.all([
     docIds.length ? db.select().from(s.documents).where(inArray(s.documents.id, docIds)) : [],
     revIds.length ? db.select({ id: s.revisions.id, status: s.revisions.status, changeRef: s.revisions.changeRef }).from(s.revisions).where(inArray(s.revisions.id, revIds)) : [],
-    getAccessIndex(),
+    getAccessIndex(ctx),
   ]);
   const docBy = new Map(docs.map((d) => [d.id, d]));
   const statusBy = new Map(revs.map((r) => [r.id, r.status]));
@@ -977,6 +1396,12 @@ export async function auditForReader(ctx: Ctx, all: AuditRow[]): Promise<AuditEn
     const circle = !!d && inDraftingCircle(ctx, d, ix);
     if (!readerMaySeeEntry(circle, a, a.revisionId == null ? undefined : statusBy.get(a.revisionId))) return [];
     if (!d || !canRead(ctx, d, ix)) return [{ ...a, detail: '', data: null, readable: false }];
+    // The fingerprint of a file received tells a draft's file apart: kept within the drafting circle (D-14).
+    if (!circle && a.data?.sha256) {
+      const data = { ...a.data };
+      delete data.sha256;
+      a = { ...a, data };
+    }
     // A link to a document the reader may not read is not shown on the record: nor is its trace (D-14).
     const linked = a.data?.link ? docBy.get(cur(a.data.link.other)) : undefined;
     if (a.data?.link && (!linked || !canRead(ctx, linked, ix))) return [];
@@ -987,7 +1412,7 @@ export async function auditForReader(ctx: Ctx, all: AuditRow[]): Promise<AuditEn
   });
 }
 
-const TARGET_LABEL: Record<AuditTargetKind, TKey> = { permission: 'target_permission', department: 'department', site: 'site', function: 'function_label', family: 'family', type: 'type', program: 'program', export: 'target_export', file: 'target_file', storage: 'target_storage', backup: 'target_backup' };
+const TARGET_LABEL: Record<AuditTargetKind, TKey> = { permission: 'target_permission', department: 'department', site: 'site', function: 'function_label', family: 'family', type: 'type', program: 'program', export: 'target_export', file: 'target_file', storage: 'target_storage', backup: 'target_backup', integrity: 'target_integrity', user: 'target_user', source_org: 'target_source_org', keyword: 'target_keyword' };
 
 /** What an entry without document is about, as the Journal tab and its export name it: "Fonction · Responsable qualité". */
 export function auditTargetL(ctx: Ctx, kind: AuditTargetKind | null, id: string | null): string {
@@ -1005,6 +1430,9 @@ export function auditTargetL(ctx: Ctx, kind: AuditTargetKind | null, id: string 
     : kind === 'file' ? t[`file_entry_${id}` as TKey] ?? id
     : kind === 'storage' ? t[`store_${id}` as TKey] ?? id
     : kind === 'backup' ? id
+    : kind === 'integrity' ? t.integrity_all
+    : kind === 'user' ? ctx.userName(id)
+    : kind === 'source_org' || kind === 'keyword' ? id
     : id === 'search' ? t.adv_search : id === 'full' ? t.target_export_full : t.ad_audit;
   return `${t[TARGET_LABEL[kind]]} · ${name}`;
 }
@@ -1012,22 +1440,25 @@ export function auditTargetL(ctx: Ctx, kind: AuditTargetKind | null, id: string 
 /** Labels of the fields a journal change names; `granted` and `active` have none (the target, or the value, says it). */
 const CHANGE_LABEL: Record<string, TKey> = {
   title: 'title_label', typeCode: 'type', subtype: 'subtype', origin: 'origin', attachment: 'attachment', projectCode: 'project', programCode: 'program',
-  department: 'department', site: 'site', ownerId: 'owner', authorText: 'author_text', conf: 'conf', keywords: 'keywords', lang: 'language',
+  department: 'department', site: 'site', ownerId: 'owner', authorId: 'author_label', authorText: 'author_text', templateTypes: 'template_types', conf: 'conf', keywords: 'keywords', lang: 'language',
   reviewDueAt: 'review_due_at', expiresAt: 'expires_at', sourceOrg: 'source_org', externalRef: 'external_ref', receivedAt: 'received_at',
   projectPhase: 'project_phase', workPackage: 'work_package', discipline: 'discipline', researchTheme: 'research_theme', studyId: 'study_id',
   ipStatus: 'ip_status', processOwnerId: 'process_owner', retention: 'retention', circuit: 'circuit', confAllowed: 'conf_allowed', confDefault: 'conf_default',
-  featured: 'featured_filters', reviewMonths: 'review_months',
+  featured: 'featured_filters', reviewMonths: 'review_months', retentionOverride: 'retention_override_label', retentionEventAt: 'retention_event_at',
+  typeRetention: 'retention_type_rule', retentionDocs: 'retention_docs',
   // Register and research programmes (Administration).
   code: 'rule_id', key: 'key_label', labelFr: 'label_fr', labelEn: 'label_en', family: 'family', origins: 'origin', attachments: 'attachment',
-  subtypes: 'subtypes_label', retentionBasis: 'retention_basis', iso: 'iso_clause', clientDeliverable: 'client_deliverable', grp: 'family_group',
+  subtypes: 'subtypes_label', retentionBasis: 'retention_basis', retentionBasisEn: 'retention_basis_en', iso: 'iso_clause', clientDeliverable: 'client_deliverable', grp: 'family_group',
   scope: 'scope', name: 'program_name', managerId: 'manager',
+  // Holdings handed to a replacement (lib/transfer.ts) and controlled vocabularies (lib/vocab.ts).
+  modifierId: 'modifier', assigneeId: 'assignee', reader: 'reader_label', term: 'vocab_term', aliases: 'vocab_aliases',
 };
 
 /** One stored value of a change, in the reader's language. */
 function changeValueL(ctx: Ctx, field: string, v: AuditValue | undefined): string {
   const { t } = ctx;
   if (v == null || (Array.isArray(v) && !v.length)) return field === 'circuit' ? t.no_approval : field === 'featured' ? t.featured_none : field === 'reviewMonths' ? t.review_months_none : '—';
-  if (typeof v === 'boolean') return field === 'granted' ? (v ? '✓' : '✕') : field === 'clientDeliverable' ? (v ? t.yes : t.no) : v ? t.active_label : t.inactive;
+  if (typeof v === 'boolean') return field === 'granted' ? (v ? '✓' : '✕') : field === 'clientDeliverable' ? (v ? t.yes : t.no) : field === 'retentionOverride' ? (v ? t.retention_override : t.retention_follows_type) : v ? t.active_label : t.inactive;
   if (Array.isArray(v)) return v.map((x) => changeValueL(ctx, field, x)).join(field === 'circuit' ? ' → ' : ', ');
   if (typeof v === 'object') {
     return `${v.years != null ? `${v.years} ${t.years_short} · ` : ''}${t[`trig_${v.trigger}` as TKey] ?? v.trigger} · ${t[`disp_${v.disposition}` as TKey] ?? v.disposition}`;
@@ -1035,7 +1466,7 @@ function changeValueL(ctx: Ctx, field: string, v: AuditValue | undefined): strin
   const key = (prefix: string) => t[`${prefix}${v}` as TKey] ?? v;
   switch (field) {
     case 'title': return ctx.lang === 'fr' ? `« ${v} »` : `“${v}”`;
-    case 'ownerId': case 'processOwnerId': case 'holder': case 'managerId': return ctx.userName(v);
+    case 'ownerId': case 'authorId': case 'processOwnerId': case 'holder': case 'managerId': case 'modifierId': case 'assigneeId': case 'reader': return ctx.userName(v);
     case 'conf': case 'confAllowed': case 'confDefault': return key('conf_');
     case 'origin': case 'origins': return key('or_');
     case 'attachment': case 'attachments': return key('att_');
@@ -1044,6 +1475,7 @@ function changeValueL(ctx: Ctx, field: string, v: AuditValue | undefined): strin
     case 'scope': return key('scope_');
     case 'lang': return key('lang_');
     case 'site': return ctx.label('site', v);
+    case 'projectPhase': return phaseLabel(v, ctx.lang);
     case 'circuit': return ctx.label('function', v);
     // Facets a department page puts forward ('default': those of every department without its own, lib/departments.ts).
     case 'featured': return v === 'default' ? t.featured_default : t[FACET_LABEL[v as FacetKey]] ?? v;
@@ -1056,6 +1488,8 @@ function changeValueL(ctx: Ctx, field: string, v: AuditValue | undefined): strin
 function changeL(ctx: Ctx, c: AuditChange): string {
   const label = c.field === 'holder' ? c.scope ?? ctx.t.scope_global : CHANGE_LABEL[c.field] ? ctx.t[CHANGE_LABEL[c.field]] : '';
   if (!('before' in c) && !('after' in c)) return label || c.field;
+  // A value recorded alongside a change (the type's rule next to a document's class), not changed itself.
+  if (!('before' in c)) return `${label ? `${label} : ` : ''}${changeValueL(ctx, c.field, c.after)}`;
   return `${label ? `${label} : ` : ''}${changeValueL(ctx, c.field, c.before)} → ${changeValueL(ctx, c.field, c.after)}`;
 }
 
@@ -1074,6 +1508,7 @@ export function facetValueL(ctx: Ctx, k: FacetKey, v: string): string {
     case 'owner': return ctx.userName(v);
     case 'author': return ctx.users.has(v) ? ctx.userName(v) : v;
     case 'lang': return v.toUpperCase();
+    case 'phase': return phaseLabel(v, ctx.lang);
     default: return v;
   }
 }
@@ -1112,11 +1547,74 @@ function exportL(ctx: Ctx, targetId: string | null, x: NonNullable<AuditData['ex
   return [...(what.length ? what : [t.export_unfiltered]), `${x.interrupted ? `${t.export_interrupted} ` : ''}${x.rows} ${t.export_rows}`].join(' · ');
 }
 
-/** Detail of an entry in the reader's language: its free detail, then the link it records, its changes or export figures. */
+/**
+ * A structured detail (AuditData.text, entries since 18 October 2026) in the reader's language: sizes in their units,
+ * a step under its name in their language. A parameter of an unexpected type is left out rather than shown raw.
+ */
+export function auditTextL(ctx: Ctx, x: AuditText): string {
+  const { t, lang } = ctx;
+  const p = x.params;
+  const str = (k: string) => {
+    const v = p[k];
+    return typeof v === 'string' ? v : typeof v === 'number' ? String(v) : v && typeof v === 'object' ? loc(v, lang) : '';
+  };
+  const size = typeof p.size === 'number' ? fmtSize(p.size, lang) : '';
+  const join = (...xs: string[]) => xs.filter(Boolean).join(' · ');
+  switch (x.code) {
+    case 'version': return join(str('label'), size, p.template ? t.audit_from_template.replace('{id}', str('template')) : '');
+    case 'version_restored': return join(str('label'), t.audit_restored_from.replace('{from}', str('from')), size);
+    case 'import': return join(`${str('ref')} → ${str('label')}`, size);
+    case 'readers': return `${t.readers} (${str('n')})`;
+    case 'step_delegated': return join(str('wf'), `${str('step')} → ${str('to')}`);
+    case 'step_reassigned': return join(str('wf'), `${str('step')}${lang === 'fr' ? ' : ' : ': '}${str('from')} → ${str('to')}`);
+    case 'step_transferred': return join(str('wf'), str('step'));
+    case 'compared': return join(str('label'), t.audit_compared);
+    case 'modifier_swap': return join(str('ref'), `${str('from')} → ${str('to')}${p.denied === true ? ` (${t.not_allowed}${lang === 'fr' ? ' : ' : ': '}${t.perm_upload})` : ''}`);
+    default: return '';
+  }
+}
+
+/**
+ * Detail of an entry in the reader's language: its free detail (or, since 18 October 2026, its structured detail), then
+ * the link it records, its changes or export figures.
+ */
 export function auditDetailL(ctx: Ctx, a: Pick<AuditRow, 'detail' | 'data' | 'targetId'>): string {
   const x = a.data;
   const link = x?.link ? `${ctx.t[`link_${x.link.rel}`]} ${x.link.other}${x.link.skipped ? ` : ${ctx.t[`link_skip_${x.link.skipped}`]}` : ''}` : '';
-  return [a.detail, link, x?.changes?.length ? x.changes.map((c) => changeL(ctx, c)).join(' ; ') : '', x?.export ? exportL(ctx, a.targetId, x.export) : '', x?.file ? refusedFileL(ctx, a.targetId, x.file) : '', x?.purge ? purgeL(ctx, x.purge) : '', x?.backup ? backupL(ctx, x.backup) : '', x?.archive ? archiveL(ctx, x.archive) : ''].filter(Boolean).join(' · ');
+  return [x?.text ? auditTextL(ctx, x.text) || a.detail : a.detail, link, x?.changes?.length ? x.changes.map((c) => changeL(ctx, c)).join(' ; ') : '', x?.export ? exportL(ctx, a.targetId, x.export) : '', x?.file ? refusedFileL(ctx, a.targetId, x.file) : '', x?.purge ? purgeL(ctx, x.purge) : '', x?.rename ? renameL(ctx, x.rename) : '', x?.backup ? backupL(ctx, x.backup) : '', x?.archive ? archiveL(ctx, x.archive) : '', x?.integrity ? integrityL(ctx, x.integrity) : '', x?.transfer ? transferL(ctx, x.transfer) : '', x?.sha256 ? `SHA-256 ${x.sha256.slice(0, 16)}…` : ''].filter(Boolean).join(' · ');
+}
+
+/**
+ * Holdings handed to a replacement (lib/transfer.ts): to whom, and to records managers only, what by kind and how many
+ * could not go (the counts include drafts, D-14).
+ */
+export function transferL(ctx: Ctx, x: NonNullable<AuditData['transfer']>): string {
+  const { t } = ctx;
+  const to = t.transfer_summary_l.replace('{to}', ctx.userName(x.to));
+  if (!ctx.seesAll) return to;
+  const done = Object.entries(x.done).filter(([, n]) => n).map(([k, n]) => `${t[`transfer_kind_${k}` as TKey] ?? k}${ctx.lang === 'fr' ? ' : ' : ': '}${n}`);
+  return [to, ...done, x.skipped ? t.transfer_summary_skipped.replace('{n}', String(x.skipped)) : ''].filter(Boolean).join(' · ');
+}
+
+/**
+ * An integrity check (lib/integrity-core.mjs): files read and their size, altered and missing ones, fingerprints
+ * recorded, files out of reach; the working versions concerned, by document and label. Counts and documents to records
+ * managers only: they count drafts and name them (D-14); other readers learn whether something was found.
+ */
+export function integrityL(ctx: Ctx, x: NonNullable<AuditData['integrity']>): string {
+  const { t, lang } = ctx;
+  const named = (xs: { doc: string; label: string }[], n: number) => `${xs.map((v) => `${v.doc} ${v.label}`).join(', ')}${n > xs.length ? ` ${t.integrity_more.replace('{n}', String(n - xs.length))}` : ''}`;
+  if (!ctx.seesAll) return [x.failed ? t.integrity_failed_short : '', x.alteredCount || x.missingCount ? t.integrity_found : t.integrity_none].filter(Boolean).join(' · ');
+  return [
+    x.failed ? t.integrity_failed_short : '',
+    x.by === 'cli' ? t.backup_by_cli : '',
+    t.integrity_checked_n.replace('{n}', String(x.checked)).replace('{size}', fmtSize(x.bytes, lang)),
+    x.alteredCount ? `${t.integrity_altered_n.replace('{n}', String(x.alteredCount))} : ${named(x.altered, x.alteredCount)}` : '',
+    x.missingCount ? `${t.integrity_missing_n.replace('{n}', String(x.missingCount))} : ${named(x.missing, x.missingCount)}` : '',
+    x.filled ? t.integrity_filled_n.replace('{n}', String(x.filled)) : '',
+    x.skipped ? t.integrity_skipped_n.replace('{n}', String(x.skipped)) : '',
+    !x.failed && !x.alteredCount && !x.missingCount ? t.integrity_none : '',
+  ].filter(Boolean).join(' · ');
 }
 
 /**
@@ -1154,6 +1652,7 @@ function archiveL(ctx: Ctx, x: NonNullable<AuditData['archive']>): string {
     all && x.files != null ? t.backup_files.replace('{n}', String(x.files)).replace('{size}', fmtSize(x.bytes ?? 0, lang)) : '',
     all && x.missing ? t.backup_missing_n.replace('{n}', String(x.missing)) : '',
     all && x.skipped ? t.backup_sharepoint_n.replace('{n}', String(x.skipped)) : '',
+    all && x.altered ? t.export_all_altered.replace('{n}', String(x.altered)) : '',
     all && x.sha256 ? t.backup_archive.replace('{size}', fmtSize(x.size ?? 0, lang)).replace('{sha}', x.sha256.slice(0, 16)) : '',
   ].filter(Boolean).join(' · ');
 }
@@ -1172,6 +1671,19 @@ function purgeL(ctx: Ctx, p: NonNullable<AuditData['purge']>): string {
 }
 
 /**
+ * Files given their final name (lib/provisional.ts): how many, failures; which ones (document, version, old → new key)
+ * to records managers only, since they give drafts' IDs and versions (D-14).
+ */
+function renameL(ctx: Ctx, r: NonNullable<AuditData['rename']>): string {
+  const { t } = ctx;
+  return [
+    t.rename_files.replace('{n}', String(r.files.length)),
+    r.failed ? t.rename_failed.replace('{n}', String(r.failed)) : '',
+    ctx.seesAll ? r.files.map((f) => `${f.doc} ${f.label} : ${f.from} → ${f.to}`).join(', ') : '',
+  ].filter(Boolean).join(' · ');
+}
+
+/**
  * A file refused by the virus scan: name, size, what was found, and the legacy reference of an import. Outside the
  * drafting circle, work in progress stays unseen (D-14): the name of a file sent from a screen (a new document, a
  * working version, the copy of a template) may give a draft's ID, version and subject ("PRO-ING-0007_A.2.docx"), so it is
@@ -1181,6 +1693,16 @@ function refusedFileL(ctx: Ctx, entry: string | null, f: NonNullable<AuditData['
   const threat = ctx.lang === 'fr' ? `« ${f.threat} »` : `“${f.threat}”`;
   const named = ctx.seesAll || entry === 'import';
   return [named ? f.name : extensionOf(f.name), fmtSize(f.size, ctx.lang), threat, f.ref ?? '', ctx.seesAll && f.doc ? f.doc : ''].filter(Boolean).join(' · ');
+}
+
+/**
+ * The latest integrity check (lib/integrity-core.mjs, Administration or npm run integrity): when, by whom, what it found;
+ * null when none was journaled. For the Journal tab, records managers only (lib/access.ts mayCheckIntegrity).
+ */
+export async function latestIntegrityCheck() {
+  const db = await getDb();
+  const [row] = await db.select().from(s.auditLog).where(eq(s.auditLog.action, 'integrity_checked')).orderBy(desc(s.auditLog.at), desc(s.auditLog.id)).limit(1);
+  return row?.data?.integrity ? { at: row.at, userId: row.userId, integrity: row.data.integrity } : null;
 }
 
 /** Screen where the target of an entry without document is managed. */
@@ -1201,19 +1723,56 @@ function auditTargetHref(ctx: Ctx, kind: AuditTargetKind | null, id: string | nu
 }
 
 /**
+ * Actions that change a record's metadata (the record's "Métadonnées" history): its fields, values before → after
+ * (lib/actions.ts updateMeta, setReaders), the new ID a reclassification gives it, and its retention; a holding handed to
+ * a replacement (owner, process owner, reader, designated author, step: lib/transfer.ts) and a vocabulary term renamed or
+ * merged (lib/actions.ts applyTerm).
+ */
+export const METADATA_ACTIONS = ['edit', 'reclass', 'transfer', 'vocab_apply', ...RETENTION_ACTIONS] as const;
+
+/**
  * Journal entries, newest first, as auditForReader lets the user read them. For a document, its entries under its
  * current ID and its former ones. Each entry keeps the ID it was written under (`ref`, Journal tab and export) and
  * gives the document's current one (`currentId`, activity feeds) when the user may read it. `docsOnly` (activity
  * feeds) leaves out, in the query itself, the entries without document, which would otherwise take up the `limit`;
- * so does a user without the administration screen, who never reads them.
+ * so does a user without the administration screen, who never reads them. `consultations`: 'without' leaves out the
+ * records opened and files previewed (activity feeds, the record's activity), 'only' lists them alone.
  */
-export async function listAudit(ctx: Ctx, opts: { docId?: string; limit?: number; docsOnly?: boolean } = {}) {
+export async function listAudit(ctx: Ctx, opts: { docId?: string; limit?: number; docsOnly?: boolean; consultations?: 'without' | 'only' } = {}) {
   const db = await getDb();
   const current = await currentIds();
   const ids = opts.docId ? [opts.docId, ...[...current].filter(([, id]) => id === opts.docId).map(([former]) => former)] : [];
   const where = opts.docId ? inArray(s.auditLog.docId, ids) : opts.docsOnly || !ctx.screens.admin ? isNotNull(s.auditLog.docId) : undefined;
-  const rows = await auditForReader(ctx, await db.select().from(s.auditLog).where(where).orderBy(desc(s.auditLog.at), desc(s.auditLog.id)).limit(opts.limit ?? 500));
+  // Consultations (records opened, files previewed) left out of activity, or listed alone.
+  const kind = opts.consultations === 'without' ? notInArray(s.auditLog.action, [...CONSULT_ACTIONS]) : opts.consultations === 'only' ? inArray(s.auditLog.action, [...CONSULT_ACTIONS]) : undefined;
+  const rows = await auditForReader(ctx, await db.select().from(s.auditLog).where(and(where, kind)).orderBy(desc(s.auditLog.at), desc(s.auditLog.id)).limit(opts.limit ?? 500));
   return auditViews(ctx, rows, current);
+}
+
+/**
+ * The `n` latest entries about documents the user may see (activity feeds: the bell's `window` is 60, the home's 500),
+ * consultations left out, each under the document's current ID: listAudit over the `window` latest entries about
+ * documents, narrowed to the documents listDocs gives, read by batches until `n` are found.
+ */
+export async function recentActivity(ctx: Ctx, n: number, window: number) {
+  const db = await getDb();
+  const step = Math.min(window, Math.max(n * 10, 50));
+  const out: ReturnType<typeof auditViews> = [];
+  let current: Map<string, string> | null = null;
+  for (let offset = 0; offset < window && out.length < n; offset += step) {
+    const size = Math.min(step, window - offset);
+    const rows = await db.select().from(s.auditLog).where(and(isNotNull(s.auditLog.docId), notInArray(s.auditLog.action, [...CONSULT_ACTIONS])))
+      .orderBy(desc(s.auditLog.at), desc(s.auditLog.id)).limit(size).offset(offset);
+    current ??= await currentIds();
+    // auditViews names the document under its current ID only when the user may read it; records managers read the
+    // entries of every document, of which only those that exist are listed.
+    const views = auditViews(ctx, await auditForReader(ctx, rows), current);
+    const ids = [...new Set(views.flatMap((v) => (v.currentId ? [v.currentId] : [])))];
+    const existing = new Set(ids.length ? (await db.select({ id: s.documents.id }).from(s.documents).where(anyOf(s.documents.id, ids))).map((r) => r.id) : []);
+    out.push(...views.filter((v) => v.currentId && existing.has(v.currentId)));
+    if (rows.length < size) break;
+  }
+  return out.slice(0, n);
 }
 
 /** Entries as the journal lists show them, in the user's language; `current`: current ID of each former one (currentIds). */
@@ -1319,11 +1878,35 @@ export function typeView(ctx: Ctx, x: typeof s.docTypes.$inferSelect) {
     retentionL: `${x.retentionYears != null ? `${x.retentionYears} ${ctx.t.years_short} · ` : ''}${ctx.t[`trig_${x.retentionTrigger}` as TKey]} · ${ctx.t[`disp_${x.retentionDisposition}` as TKey]}`,
     /** Periodic review of the type, « 36 mois », or « — » without one. */
     reviewL: x.reviewMonths ? `${x.reviewMonths} ${ctx.t.months_short}` : '—',
+    /** What the retention rests on, in the reader's language (lib/i18n.ts retentionBasisL). */
+    basisL: retentionBasisL(x, ctx.lang),
     confL: x.confAllowed.map((c) => ctx.t[`conf_${c}` as TKey]).join(', '),
     confDefaultL: ctx.t[`conf_${x.confDefault}` as TKey],
   };
 }
 export type TypeView = ReturnType<typeof typeView>;
+
+/**
+ * Retention classes of each type's documents (all of them: the rule applies to every one, whoever reads it), for the
+ * type dialog to say how many a change of the type's rule would reach (lib/actions.ts updateType, applyTypeRetention):
+ * `following`, the classes of those that follow the type's rule, by value, frozen ones apart; `overrides`, the number of
+ * derogations, never changed by it. Counts only, to whoever edits the register.
+ */
+export async function retentionByType(tx?: Tx) {
+  const db = tx ?? (await getDb());
+  const D = s.documents;
+  const rows = await db.select({ code: D.typeCode, years: D.retentionYears, trigger: D.retentionTrigger, disposition: D.retentionDisposition, override: D.retentionOverride, held: D.legalHold, n: sql<number>`count(*)::int` })
+    .from(D).groupBy(D.typeCode, D.retentionYears, D.retentionTrigger, D.retentionDisposition, D.retentionOverride, D.legalHold);
+  const out = new Map<string, RetentionByType>();
+  for (const r of rows) {
+    const x = out.get(r.code) ?? { following: [], overrides: 0 };
+    if (r.override) x.overrides += Number(r.n);
+    else x.following.push({ retentionYears: r.years, retentionTrigger: r.trigger, retentionDisposition: r.disposition, held: r.held, n: Number(r.n) });
+    out.set(r.code, x);
+  }
+  return out;
+}
+export type RetentionByType = { following: { retentionYears: number | null; retentionTrigger: string; retentionDisposition: string; held: boolean; n: number }[]; overrides: number };
 
 /**
  * What refers to each entry of the register, counted over every document whatever its state or confidentiality (shown
@@ -1338,9 +1921,10 @@ export type TypeView = ReturnType<typeof typeView>;
 export async function registryUsage(tx?: Tx) {
   const db = tx ?? (await getDb());
   const count = sql<number>`count(*)::int`;
-  const [byType, expected, byFamily, typesByFamily, holders, steps, byProgram, programHolders, circuits] = await Promise.all([
+  const [byType, expected, templated, byFamily, typesByFamily, holders, steps, byProgram, programHolders, circuits] = await Promise.all([
     db.select({ k: s.documents.typeCode, n: count }).from(s.documents).groupBy(s.documents.typeCode),
     db.select({ k: s.projectExpected.typeCode, n: count }).from(s.projectExpected).where(isNotNull(s.projectExpected.typeCode)).groupBy(s.projectExpected.typeCode),
+    db.select({ k: s.templateTypes.typeCode, n: count }).from(s.templateTypes).groupBy(s.templateTypes.typeCode),
     db.select({ k: s.documents.family, n: count }).from(s.documents).groupBy(s.documents.family),
     db.select({ k: s.docTypes.family, n: count }).from(s.docTypes).groupBy(s.docTypes.family),
     db.select({ k: s.functionHolders.functionKey, n: count }).from(s.functionHolders).groupBy(s.functionHolders.functionKey),
@@ -1358,7 +1942,7 @@ export async function registryUsage(tx?: Tx) {
   const inCircuits = circuits.flatMap((c) => [...new Set(c.circuit)].map((k) => ({ k, n: 1 })));
   const builtIn = (keys: readonly string[]) => keys.map((k) => ({ k, n: 1 }));
   return {
-    types: tally(byType, expected, builtIn(BUILT_IN_TYPES)),
+    types: tally(byType, expected, templated, builtIn(BUILT_IN_TYPES)),
     families: tally(byFamily, typesByFamily),
     functions: tally(inCircuits, holders, steps, builtIn(BUILT_IN_FUNCTIONS)),
     programs: tally(byProgram, programHolders),
@@ -1444,17 +2028,21 @@ export async function listSavedSearches(ctx: Ctx) {
 /**
  * A department's page (/departements/[code], G12, FON-06): its documents in force, review, expiry and retention dates
  * falling due, running circuits, the saved searches shared with it and with the whole group, and its featured filters.
- * Everything is read from the lists the other screens use, then narrowed to the department, so that the same rules
- * hold (D-14): documents the user may read (listDocs), circuits they may follow (listWorkflows, `visible`: records
- * managers all of them, others those they take part in, never outside the drafting circle), saved searches they may see
+ * The same rules hold as on the other screens (D-14), read for the department only: documents the user may read
+ * (departmentDocs, listDocs narrowed to it), circuits they may follow (workflowsWhere, `visible`: records managers all
+ * of them, others those they take part in, never outside the drafting circle), saved searches they may see
  * (listSavedSearches). Null for an unknown department.
  */
 export async function departmentPage(ctx: Ctx, code: string) {
   const db = await getDb();
   const [row] = await db.select().from(s.departments).where(eq(s.departments.code, code));
   if (!row) return null;
-  const [docs, workflows, saved] = await Promise.all([listDocs(ctx), listWorkflows(ctx), listSavedSearches(ctx)]);
-  const own = docs.filter((d) => d.department === code);
+  const [own, workflows, saved] = await Promise.all([
+    departmentDocs(ctx, code),
+    // Running circuits on the department's documents (the list keeps those the user may follow and that are not over).
+    workflowsWhere(ctx, and(sql`coalesce(${s.workflows.outcome}, '') = ''`, sql`${s.workflows.docId} in (select d.id from ${s.documents} d where d.department = ${code})`)),
+    listSavedSearches(ctx),
+  ]);
   const ids = new Set(own.map((d) => d.id));
   const keys = featuredOf(row);
   const of = (facets: Facets) => searchHref({ facets: { department: [code], ...facets } });
@@ -1469,7 +2057,7 @@ export async function departmentPage(ctx: Ctx, code: string) {
     workflows: workflows.filter((w) => w.visible && !w.done && ids.has(w.docId)),
     /** Shared with this department first, then with the whole group; personal searches stay on /recherche. */
     saved: [...saved.filter((x) => x.scope === 'department' && x.department === code), ...saved.filter((x) => x.scope === 'group')],
-    featured: featuredFilters(docs, code, keys, (k, v) => facetValueL(ctx, k, v), ctx.lang),
+    featured: featuredFilters(own, code, keys, (k, v) => facetValueL(ctx, k, v), ctx.lang),
     /** The featured facets follow the default ones (no setting of the department's own). */
     featuredDefault: row.featured == null,
     /** The facets put forward, in order (empty: Administration set none for the department). */
@@ -1479,9 +2067,142 @@ export async function departmentPage(ctx: Ctx, code: string) {
   };
 }
 
-/** Templates available to "Nouveau depuis un modèle": template-type documents in force, with their file (same rule as createDocument). */
+/** Types each of these templates is meant for (lib/actions.ts setTemplateTypes), in register order. */
+export async function templateTypesOf(ctx: Ctx, docIds: string[]): Promise<Map<string, string[]>> {
+  const m = new Map<string, string[]>();
+  if (!docIds.length) return m;
+  const db = await getDb();
+  const rows = await db.select().from(s.templateTypes).where(anyOf(s.templateTypes.docId, docIds));
+  const order = new Map(ctx.types.map((x, i) => [x.code, i]));
+  for (const r of rows) m.set(r.docId, [...(m.get(r.docId) ?? []), r.typeCode]);
+  for (const codes of m.values()) codes.sort((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0));
+  return m;
+}
+
+/**
+ * Templates available to "Nouveau depuis un modèle": template-type documents in force, with their file (same rule as
+ * createDocument), and the types each is meant for (`types`, empty when none is set).
+ */
 export async function listTemplates(ctx: Ctx) {
-  const ix = await getAccessIndex();
-  const docs = (await listDocs(ctx)).filter((d) => isUsableTemplate(ctx, d, ix));
-  return docs.map((d) => ({ id: d.id, label: d.title, rev: d.revInForce!, owner: d.owner, department: d.department }));
+  const [ix, candidates] = await Promise.all([getAccessIndex(ctx), visibleWhere(ctx, is(col(D.typeCode), TEMPLATE_TYPE))]);
+  const docs = candidates.filter((d) => isUsableTemplate(ctx, d, ix));
+  const [types, uses] = await Promise.all([templateTypesOf(ctx, docs.map((d) => d.id)), templateUses(ctx, docs.map((d) => d.id))]);
+  return docs.map((d) => ({ id: d.id, label: d.title, rev: d.revInForce!, owner: d.owner, ownerId: d.ownerId, typeCode: d.typeCode, department: d.department, state: d.state, legalHold: d.legalHold, version: d.version, types: types.get(d.id) ?? [], uses: uses.get(d.id) ?? 0 }));
+}
+
+/**
+ * Uses of each template (documents.template_id, point 66): the documents created from it that the reader may read
+ * (readableSql, D-14: a draft or a confidential document they may not read is not counted, so the figure tells
+ * nothing of documents they cannot see). Records managers count them all. Documents created before 18 October 2026
+ * count only when the migration could tell their template for sure (drizzle/0004_modele_source.sql).
+ */
+async function templateUses(ctx: Ctx, ids: string[]): Promise<Map<string, number>> {
+  if (!ids.length) return new Map();
+  const db = await getDb();
+  const rows = await db.select({ id: s.documents.templateId, n: sql<number>`count(*)::int` }).from(s.documents)
+    .where(and(inArray(s.documents.templateId, ids), readableSql(ctx)))
+    .groupBy(s.documents.templateId);
+  return new Map(rows.map((r) => [r.id!, r.n]));
+}
+
+// ── Controlled vocabularies (point 59 of docs/reste-a-faire.md) ─────────
+
+/**
+ * Terms the forms offer (source organisation, keywords): those a document the user may read carries (readableSql, D-14:
+ * a term met only on drafts or on documents they may not read is not shown to them), and those no document carries
+ * (added in Administration). Records managers get every term. Empty for whoever may neither create nor edit a document.
+ * A term the user is not offered is treated as an unknown one when typed: the form asks to confirm it the same way, then
+ * writes the existing term, without adding a duplicate (lib/actions.ts readVocab; revue du lot 9).
+ */
+export async function offeredTerms(ctx: Ctx): Promise<Record<VocabKind, Term[]>> {
+  if (!ctx.can('upload') && !ctx.can('edit')) return { source_org: [], keyword: [] };
+  const db = await getDb();
+  const all = ctx.seesAll ? null : await bothDocumentValues(db, readableSql(ctx));
+  const offered = async (kind: VocabKind) => {
+    const terms = await loadTerms(db, kind);
+    if (!all) return terms;
+    const values = all[kind];
+    const used = new Set<string>(), seen = new Set<string>();
+    for (const v of values) {
+      const k = vocabKey(v.value);
+      used.add(k);
+      if (v.readable) seen.add(k);
+    }
+    return terms.filter((x) => { const keys = termKeys(x); return keys.some((k) => seen.has(k)) || !keys.some((k) => used.has(k)); });
+  };
+  const [source_org, keyword] = await Promise.all([offered('source_org'), offered('keyword')]);
+  return { source_org, keyword };
+}
+
+/** The names of the terms the forms offer the user (offeredTerms), sorted. */
+export async function vocabSuggestions(ctx: Ctx): Promise<{ sourceOrgs: string[]; keywords: string[] }> {
+  const o = await offeredTerms(ctx);
+  const byName = (xs: Term[]) => xs.map((x) => x.name).sort((p, q) => p.localeCompare(q, ctx.lang, { sensitivity: 'base' }));
+  return { sourceOrgs: byName(o.source_org), keywords: byName(o.keyword) };
+}
+
+/**
+ * A term of a vocabulary as Administration › Vocabulaires lists it: how many documents carry it, in any spelling (null
+ * for whoever is not a records manager: see vocabOverview).
+ */
+export type VocabRow = { id: number; name: string; aliases: string[]; uses: number | null; createdAt: string };
+
+/**
+ * Every term of both vocabularies, the values documents carry that no term stands for, and the sub-types documents carry
+ * outside their type's list (lib/vocab-rules.ts canonicalSubtype), by type, most frequent first. How many documents
+ * carry each (drafts and confidential ones included) is given to records managers only, as the journal and the
+ * scheduler's panel give their figures (D-14; lib/scheduler.ts summaryShown; revue du lot 9): anyone else who reaches
+ * Administration gets the terms without counts (`uses` null), and only the values and sub-types left out that a document
+ * they may read carries (readableSql).
+ */
+export async function vocabOverview(ctx: Ctx): Promise<Record<VocabKind, { terms: VocabRow[]; unlisted: { value: string; uses: number | null }[] }> & { subtypes: { typeCode: string; value: string; uses: number | null }[] }> {
+  const db = await getDb();
+  const full = ctx.seesAll;
+  const readable = full ? sql`true` : readableSql(ctx);
+  const byUses = <T extends { uses: number | null }>(p: T, q: T) => (q.uses ?? 0) - (p.uses ?? 0);
+  const one = async (kind: VocabKind) => {
+    const [terms, values] = await Promise.all([loadTerms(db, kind), documentValues(db, kind, readable)]);
+    const byKey = new Map<string, number>();
+    for (const v of values) byKey.set(vocabKey(v.value), (byKey.get(vocabKey(v.value)) ?? 0) + v.n);
+    const covered = new Set(terms.flatMap(termKeys));
+    const rows = terms.map((x): VocabRow => ({ id: x.id, name: x.name, aliases: x.aliases, uses: full ? termKeys(x).reduce((n, k) => n + (byKey.get(k) ?? 0), 0) : null, createdAt: x.createdAt }));
+    const unlisted = new Map<string, { value: string; uses: number; shown: boolean }>();
+    for (const v of values) {
+      const k = vocabKey(v.value);
+      if (covered.has(k)) continue;
+      const cur = unlisted.get(k);
+      if (cur) { cur.uses += v.n; cur.shown ||= v.readable; } else unlisted.set(k, { value: v.value, uses: v.n, shown: v.readable });
+    }
+    rows.sort((p, q) => p.name.localeCompare(q.name, ctx.lang, { sensitivity: 'base' }) || p.id - q.id);
+    const left = [...unlisted.values()].filter((x) => full || x.shown).map((x) => ({ value: x.value, uses: full ? x.uses : null }));
+    return { terms: rows, unlisted: left.sort((p, q) => byUses(p, q) || p.value.localeCompare(q.value, ctx.lang)) };
+  };
+  const D = s.documents;
+  const [source_org, keyword, used] = await Promise.all([
+    one('source_org'), one('keyword'),
+    db.select({ typeCode: D.typeCode, value: D.subtype, n: sql<number>`count(*)::int`, readable: sql<boolean>`bool_or(${readable})` }).from(D).where(isNotNull(D.subtype)).groupBy(D.typeCode, D.subtype),
+  ]);
+  const subtypes = used.flatMap((x) => {
+    const type = ctx.typeByCode.get(x.typeCode);
+    if (!full && !x.readable) return [];
+    return x.value && type && !canonicalSubtype(type.subtypes, x.value).listed ? [{ typeCode: x.typeCode, value: x.value, uses: full ? Number(x.n) : null }] : [];
+  }).sort((p, q) => byUses(p, q) || p.typeCode.localeCompare(q.typeCode) || p.value.localeCompare(q.value, ctx.lang));
+  return { source_org, keyword, subtypes };
+}
+
+// ── Holdings of a person who leaves (point 19 of docs/reste-a-faire.md) ─────
+
+/**
+ * The simulation of Administration › Reprise: what `from` holds and, with a replacement chosen, what would go to them and
+ * what would not, and why (lib/transfer.ts, the transfer itself rolled back). Null for an unknown person or a system
+ * actor. Records managers only (access.ts mayTransferHoldings): it names every document the person holds, drafts
+ * included (D-14).
+ */
+export async function transferView(ctx: Ctx, from: string, to: string | null): Promise<TransferPlan | null> {
+  if (!mayTransferHoldings(ctx)) return null;
+  const f = ctx.users.get(from);
+  if (!f || f.isSystem) return null;
+  const t = to ? ctx.users.get(to) : undefined;
+  const replacement = t && !t.isSystem && t.id !== f.id ? t.id : null;
+  return simulateTransfer(await getDb(), ctx.users, ctx.user.id, f.id, replacement);
 }

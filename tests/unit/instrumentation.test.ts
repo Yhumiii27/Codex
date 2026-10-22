@@ -5,10 +5,15 @@ import type { Instrumentation } from 'next';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { onRequestError, register } from '@/instrumentation';
 import { ConfigRefusedError } from '@/lib/config-check';
+import { startScheduler } from '@/lib/scheduler';
+
+// The scheduler's timers are not started here: register() is only expected to start them once the configuration passes.
+vi.mock('@/lib/scheduler', () => ({ startScheduler: vi.fn() }));
 
 // src/instrumentation.ts, which Next.js calls when a server starts (register) and for each server error it catches
 // (onRequestError): the configuration check runs there and refuses a dangerous configuration in production (point 37 of
-// docs/reste-a-faire.md); the errors caught go to the technical log (point 49). Nothing on the edge runtime.
+// docs/reste-a-faire.md), then the scheduler starts (point 38); the errors caught go to the technical log (point 49).
+// Nothing on the edge runtime.
 
 const tmp = mkdtempSync(path.join(tmpdir(), 'codex-instrumentation-'));
 afterAll(() => rmSync(tmp, { recursive: true, force: true }));
@@ -16,6 +21,7 @@ afterAll(() => rmSync(tmp, { recursive: true, force: true }));
 let lines: { level: string; entry: Record<string, unknown> }[] = [];
 let exitCode: typeof process.exitCode;
 beforeEach(() => {
+  vi.mocked(startScheduler).mockClear();
   lines = [];
   exitCode = process.exitCode;
   vi.stubEnv('CODEX_LOG_FORMAT', 'json');
@@ -41,6 +47,7 @@ describe('register', () => {
     await expect(register()).rejects.toThrow(ConfigRefusedError);
     await settle();
     expect(exit).toHaveBeenCalledWith(1);
+    expect(startScheduler).not.toHaveBeenCalled();
     expect(lines.at(-1)).toMatchObject({ level: 'error', entry: { scope: 'config', codes: ['storage_unknown'] } });
   });
 
@@ -50,6 +57,7 @@ describe('register', () => {
     vi.stubEnv('NODE_ENV', 'production');
     await expect(register()).resolves.toBeUndefined();
     expect(lines.at(-1)).toMatchObject({ level: 'info', entry: { scope: 'config', msg: 'configuration checked' } });
+    expect(startScheduler).toHaveBeenCalledTimes(1);
     lines = [];
     vi.stubEnv('NEXT_RUNTIME', 'edge');
     vi.stubEnv('CODEX_STORAGE', 'nas');
@@ -57,6 +65,7 @@ describe('register', () => {
     await settle();
     expect(exit).not.toHaveBeenCalled();
     expect(lines).toEqual([]);
+    expect(startScheduler).toHaveBeenCalledTimes(1);
   });
 });
 

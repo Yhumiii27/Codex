@@ -28,6 +28,8 @@ export const ICON_PATHS = {
   bookmark: 'M6 3h12v18l-6-4-6 4z',
   lock: 'M7 11V8a5 5 0 0 1 10 0v3M5 11h14v10H5z',
   // Added (not in the design), same grid and stroke: department pages in the sidebar.
+  // Help page (/aide) in the sidebar, beside « Notes ».
+  help: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17v.01',
   building: 'M4 21V4a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v17M15 9h4a1 1 0 0 1 1 1v11M3 21h18M8 7h3M8 11h3M8 15h3M18 13h.01M18 17h.01',
 } as const;
 

@@ -2,7 +2,7 @@ import { and, eq } from 'drizzle-orm';
 import { expect } from 'vitest';
 import { schema as s, type Db } from '@/db';
 import type { Conf, DocState } from '@/db/schema';
-import { buildAccessIndex, canRead, draftingCircleSql, inDraftingCircle, readableSql, type Viewer } from '@/lib/access';
+import { buildAccessIndex, canRead, draftingCircleSql, inDraftingCircle, mayWorkOnDraft, readableSql, type AccessIndex, type Viewer } from '@/lib/access';
 import { MATRIX_ROLE, SIM_ROLES, type Perm } from '@/lib/i18n';
 import { addDoc, addWorkflow, type RevSpec } from './db';
 import { DEPARTMENTS, PEOPLE, type Person } from './fixtures';
@@ -23,6 +23,24 @@ export async function viewers(q: Db): Promise<[string, Viewer][]> {
 export async function compareAccess(q: Db): Promise<number> {
   const [ix, rows, vs] = await Promise.all([buildAccessIndex(q), q.select().from(s.documents), viewers(q)]);
   const sorted = (ids: string[]) => [...ids].sort();
+  // The index each request builds reads only the rows of its person (getAccessIndex): the same answers as the whole
+  // index, for every document. Another built for the documents gives the same members as the whole one.
+  const own = new Map<string, AccessIndex>();
+  const byDocs = await buildAccessIndex(q, { docs: rows });
+  const people = [...new Set(vs.map(([, v]) => v.user.id))];
+  for (const d of rows) {
+    for (const rel of ['readers', 'modifiers', 'designated', 'approvers'] as const) expect(sorted([...byDocs[rel](d.id)]), `${rel} ${d.id}`).toEqual(sorted([...ix[rel](d.id)]));
+    expect(sorted([...byDocs.team(d.projectCode)]), `team ${d.id}`).toEqual(sorted([...ix.team(d.projectCode)]));
+  }
+  for (const [who, v] of vs) {
+    if (!own.has(v.user.id)) own.set(v.user.id, await buildAccessIndex(q, { users: [v.user.id] }));
+    const mine = own.get(v.user.id)!;
+    const answers = (x: AccessIndex) => rows.map((d) => [d.id, canRead(v, d, x), inDraftingCircle(v, d, x), mayWorkOnDraft(v, d, x)]);
+    expect(answers(mine), `${who}, own index`).toEqual(answers(ix));
+    // Asking it about someone else, on a document outside its scope, fails rather than answer wrong.
+    const other = people.find((p) => p !== v.user.id);
+    if (other && rows.length) expect(() => mine.readers(rows[0].id).has(other)).toThrow(/outside its scope/);
+  }
   let readable = 0;
   for (const [who, v] of vs) {
     const bySql = await q.select({ id: s.documents.id }).from(s.documents).where(readableSql(v));

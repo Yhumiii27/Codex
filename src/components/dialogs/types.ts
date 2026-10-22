@@ -8,13 +8,20 @@ export type Option = { key: string; label: string };
 export type TypeSettings = {
   code: string; labelFr: string; labelEn: string; family: string; origins: Origin[]; attachments: Attachment[]; subtypes: { fr: string; en: string }[];
   circuit: string[]; confAllowed: Conf[]; confDefault: Conf; retentionYears: number | null; retentionTrigger: string; retentionDisposition: string;
-  retentionBasis: string; reviewMonths: number | null; iso: string | null; clientDeliverable: boolean; active: boolean; used: boolean;
+  retentionBasis: string; retentionBasisEn: string; reviewMonths: number | null; iso: string | null; clientDeliverable: boolean; active: boolean; used: boolean;
+  /**
+   * Retention classes of its documents (lib/queries.ts retentionByType): how many a change of its rule would reach when
+   * applied to those that follow it, and how many derogations it leaves as they are.
+   */
+  retention?: RetentionByType;
 };
+
+export type RetentionByType = { following: { retentionYears: number | null; retentionTrigger: string; retentionDisposition: string; held: boolean; n: number }[]; overrides: number };
 
 /** Reference data the dialogs need, loaded once by the root layout (src/app/layout.tsx). */
 export type DialogData = {
-  /** Template documents in force (type FRM, context QMS). */
-  templates: { id: string; label: string; rev: string; owner: string }[];
+  /** Template documents in force (type FRM, context QMS); `types`: those it is meant for, offered first for them. */
+  templates: { id: string; label: string; rev: string; owner: string; types: string[]; /** Documents created from it that the user may read (lib/queries.ts listTemplates). */ uses: number }[];
   /** Register of document types. Inactive ones are only offered to documents that already have them. */
   types: {
     code: string; label: string; family: string; familyLabel: string; origins: Origin[]; attachments: Attachment[];
@@ -44,13 +51,16 @@ export type DialogData = {
   seesAll: boolean;
   /** Formats and size admitted on upload (lib/filetypes.ts), checked by the file picker before sending; the server decides. */
   files: FileRules;
+  /** Terms of the controlled vocabularies the forms offer (lib/queries.ts vocabSuggestions, D-14). */
+  vocab: { sourceOrgs: string[]; keywords: string[] };
 };
 
 /** Every editable metadata field of a document (edit dialog). */
 export type MetaDoc = {
   id: string; title: string; typeCode: string; subtype: string | null; origin: Origin; attachment: Attachment;
   projectCode: string | null; programCode: string | null; department: string; site: string | null; ownerId: string;
-  authorText: string | null; conf: Conf; keywords: string[]; lang: string | null; reviewDueAt: string | null; expiresAt: string | null;
+  /** The author: a person, or a free text (external author); both null for a record migrated without one (shows the owner). */
+  authorId: string | null; authorText: string | null; conf: Conf; keywords: string[]; lang: string | null; reviewDueAt: string | null; expiresAt: string | null;
   sourceOrg: string | null; externalRef: string | null; receivedAt: string | null;
   projectPhase: string | null; workPackage: string | null; discipline: string | null;
   researchTheme: string | null; studyId: string | null; ipStatus: string | null; processOwnerId: string | null;
@@ -71,14 +81,16 @@ export type MetaDoc = {
 };
 
 /** A working version or revision file, for the compare dialog. */
-export type VersionLite = { id: number; label: string; author: string; dateF: string; commentL: string; sizeF: string; pages: number | null; fileName: string | null };
+/** `sha256`: of its file, as recorded when it entered Codex (null without file, or stored before it was computed). */
+export type VersionLite = { id: number; label: string; author: string; dateF: string; commentL: string; sizeF: string; pages: number | null; fileName: string | null; sha256: string | null };
 
 export type DialogSpec =
   /**
    * New document (codified): from a template, from a file, or without a file yet (`mode` picks the initial content).
    * Preset when filing a piece Keystone expects.
    */
-  | { kind: 'new'; preset?: { mode?: 'template' | 'file' | 'blank'; projectCode?: string; expectedId?: number; typeCode?: string; title?: string; label?: string; templateId?: string } }
+  /** `department`, `family`: proposed from the selection of the explorer's tree (still free to change). */
+  | { kind: 'new'; preset?: { mode?: 'template' | 'file' | 'blank'; projectCode?: string; expectedId?: number; typeCode?: string; title?: string; label?: string; templateId?: string; department?: string; family?: string } }
   | { kind: 'notes' }
   | { kind: 'user' }
   /**
@@ -86,7 +98,8 @@ export type DialogSpec =
    * working version shown (0 before the first), sent back so that one uploaded since is not passed over.
    */
   | { kind: 'working'; docId: string; nextLabel: string; base: { revisionId: number; n: number } }
-  | { kind: 'meta'; doc: MetaDoc }
+  /** `attach`: open with this attachment chosen (Project tab, « Rattacher à un projet »). */
+  | { kind: 'meta'; doc: MetaDoc; attach?: 'project' }
   /**
    * Request approval of the revision being drafted, with an optional effective date (`minDate`: today, Paris time).
    * `base`: as for an upload, the last working version shown, so that the circuit does not start on one uploaded since.
@@ -108,14 +121,23 @@ export type DialogSpec =
   | { kind: 'link'; docId: string; title: string; withdrawn: boolean; active: boolean; candidates: (Option & { withdrawn: boolean; active: boolean })[] }
   /** Hand the current step on: `step` is the step shown, `excluded` the people who may not approve this revision. */
   | { kind: 'delegate'; workflowId: string; stepName: string; step: number; excluded: string[] }
+  /** A records manager hands on the current step held by someone else (`holder`), with the rules of a delegation. */
+  | { kind: 'reassign'; workflowId: string; stepName: string; step: number; excluded: string[]; holder: string; holderName: string }
+  /** A term of a controlled vocabulary: added (no `term`) or renamed. */
+  | { kind: 'vocabTerm'; vocab: 'source_org' | 'keyword'; term?: { id: number; name: string } }
+  /** Merges a duplicate term (`from`) into another of the same vocabulary, chosen among `others`. */
+  | { kind: 'vocabMerge'; vocab: 'source_org' | 'keyword'; from: { id: number; name: string }; others: { id: number; name: string }[] }
   /**
    * End a running circuit, the revision going back to drafting: reject the current step, with a reason (required), or
    * recall the request, with an optional one. `step` is the step shown: the circuit may have moved on since.
    */
   | { kind: 'reject' | 'recall'; workflowId: string; step: number; stepName: string; docId: string; title: string; letter: string }
-  | { kind: 'compare'; current: VersionLite; other: VersionLite }
+  /** Compares the attributes and the text (GET /api/documents/[id]/compare) of two versions of `docId`. */
+  | { kind: 'compare'; docId: string; current: VersionLite; other: VersionLite }
   /** Named readers of a confidential or "très confidentiel" document; `version`: of the record shown (lib/concurrency.ts). */
   | { kind: 'readers'; docId: string; readers: string[]; version: number }
+  /** Types a template is meant for (lib/actions.ts setTemplateTypes); `version`: of the record shown. */
+  | { kind: 'templateTypes'; docId: string; title: string; types: string[]; version: number }
   /**
    * Records manager simulating Vigie's decision on a change request. `modifierId`: the author proposed by default;
    * `drafters`: the people who may draft the document, the only ones offered as author; `deferred`: that an acceptance
@@ -136,6 +158,21 @@ export type DialogSpec =
    * (tomorrow, Paris time).
    */
   | { kind: 'review'; docId: string; title: string; letter: string; reviewDueAt: string | null; months: number | null; minDate: string }
+  /**
+   * Date of the event a document's retention counts from (end of life of the asset, departure of the employee: lib/actions.ts
+   * setRetentionEvent): `eventAt`, the one entered; `triggerL`, the trigger; `maxDate`, today (Paris time); `version`, of
+   * the record shown.
+   */
+  | { kind: 'retentionEvent'; docId: string; title: string; triggerL: string; eventAt: string | null; maxDate: string; version: number }
+  /**
+   * Retention class of one document (lib/actions.ts setRetentionClass): its class, whether it is a derogation, and its
+   * type's rule, which « Revenir à la règle du type » puts back. `version`: of the record shown.
+   */
+  | {
+    kind: 'retentionClass'; docId: string; title: string; version: number; override: boolean;
+    current: { retentionYears: number | null; retentionTrigger: string; retentionDisposition: string };
+    type: { code: string; retentionYears: number | null; retentionTrigger: string; retentionDisposition: string };
+  }
   /**
    * Administration › Registre des types: a new type (`family`: the family the register is filtered on, preset), or every
    * setting of one (lib/actions.ts createType, updateType). `used`: documents or projects refer to it, so its code no

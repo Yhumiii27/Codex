@@ -12,6 +12,9 @@ import { verifyExport, zipEntries } from '@/lib/export-core.mjs';
 import { insertFixtures } from '../support/fixtures';
 import { addDoc } from '../support/db';
 
+/** The last migration of the code: the one an export names (drizzle/meta/_journal.json). */
+const LATEST_MIGRATION = (JSON.parse(readFileSync(path.join(process.cwd(), 'drizzle/meta/_journal.json'), 'utf8')) as { entries: { tag: string }[] }).entries.at(-1)!.tag;
+
 // npm run export and npm run export:check (scripts/codex-export.mjs, point 17 of docs/reste-a-faire.md) as an operator
 // runs them: Node in a child process, on a data directory of their own, server stopped. The archive is the one the
 // application streams (lib/export-core.mjs), written under a temporary name, read back whole, then named; the export
@@ -70,7 +73,7 @@ describe('npm run export', () => {
     expect(r.stdout).toContain(`Export écrit et vérifié : ${file}`);
     // The journal holds one entry: the start of this export, written in the snapshot.
     expect(r.stdout).toContain('  1 documents, 1 révisions, 1 versions de travail, 0 circuits, 0 demandes Vigie, 1 entrées de journal');
-    expect(r.stdout).toContain(`1 fichiers (${PDF.length} o), migration 0000_init`);
+    expect(r.stdout).toContain(`1 fichiers (${PDF.length} o), migration ${LATEST_MIGRATION}`);
     // Nothing else written, the lock released.
     expect(readdirSync(OUT)).toEqual([name]);
     expect(existsSync(path.join(DATA, LOCK_FILE))).toBe(false);

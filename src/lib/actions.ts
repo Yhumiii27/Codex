@@ -1,43 +1,51 @@
 'use server';
 
 import { createHmac, randomBytes } from 'node:crypto';
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { cookies } from 'next/headers';
 import { refresh } from 'next/cache';
 import { getDb, schema as s } from '@/db';
 import type { Attachment, AuditChange, AuditValue, Conf, Origin, SearchScope } from '@/db/schema';
-import { buildAccessIndex, canRead, followsCircuit, getAccessIndex, inDraftingCircle, isUsableTemplate, mayBackUp, mayCleanStorage, mayDeleteSearch, mayEditLinks, mayRecall, mayRecordReview, maySaveSearch, mayWorkOnDraft, readerMaySeeRevision, readersApply, seesSavedSearch } from './access';
-import { idMatches, nextDocId, nextWorkflowId } from './codification';
+import { buildAccessIndex, canRead, followsCircuit, getAccessIndex, inDraftingCircle, isUsableTemplate, mayBackUp, mayCheckIntegrity, mayCleanStorage, mayDeleteSearch, mayEditLinks, mayLinkTemplate, mayManageRetention, mayReassignStep, mayRecall, mayRecordReview, maySaveSearch, maySetRetentionEvent, mayWorkOnDraft, readerMaySeeRevision, readersApply, mayTransferHoldings, seesSavedSearch } from './access';
+import { idMatches, nextDocId, nextWorkflowId, TEMPLATE_TYPE } from './codification';
 import { changeAuthor, seenVersion, seenWorkingBase, staleText, workingIssue, workingStaleText, type WorkingBase } from './concurrency';
 import { backUpNow } from './backup';
+import { checkFilesNow } from './integrity';
 import { COOKIE_LANG, COOKIE_ROLE, COOKIE_USER, getCtx, type Ctx } from './context';
-import { addDays, fmtDate, fmtDateTime, fmtSize, loc, nowStamp, parisStamp, parseIsoDay, todayIso } from './format';
-import { ATTACHMENTS, CONF_LEVELS, ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLES, ORIGINS, PERMS, SEARCH_SCOPES, SIM_ROLES, SIMULATED_MATRIX_ROLES, type Perm, type SimRole, type TKey } from './i18n';
-import { addLink, applyChangeDecision, applyPendingDecision, approveRevision, audit, catchUpEffectiveDates, journalLink, linkBetween, lockOf, refreshHeadline, type ModifierSwap, type Tx } from './lifecycle';
+import { addDays, fmtDate, fmtDateTime, fmtSize, loc, localized, nowStamp, parisStamp, parseIsoDay, todayIso } from './format';
+import { ATTACHMENTS, CONF_LEVELS, ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLES, ORIGINS, PERMS, SEARCH_SCOPES, SIM_ROLES, SIMULATED_MATRIX_ROLES, type Perm, type TKey } from './i18n';
+import { addLink, applyChangeDecision, applyPendingDecision, approverCheck, approveRevision, audit, circuitExclusions, catchUpEffectiveDates, journalConsultation, journalLink, linkBetween, lockDoc, lockDocs, lockOf, refreshHeadline, type ModifierSwap, type Tx } from './lifecycle';
+import { changes, entryChanges, familyJournal, functionJournal, retentionValue, typeJournal } from './journal-values';
 import { isLinkRel, linkIssue, otherEnd, replacementIssue, storedLink } from './links';
 import { logger, traceAction } from './log';
 import { limitWrite } from './ratelimit';
-import { decisionWaitL, orgUsage, registryUsage } from './queries';
+import { decisionWaitL, offeredTerms, orgUsage, registryUsage, sameFiles } from './queries';
 import { dateIssues, dateIssueText, effectIssue, issueFrom, latestEffect, type DateIssue } from './dates';
 import { cleanFeatured } from './departments';
 import { inUse, isOrgKind, lastActiveIssue, orgLabels, parseOrgForm, type OrgKind } from './org-rules';
 import { fileIssueReason, fileIssueText, fileRules } from './filetypes';
 import { MAX_PER_RUN, purgeOrphans } from './orphans';
+import { renameProvisional } from './provisional';
 import {
-  builtInScopeIssue, builtInTypeIssue, departmentCodeIssue, keyIssue, outsideType, parseFamilyForm, parseFunctionForm, parseProgramForm, parseTypeForm, programCodeIssue, PROJECT_MANAGER_FUNCTIONS,
-  subtypesJournal, typeCodeIssue, type CodeSpace, type FamilyValues, type FormIssue, type FunctionValues, type ProgramValues, type TypeValues,
+  builtInScopeIssue, builtInTypeIssue, departmentCodeIssue, keyIssue, outsideType, parseFamilyForm, parseFunctionForm, parseProgramForm, parseRetentionRule, parseTypeForm, programCodeIssue, PROJECT_MANAGER_FUNCTIONS,
+  SUBTYPE_MAX, SUBTYPES_MAX, typeCodeIssue, type CodeSpace, type FormIssue, type ProgramValues, type TypeValues,
 } from './registry-rules';
+import { isEventTrigger, parseEventDate, sameRule } from './retention';
 import { nextReviewDate } from './review';
 import { beyondBounds, cleanCriteria, hasCriteria, type SearchInput } from './search';
-import { discardFile, FileRejectedError, fileColumns, nameStoredFile, readStored, renameDocFiles, stageFile, stageUpload, type StagedFile } from './storage';
+import { discardFile, FileRejectedError, fileColumns, nameStoredFile, readStored, renameDocFiles, sha256Of, stageFile, stageUpload, type StagedFile } from './storage';
 import { submitChange, vigieSimulated } from './vigie';
+import { confirmTransfer } from './transfer';
+import { addTerms, documentsWith, loadTerms, readTerms, termById, VOCAB_TABLE } from './vocab';
+import { canonicalSubtype, cleanTerm, docLang, isVocabKind, termKeys, termNameIssue, VOCAB_MAX, vocabKey, type VocabKind } from './vocab-rules';
 
 /**
  * `field`: the form field the error is about, when the dialog can show it there. `stale`: the view the request came
  * from is out of date (lib/concurrency.ts): the dialog offers to reload the record. `confirm`: what to send back to
- * confirm what the error announced, and only that (updateType).
+ * confirm what the error announced, and only that (updateType). `warning`: done, with something the user should know (a
+ * file identical to one already filed), shown longer than a message.
  */
-export type ActionResult = { ok: true; href?: string; message?: string } | { ok: false; error: string; field?: string; stale?: true; confirm?: string };
+export type ActionResult = { ok: true; href?: string; message?: string; warning?: string } | { ok: false; error: string; field?: string; stale?: true; confirm?: string };
 
 type DocRow = typeof s.documents.$inferSelect;
 
@@ -74,21 +82,20 @@ function throttled(ctx: Ctx): ActionResult | null {
   return { ok: false, error: ctx.t.rate_limited.replace('{n}', String(wait)) };
 }
 
-/** A journal value with nothing in it (null, empty text or list) stored as null, so that "" and null are no change. */
-function auditValue(v: AuditValue | undefined): AuditValue {
-  return v == null || v === '' || (Array.isArray(v) && !v.length) ? null : v;
-}
-
-/** Journal changes, before → after, of the values that differ; stored as keys and codes (lib/queries.ts renders them). */
-function changes(parts: [field: string, before: AuditValue, after: AuditValue][]): AuditChange[] {
-  return parts
-    .map(([field, b, a]) => ({ field, before: auditValue(b), after: auditValue(a) }))
-    .filter((c) => JSON.stringify(c.before) !== JSON.stringify(c.after));
-}
-
-/** Retention class of a type or a document, as the journal stores it. */
-function retentionValue(x: { retentionYears: number | null; retentionTrigger: string; retentionDisposition: string }): AuditValue {
-  return { years: x.retentionYears, trigger: x.retentionTrigger, disposition: x.retentionDisposition };
+/**
+ * The non-blocking warning of an upload whose file is identical (same SHA-256) to one already filed: the documents the
+ * user may have that file of (queries.ts sameFiles, D-14), else nothing. A failure of the lookup never fails the upload.
+ */
+async function duplicateWarning(ctx: Ctx, sha256: string): Promise<string | undefined> {
+  try {
+    const same = await sameFiles(ctx, sha256);
+    if (!same.length) return undefined;
+    const quote = (x: string) => (ctx.lang === 'fr' ? `« ${x} »` : `“${x}”`);
+    return ctx.t.same_file.replace('{docs}', same.map((x) => `${x.docId} ${x.label} ${quote(x.title)}`).join(', '));
+  } catch (err) {
+    log.warn('duplicate check failed', { err });
+    return undefined;
+  }
 }
 
 /**
@@ -176,7 +183,7 @@ export async function simulateUser(userId: string, role: string): Promise<Action
 
 type Fields = {
   title: string; typeCode: string; subtype: string | null; origin: Origin; attachment: Attachment; projectCode: string | null; programCode: string | null;
-  department: string; site: string | null; ownerId: string; authorText: string | null; conf: Conf; keywords: string[]; lang: string | null;
+  department: string; site: string | null; ownerId: string; authorId: string | null; authorText: string | null; conf: Conf; keywords: string[]; lang: string | null;
   reviewDueAt: string | null; expiresAt: string | null; sourceOrg: string | null; externalRef: string | null; receivedAt: string | null;
   projectPhase: string | null; workPackage: string | null; discipline: string | null; researchTheme: string | null; studyId: string | null; ipStatus: string | null; processOwnerId: string | null;
 };
@@ -188,23 +195,27 @@ function readFields(ctx: Ctx, fd: FormData, base?: DocRow): Fields {
   };
   const typeCode = str(fd, 'typeCode') || base?.typeCode || '';
   const type = ctx.typeByCode.get(typeCode);
+  // fr or en, whatever the case; any other value is kept for validateFields to refuse (unless the document has it).
+  const rawLang = opt(fd, 'lang');
+  const lang = docLang(rawLang);
   const attachment = pick('attachment', ATTACHMENTS, base?.attachment ?? type?.attachments[0] ?? 'none');
   const origin = pick('origin', ORIGINS, base?.origin ?? type?.origins[0] ?? 'interne');
   return {
     title: str(fd, 'title') || base?.title || '',
-    typeCode, subtype: opt(fd, 'subtype'), origin, attachment,
+    // A sub-type takes its type's spelling when it folds to one of its labels; another value is kept (MET-17).
+    typeCode, subtype: canonicalSubtype(type?.subtypes ?? [], opt(fd, 'subtype')).value, origin, attachment,
     projectCode: attachment === 'project' ? opt(fd, 'projectCode') : null,
     programCode: attachment === 'research' ? opt(fd, 'programCode') : null,
     // Not sent: the user's department, refused by validateFields when inactive; without one, the first active department.
     department: str(fd, 'department') || base?.department || ctx.user.department || ctx.departments.find((d) => d.active)?.code || '',
     site: opt(fd, 'site'),
     ownerId: str(fd, 'ownerId') || base?.ownerId || ctx.user.id,
-    authorText: opt(fd, 'authorText'),
+    ...readAuthor(ctx, fd, base),
     conf: pick('conf', CONF_LEVELS, base?.conf ?? type?.confDefault ?? 'interne'),
-    keywords: dedupe(str(fd, 'keywords').split(',').map((k) => k.trim()).filter(Boolean)),
-    lang: opt(fd, 'lang'),
+    keywords: dedupe(str(fd, 'keywords').split(',').map(cleanTerm).filter(Boolean)),
+    lang: lang === undefined ? rawLang : lang,
     reviewDueAt: opt(fd, 'reviewDueAt'), expiresAt: opt(fd, 'expiresAt'),
-    sourceOrg: origin === 'externe' ? opt(fd, 'sourceOrg') : null,
+    sourceOrg: origin === 'externe' ? cleanTerm(str(fd, 'sourceOrg')) || null : null,
     externalRef: origin === 'externe' ? opt(fd, 'externalRef') : null,
     receivedAt: origin === 'externe' ? opt(fd, 'receivedAt') : null,
     projectPhase: attachment === 'project' ? opt(fd, 'projectPhase') : null,
@@ -217,11 +228,71 @@ function readFields(ctx: Ctx, fd: FormData, base?: DocRow): Fields {
   };
 }
 
+/** Longest free-text author, as the import takes it (lib/importer.ts). */
+const AUTHOR_TEXT_MAX = 200;
+/** Longest sub-type and most keywords of a document, as the import takes them (lib/importer.ts). */
+const DOC_SUBTYPE_MAX = 200;
+const KEYWORDS_MAX = 50;
+
+/**
+ * The source organisation and keywords of a form read against their vocabularies (lib/vocab.ts): each value becomes the
+ * name of the term it stands for (« SIEMENS » → « Siemens »). A value no term stands for is a new term, added only when
+ * the form confirms it (`confirmTerm`, one per new value, as the form offers it) or when the document already carries it
+ * (`base`); otherwise the form is refused on its field, with the values to confirm (`confirm`, a JSON list), and nothing
+ * is written. A value standing for a term the user is not offered (lib/queries.ts offeredTerms: carried only by
+ * documents they may not read) is answered exactly the same way, then written as that term once confirmed, without a
+ * duplicate: whether such a term exists is not told (D-14; revue du lot 9). `add`: the terms to add with the document, in its transaction (addTerms).
+ */
+async function readVocab(ctx: Ctx, fd: FormData, f: Fields, base?: DocRow): Promise<{ refused: ActionResult } | { sourceOrg: string | null; keywords: string[]; add: { kind: VocabKind; names: string[] }[] }> {
+  const db = await getDb();
+  const confirmed = new Set(fd.getAll('confirmTerm').map((x) => vocabKey(String(x))));
+  for (const v of [base?.sourceOrg, ...(base?.keywords ?? [])]) if (v) confirmed.add(vocabKey(v));
+  const [orgs, kws] = await Promise.all([loadTerms(db, 'source_org'), loadTerms(db, 'keyword')]);
+  // A term the user is not offered (met only on documents they may not read) is answered as an unknown one (D-14).
+  const offered = ctx.seesAll || (!f.sourceOrg && !f.keywords.length) ? null : await offeredTerms(ctx);
+  const ids = (kind: VocabKind) => (offered ? new Set(offered[kind].map((x) => x.id)) : undefined);
+  const org = readTerms(orgs, f.sourceOrg ? [f.sourceOrg] : [], confirmed, ids('source_org'));
+  const keywords = readTerms(kws, f.keywords, confirmed, ids('keyword'));
+  for (const [field, x] of [['sourceOrg', org], ['keywords', keywords]] as const) {
+    if (x.unconfirmed.length) {
+      const quoted = x.unconfirmed.map((v) => (ctx.lang === 'fr' ? `« ${v} »` : `“${v}”`)).join(', ');
+      return { refused: { ok: false, error: ctx.t.vocab_confirm_new.replace('{terms}', quoted), field, confirm: JSON.stringify(x.unconfirmed) } };
+    }
+  }
+  return { sourceOrg: org.values[0] ?? null, keywords: keywords.values, add: [{ kind: 'source_org', names: org.added }, { kind: 'keyword', names: keywords.added }] };
+}
+
+/**
+ * The author of a document (MET-10): a person of the group or a free text (external author), never both. The dialogs
+ * send `authorKind` ('person' with `authorId`, 'text' with `authorText`); the value left empty is refused by
+ * authorMissing, an unknown person by validateFields. Without `authorKind` (partial calls): a text when one is sent,
+ * else a person when one is sent, else the document's current author, or the creator for a new document.
+ */
+function readAuthor(ctx: Ctx, fd: FormData, base?: DocRow): Pick<Fields, 'authorId' | 'authorText'> {
+  const kind = str(fd, 'authorKind');
+  const text = opt(fd, 'authorText');
+  const person = opt(fd, 'authorId');
+  if (kind === 'text') return { authorId: null, authorText: text };
+  if (kind === 'person') return { authorId: person, authorText: null };
+  if (text) return { authorId: null, authorText: text };
+  if (person) return { authorId: person, authorText: null };
+  return base ? { authorId: base.authorId, authorText: base.authorText } : { authorId: ctx.user.id, authorText: null };
+}
+
+/** The author kind a dialog chose, its value left empty: refused on the field to fill. */
+function authorMissing(ctx: Ctx, fd: FormData): ActionResult | null {
+  const kind = str(fd, 'authorKind');
+  if (kind === 'text' && !opt(fd, 'authorText')) return { ok: false, error: ctx.t.author_required, field: 'authorText' };
+  if (kind === 'person' && !opt(fd, 'authorId')) return { ok: false, error: ctx.t.author_required, field: 'authorId' };
+  return null;
+}
+
 /** Metadata fields an edit changes, with their values before and after (retention follows a change of type). */
-function metaChanges(d: DocRow, f: Fields, retention: Partial<Pick<DocRow, 'retentionYears' | 'retentionTrigger' | 'retentionDisposition'>>): AuditChange[] {
+function metaChanges(d: DocRow, f: Fields, retention: Partial<Pick<DocRow, 'retentionYears' | 'retentionTrigger' | 'retentionDisposition' | 'retentionOverride'>>): AuditChange[] {
   return changes([
     ...(Object.keys(f) as (keyof Fields)[]).map((k): [string, AuditValue, AuditValue] => [k, d[k], f[k]]),
     ['retention', retentionValue(d), retentionValue({ ...d, ...retention })],
+    ['retentionOverride', d.retentionOverride, retention.retentionOverride ?? d.retentionOverride],
   ]);
 }
 
@@ -229,7 +300,7 @@ function metaChanges(d: DocRow, f: Fields, retention: Partial<Pick<DocRow, 'rete
  * Business rules of the register: type admits origin, attachment and confidentiality; contextual fields are filled.
  * An inactive type, programme, department or site is refused, except for a document that already has it (`current`).
  */
-function validateFields(ctx: Ctx, f: Fields, current?: Pick<DocRow, 'typeCode' | 'programCode' | 'department' | 'site'>): ActionResult | null {
+function validateFields(ctx: Ctx, f: Fields, current?: Pick<DocRow, 'typeCode' | 'programCode' | 'department' | 'site' | 'lang'>): ActionResult | null {
   const type = ctx.typeByCode.get(f.typeCode);
   if (!f.title || !type || !(type.active || type.code === current?.typeCode)) return fail(ctx);
   if (!type.origins.includes(f.origin) || !type.attachments.includes(f.attachment)) return fail(ctx, 'type_mismatch');
@@ -238,6 +309,12 @@ function validateFields(ctx: Ctx, f: Fields, current?: Pick<DocRow, 'typeCode' |
   // An inactive programme (closed) is no longer offered, except to a document that already has it.
   if (f.attachment === 'research' && !ctx.programs.some((p) => p.code === f.programCode && (p.active || p.code === current?.programCode))) return fail(ctx, 'program_required');
   if (f.origin === 'externe' && !f.sourceOrg) return fail(ctx, 'source_required');
+  // Controlled values (point 59): the language is fr, en or none (a document that has another one keeps it); the lengths
+  // the import admits for the sub-type, the keywords and the source organisation.
+  if (f.lang && docLang(f.lang) === undefined && f.lang !== current?.lang) return { ok: false, error: ctx.t.lang_invalid, field: 'lang' };
+  if (f.subtype && f.subtype.length > DOC_SUBTYPE_MAX) return { ok: false, error: ctx.t.value_too_long.replace('{n}', String(DOC_SUBTYPE_MAX)), field: 'subtype' };
+  if (f.keywords.length > KEYWORDS_MAX || f.keywords.some((k) => k.length > VOCAB_MAX.keyword)) return { ok: false, error: ctx.t.keywords_too_many.replace('{n}', String(KEYWORDS_MAX)).replace('{len}', String(VOCAB_MAX.keyword)), field: 'keywords' };
+  if (f.sourceOrg && f.sourceOrg.length > VOCAB_MAX.source_org) return { ok: false, error: ctx.t.value_too_long.replace('{n}', String(VOCAB_MAX.source_org)), field: 'sourceOrg' };
   // A department or a site made inactive (Administration › Organisation) is no longer offered, except where it is set.
   const dept = ctx.departments.find((d) => d.code === f.department);
   if (!dept) return fail(ctx);
@@ -246,6 +323,10 @@ function validateFields(ctx: Ctx, f: Fields, current?: Pick<DocRow, 'typeCode' |
   if (site === undefined) return fail(ctx);
   if (site && !site.active && site.key !== current?.site) return { ok: false, error: ctx.t.site_inactive, field: 'site' };
   if (!ctx.users.has(f.ownerId) || ctx.users.get(f.ownerId)!.isSystem) return fail(ctx);
+  // The author: a person of the group (not a system actor) or a free text (readAuthor). A record migrated without one
+  // shows its owner (docView), whom the edit dialog proposes.
+  if (f.authorId && (!ctx.users.has(f.authorId) || ctx.users.get(f.authorId)!.isSystem)) return { ok: false, error: ctx.t.author_unknown, field: 'authorId' };
+  if (f.authorText && f.authorText.length > AUTHOR_TEXT_MAX) return { ok: false, error: ctx.t.author_too_long.replace('{n}', String(AUTHOR_TEXT_MAX)), field: 'authorText' };
   if (f.processOwnerId && !ctx.users.has(f.processOwnerId)) return fail(ctx);
   // Dates: real calendar days, sent by the form as YYYY-MM-DD (a Server Action can be called with anything).
   for (const [k, label] of [['reviewDueAt', 'review_due_at'], ['expiresAt', 'expires_at'], ['receivedAt', 'received_at']] as const) {
@@ -282,11 +363,15 @@ async function createDocumentNow(fd: FormData): Promise<ActionResult> {
   if (busy) return busy;
   if (!ctx.can('upload')) return denied(ctx, 'upload');
   const f = readFields(ctx, fd);
-  const invalid = validateFields(ctx, f);
+  const invalid = authorMissing(ctx, fd) ?? validateFields(ctx, f);
   if (invalid) return invalid;
   // A new document is issued today at the earliest: its expiry and its review come after.
   const dated = dateIssues({ ...f, issuedAt: null, issueFrom: todayIso(), effective: null }, todayIso())[0];
   if (dated) return dateFail(ctx, dated);
+  const vocab = await readVocab(ctx, fd, f);
+  if ('refused' in vocab) return vocab.refused;
+  f.sourceOrg = vocab.sourceOrg;
+  f.keywords = vocab.keywords;
   const type = ctx.typeByCode.get(f.typeCode)!;
   const file = uploadedFile(fd);
   const templateId = opt(fd, 'templateId');
@@ -297,7 +382,7 @@ async function createDocumentNow(fd: FormData): Promise<ActionResult> {
   if (!file && templateId) {
     // Same rule as the templates the dialog offers (listTemplates): a template the user cannot see does not exist for them.
     const [tpl] = await db.select().from(s.documents).where(eq(s.documents.id, templateId));
-    if (!tpl || !isUsableTemplate(ctx, tpl, await getAccessIndex())) return fail(ctx, 'not_found');
+    if (!tpl || !isUsableTemplate(ctx, tpl, await getAccessIndex(ctx))) return fail(ctx, 'not_found');
     const [rev] = await db.select().from(s.revisions).where(and(eq(s.revisions.docId, tpl.id), eq(s.revisions.status, 'in_force')));
     if (!rev) return fail(ctx, 'not_found');
     const [v] = await db.select().from(s.workingVersions).where(eq(s.workingVersions.revisionId, rev.id)).orderBy(desc(s.workingVersions.n)).limit(1);
@@ -307,6 +392,11 @@ async function createDocumentNow(fd: FormData): Promise<ActionResult> {
         template.buf = await readStored(v.storage, v.fileKey);
       } catch {
         return fail(ctx, 'error', tpl.id);
+      }
+      // A template whose stored bytes no longer match the fingerprint recorded at its upload is not copied.
+      if (v.sha256 && sha256Of(template.buf) !== v.sha256) {
+        log.error('template file altered', { doc: tpl.id, version: v.id });
+        return fail(ctx, 'file_altered_template', tpl.id);
       }
     }
   }
@@ -327,10 +417,13 @@ async function createDocumentNow(fd: FormData): Promise<ActionResult> {
     // A template stored before formats were checked, or in a format refused since, is checked again here.
     return refusedFile(ctx, err, file ? undefined : templateId ?? undefined);
   }
+  // A copy of a template is that template's file by design: only a file sent by the user is compared.
+  const warning = file && staged ? await duplicateWarning(ctx, staged.sha256) : undefined;
   const id = await withStaged(staged, () => db.transaction(async (tx) => {
+    for (const x of vocab.add) await addTerms(tx, x.kind, x.names, ctx.user.id);
     const id = await nextDocId(tx, f);
     await tx.insert(s.documents).values({
-      id, ...f, family: type.family, authorId: f.authorText ? null : ctx.user.id,
+      id, ...f, family: type.family, templateId: template ? templateId : null,
       status: 'draft', revWorking: 'A', createdAt: today, modifiedAt: today,
       retentionYears: type.retentionYears, retentionTrigger: type.retentionTrigger, retentionDisposition: type.retentionDisposition,
     });
@@ -339,12 +432,19 @@ async function createDocumentNow(fd: FormData): Promise<ActionResult> {
       const comment = template ? { fr: `Créé depuis le modèle ${templateId} « ${template.title} »`, en: `Created from template ${templateId} “${template.title}”` } : { fr: 'Dépôt initial', en: 'Initial upload' };
       await tx.insert(s.workingVersions).values({ revisionId: rev.id, docId: id, n: 1, comment, authorId: ctx.user.id, date: today, ...(staged ? fileColumns(staged) : {}) });
     }
-    await audit(tx, ctx.user.id, 'upload', id, `A.1${staged ? ` · ${fmtSize(staged.size, 'fr')}` : ''}${templateId ? ` · ${templateId}` : ''}`, rev.id);
+    // The template, only when its file was copied (an uploaded file wins over a template the dialog also sent).
+    const source = template ? templateId : null;
+    await audit(tx, ctx.user.id, 'upload', id, `A.1${source ? ` · ${source}` : ''}`, rev.id, {
+      ...(staged ? { sha256: staged.sha256 } : {}),
+      text: { code: 'version', params: { label: 'A.1', ...(staged ? { size: staged.size } : {}), ...(source ? { template: source } : {}) } },
+    });
     if (f.attachment === 'project' && f.projectCode && expectedId) {
       // A document filed for a piece Keystone expects fills that piece (only if it is still missing).
-      const [exp] = await tx.select().from(s.projectExpected).where(and(eq(s.projectExpected.id, expectedId), eq(s.projectExpected.projectCode, f.projectCode)));
-      if (exp && !exp.docId && (!exp.typeCode || exp.typeCode === f.typeCode)) {
-        await tx.update(s.projectExpected).set({ docId: id }).where(eq(s.projectExpected.id, exp.id));
+      // Filled only if still empty when written: two documents filed for the same piece at once never both take it.
+      const [exp] = await tx.update(s.projectExpected).set({ docId: id })
+        .where(and(eq(s.projectExpected.id, expectedId), eq(s.projectExpected.projectCode, f.projectCode), isNull(s.projectExpected.docId), or(isNull(s.projectExpected.typeCode), eq(s.projectExpected.typeCode, f.typeCode))))
+        .returning();
+      if (exp) {
         const label = typeof exp.label === 'string' ? { fr: exp.label, en: exp.label } : exp.label;
         // No document ID in the project feed: every reader of the project sees it, the draft is visible to its circle only.
         await tx.insert(s.projectEvents).values({ projectCode: f.projectCode, at: nowStamp(), text: { fr: `Pièce « ${label.fr} » déposée`, en: `“${label.en}” filed` } });
@@ -354,7 +454,7 @@ async function createDocumentNow(fd: FormData): Promise<ActionResult> {
   }));
   if (staged) await nameStoredFile(staged, id, 'A.1');
   refresh();
-  return { ok: true, href: docHref(id, f.attachment === 'project' ? 'project' : 'meta'), message: `${ctx.t.id_preview} : ${id}` };
+  return { ok: true, href: docHref(id, f.attachment === 'project' ? 'project' : 'meta'), message: `${ctx.t.id_preview} : ${id}`, ...(warning ? { warning } : {}) };
 }
 
 /**
@@ -387,7 +487,7 @@ async function addWorkingVersionNow(fd: FormData): Promise<ActionResult> {
   if (!file) return fail(ctx, 'choose_file');
   const base = seenWorkingBase(fd.get('baseRevision'), fd.get('baseVersion'));
   const db = await getDb();
-  const ix = await getAccessIndex();
+  const ix = await getAccessIndex(ctx);
   const [d] = await db.select().from(s.documents).where(eq(s.documents.id, docId));
   if (!d) return movedSince(db, ctx, docId, (x) => canRead(ctx, x, ix) && mayWorkOnDraft(ctx, x, ix));
   // Access first: a document the user cannot see gives nothing away, not even its lock.
@@ -407,10 +507,11 @@ async function addWorkingVersionNow(fd: FormData): Promise<ActionResult> {
   } catch (err) {
     return refusedFile(ctx, err);
   }
+  const warning = await duplicateWarning(ctx, staged.sha256);
   const comment = str(fd, 'comment');
   const res = await withStaged(staged, () => db.transaction(async (tx): Promise<{ err: TKey } | { behind: ActionResult } | { label: string }> => {
     // Checked again inside the transaction: a validation request or another upload may have come in during the upload.
-    const [cur] = await tx.select().from(s.documents).where(eq(s.documents.id, docId));
+    const cur = await lockDoc(tx, docId);
     if (!cur) return { err: 'not_found' };
     const locked = lockOf(cur);
     if (locked) return { err: locked };
@@ -422,7 +523,7 @@ async function addWorkingVersionNow(fd: FormData): Promise<ActionResult> {
     const n = max + 1;
     await tx.insert(s.workingVersions).values({ revisionId: rev.id, docId, n, comment: comment || { fr: 'Nouvelle version de travail', en: 'New working version' }, authorId: ctx.user.id, date: todayIso(), ...fileColumns(staged) });
     await tx.update(s.documents).set({ modifiedAt: todayIso() }).where(eq(s.documents.id, docId));
-    await audit(tx, ctx.user.id, 'working', docId, `${rev.letter}.${n} · ${fmtSize(staged.size, 'fr')}`, rev.id);
+    await audit(tx, ctx.user.id, 'working', docId, `${rev.letter}.${n}`, rev.id, { sha256: staged.sha256, text: { code: 'version', params: { label: `${rev.letter}.${n}`, size: staged.size } } });
     return { label: `${rev.letter}.${n}` };
   }));
   if (!('label' in res)) {
@@ -431,7 +532,90 @@ async function addWorkingVersionNow(fd: FormData): Promise<ActionResult> {
   }
   await nameStoredFile(staged, docId, res.label);
   refresh();
-  return { ok: true, href: docHref(docId, 'versions') };
+  return { ok: true, href: docHref(docId, 'versions'), ...(warning ? { warning } : {}) };
+}
+
+/**
+ * « Restaurer » (Révisions tab, point 65): the next working version of the revision being drafted, made of the file of
+ * an earlier working version of that same revision (D-12 keeps every version: nothing is removed or rewritten). Same
+ * checks as addWorkingVersion (upload permission, the document readable and its drafting circle, lock, revision in
+ * draft, last version seen), and only a version of the open draft with a file, not its last one. Going back to a
+ * revision in force is a change request to Vigie (D-16), never this. The copy is checked against the fingerprint
+ * recorded at its upload, then goes through the store's checks again (format, size, virus scan).
+ */
+export async function restoreWorkingVersion(...args: Parameters<typeof restoreWorkingVersionNow>): Promise<ActionResult> {
+  return traceAction('restoreWorkingVersion', () => restoreWorkingVersionNow(...args));
+}
+async function restoreWorkingVersionNow(docId: string, versionId: number, base: WorkingBase | null): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  if (!ctx.can('upload')) return denied(ctx, 'upload');
+  const seen = seenWorkingBase(base?.revisionId, base?.n);
+  if (typeof docId !== 'string' || !Number.isSafeInteger(versionId)) return fail(ctx, 'not_found');
+  const db = await getDb();
+  const ix = await getAccessIndex(ctx);
+  const [d] = await db.select().from(s.documents).where(eq(s.documents.id, docId));
+  if (!d) return movedSince(db, ctx, docId, (x) => canRead(ctx, x, ix) && mayWorkOnDraft(ctx, x, ix));
+  // Access first: a document the user cannot see gives nothing away, not even its lock or its versions.
+  if (!canRead(ctx, d, ix)) return fail(ctx, 'not_found');
+  if (!mayWorkOnDraft(ctx, d, ix)) return fail(ctx, 'not_allowed');
+  const lock = lockOf(d);
+  if (lock) return fail(ctx, lock);
+  const open = await workingRevision(db, docId);
+  if (!open) return fail(ctx, 'need_in_force');
+  if (open.status !== 'draft') return fail(ctx, 'not_draft');
+  // A version of another revision (one in force, superseded or cancelled) or of another document is not restored here.
+  const [v] = await db.select().from(s.workingVersions).where(and(eq(s.workingVersions.id, versionId), eq(s.workingVersions.docId, docId), eq(s.workingVersions.revisionId, open.id)));
+  if (!v) return fail(ctx, 'restore_other_revision');
+  const behind = await uploadBehind(db, ctx, docId, open, seen);
+  if (behind) return behind;
+  if (seen && v.n >= seen.n) return fail(ctx, 'restore_latest');
+  if (!v.fileKey) return fail(ctx, 'restore_no_file');
+  const from = `${open.letter}.${v.n}`;
+  let buf: Buffer;
+  try {
+    buf = await readStored(v.storage, v.fileKey);
+  } catch {
+    return fail(ctx, 'error', from);
+  }
+  // A file whose stored bytes no longer match the fingerprint recorded at its upload is not copied (lib/integrity.ts).
+  if (v.sha256 && sha256Of(buf) !== v.sha256) {
+    log.error('restored file altered', { doc: docId, version: v.id });
+    return fail(ctx, 'restore_altered', from);
+  }
+  let staged: StagedFile;
+  try {
+    staged = await stageFile(buf, v.fileName ?? `${docId}_${from}`, v.mime ?? '', { userId: ctx.user.id, entry: 'working', doc: docId });
+  } catch (err) {
+    return refusedFile(ctx, err);
+  }
+  const res = await withStaged(staged, () => db.transaction(async (tx): Promise<{ err: TKey } | { behind: ActionResult } | { label: string }> => {
+    // Checked again inside the transaction: a validation request or another upload may have come in meanwhile.
+    const cur = await lockDoc(tx, docId);
+    if (!cur) return { err: 'not_found' };
+    const locked = lockOf(cur);
+    if (locked) return { err: locked };
+    const rev = await workingRevision(tx, docId);
+    if (!rev || rev.id !== open.id || rev.status !== 'draft') return { err: 'not_draft' };
+    const late = await uploadBehind(tx, ctx, docId, rev, seen);
+    if (late) return { behind: late };
+    const [{ max }] = await tx.select({ max: sql<number>`coalesce(max(${s.workingVersions.n}), 0)::int` }).from(s.workingVersions).where(eq(s.workingVersions.revisionId, rev.id));
+    if (v.n >= max) return { err: 'restore_latest' };
+    const n = max + 1;
+    const label = `${rev.letter}.${n}`;
+    await tx.insert(s.workingVersions).values({ revisionId: rev.id, docId, n, comment: { fr: `Restaurée depuis ${from}`, en: `Restored from ${from}` }, authorId: ctx.user.id, date: todayIso(), ...fileColumns(staged) });
+    await tx.update(s.documents).set({ modifiedAt: todayIso() }).where(eq(s.documents.id, docId));
+    await audit(tx, ctx.user.id, 'working', docId, `${label} · ${from}`, rev.id, { sha256: staged.sha256, text: { code: 'version_restored', params: { label, from, size: staged.size } } });
+    return { label };
+  }));
+  if (!('label' in res)) {
+    await discardFile(staged);
+    return 'err' in res ? fail(ctx, res.err) : res.behind;
+  }
+  await nameStoredFile(staged, docId, res.label);
+  refresh();
+  return { ok: true, href: docHref(docId, 'versions'), message: ctx.t.restored_version.replace('{label}', res.label).replace('{from}', from) };
 }
 
 /**
@@ -465,7 +649,7 @@ async function updateMetaNow(fd: FormData): Promise<ActionResult> {
   const docId = str(fd, 'docId');
   const seen = seenVersion(fd.get('version'));
   const db = await getDb();
-  const ix = await getAccessIndex();
+  const ix = await getAccessIndex(ctx);
   const mayEdit = (x: DocRow) => ctx.seesAll || x.ownerId === ctx.user.id;
   const [d] = await db.select().from(s.documents).where(eq(s.documents.id, docId));
   if (!d) return movedSince(db, ctx, docId, (x) => canRead(ctx, x, ix) && mayEdit(x));
@@ -475,8 +659,12 @@ async function updateMetaNow(fd: FormData): Promise<ActionResult> {
   if (lock) return fail(ctx, lock);
   if (d.version !== seen) return stale(ctx, seen === null ? null : await lastChangedBy(db, ctx, docId));
   const f = readFields(ctx, fd, d);
-  const invalid = validateFields(ctx, f, d);
+  const invalid = authorMissing(ctx, fd) ?? validateFields(ctx, f, d);
   if (invalid) return invalid;
+  const vocab = await readVocab(ctx, fd, f, d);
+  if ('refused' in vocab) return vocab.refused;
+  f.sourceOrg = vocab.sourceOrg;
+  f.keywords = vocab.keywords;
   const type = ctx.typeByCode.get(f.typeCode)!;
   const reclassified = f.typeCode !== d.typeCode || f.attachment !== d.attachment || f.projectCode !== d.projectCode || f.programCode !== d.programCode || f.department !== d.department;
   const res = await db.transaction(async (tx): Promise<{ err: TKey } | { date: DateIssue } | { id: string } | { stale: string | null }> => {
@@ -497,6 +685,7 @@ async function updateMetaNow(fd: FormData): Promise<ActionResult> {
       ...dateIssues({ ...entered, issuedAt: d.issuedAt, issueFrom: issueFrom(d.issuedAt, ahead, today), effective: ahead }, today),
     ].find((i) => i.field !== 'effective');
     if (dated) return { date: dated };
+    for (const x of vocab.add) await addTerms(tx, x.kind, x.names, ctx.user.id);
     const everApproved = revs.some((r) => r.approvedAt);
     let id = docId;
     if (!everApproved && !idMatches(docId, f)) {
@@ -507,17 +696,22 @@ async function updateMetaNow(fd: FormData): Promise<ActionResult> {
       // Before any approval, the reclassification belongs to the revision being drafted.
       await audit(tx, ctx.user.id, 'reclass', id, `${docId} → ${id}`, revs.find((r) => r.status === 'draft' || r.status === 'in_review')?.id ?? null);
     }
-    const retention = f.typeCode !== d.typeCode ? { retentionYears: type.retentionYears, retentionTrigger: type.retentionTrigger, retentionDisposition: type.retentionDisposition } : {};
+    // A new type brings its own rule: a derogation granted under the former type does not carry over (D-20).
+    const retention = f.typeCode !== d.typeCode ? { retentionYears: type.retentionYears, retentionTrigger: type.retentionTrigger, retentionDisposition: type.retentionDisposition, retentionOverride: false } : {};
     await tx.update(s.documents).set({ ...f, family: type.family, ...retention, modifiedAt: todayIso() }).where(eq(s.documents.id, id));
+    // A document that is no longer a template is offered for no type any more.
+    const unlinked = d.typeCode === TEMPLATE_TYPE && f.typeCode !== TEMPLATE_TYPE
+      ? (await tx.delete(s.templateTypes).where(eq(s.templateTypes.docId, id)).returning()).map((x) => x.typeCode).sort()
+      : [];
     // The values changed, with what decides who reads them: the strictest level across the change, and whether a
     // revision was in force (work on a draft stays in its drafting circle, D-14).
-    const changed = metaChanges(d, f, retention);
+    const changed = [...metaChanges(d, f, retention), ...changes([['templateTypes', unlinked, null]])];
     const strictest = CONF_LEVELS[Math.max(CONF_LEVELS.indexOf(d.conf), CONF_LEVELS.indexOf(f.conf))] ?? f.conf;
     await audit(tx, ctx.user.id, 'edit', id, d.revInForce ?? d.revWorking ?? '', null, changed.length ? { changes: changed, doc: { conf: strictest, inForce: !!d.revInForce } } : null);
     // Named readers only count for confidential levels (lib/access.ts): below, they are dropped rather than left unseen.
     if (!readersApply(f.conf)) {
       const dropped = await tx.delete(s.documentReaders).where(eq(s.documentReaders.docId, id)).returning();
-      if (dropped.length) await audit(tx, ctx.user.id, 'edit', id, `${ctx.t.readers} (0)`);
+      if (dropped.length) await audit(tx, ctx.user.id, 'edit', id, '', null, { text: { code: 'readers', params: { n: 0 } } });
     }
     if (f.attachment !== d.attachment || f.projectCode !== d.projectCode || f.typeCode !== d.typeCode) await releasePieces(tx, id, f);
     return { id };
@@ -547,7 +741,7 @@ async function setReadersNow(docId: string, userIds: string[], version: number):
   if (!ctx.can('edit')) return denied(ctx, 'edit');
   const seen = seenVersion(version);
   const db = await getDb();
-  const ix = await getAccessIndex();
+  const ix = await getAccessIndex(ctx);
   const mayEdit = (x: DocRow) => ctx.seesAll || x.ownerId === ctx.user.id;
   const [d] = await db.select().from(s.documents).where(eq(s.documents.id, docId));
   if (!d) return movedSince(db, ctx, docId, (x) => canRead(ctx, x, ix) && mayEdit(x));
@@ -566,10 +760,60 @@ async function setReadersNow(docId: string, userIds: string[], version: number):
     if (ids.length) await tx.insert(s.documentReaders).values(ids.map((userId) => ({ docId, userId })));
     // The readers are kept apart from the row: its version is raised here, for the dialogs open on the record.
     await tx.update(s.documents).set({ version: sql`${s.documents.version} + 1` }).where(eq(s.documents.id, docId));
-    await audit(tx, ctx.user.id, 'edit', docId, `${ctx.t.readers} (${ids.length})`);
+    await audit(tx, ctx.user.id, 'edit', docId, '', null, { text: { code: 'readers', params: { n: ids.length } } });
     return null;
   });
   if (res) return stale(ctx, res.stale);
+  refresh();
+  return { ok: true, message: ctx.t.saved_ok };
+}
+
+/**
+ * Types a template is meant for (« Nouveau depuis un modèle » offers it first to a document of these types): on a
+ * template (type FRM), by its owner or a records manager with the edit permission (access.ts mayLinkTemplate), not
+ * locked. Each code is a type of the register, active unless the template is already linked to it. `version`: of the
+ * record the dialog showed (lib/concurrency.ts), raised here as for the named readers. Journaled as a metadata edit,
+ * before → after, its values within the drafting circle until a revision is in force (D-14).
+ */
+export async function setTemplateTypes(...args: Parameters<typeof setTemplateTypesNow>): Promise<ActionResult> {
+  return traceAction('setTemplateTypes', () => setTemplateTypesNow(...args));
+}
+async function setTemplateTypesNow(docId: string, typeCodes: string[], version: number): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  if (!ctx.can('edit')) return denied(ctx, 'edit');
+  const seen = seenVersion(version);
+  const db = await getDb();
+  const ix = await getAccessIndex(ctx);
+  const [d] = await db.select().from(s.documents).where(eq(s.documents.id, String(docId)));
+  if (!d) return movedSince(db, ctx, String(docId), (x) => canRead(ctx, x, ix) && mayLinkTemplate(ctx, x));
+  if (!canRead(ctx, d, ix)) return fail(ctx, 'not_found');
+  if (d.typeCode !== TEMPLATE_TYPE) return fail(ctx, 'template_only');
+  if (!mayLinkTemplate(ctx, d)) return fail(ctx, 'not_allowed');
+  const lock = lockOf(d);
+  if (lock) return fail(ctx, lock);
+  if (d.version !== seen) return stale(ctx, seen === null ? null : await lastChangedBy(db, ctx, d.id));
+  const codes = dedupe((Array.isArray(typeCodes) ? typeCodes : []).map(String)).sort();
+  const res = await db.transaction(async (tx): Promise<ActionResult | { outdated: string | null } | null> => {
+    const [cur] = await tx.select({ version: s.documents.version }).from(s.documents).where(eq(s.documents.id, d.id)).for('update');
+    if (cur?.version !== seen) return { outdated: cur ? await lastChangedBy(tx, ctx, d.id) : null };
+    const before = (await tx.select().from(s.templateTypes).where(eq(s.templateTypes.docId, d.id))).map((x) => x.typeCode).sort();
+    // A type withdrawn from the register (inactive) is kept where it is set, never added.
+    const bad = codes.find((c) => { const type = ctx.typeByCode.get(c); return !type || (!type.active && !before.includes(c)); });
+    if (bad) return { ok: false, error: `${ctx.t.template_type_unknown} : ${bad}` };
+    const changed = changes([['templateTypes', before, codes]]);
+    if (!changed.length) return null;
+    await tx.delete(s.templateTypes).where(eq(s.templateTypes.docId, d.id));
+    if (codes.length) await tx.insert(s.templateTypes).values(codes.map((typeCode) => ({ docId: d.id, typeCode })));
+    // The links are kept apart from the row: the record is dated as by a metadata edit, its version raised for the
+    // dialogs open on it.
+    await tx.update(s.documents).set({ modifiedAt: todayIso(), version: sql`${s.documents.version} + 1` }).where(eq(s.documents.id, d.id));
+    await audit(tx, ctx.user.id, 'edit', d.id, d.revInForce ?? d.revWorking ?? '', null, { changes: changed, doc: { conf: d.conf, inForce: !!d.revInForce } });
+    return null;
+  });
+  if (res && 'outdated' in res) return stale(ctx, res.outdated);
+  if (res) return res;
   refresh();
   return { ok: true, message: ctx.t.saved_ok };
 }
@@ -597,10 +841,10 @@ async function recordReviewNow(docId: string, next: string | null, comment = '')
   const note = typeof comment === 'string' ? comment.trim() : '';
   if (note.length > REVIEW_COMMENT_MAX) return { ok: false, error: ctx.t.review_comment_too_long, field: 'comment' };
   const entered = typeof next === 'string' && next.trim() ? next.trim() : null;
-  const ix = await getAccessIndex();
+  const ix = await getAccessIndex(ctx);
   const db = await getDb();
   const res = await db.transaction(async (tx): Promise<{ err: TKey; field?: string } | { date: string }> => {
-    const [d] = await tx.select().from(s.documents).where(eq(s.documents.id, docId));
+    const d = await lockDoc(tx, docId);
     // Access first: a document the user cannot see gives nothing away, not even its lock.
     if (!d || !canRead(ctx, d, ix)) return { err: 'not_found' };
     if (!mayRecordReview(ctx, d)) return { err: 'review_reserved' };
@@ -625,27 +869,6 @@ async function recordReviewNow(docId: string, next: string | null, comment = '')
 }
 
 // ── Approval workflows ───────────────────────────────────────────────────
-
-type RevRow = typeof s.revisions.$inferSelect;
-
-/**
- * People who never approve a revision (docs/modele-cible.md §6): whoever requested the validation, its designated
- * author, the authors of its working versions, and the owner when nobody was designated to write it.
- */
-async function circuitExclusions(tx: Tx, d: DocRow, rev: Pick<RevRow, 'id' | 'modifierId'>, requesterId: string): Promise<Set<string>> {
-  const versions = await tx.select({ authorId: s.workingVersions.authorId }).from(s.workingVersions).where(eq(s.workingVersions.revisionId, rev.id));
-  return new Set([requesterId, rev.modifierId ?? d.ownerId, ...versions.map((v) => v.authorId)]);
-}
-
-/** Who may approve with their default role (its row of the matrix), whatever role they simulate right now. */
-async function approverCheck(tx: Tx, ctx: Ctx): Promise<(userId: string) => boolean> {
-  const rows = await tx.select().from(s.rolePermissions).where(and(eq(s.rolePermissions.perm, 'approve'), eq(s.rolePermissions.granted, true)));
-  const roles = new Set(rows.map((r) => r.role));
-  return (id) => {
-    const u = ctx.users.get(id);
-    return !!u && !u.isSystem && roles.has(MATRIX_ROLE[u.role as SimRole]);
-  };
-}
 
 /**
  * Resolves a function to a person for this document: holder for the document's department, project or programme,
@@ -683,12 +906,12 @@ async function requestValidationNow(docId: string, effectiveAt: string | null, b
   // Effective date: a real day, today or later (approveRevision moves it to the approval day if the circuit outlasts it).
   const effective = effectiveAt ? parseIsoDay(effectiveAt) : null;
   if (effectiveAt && (!effective || effective < todayIso())) return fail(ctx, 'invalid_date');
-  const ix = await getAccessIndex();
+  const ix = await getAccessIndex(ctx);
   const db = await getDb();
 
   type Res = { id: string } | { href: string } | { err: TKey; extra?: string } | { date: DateIssue } | { behind: ActionResult };
   const res = await db.transaction(async (tx): Promise<Res> => {
-    const [d] = await tx.select().from(s.documents).where(eq(s.documents.id, docId));
+    const d = await lockDoc(tx, docId);
     if (!d || !canRead(ctx, d, ix)) return { err: 'not_found' };
     if (!mayWorkOnDraft(ctx, d, ix)) return { err: 'not_allowed' };
     const lock = lockOf(d);
@@ -715,7 +938,7 @@ async function requestValidationNow(docId: string, effectiveAt: string | null, b
     // The author's step goes to the person who wrote the revision, whoever launches the circuit.
     const author = rev.modifierId ?? versions[0].authorId ?? d.ownerId;
     const excluded = await circuitExclusions(tx, d, rev, ctx.user.id);
-    const mayApprove = await approverCheck(tx, ctx);
+    const mayApprove = await approverCheck(tx, ctx.users);
     const taken = new Set<string>();
     const steps: { functionKey: string | null; name: { fr: string; en: string }; assigneeId: string }[] = [
       { functionKey: null, name: { fr: 'Rédaction', en: 'Drafting' }, assigneeId: author },
@@ -748,6 +971,18 @@ async function requestValidationNow(docId: string, effectiveAt: string | null, b
   if ('err' in res) return res.err === 'perm_publish' ? denied(ctx, 'publish') : fail(ctx, res.err, res.extra);
   refresh();
   return { ok: true, href: `/validations?f=requested&r=${encodeURIComponent(res.id)}` };
+}
+
+/**
+ * loadWorkflow inside a transaction that decides on the circuit: the row of its document locked first (lockDoc), then
+ * the circuit read, so that two decisions on it (a double click, two approvers' tabs) or a decision and a change of the
+ * document (archive, hold, withdrawal) never both act on what they read before the other committed.
+ */
+async function lockWorkflow(tx: Tx, id: string) {
+  const [w] = await tx.select({ docId: s.workflows.docId }).from(s.workflows).where(eq(s.workflows.id, id));
+  if (!w) return null;
+  await lockDoc(tx, w.docId);
+  return loadWorkflow(tx, id);
 }
 
 async function loadWorkflow(tx: Tx, id: string) {
@@ -784,7 +1019,7 @@ async function decideStepNow(workflowId: string, approve: boolean, expectedStep:
   const { why } = motive;
   const db = await getDb();
   const err = await db.transaction(async (tx): Promise<TKey | null> => {
-    const wf = await loadWorkflow(tx, workflowId);
+    const wf = await lockWorkflow(tx, workflowId);
     if (!wf) return 'not_found';
     const { w, steps } = wf;
     if (w.outcome || w.step !== expectedStep) return 'wrong_step';
@@ -845,10 +1080,10 @@ async function recallValidationNow(workflowId: string, expectedStep: number, rea
   if ('err' in motive) return fail(ctx, motive.err);
   const { why } = motive;
   if (!ctx.can('edit')) return denied(ctx, 'edit');
-  const ix = await getAccessIndex();
+  const ix = await getAccessIndex(ctx);
   const db = await getDb();
   const err = await db.transaction(async (tx): Promise<TKey | null> => {
-    const wf = await loadWorkflow(tx, workflowId);
+    const wf = await lockWorkflow(tx, workflowId);
     if (!wf) return 'not_found';
     const { w } = wf;
     const [[d], [rev]] = await Promise.all([
@@ -888,7 +1123,7 @@ async function delegateStepNow(workflowId: string, toUserId: string, expectedSte
   if (!ctx.screens.workflow) return fail(ctx, 'forbidden');
   const db = await getDb();
   const err = await db.transaction(async (tx): Promise<TKey | null> => {
-    const wf = await loadWorkflow(tx, workflowId);
+    const wf = await lockWorkflow(tx, workflowId);
     if (!wf) return 'not_found';
     if (wf.w.outcome || wf.w.step !== expectedStep) return 'wrong_step';
     const cur = wf.steps[wf.w.step];
@@ -902,14 +1137,56 @@ async function delegateStepNow(workflowId: string, toUserId: string, expectedSte
     const to = ctx.users.get(toUserId);
     if (!to || to.isSystem || to.id === ctx.user.id) return 'error';
     if ((await circuitExclusions(tx, doc, rev, wf.w.requesterId)).has(to.id)) return 'no_self_approval';
-    if (!(await approverCheck(tx, ctx))(to.id)) return 'delegate_no_approve';
+    if (!(await approverCheck(tx, ctx.users))(to.id)) return 'delegate_no_approve';
     await tx.update(s.workflowSteps).set({ assigneeId: to.id }).where(and(eq(s.workflowSteps.workflowId, workflowId), eq(s.workflowSteps.idx, cur.idx)));
-    await audit(tx, ctx.user.id, 'delegate', wf.w.docId, `${workflowId} · ${loc(cur.name, 'fr')} → ${to.name}`, rev.id);
+    // The detail keeps the step's French name: the approval record reads it (lib/approval.ts parseDelegation).
+    await audit(tx, ctx.user.id, 'delegate', wf.w.docId, `${workflowId} · ${loc(cur.name, 'fr')} → ${to.name}`, rev.id, { text: { code: 'step_delegated', params: { wf: workflowId, step: localized(cur.name), to: to.name } } });
     return null;
   });
   if (err) return fail(ctx, err);
   refresh();
   return { ok: true };
+}
+
+/**
+ * Hands the current step of a running circuit to someone else, for a records manager who does not hold it (a step left
+ * with an absent person, point 19 of docs/reste-a-faire.md): delegateStep's checks (not locked, a person who may approve
+ * with their default role, never the requester, the author or the authors of the working versions), and someone else
+ * than its holder. `expectedStep` is the step the manager saw: a circuit that moved on since is left alone. Journaled on
+ * the revision ('reassign', D-14), as a delegation.
+ */
+export async function reassignStep(...args: Parameters<typeof reassignStepNow>): Promise<ActionResult> {
+  return traceAction('reassignStep', () => reassignStepNow(...args));
+}
+async function reassignStepNow(workflowId: string, toUserId: string, expectedStep: number): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  if (!mayReassignStep(ctx)) return fail(ctx, 'forbidden');
+  if (typeof workflowId !== 'string' || typeof toUserId !== 'string') return fail(ctx);
+  const db = await getDb();
+  const err = await db.transaction(async (tx): Promise<TKey | null> => {
+    const wf = await lockWorkflow(tx, workflowId);
+    if (!wf) return 'not_found';
+    if (wf.w.outcome || wf.w.step !== expectedStep) return 'wrong_step';
+    const cur = wf.steps[wf.w.step];
+    if (!cur) return 'wrong_step';
+    const [doc] = await tx.select().from(s.documents).where(eq(s.documents.id, wf.w.docId));
+    const [rev] = await tx.select().from(s.revisions).where(eq(s.revisions.id, wf.w.revisionId));
+    if (!doc || !rev) return 'not_found';
+    const lock = lockOf(doc);
+    if (lock) return lock;
+    const to = ctx.users.get(toUserId);
+    if (!to || to.isSystem || to.id === cur.assigneeId) return 'error';
+    if ((await circuitExclusions(tx, doc, rev, wf.w.requesterId)).has(to.id)) return 'no_self_approval';
+    if (!(await approverCheck(tx, ctx.users))(to.id)) return 'delegate_no_approve';
+    await tx.update(s.workflowSteps).set({ assigneeId: to.id }).where(and(eq(s.workflowSteps.workflowId, workflowId), eq(s.workflowSteps.idx, cur.idx)));
+    await audit(tx, ctx.user.id, 'reassign', wf.w.docId, `${workflowId} · ${loc(cur.name, 'fr')} : ${ctx.userName(cur.assigneeId)} → ${to.name}`, rev.id, { text: { code: 'step_reassigned', params: { wf: workflowId, step: localized(cur.name), from: ctx.userName(cur.assigneeId), to: to.name } } });
+    return null;
+  });
+  if (err) return fail(ctx, err);
+  refresh();
+  return { ok: true, message: ctx.t.reassign_done };
 }
 
 export async function addComment(...args: Parameters<typeof addCommentNow>): Promise<ActionResult> {
@@ -929,7 +1206,7 @@ async function addCommentNow(workflowId: string, text: string): Promise<ActionRe
   const [[d], [rev], ix] = await Promise.all([
     db.select().from(s.documents).where(eq(s.documents.id, wf.w.docId)),
     db.select({ status: s.revisions.status }).from(s.revisions).where(eq(s.revisions.id, wf.w.revisionId)),
-    getAccessIndex(),
+    getAccessIndex(ctx),
   ]);
   if (!d || !canRead(ctx, d, ix) || !readerMaySeeRevision(inDraftingCircle(ctx, d, ix), rev?.status)) return fail(ctx, 'not_found');
   if (!followsCircuit(ctx, wf.w, wf.steps)) return fail(ctx, 'not_allowed');
@@ -964,10 +1241,10 @@ async function requestChangeNow(docId: string, kind: 'modification' | 'obsolesce
   const replacement = typeof replacementId === 'string' && replacementId.trim() ? replacementId.trim() : null;
   if (!why || (kind !== 'modification' && kind !== 'obsolescence') || (replacement && kind !== 'obsolescence')) return fail(ctx);
   if (!ctx.can('edit')) return denied(ctx, 'edit');
-  const ix = await getAccessIndex();
+  const ix = await getAccessIndex(ctx);
   const db = await getDb();
   const res = await db.transaction(async (tx): Promise<{ err: TKey; extra?: string; field?: string } | { id: string }> => {
-    const [d] = await tx.select().from(s.documents).where(eq(s.documents.id, docId));
+    const d = await lockDoc(tx, docId);
     if (!d || !canRead(ctx, d, ix)) return { err: 'not_found' };
     const lock = lockOf(d);
     if (lock) return { err: lock };
@@ -1026,11 +1303,13 @@ async function graftChangeNow(requestId: string): Promise<ActionResult> {
   const busy = throttled(ctx);
   if (busy) return busy;
   if (!ctx.can('edit')) return denied(ctx, 'edit');
-  const ix = await getAccessIndex();
+  const ix = await getAccessIndex(ctx);
   const db = await getDb();
   const res = await db.transaction(async (tx): Promise<{ err: TKey } | { ref: string; letter: string }> => {
-    const [req] = await tx.select().from(s.changeRequests).where(eq(s.changeRequests.id, requestId));
-    const [d] = req ? await tx.select().from(s.documents).where(eq(s.documents.id, req.docId)) : [];
+    const [asked] = await tx.select({ docId: s.changeRequests.docId }).from(s.changeRequests).where(eq(s.changeRequests.id, requestId));
+    // The document locked first, then the request read: a Vigie decision or another graft on it has committed by then.
+    const d = asked ? await lockDoc(tx, asked.docId) : undefined;
+    const [req] = d ? await tx.select().from(s.changeRequests).where(eq(s.changeRequests.id, requestId)) : [];
     if (!req || !d || !canRead(ctx, d, ix)) return { err: 'not_found' };
     // Locked against a concurrent validation request: a revision is grafted onto while drafted, never once in review.
     const [rev] = await tx.select().from(s.revisions).where(and(eq(s.revisions.docId, d.id), inArray(s.revisions.status, ['draft', 'in_review', 'approved']))).for('update');
@@ -1076,13 +1355,15 @@ async function addDocLinkNow(docId: string, rel: string, otherId: string): Promi
   if (!isLinkRel(rel)) return fail(ctx);
   if (!ctx.can('edit')) return denied(ctx, 'edit');
   const other = typeof otherId === 'string' ? otherId.trim() : '';
-  const ix = await getAccessIndex();
+  const ix = await getAccessIndex(ctx);
   const db = await getDb();
   const res = await db.transaction(async (tx): Promise<{ err: TKey; field?: string } | { ok: true }> => {
-    const [d] = await tx.select().from(s.documents).where(eq(s.documents.id, docId));
+    // Both ends locked, in the order of their IDs: the link rules read their state (withdrawn, active, held).
+    const locked = await lockDocs(tx, other ? [docId, other] : [docId]);
+    const d = locked.find((x) => x.id === docId);
     if (!d || !canRead(ctx, d, ix)) return { err: 'not_found' };
     if (!mayEditLinks(ctx, d)) return { err: 'link_reserved' };
-    const [o] = other ? await tx.select().from(s.documents).where(eq(s.documents.id, other)) : [];
+    const o = other ? locked.find((x) => x.id === other) : undefined;
     if (!o || !canRead(ctx, o, ix)) return { err: 'link_not_found', field: 'other' };
     if (!mayEditLinks(ctx, o)) return { err: 'link_reserved', field: 'other' };
     if (d.legalHold || o.legalHold) return { err: 'link_hold' };
@@ -1112,13 +1393,17 @@ async function removeDocLinkNow(docId: string, linkId: number): Promise<ActionRe
   const busy = throttled(ctx);
   if (busy) return busy;
   if (!ctx.can('edit')) return denied(ctx, 'edit');
-  const ix = await getAccessIndex();
+  const ix = await getAccessIndex(ctx);
   const db = await getDb();
   const res = await db.transaction(async (tx): Promise<{ err: TKey } | { ok: true }> => {
-    const [d] = await tx.select().from(s.documents).where(eq(s.documents.id, docId));
+    // Both ends locked, in the order of their IDs (the other end read from the link first), then read.
+    const [seen] = Number.isInteger(linkId) ? await tx.select().from(s.documentLinks).where(eq(s.documentLinks.id, linkId)) : [];
+    const ends = seen && (seen.sourceId === docId || seen.targetId === docId) ? [docId, otherEnd(seen, docId)] : [docId];
+    const locked = await lockDocs(tx, ends);
+    const d = locked.find((x) => x.id === docId);
     if (!d || !canRead(ctx, d, ix)) return { err: 'not_found' };
-    const [l] = Number.isInteger(linkId) ? await tx.select().from(s.documentLinks).where(eq(s.documentLinks.id, linkId)) : [];
-    const [o] = l && (l.sourceId === d.id || l.targetId === d.id) ? await tx.select().from(s.documents).where(eq(s.documents.id, otherEnd(l, d.id))) : [];
+    const [l] = seen ? await tx.select().from(s.documentLinks).where(eq(s.documentLinks.id, seen.id)) : [];
+    const o = l && (l.sourceId === d.id || l.targetId === d.id) ? locked.find((x) => x.id === otherEnd(l, d.id)) : undefined;
     if (!l || !o || !canRead(ctx, o, ix)) return { err: 'link_not_found' };
     if (!mayEditLinks(ctx, d) || !mayEditLinks(ctx, o)) return { err: 'link_reserved' };
     if (d.legalHold || o.legalHold) return { err: 'link_hold' };
@@ -1136,7 +1421,7 @@ async function removeDocLinkNow(docId: string, linkId: number): Promise<ActionRe
 
 /** Documents among `ids` the user can see; the others are treated as if they did not exist. */
 async function visibleDocs(tx: Tx, ctx: Ctx, ids: string[]) {
-  const ix = await getAccessIndex();
+  const ix = await getAccessIndex(ctx);
   const docs = ids.length ? await tx.select().from(s.documents).where(inArray(s.documents.id, ids)) : [];
   return docs.filter((d) => canRead(ctx, d, ix));
 }
@@ -1154,8 +1439,12 @@ async function archiveDocumentsNow(ids: string[]): Promise<ActionResult> {
   const skipped = await db.transaction(async (tx) => {
     const today = todayIso();
     let skipped = 0;
+    // Every document locked first, in the order of their IDs, then each read again.
+    const locked = new Map((await lockDocs(tx, docs.map((d) => d.id))).map((d) => [d.id, d]));
     for (const d of docs.filter((x) => x.state !== 'archived')) {
-      const [cur] = await tx.select().from(s.documents).where(eq(s.documents.id, d.id));
+      const cur = locked.get(d.id);
+      // Archived meanwhile by someone else: done already, neither archived nor journaled again.
+      if (cur?.state === 'archived') continue;
       // Frozen documents, documents under approval and approved revisions waiting for their effective date stay where they are.
       if (!cur || cur.legalHold || (await activeWorkflow(tx, d.id)) || (await workingRevision(tx, d.id))?.status === 'approved') { skipped++; continue; }
       await tx.update(s.documents).set({ state: 'archived', archivedAt: today, modifiedAt: today }).where(eq(s.documents.id, d.id));
@@ -1180,7 +1469,8 @@ async function holdDocumentsNow(ids: string[]): Promise<ActionResult> {
   const docs = await visibleDocs(db, ctx, ids);
   await db.transaction(async (tx) => {
     const today = todayIso();
-    for (const d of docs.filter((x) => !x.legalHold)) {
+    // Locked and read again: a hold put meanwhile by someone else is not put (nor journaled) twice.
+    for (const d of (await lockDocs(tx, docs.map((x) => x.id))).filter((x) => !x.legalHold)) {
       await tx.update(s.documents).set({ legalHold: true, legalHoldAt: today }).where(eq(s.documents.id, d.id));
       await audit(tx, ctx.user.id, 'hold', d.id, d.typeCode);
     }
@@ -1195,7 +1485,8 @@ async function holdDocumentsNow(ids: string[]): Promise<ActionResult> {
  * circle (D-14): nobody outside it is told.
  */
 async function pendingApplied(ctx: Ctx, d: DocRow, swap: ModifierSwap | null): Promise<ActionResult> {
-  if (!swap || !inDraftingCircle(ctx, d, await buildAccessIndex(await getDb()))) return { ok: true };
+  // Read again (not the index of the request): the decision just changed who drafts the document.
+  if (!swap || !inDraftingCircle(ctx, d, await buildAccessIndex(await getDb(), { users: [ctx.user.id] }))) return { ok: true };
   const who = swap.setAside === swap.modifierId ? ctx.userName(swap.modifierId) : `${ctx.userName(swap.setAside)} → ${ctx.userName(swap.modifierId)}`;
   return { ok: true, message: `${swap.mayDraft ? ctx.t.modifier_set_aside : ctx.t.modifier_none_allowed} : ${who}` };
 }
@@ -1216,7 +1507,7 @@ async function releaseHoldNow(docId: string): Promise<ActionResult> {
   const [d] = await visibleDocs(db, ctx, [docId]);
   if (!d) return fail(ctx, 'not_found');
   const swap = await db.transaction(async (tx) => {
-    const [cur] = await tx.select().from(s.documents).where(eq(s.documents.id, docId));
+    const cur = await lockDoc(tx, docId);
     if (!cur?.legalHold) return null;
     await tx.update(s.documents).set({ legalHold: false, legalHoldAt: null }).where(eq(s.documents.id, docId));
     // A revision approved during the hold enters into force today at the earliest, never on a date in the past.
@@ -1244,7 +1535,7 @@ async function restoreArchivedNow(docId: string): Promise<ActionResult> {
   const [d] = await visibleDocs(db, ctx, [docId]);
   if (!d) return fail(ctx, 'not_found');
   const swap = await db.transaction(async (tx) => {
-    const [cur] = await tx.select().from(s.documents).where(eq(s.documents.id, docId));
+    const cur = await lockDoc(tx, docId);
     if (!cur || cur.state !== 'archived' || cur.legalHold) return null;
     // obsoleteAt is only written by an accepted withdrawal (lib/lifecycle.ts) and never cleared.
     const back = cur.obsoleteAt ? 'obsolete' : 'active';
@@ -1256,6 +1547,134 @@ async function restoreArchivedNow(docId: string): Promise<ActionResult> {
   });
   refresh();
   return pendingApplied(ctx, d, swap);
+}
+
+// ── Retention of a document (D-20) ───────────────────────────────────────
+
+/** Journal data of a change to a document's retention: what decides who reads its values, as for a metadata edit (D-14). */
+const retentionDoc = (d: DocRow) => ({ conf: d.conf, inForce: !!d.revInForce });
+
+/**
+ * Date of the event a document's retention counts from, for the triggers Codex cannot know (end of life of the asset,
+ * departure of the employee: lib/retention.ts EVENT_TRIGGERS); null clears it. By the owner of an editable record or
+ * whoever manages retention (access.ts maySetRetentionEvent), never on a frozen one. A real day, no later than today.
+ * Nothing is archived or destroyed when it makes the retention end: the end only shows in Archivage (O-07). Journaled
+ * (action 'retention_event'), before → after. `version`: of the record shown (lib/concurrency.ts).
+ */
+export async function setRetentionEvent(...args: Parameters<typeof setRetentionEventNow>): Promise<ActionResult> {
+  return traceAction('setRetentionEvent', () => setRetentionEventNow(...args));
+}
+async function setRetentionEventNow(docId: string, date: string | null, version: number): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  const seen = seenVersion(version);
+  const db = await getDb();
+  const ix = await getAccessIndex(ctx);
+  const [d] = await db.select().from(s.documents).where(eq(s.documents.id, String(docId)));
+  if (!d) return movedSince(db, ctx, String(docId), (x) => canRead(ctx, x, ix) && maySetRetentionEvent(ctx, x));
+  if (!canRead(ctx, d, ix)) return fail(ctx, 'not_found');
+  if (d.legalHold) return fail(ctx, 'locked_hold');
+  if (!maySetRetentionEvent(ctx, d)) {
+    const lock = d.ownerId === ctx.user.id ? lockOf(d) : null;
+    return lock ? fail(ctx, lock) : ctx.can('edit') || ctx.can('archive') ? fail(ctx, 'not_allowed') : denied(ctx, 'edit');
+  }
+  if (d.version !== seen) return stale(ctx, seen === null ? null : await lastChangedBy(db, ctx, d.id));
+  const parsed = parseEventDate(typeof date === 'string' ? date : null, todayIso());
+  if (!parsed.ok) return { ok: false, error: ctx.t[parsed.key], field: 'eventAt' };
+  const res = await db.transaction(async (tx): Promise<{ stale: string | null } | { err: TKey } | null> => {
+    const [cur] = await tx.select().from(s.documents).where(eq(s.documents.id, d.id)).for('update');
+    if (cur?.version !== seen) return { stale: cur ? await lastChangedBy(tx, ctx, d.id) : null };
+    // A date only means something for a trigger that waits for one; one left from another trigger may still be cleared.
+    if (parsed.value && !isEventTrigger(cur.retentionTrigger)) return { err: 'retention_event_not_needed' };
+    const changed = changes([['retentionEventAt', cur.retentionEventAt, parsed.value]]);
+    if (!changed.length) return null;
+    await tx.update(s.documents).set({ retentionEventAt: parsed.value, modifiedAt: todayIso() }).where(eq(s.documents.id, d.id));
+    await audit(tx, ctx.user.id, 'retention_event', d.id, cur.revInForce ?? cur.revWorking ?? '', null, { changes: changed, doc: retentionDoc(cur) });
+    return null;
+  });
+  if (res && 'stale' in res) return stale(ctx, res.stale);
+  if (res) return fail(ctx, res.err);
+  refresh();
+  return { ok: true, message: ctx.t.saved_ok };
+}
+
+/**
+ * Retention class of one document (D-20, docs/modele-cible.md §8), by whoever manages retention (access.ts
+ * mayManageRetention), on any document they read but a frozen one. `mode` 'type' puts back its type's rule; otherwise
+ * the duration, trigger and final disposition sent (lib/registry-rules.ts parseRetentionRule) become a derogation, which
+ * a later change of the type's rule leaves as it is (updateType), unless they are the type's rule itself. Journaled
+ * (action 'retention'): the class and the derogation, before → after, with the type's rule as detail. Counted per
+ * document: its revisions follow it (O-09). Nothing is archived or destroyed here. `version`: of the record shown.
+ */
+export async function setRetentionClass(...args: Parameters<typeof setRetentionClassNow>): Promise<ActionResult> {
+  return traceAction('setRetentionClass', () => setRetentionClassNow(...args));
+}
+async function setRetentionClassNow(fd: FormData): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  if (!mayManageRetention(ctx)) return denied(ctx, 'archive');
+  const docId = str(fd, 'docId');
+  const seen = seenVersion(fd.get('version'));
+  const db = await getDb();
+  const ix = await getAccessIndex(ctx);
+  const [d] = await db.select().from(s.documents).where(eq(s.documents.id, docId));
+  if (!d) return movedSince(db, ctx, docId, (x) => canRead(ctx, x, ix));
+  if (!canRead(ctx, d, ix)) return fail(ctx, 'not_found');
+  if (d.legalHold) return fail(ctx, 'locked_hold');
+  if (d.version !== seen) return stale(ctx, seen === null ? null : await lastChangedBy(db, ctx, d.id));
+  const toType = str(fd, 'mode') === 'type';
+  let rule: Pick<DocRow, 'retentionYears' | 'retentionTrigger' | 'retentionDisposition'> | null = null;
+  if (!toType) {
+    const p = parseRetentionRule(fd);
+    if (!p.ok) return formIssue(ctx, p);
+    rule = p.value;
+  }
+  const res = await db.transaction(async (tx): Promise<{ stale: string | null } | { err: TKey } | null> => {
+    const [cur] = await tx.select().from(s.documents).where(eq(s.documents.id, d.id)).for('update');
+    if (cur?.version !== seen) return { stale: cur ? await lastChangedBy(tx, ctx, d.id) : null };
+    const [type] = await tx.select().from(s.docTypes).where(eq(s.docTypes.code, cur.typeCode));
+    if (!type) return { err: 'reg_not_found' };
+    const next = rule ?? { retentionYears: type.retentionYears, retentionTrigger: type.retentionTrigger, retentionDisposition: type.retentionDisposition };
+    // The type's own rule is no derogation.
+    const override = !sameRule(next, type);
+    const changed = changes([['retention', retentionValue(cur), retentionValue(next)], ['retentionOverride', cur.retentionOverride, override]]);
+    if (!changed.length) return null;
+    await tx.update(s.documents).set({ ...next, retentionOverride: override, modifiedAt: todayIso() }).where(eq(s.documents.id, d.id));
+    await audit(tx, ctx.user.id, 'retention', d.id, cur.typeCode, null, { changes: [...changed, { field: 'typeRetention', after: retentionValue(type) }], doc: retentionDoc(cur) });
+    return null;
+  });
+  if (res && 'stale' in res) return stale(ctx, res.stale);
+  if (res) return fail(ctx, res.err);
+  refresh();
+  return { ok: true, message: ctx.t.saved_ok };
+}
+
+// ── Consultations ────────────────────────────────────────────────────────
+
+/**
+ * Journals that the user opened a document's record (action 'consult'), called by the record once shown in the browser,
+ * never while it is prefetched. Tied to the revision the record shows (the one in force, else the latest), which decides
+ * who reads the entry (lib/access.ts readerMaySeeEntry, D-14), and written once per user and document every
+ * CONSULT_WINDOW_MINUTES (lib/lifecycle.ts journalConsultation). A document the user may not read writes nothing.
+ * Refreshes nothing: the record stays as shown.
+ */
+export async function recordConsultation(...args: Parameters<typeof recordConsultationNow>): Promise<ActionResult> {
+  return traceAction('recordConsultation', () => recordConsultationNow(...args));
+}
+async function recordConsultationNow(docId: string): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  if (typeof docId !== 'string' || !docId) return fail(ctx, 'not_found');
+  const db = await getDb();
+  const [[d], ix] = await Promise.all([db.select().from(s.documents).where(eq(s.documents.id, docId)), getAccessIndex(ctx)]);
+  if (!d || !canRead(ctx, d, ix)) return fail(ctx, 'not_found');
+  const revs = await db.select({ id: s.revisions.id, letter: s.revisions.letter, status: s.revisions.status }).from(s.revisions).where(eq(s.revisions.docId, docId)).orderBy(asc(s.revisions.id));
+  const rev = revs.findLast((r) => r.status === 'in_force') ?? revs.findLast((r) => r.status === 'superseded') ?? revs.at(-1);
+  await journalConsultation(db, ctx.user.id, 'consult', docId, rev?.letter ?? '', rev?.id ?? null);
+  return { ok: true };
 }
 
 // ── Saved searches ───────────────────────────────────────────────────────
@@ -1355,6 +1774,36 @@ async function purgeOrphanFilesNow(keys: string[]): Promise<ActionResult> {
 }
 
 /**
+ * Gives their name {ID}_{version}.{ext} to the files Administration listed as left under their provisional name
+ * (lib/provisional.ts): `keys`, those the dry run showed, of which only the ones still to rename go, each looked at again
+ * just before. A records manager with access to Administration (mayCleanStorage: the names carry IDs and versions of
+ * drafts, D-14). Journaled ('files_renamed').
+ */
+export async function renameProvisionalFiles(...args: Parameters<typeof renameProvisionalFilesNow>): Promise<ActionResult> {
+  return traceAction('renameProvisionalFiles', () => renameProvisionalFilesNow(...args));
+}
+async function renameProvisionalFilesNow(keys: string[]): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  if (!mayCleanStorage(ctx)) return fail(ctx, 'forbidden');
+  if (!Array.isArray(keys) || !keys.length || keys.length > MAX_PER_RUN || !keys.every((k) => typeof k === 'string' && k.length > 0 && k.length <= 512)) return fail(ctx);
+  const res = await renameProvisional(ctx.user.id, { keys });
+  if (res === 'busy') return fail(ctx, 'orphans_busy');
+  const { t } = ctx;
+  refresh();
+  return {
+    ok: true,
+    message: [
+      t.prov_done.replace('{n}', String(res.renamed.length)),
+      res.kept ? t.prov_kept.replace('{n}', String(res.kept)) : '',
+      res.failed ? t.prov_failures.replace('{n}', String(res.failed)) : '',
+      res.left - res.failed > 0 ? t.prov_left.replace('{n}', String(res.left)) : '',
+    ].filter(Boolean).join(' '),
+  };
+}
+
+/**
  * Backs up the database and the files it points to now (lib/backup.ts): an archive in the backup directory, checked once
  * written, journaled, the oldest beyond the rotation removed; refused within 15 minutes of the latest archive
  * (lib/backup.ts ONLINE_MIN_INTERVAL_MS). A records manager with access to Administration only (lib/access.ts
@@ -1376,6 +1825,7 @@ async function backUpDataNow(): Promise<ActionResult> {
     return fail(ctx, 'backup_failed');
   }
   if (res === 'busy') return fail(ctx, 'backup_busy');
+  if (res === 'server') return fail(ctx, 'backup_server');
   const { t, lang } = ctx;
   if ('recent' in res) {
     const at = (iso: string) => fmtDateTime(parisStamp(iso), lang);
@@ -1394,6 +1844,42 @@ async function backUpDataNow(): Promise<ActionResult> {
   };
 }
 
+/**
+ * Reads every stored file again and compares it with the SHA-256 recorded when it entered Codex (lib/integrity.ts):
+ * altered and missing files are reported and journaled ('integrity_checked'), fingerprints of files stored before they
+ * were computed are recorded. Nothing is repaired. A records manager with access to Administration only
+ * (lib/access.ts mayCheckIntegrity). Server stopped: npm run integrity.
+ */
+export async function checkFileIntegrity(...args: Parameters<typeof checkFileIntegrityNow>): Promise<ActionResult> {
+  return traceAction('checkFileIntegrity', () => checkFileIntegrityNow(...args));
+}
+async function checkFileIntegrityNow(): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  if (!mayCheckIntegrity(ctx)) return fail(ctx, 'forbidden');
+  let res: Awaited<ReturnType<typeof checkFilesNow>>;
+  try {
+    res = await checkFilesNow(ctx.user.id);
+  } catch (err) {
+    log.error('integrity check failed', { err });
+    refresh();
+    return fail(ctx, 'integrity_failed');
+  }
+  if (res === 'busy') return fail(ctx, 'integrity_busy');
+  const { t, lang } = ctx;
+  refresh();
+  const parts = [
+    t.integrity_done.replace('{n}', String(res.checked)).replace('{size}', fmtSize(res.bytes, lang)),
+    res.alteredCount ? t.integrity_altered_n.replace('{n}', String(res.alteredCount)) : '',
+    res.missingCount ? t.integrity_missing_n.replace('{n}', String(res.missingCount)) : '',
+    res.filled ? t.integrity_filled_n.replace('{n}', String(res.filled)) : '',
+    res.skipped ? t.integrity_skipped_n.replace('{n}', String(res.skipped)) : '',
+  ].filter(Boolean).join(' · ');
+  // A discrepancy is a warning, shown longer than a message; the list is on the page and in the journal.
+  return res.alteredCount || res.missingCount ? { ok: true, warning: `${parts}. ${t.integrity_see_list}` } : { ok: true, message: `${parts}. ${t.integrity_ok}` };
+}
+
 export async function togglePermission(...args: Parameters<typeof togglePermissionNow>): Promise<ActionResult> {
   return traceAction('togglePermission', () => togglePermissionNow(...args));
 }
@@ -1410,10 +1896,12 @@ async function togglePermissionNow(role: string, perm: string): Promise<ActionRe
   if (perm === 'admin' && role === MATRIX_ROLE[ctx.role]) return fail(ctx, 'admin_lockout');
   const db = await getDb();
   await db.transaction(async (tx) => {
-    const [row] = await tx.select().from(s.rolePermissions).where(and(eq(s.rolePermissions.role, role), eq(s.rolePermissions.perm, perm)));
+    // A missing row is a permission not granted: created as such, then locked, so that two toggles at once give back the
+    // first state rather than both turning it the same way.
+    await tx.insert(s.rolePermissions).values({ role, perm, granted: false }).onConflictDoNothing();
+    const [row] = await tx.select().from(s.rolePermissions).where(and(eq(s.rolePermissions.role, role), eq(s.rolePermissions.perm, perm))).for('update');
     const before = row?.granted ?? false;
-    if (row) await tx.update(s.rolePermissions).set({ granted: !before }).where(and(eq(s.rolePermissions.role, role), eq(s.rolePermissions.perm, perm)));
-    else await tx.insert(s.rolePermissions).values({ role, perm, granted: true });
+    await tx.update(s.rolePermissions).set({ granted: !before }).where(and(eq(s.rolePermissions.role, role), eq(s.rolePermissions.perm, perm)));
     await audit(tx, ctx.user.id, 'perm', { kind: 'permission', id: `${role}:${perm}` }, '', null, { changes: [{ field: 'granted', before, after: !before }] });
   });
   refresh();
@@ -1566,7 +2054,7 @@ async function setDepartmentFeaturedNow(code: string, featured: string[] | null)
   const journal = (v: string[] | null): AuditValue => v ?? 'default';
   const db = await getDb();
   await db.transaction(async (tx) => {
-    const [cur] = await tx.select().from(s.departments).where(eq(s.departments.code, code));
+    const [cur] = await tx.select().from(s.departments).where(eq(s.departments.code, code)).for('update');
     if (!cur) return;
     await tx.update(s.departments).set({ featured: next }).where(eq(s.departments.code, code));
     const changed = changes([['featured', journal(cur.featured), journal(next)]]);
@@ -1607,7 +2095,7 @@ async function addFunctionHolderNow(functionKey: string, scopeValue: string | nu
   const scope = fn.scope === 'global' ? null : scopeValue || null;
   const db = await getDb();
   // A holder decides approval steps: their default role must be able to approve.
-  if (!(await approverCheck(db, ctx))(u.id)) return fail(ctx, 'delegate_no_approve');
+  if (!(await approverCheck(db, ctx.users))(u.id)) return fail(ctx, 'delegate_no_approve');
   const res = await db.transaction(async (tx): Promise<ActionResult> => {
     if (scope !== null && !(await scopeValueOk(tx, fn.scope, scope))) return fail(ctx, 'holder_scope_invalid');
     await tx.insert(s.functionHolders).values({ functionKey, scopeValue: scope, userId });
@@ -1636,6 +2124,199 @@ async function removeFunctionHolderNow(id: number): Promise<ActionResult> {
   return { ok: true };
 }
 
+// ── Holdings of a person who leaves (point 19 of docs/reste-a-faire.md) ─────────
+
+/**
+ * Hands every holding of `from` to the replacement `to` in one operation (lib/transfer.ts): documents and processes
+ * owned, open revisions to write, pending approval steps, function holderships, named readers. For a records manager
+ * with access to Administration (access.ts mayTransferHoldings). `digest`: that of the simulation the manager confirmed
+ * (Administration › Reprise): when the plan reads otherwise now, nothing is written and the page shows it again. The
+ * replacement is chosen, never proposed (A15); no account is disabled (O-02).
+ */
+export async function transferHoldings(...args: Parameters<typeof transferHoldingsNow>): Promise<ActionResult> {
+  return traceAction('transferHoldings', () => transferHoldingsNow(...args));
+}
+async function transferHoldingsNow(fromId: string, toId: string, digest: string): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  if (!mayTransferHoldings(ctx)) return fail(ctx, 'forbidden');
+  if (typeof fromId !== 'string' || typeof toId !== 'string' || typeof digest !== 'string') return fail(ctx);
+  const from = ctx.users.get(fromId), to = ctx.users.get(toId);
+  if (!from || from.isSystem) return fail(ctx, 'transfer_from_unknown');
+  if (!to || to.isSystem || to.id === from.id) return fail(ctx, 'transfer_to_invalid');
+  const res = await confirmTransfer(await getDb(), ctx.users, ctx.user.id, from.id, to.id, digest);
+  if ('changed' in res) return { ok: false, error: ctx.t.transfer_changed, stale: true };
+  if ('empty' in res) return fail(ctx, 'transfer_nothing');
+  const done = res.done.items.filter((i) => i.ok).length;
+  const skipped = res.done.items.filter((i) => i.ok === false).length;
+  refresh();
+  return {
+    ok: true,
+    message: [ctx.t.transfer_done.replace('{n}', String(done)).replace('{to}', to.name), skipped ? ctx.t.transfer_skipped_n.replace('{n}', String(skipped)) : ''].filter(Boolean).join(' · '),
+  };
+}
+
+// ── Controlled vocabularies (point 59 of docs/reste-a-faire.md) ─────────────
+
+/** A term of a vocabulary as the journal stores it: its name and the spellings it also stands for. */
+const termJournal = (x: { name: string; aliases: string[] }): [string, AuditValue][] => [['term', x.name], ['aliases', [...x.aliases].sort()]];
+
+/**
+ * Gives the documents carrying one of `keys` the value `name` (a term renamed, or merged into another), each journaled
+ * as a metadata change ('vocab_apply', before → after, its values as for a metadata edit, D-14). Documents under legal
+ * hold keep theirs: the former spelling stays an alias of the term, which still resolves it. Their modification date is
+ * left as it is: the document was not edited, the journal says what changed. Returns the documents changed and kept.
+ */
+async function applyTerm(tx: Tx, ctx: Ctx, kind: VocabKind, keys: ReadonlySet<string>, name: string): Promise<{ changed: number; held: number }> {
+  let changed = 0, held = 0;
+  for (const d of await documentsWith(tx, kind, keys)) {
+    const field = kind === 'source_org' ? 'sourceOrg' : 'keywords';
+    const before: string | string[] | null = kind === 'source_org' ? d.sourceOrg : d.keywords;
+    const after = kind === 'source_org' ? name : dedupe(d.keywords.map((k) => (keys.has(vocabKey(k)) ? name : k)));
+    if (JSON.stringify(before) === JSON.stringify(after)) continue;
+    if (d.legalHold) { held++; continue; }
+    await tx.update(s.documents).set(kind === 'source_org' ? { sourceOrg: name } : { keywords: after as string[] }).where(eq(s.documents.id, d.id));
+    await audit(tx, ctx.user.id, 'vocab_apply', d.id, '', null, { changes: changes([[field, before, after]]), doc: { conf: d.conf, inForce: !!d.revInForce } });
+    changed++;
+  }
+  return { changed, held };
+}
+
+function appliedText(ctx: Ctx, x: { changed: number; held: number }): string {
+  return [ctx.t.vocab_docs_changed.replace('{n}', String(x.changed)), x.held ? ctx.t.retention_held_kept.replace('{n}', String(x.held)) : ''].filter(Boolean).join(' · ');
+}
+
+/**
+ * Adds a term to a vocabulary from Administration › Vocabulaires: a name no term already stands for (lib/vocab-rules.ts
+ * termNameIssue). Who may govern the terms (A05) is not decided: the « Administrer » permission, as for the register.
+ */
+export async function addVocabTerm(...args: Parameters<typeof addVocabTermNow>): Promise<ActionResult> {
+  return traceAction('addVocabTerm', () => addVocabTermNow(...args));
+}
+async function addVocabTermNow(kind: string, name: string): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  const no = adminOnly(ctx);
+  if (no) return no;
+  if (!isVocabKind(kind) || typeof name !== 'string') return fail(ctx);
+  const db = await getDb();
+  const res = await db.transaction(async (tx): Promise<ActionResult> => {
+    // Locked, so that two additions of one spelling cannot both find it free.
+    await tx.execute(sql`lock table ${VOCAB_TABLE[kind]} in share row exclusive mode`);
+    const issue = termNameIssue(kind, await loadTerms(tx, kind), name);
+    if (issue) return { ok: false, error: ctx.t[issue], field: 'name' };
+    await addTerms(tx, kind, [cleanTerm(name)], ctx.user.id);
+    return { ok: true, message: ctx.t.vocab_added };
+  });
+  if (res.ok) refresh();
+  return res;
+}
+
+/**
+ * Renames a term: its documents take the new name (applyTerm), and the former one stays an alias of the term (an
+ * import, a document under legal hold still resolve it). The new name must not be another term's.
+ */
+export async function renameVocabTerm(...args: Parameters<typeof renameVocabTermNow>): Promise<ActionResult> {
+  return traceAction('renameVocabTerm', () => renameVocabTermNow(...args));
+}
+async function renameVocabTermNow(kind: string, id: number, name: string): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  const no = adminOnly(ctx);
+  if (no) return no;
+  if (!isVocabKind(kind) || !Number.isInteger(id) || typeof name !== 'string') return fail(ctx);
+  const db = await getDb();
+  const res = await db.transaction(async (tx): Promise<ActionResult> => {
+    await tx.execute(sql`lock table ${VOCAB_TABLE[kind]} in share row exclusive mode`);
+    const cur = await termById(tx, kind, id);
+    if (!cur) return fail(ctx, 'vocab_not_found');
+    const issue = termNameIssue(kind, await loadTerms(tx, kind), name, id);
+    if (issue) return { ok: false, error: ctx.t[issue], field: 'name' };
+    const next = cleanTerm(name);
+    if (next === cur.name) return { ok: true, message: ctx.t.saved_ok };
+    const nextKey = vocabKey(next);
+    const aliases = dedupe([...cur.aliases, cur.name]).filter((x) => vocabKey(x) !== nextKey);
+    const t = VOCAB_TABLE[kind];
+    await tx.update(t).set({ name: next, key: nextKey, aliases }).where(eq(t.id, id));
+    await audit(tx, ctx.user.id, 'vocab_rename', { kind, id: next }, '', null, { changes: entryChanges(termJournal(cur), termJournal({ name: next, aliases })) });
+    const applied = await applyTerm(tx, ctx, kind, new Set(termKeys(cur)), next);
+    return { ok: true, message: `${ctx.t.saved_ok} · ${appliedText(ctx, applied)}` };
+  });
+  if (res.ok) refresh();
+  return res;
+}
+
+/**
+ * Merges a duplicate into the term it duplicates (« SIEMENS SAS » into « Siemens »): the documents of the duplicate
+ * take the term's name (applyTerm), the duplicate's spellings become aliases of the term, and the duplicate is removed.
+ * Journaled on the term kept, with the spellings it gained.
+ */
+export async function mergeVocabTerms(...args: Parameters<typeof mergeVocabTermsNow>): Promise<ActionResult> {
+  return traceAction('mergeVocabTerms', () => mergeVocabTermsNow(...args));
+}
+async function mergeVocabTermsNow(kind: string, fromId: number, intoId: number): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  const no = adminOnly(ctx);
+  if (no) return no;
+  if (!isVocabKind(kind) || !Number.isInteger(fromId) || !Number.isInteger(intoId)) return fail(ctx);
+  if (fromId === intoId) return fail(ctx, 'vocab_merge_self');
+  const db = await getDb();
+  const res = await db.transaction(async (tx): Promise<ActionResult> => {
+    const dup = await termById(tx, kind, fromId);
+    const into = await termById(tx, kind, intoId);
+    if (!dup || !into) return fail(ctx, 'vocab_not_found');
+    const t = VOCAB_TABLE[kind];
+    const aliases = dedupe([...into.aliases, dup.name, ...dup.aliases]).filter((x) => vocabKey(x) !== into.key);
+    await tx.delete(t).where(eq(t.id, dup.id));
+    await tx.update(t).set({ aliases }).where(eq(t.id, into.id));
+    await audit(tx, ctx.user.id, 'vocab_merge', { kind, id: into.name }, dup.name, null, { changes: entryChanges(termJournal(into), termJournal({ name: into.name, aliases })) });
+    const applied = await applyTerm(tx, ctx, kind, new Set(termKeys(dup)), into.name);
+    return { ok: true, message: `${ctx.t.vocab_merged.replace('{from}', dup.name).replace('{into}', into.name)} · ${appliedText(ctx, applied)}` };
+  });
+  if (res.ok) refresh();
+  return res;
+}
+
+/**
+ * Adds to a type's sub-types a value its documents carry outside the list (Administration › Vocabulaires): the list of a
+ * type stays open (MET-17, O-05 point 9), and a value entered on a document joins it only when an administrator of the
+ * register adopts it. Same label in French and English until the type dialog gives it another; journaled as a change
+ * of the type.
+ */
+export async function adoptSubtype(...args: Parameters<typeof adoptSubtypeNow>): Promise<ActionResult> {
+  return traceAction('adoptSubtype', () => adoptSubtypeNow(...args));
+}
+async function adoptSubtypeNow(typeCode: string, value: string): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  const no = adminOnly(ctx);
+  if (no) return no;
+  if (typeof typeCode !== 'string' || typeof value !== 'string') return fail(ctx);
+  const label = cleanTerm(value);
+  if (!label || label.length > DOC_SUBTYPE_MAX) return fail(ctx);
+  // The register's own bounds (lib/registry-rules.ts), so that the type dialog still reads the list.
+  if (label.length > SUBTYPE_MAX) return fail(ctx, 'subtype_adopt_long', String(SUBTYPE_MAX));
+  const db = await getDb();
+  const res = await db.transaction(async (tx): Promise<ActionResult> => {
+    const [cur] = await tx.select().from(s.docTypes).where(eq(s.docTypes.code, typeCode)).for('update');
+    if (!cur) return fail(ctx, 'reg_not_found');
+    if (canonicalSubtype(cur.subtypes, label).listed) return fail(ctx, 'subtype_listed');
+    if (cur.subtypes.length >= SUBTYPES_MAX) return fail(ctx, 'subtype_adopt_full', String(SUBTYPES_MAX));
+    const next = { ...cur, subtypes: [...cur.subtypes, { fr: label, en: label }] };
+    await tx.update(s.docTypes).set({ subtypes: next.subtypes }).where(eq(s.docTypes.code, typeCode));
+    await audit(tx, ctx.user.id, 'type', { kind: 'type', id: typeCode }, '', null, { changes: entryChanges(typeJournal(cur), typeJournal(next)) });
+    return { ok: true, message: ctx.t.subtype_adopted.replace('{value}', label).replace('{type}', typeCode) };
+  });
+  if (res.ok) refresh();
+  return res;
+}
+
 // ── Register of types, families, functions; research programmes ──────────
 
 /**
@@ -1648,28 +2329,6 @@ function codeSpace(ctx: Ctx): CodeSpace {
 
 function formIssue(ctx: Ctx, p: FormIssue): ActionResult {
   return { ok: false, error: ctx.t[p.key], ...(p.field ? { field: p.field } : {}) };
-}
-
-/** Changes from `before` to `after`, each a list of [field, value] in the same order; null for an entry added or removed. */
-function entryChanges(before: [string, AuditValue][] | null, after: [string, AuditValue][] | null): AuditChange[] {
-  const fields = (before ?? after ?? []).map(([k]) => k);
-  const value = (xs: [string, AuditValue][] | null, k: string) => xs?.find(([f]) => f === k)?.[1] ?? null;
-  return changes(fields.map((k): [string, AuditValue, AuditValue] => [k, value(before, k), value(after, k)]));
-}
-
-/** Months as the journal stores them: text (an AuditValue), rendered with their unit (lib/queries.ts). */
-const monthsValue = (n: number | null): AuditValue => (n == null ? null : String(n));
-
-type TypeRow = typeof s.docTypes.$inferSelect;
-
-/** A type as the journal stores it, field by field. */
-function typeJournal(x: TypeValues | TypeRow): [string, AuditValue][] {
-  return [
-    ['code', x.code], ['labelFr', x.labelFr], ['labelEn', x.labelEn], ['family', x.family], ['origins', x.origins], ['attachments', x.attachments],
-    ['subtypes', subtypesJournal(x.subtypes)], ['circuit', x.circuit], ['confAllowed', x.confAllowed], ['confDefault', x.confDefault],
-    ['retention', retentionValue(x)], ['retentionBasis', x.retentionBasis], ['reviewMonths', monthsValue(x.reviewMonths)], ['iso', x.iso],
-    ['clientDeliverable', x.clientDeliverable], ['active', x.active],
-  ];
 }
 
 const typeRefs = (ctx: Ctx) => ({ families: ctx.families.map((f) => f.key), functions: ctx.functions.map((f) => f.key) });
@@ -1760,7 +2419,7 @@ async function updateTypeNow(fd: FormData): Promise<ActionResult> {
   if (fixed) return fail(ctx, fixed);
   const db = await getDb();
   const res = await db.transaction(async (tx): Promise<ActionResult> => {
-    const [cur] = await tx.select().from(s.docTypes).where(eq(s.docTypes.code, original));
+    const [cur] = await tx.select().from(s.docTypes).where(eq(s.docTypes.code, original)).for('update');
     if (!cur) return fail(ctx, 'reg_not_found');
     if (next.code !== original && (await registryUsage(tx)).types.has(original)) return { ok: false, error: ctx.t.reg_type_in_use, field: 'code' };
     const narrower = cur.origins.some((o) => !next.origins.includes(o)) || cur.attachments.some((a) => !next.attachments.includes(a)) || cur.confAllowed.some((c) => !next.confAllowed.includes(c));
@@ -1777,10 +2436,45 @@ async function updateTypeNow(fd: FormData): Promise<ActionResult> {
     const changed = entryChanges(typeJournal(cur), typeJournal(next));
     // Saving without a change leaves no entry.
     if (changed.length) await audit(tx, ctx.user.id, 'type', { kind: 'type', id: next.code }, '', null, { changes: changed });
-    return { ok: true, message: ctx.t.saved_ok };
+    if (fd.get('applyRetention') !== 'on') return { ok: true, message: ctx.t.saved_ok };
+    const applied = await applyTypeRetention(tx, ctx, next);
+    return { ok: true, message: `${ctx.t.saved_ok} · ${retentionAppliedText(ctx, applied)}` };
   });
   if (res.ok) refresh();
   return res;
+}
+
+/**
+ * Applies the retention rule of a type to its documents that follow it (retention_override false) and differ from it,
+ * each journaled (action 'retention_type', before → after, as a metadata edit, D-14), then the whole in one entry on the
+ * type. Derogations are left as they are, and so are frozen documents (they keep their class until a records manager
+ * puts the type's rule back on them, setRetentionClass). Nothing is archived or destroyed (O-07).
+ */
+async function applyTypeRetention(tx: Tx, ctx: Ctx, type: Pick<TypeValues, 'code' | 'retentionYears' | 'retentionTrigger' | 'retentionDisposition'>) {
+  // Locked in the order of their IDs, then read (READ COMMITTED; revue du lot 9): a hold or a derogation committed
+  // meanwhile is waited for and seen, never overwritten by the type's rule.
+  const docs = await tx.select().from(s.documents).where(eq(s.documents.typeCode, type.code)).orderBy(asc(s.documents.id)).for('update');
+  const rule = { retentionYears: type.retentionYears, retentionTrigger: type.retentionTrigger, retentionDisposition: type.retentionDisposition };
+  const following = docs.filter((d) => !d.retentionOverride && !sameRule(d, rule));
+  const held = following.filter((d) => d.legalHold).length;
+  const today = todayIso();
+  let applied = 0;
+  for (const d of following.filter((x) => !x.legalHold)) {
+    await tx.update(s.documents).set({ ...rule, modifiedAt: today }).where(eq(s.documents.id, d.id));
+    await audit(tx, ctx.user.id, 'retention_type', d.id, type.code, null, { changes: changes([['retention', retentionValue(d), retentionValue(rule)]]), doc: retentionDoc(d) });
+    applied++;
+  }
+  const overrides = docs.filter((d) => d.retentionOverride).length;
+  if (applied) await audit(tx, ctx.user.id, 'retention_applied', { kind: 'type', id: type.code }, '', null, { changes: [{ field: 'retention', after: retentionValue(rule) }, { field: 'retentionDocs', after: String(applied) }] });
+  return { applied, overrides, held };
+}
+
+function retentionAppliedText(ctx: Ctx, x: { applied: number; overrides: number; held: number }): string {
+  return [
+    ctx.t.retention_applied.replace('{n}', String(x.applied)),
+    x.overrides ? ctx.t.retention_overrides_kept.replace('{n}', String(x.overrides)) : '',
+    x.held ? ctx.t.retention_held_kept.replace('{n}', String(x.held)) : '',
+  ].filter(Boolean).join(' · ');
 }
 
 /** Deletes a type nothing uses (lib/queries.ts registryUsage); one in use can only be made inactive. Journaled with its values. */
@@ -1795,7 +2489,7 @@ async function deleteTypeNow(code: string): Promise<ActionResult> {
   if (no) return no;
   const db = await getDb();
   const res = await db.transaction(async (tx): Promise<ActionResult> => {
-    const [cur] = await tx.select().from(s.docTypes).where(eq(s.docTypes.code, String(code)));
+    const [cur] = await tx.select().from(s.docTypes).where(eq(s.docTypes.code, String(code))).for('update');
     if (!cur) return fail(ctx, 'reg_not_found');
     if ((await registryUsage(tx)).types.has(cur.code)) return fail(ctx, 'reg_type_in_use');
     await tx.delete(s.docTypes).where(eq(s.docTypes.code, cur.code));
@@ -1805,8 +2499,6 @@ async function deleteTypeNow(code: string): Promise<ActionResult> {
   if (res.ok) refresh();
   return res;
 }
-
-const familyJournal = (x: FamilyValues | typeof s.families.$inferSelect): [string, AuditValue][] => [['key', x.key], ['labelFr', x.labelFr], ['labelEn', x.labelEn], ['grp', x.grp]];
 
 /** Adds a family of types: key, labels, deck group (D-08). */
 export async function createFamily(...args: Parameters<typeof createFamilyNow>): Promise<ActionResult> {
@@ -1849,7 +2541,7 @@ async function updateFamilyNow(fd: FormData): Promise<ActionResult> {
   if (bad) return { ok: false, error: ctx.t[bad], field: 'key' };
   const db = await getDb();
   const res = await db.transaction(async (tx): Promise<ActionResult> => {
-    const [cur] = await tx.select().from(s.families).where(eq(s.families.key, original));
+    const [cur] = await tx.select().from(s.families).where(eq(s.families.key, original)).for('update');
     if (!cur) return fail(ctx, 'reg_not_found');
     if (next.key !== original && (await registryUsage(tx)).families.has(original)) return { ok: false, error: ctx.t.reg_family_in_use, field: 'key' };
     await tx.update(s.families).set(next).where(eq(s.families.key, original));
@@ -1873,7 +2565,7 @@ async function deleteFamilyNow(key: string): Promise<ActionResult> {
   if (no) return no;
   const db = await getDb();
   const res = await db.transaction(async (tx): Promise<ActionResult> => {
-    const [cur] = await tx.select().from(s.families).where(eq(s.families.key, String(key)));
+    const [cur] = await tx.select().from(s.families).where(eq(s.families.key, String(key))).for('update');
     if (!cur) return fail(ctx, 'reg_not_found');
     if ((await registryUsage(tx)).families.has(cur.key)) return fail(ctx, 'reg_family_in_use');
     await tx.delete(s.families).where(eq(s.families.key, cur.key));
@@ -1883,8 +2575,6 @@ async function deleteFamilyNow(key: string): Promise<ActionResult> {
   if (res.ok) refresh();
   return res;
 }
-
-const functionJournal = (x: FunctionValues | typeof s.functions.$inferSelect): [string, AuditValue][] => [['key', x.key], ['labelFr', x.labelFr], ['labelEn', x.labelEn], ['scope', x.scope]];
 
 /** Adds a function that circuits may be made of: key, labels, scope its holders are looked up in. */
 export async function createFunction(...args: Parameters<typeof createFunctionNow>): Promise<ActionResult> {
@@ -1936,7 +2626,7 @@ async function updateFunctionNow(fd: FormData): Promise<ActionResult> {
   if (fixed) return { ok: false, error: ctx.t[fixed], field: 'scope' };
   const db = await getDb();
   const res = await db.transaction(async (tx): Promise<ActionResult> => {
-    const [cur] = await tx.select().from(s.functions).where(eq(s.functions.key, original));
+    const [cur] = await tx.select().from(s.functions).where(eq(s.functions.key, original)).for('update');
     if (!cur) return fail(ctx, 'reg_not_found');
     if (next.key !== original && (await registryUsage(tx)).functions.has(original)) return { ok: false, error: ctx.t.reg_function_in_use, field: 'key' };
     if (next.scope !== cur.scope) {
@@ -1964,7 +2654,7 @@ async function deleteFunctionNow(key: string): Promise<ActionResult> {
   if (no) return no;
   const db = await getDb();
   const res = await db.transaction(async (tx): Promise<ActionResult> => {
-    const [cur] = await tx.select().from(s.functions).where(eq(s.functions.key, String(key)));
+    const [cur] = await tx.select().from(s.functions).where(eq(s.functions.key, String(key))).for('update');
     if (!cur) return fail(ctx, 'reg_not_found');
     if ((await registryUsage(tx)).functions.has(cur.key)) return fail(ctx, 'reg_function_in_use');
     await tx.delete(s.functions).where(eq(s.functions.key, cur.key));
@@ -2030,7 +2720,7 @@ async function updateProgramNow(fd: FormData): Promise<ActionResult> {
   if (!programManagerOk(ctx, next.managerId)) return { ok: false, error: ctx.t.reg_manager_invalid, field: 'managerId' };
   const db = await getDb();
   const res = await db.transaction(async (tx): Promise<ActionResult> => {
-    const [cur] = await tx.select().from(s.researchPrograms).where(eq(s.researchPrograms.code, original));
+    const [cur] = await tx.select().from(s.researchPrograms).where(eq(s.researchPrograms.code, original)).for('update');
     if (!cur) return fail(ctx, 'reg_not_found');
     if (next.code !== original && (await registryUsage(tx)).programs.has(original)) return { ok: false, error: ctx.t.reg_program_in_use, field: 'code' };
     await tx.update(s.researchPrograms).set(next).where(eq(s.researchPrograms.code, original));
@@ -2054,7 +2744,7 @@ async function deleteProgramNow(code: string): Promise<ActionResult> {
   if (no) return no;
   const db = await getDb();
   const res = await db.transaction(async (tx): Promise<ActionResult> => {
-    const [cur] = await tx.select().from(s.researchPrograms).where(eq(s.researchPrograms.code, String(code)));
+    const [cur] = await tx.select().from(s.researchPrograms).where(eq(s.researchPrograms.code, String(code))).for('update');
     if (!cur) return fail(ctx, 'reg_not_found');
     if ((await registryUsage(tx)).programs.has(cur.code)) return fail(ctx, 'reg_program_in_use');
     await tx.delete(s.researchPrograms).where(eq(s.researchPrograms.code, cur.code));

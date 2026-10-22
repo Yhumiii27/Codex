@@ -7,6 +7,7 @@ import type { DialogSpec } from '@/components/dialogs/types';
 import { Icon } from '@/components/ui/Icon';
 import { DialogButton } from '@/components/ui/client';
 import { archiveDocuments, holdDocuments, type ActionResult } from '@/lib/actions';
+import { failureText } from '@/lib/errors';
 
 export type DueRow = {
   /** Document ID: a document can fall due twice (retention and review), selection acts on the document. */
@@ -33,8 +34,8 @@ export function DueTable({ tabs, filters, rows, canArchive }: { tabs: ReactNode;
       try {
         const r = await fn(ids);
         if (r.ok) { setSel({}); toast(r.message ?? t.saved_ok); } else toast(r.error, true);
-      } catch {
-        toast(t.error, true);
+      } catch (err) {
+        toast(failureText(t, err), true);
       }
     });
   const denied = canArchive ? undefined : `${t.not_allowed} : ${t.perm_archive}`;
@@ -54,7 +55,7 @@ export function DueTable({ tabs, filters, rows, canArchive }: { tabs: ReactNode;
           <thead>
             <tr>
               <th style={{ width: 36 }}><input type="checkbox" aria-label={t.selected} checked={all} disabled={!docIds.length} onChange={() => setSel(all ? {} : Object.fromEntries(docIds.map((id) => [id, true])))} style={{ margin: 0, display: 'block' }} /></th>
-              <th>{t.document}</th><th>{t.type}</th><th>{t.due_kind}</th><th>{t.due}</th><th>{t.proposed}</th><th />
+              <th>{t.document}</th><th>{t.type}</th><th>{t.due_kind}</th><th>{t.due}</th><th>{t.proposed}</th><th><span className="sr-only">{t.col_actions}</span></th>
             </tr>
           </thead>
           <tbody>

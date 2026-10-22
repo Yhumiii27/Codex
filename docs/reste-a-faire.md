@@ -1,6 +1,74 @@
 # Reste à faire sur Codex
 
-Inventaire du 9 octobre 2026, sur la branche `codex-ged-v2-vkmf4l`.
+Inventaire du 9 octobre 2026, sur la branche `codex-ged-v2-vkmf4l`, tenu à jour jusqu'au 18 octobre 2026 (lot 10,
+étape 6 comprise). Chaque point fait porte sa ligne « Fait le … » ; le détail de chaque lot est dans
+`docs/historique.md` (§11 à §19).
+
+## État au 18 octobre 2026 (lot 10, étape 6)
+
+| Ce qui bloque (classement du 9 octobre) | Points | Faits | Faits en partie | Pas commencés |
+|---|---|---|---|---|
+| Développable maintenant | 69 | 58 | 11 | 0 |
+| Attend une décision de l'utilisateur | 49 | 0 | 0 | 49 |
+| Attend des données de l'utilisateur | 2 | 0 | 0 | 2 |
+| Demande une session sur macOS | 9 | 0 | 0 | 9 |
+
+Les lignes « Préparé » (103, 106, 112, 113 à 118 ; 36 pour son reste) et « Avancé » (79, 87, 88, 94) du lot 10 ne
+changent pas ce compte : ces points attendent toujours leur décision.
+
+Le lot 10 (18 octobre) prépare les réponses de l'utilisateur sans rien trancher : fiches de décision
+(`docs/fiches-decision.md`), cahiers de validation du registre et de l'organigramme (`npm run registry:review`,
+`npm run org:check` ; ligne « Préparé le 18 octobre 2026 » des points 113 à 118, qui restent bloqués), pilote
+SharePoint essayé sans tenant (points 36 et 103). L'étape 4 a revérifié les constats des points 70 à 120 dans le code
+(ligne « Revérifié le 18 octobre 2026 » quand le constat ou ses références avaient changé), recompté ci-dessous les
+points par question, et fait sans décision ce que les points 87, 88 et 94 permettaient (ligne « Avancé le 18 octobre
+2026 ») : aucun point bloqué ne change d'état. L'étape 5 a ajouté quatre parcours de bout en bout (rejet, rappel,
+demande Vigie, import ; point 57, déjà fait, « Avancé ») et la simulation d'import `POST /api/import?dryRun=1` (point
+106, « Préparé », toujours bloqué). L'étape 6 a mesuré l'affichage étroit et le zoom (`npm run a11y -- --narrow`,
+WCAG 1.4.10 et 1.4.4) et corrigé les débordements sans effet sur le bureau (point 79, « Avancé », toujours bloqué par
+M23), et préparé une image générique (`Dockerfile`, sortie autonome de Next.js seulement avec `CODEX_STANDALONE=1` ;
+point 112, « Préparé », toujours bloqué par M22).
+
+Les 69 points développables sans décision ont tous été traités (lots 1 à 9, du 10 au 18 octobre). L'étape 9 du lot 9 a
+repris les restes qui ne dépendaient de rien (points 36, 43, 46, 47, 50, 51, 52 et 57) : 43, 52 et 57 sont faits, les
+autres n'ont plus que des restes bloqués par une décision ou par macOS. Ce qui reste, selon ce qui le bloque (un point
+peut dépendre de plusieurs questions ; aucune n'a été tranchée à la place de l'utilisateur) :
+
+- **Rien : développable dans une session cloud** : plus rien. Améliorations possibles notées dans les points, sans
+  manque constaté : la fiche transmet à ses dialogues la liste des documents lisibles (point 47), d'autres parcours de
+  bout en bout (rejet, rappel, demande Vigie, import ; point 57).
+- **Une décision de l'utilisateur** (questions O-01 à O-11 de `docs/decisions.md`, ou questions de l'audit). Chaque
+  point est rattaché aux questions que citent sa ligne « Références » et son constat (recompté le 18 octobre 2026,
+  lot 10, étape 4 : les listes d'O-01 et d'O-11 comptaient à tort 73, 78, 79, 82, 86, 107 et 112, dont seul 86 cite
+  O-01 et aucun O-11) :
+  - O-01, SharePoint : 84, 86, 88, 98, 103 (5), et les restes de 36 (suppression et renommage essayés sur un vrai
+    tenant), 46 (dépôt en flux, avec 98 et 106), 48 (sauvegarde des fichiers SharePoint) et 50 (contenu des fichiers) ;
+  - O-02, authentification : 79, 89, 93, 94, 104, 107, 117 (7), et le retrait des notes de conception en production
+    (69) ;
+  - O-03, liaison avec Keystone : 80, 97, 101, 102, 105, 110, 111 (7), et les restes de 38 et 51 ;
+  - O-04, organigramme : 89, 92, 96, 116, 117, 120 (6), et le reste de 62 ;
+  - O-05, arbitrages du registre : 78, 80, 96, 105, 117, 118 (6), et le reste de 58 ;
+  - O-06, circuits et titulaires : 87, 102, 114, 118 (4) ;
+  - O-07, durées de conservation : 90, 96, 105, 113, 118, 120 (6) ;
+  - O-08, types admettant « Public » : 115 (1) ;
+  - O-09, propositions de l'assistant (dont celles de `docs/decisions.md`, « Choix de l'assistant non validés
+    explicitement ») : 72, 73, 76, 114 (4), et les restes de 6 (refus d'un modèle prévu pour d'autres types), 20
+    (réservation d'un brouillon) et 62 (fusion de départements) ;
+  - O-10, ECR/ECO dans Vigie : 100, 109 (2), et le reste de 38 ;
+  - O-11, migration et volumes : 99, 106 (2), et les restes de 46 (import par morceaux, avec 106) et 50 (volume réel,
+    M18) ;
+  - questions de l'audit sans numéro O, seules : 70 et 71 (C11, G43, A17), 74 (A24), 75 (M06), 77 (M13), 81 (A18), 82
+    (M10), 83 (A22, M12), 85 (M09, M10), 91 (M05), 95 (M04), 108 (P04, Q06), 112 (M22, audit §6.6 q3) ; hébergement
+    (M22) pour les restes de 38, 48, 49 et 51 (sauvegarde du serveur, plusieurs processus) ; formation, utilisateurs
+    clés et pilote (M14) pour le reste de 69 ;
+  - questions de l'audit encore ouvertes (annexe A de `docs/fiches-decision.md`) en plus d'une question O : 73 (G09,
+    WFL-04 : question nouvelle, avec O-09), 78 (M02, avec O-05), 79 (M23, avec O-02), 80 (P08, M07), 86 (M12, avec
+    O-01), 87 (A07), 88 (M22), 90 (M03), 92 (A12), 94 (M07), 96 (M17, M03), 99 (A23), 104 (M19), 107 (M08, M11, avec
+    O-02).
+- **Des données de l'utilisateur** : 119 (vrais modèles EPC2I, aussi le reste de 6), 120 (date de clôture de
+  l'exercice).
+- **Une session sur macOS** : 121 à 129 (app Mac, T-02), et les essais sous macOS des restes de 43 (contrôle de version
+  de `desktop/build-app.sh`) et 46 (aperçu paginé dans WebKit).
 
 ## Méthode
 
@@ -10,7 +78,8 @@ Inventaire du 9 octobre 2026, sur la branche `codex-ged-v2-vkmf4l`.
 - Une critique de complétude a ajouté 20 points, vérifiés de la même façon.
 - Les points écartés par une décision de l'utilisateur (`docs/decisions.md`) n'y figurent pas.
 
-Ce fichier complète `docs/avancement-v2.md`. Il compte **129 points ouverts**, regroupés selon ce qui les bloque :
+Ce fichier complète `docs/avancement-v2.md`. Le 9 octobre, il comptait **129 points ouverts**, regroupés selon ce qui
+les bloque :
 
 | Ce qui bloque | Points |
 |---|---|
@@ -83,6 +152,7 @@ src/lib/actions.ts:99 et 102 : `reviewDueAt`, `expiresAt` et `receivedAt` sont p
 </details>
 
 #### 4. Auteur : pouvoir désigner une autre personne que le créateur
+- **Fait le 17 octobre 2026** : à la création comme dans « Modifier les métadonnées », l'auteur se choisit dans la liste des personnes du groupe (par défaut le créateur) ou devient « Auteur externe (texte libre) » ; personne et texte s'excluent (`authorKind`, `readAuthor` et `authorMissing` dans src/lib/actions.ts, `authorId` ajouté à `Fields`, contrôlé par `validateFields` : personne existante, non système ; texte de 200 caractères au plus). Un appel sans auteur le laisse inchangé ; un document repris sans auteur affiche toujours son propriétaire, que la boîte de dialogue propose. Le changement est journalisé (« Auteur », avant → après). La fiche, la facette « Auteur » de la recherche, l'export CSV de la recherche (nouvelle colonne « Auteur ») et l'export complet donnent le même auteur ; l'import l'acceptait déjà. Désigner un auteur ne donne aucun droit sur un brouillon (D-14). Tests : tests/integration/author-templates.test.ts.
 
 - **Effort** : faible · **Références** : MET-10, G28
 
@@ -119,6 +189,7 @@ src/lib/actions.ts:464-475 : `decideStep` exige que l'utilisateur soit le titula
 </details>
 
 #### 6. Modèles : les rattacher aux types de document
+- **Fait en partie le 17 octobre 2026** : un modèle FRM peut viser un ou plusieurs types (table `template_types`, migration régénérée) ; son propriétaire ou un gestionnaire documentaire (droit Modifier, `mayLinkTemplate` dans src/lib/access.ts) les règle par `setTemplateTypes` (src/lib/actions.ts : contrôle de version, refus sur un document gelé, journalisé comme une modification de métadonnées) depuis la section « Types cibles » de la fiche du modèle ou Administration › Modèles (QMS), qui affiche la colonne. « Nouveau depuis un modèle » range d'abord les modèles du type choisi, puis les autres (toujours proposés et acceptés) ; choisir un modèle avant d'avoir choisi un type prend son type cible. Un type visé par un modèle compte comme utilisé dans le registre ; un document reclassé hors de FRM perd ses types cibles. Reste : refuser côté serveur un modèle non prévu pour le type (choix laissé à l'utilisateur, voir docs/decisions.md), exclure le sous-type « Formulaire », fournir les vrais modèles EPC2I (G06). Tests : tests/integration/author-templates.test.ts, `mayLinkTemplate` dans tests/unit/access.test.ts.
 
 - **Effort** : faible · **Références** : FON-12, PAR-05, G06
 
@@ -137,6 +208,7 @@ src/lib/access.ts:89-91 : `isUsableTemplate` ne retient que `typeCode === 'FRM'`
 </details>
 
 #### 7. Conservation « durée de vie de l'actif » et « départ du salarié » : date d'événement à saisir (15 types)
+- **Fait le 17 octobre 2026** : colonne `documents.retention_event_at` (date de l'événement déclencheur), saisie sur la fiche ou depuis Archivage › « Dates d'événement » (action `setRetentionEvent`) par le propriétaire tant que la fiche est modifiable ou par un gestionnaire (droit Archiver), y compris sur un document archivé ou obsolète, refusée sous gel juridique, journalisée (avant → après). La date doit avoir eu lieu (pas de date future). `triggerDate` la lit pour `asset_life` et `employee_departure` ; la fin de conservation, les échéances à 90 jours et Archivage en tiennent compte. Rien n'est archivé ni détruit automatiquement. La fin de projet reste non calculée (Keystone, O-03). Reste, sur décision : la durée des 14 types « durée de vie de l'actif » (O-07 ; la fiche affiche « Durée à fixer », un gestionnaire peut en fixer une par dérogation), l'étendue de RHF (point 6 du registre) et une alimentation automatique par un SI de maintenance ou RH.
 
 - **Effort** : faible · **Références** : G39, O-07
 
@@ -263,6 +335,7 @@ src/lib/lifecycle.ts:37 : le statut de `refreshHeadline` ne dépend que de `stat
 </details>
 
 #### 14. « Comparer » : comparer le contenu, pas seulement les attributs
+- **Fait le 18 octobre 2026** : le dialogue « Comparer » (onglet Révisions) garde le tableau des attributs et ajoute le contenu : `GET /api/documents/[id]/compare?a=&b=` (src/app/api/documents/[id]/compare/route.ts, `compareVersions` de src/lib/compare.ts) extrait le texte des deux fichiers sur le serveur (src/lib/text-extract.ts : PDF par pdf.js via la bibliothèque `unpdf` 1.7.0, Word, Excel, PowerPoint et OpenDocument lus dans leur ZIP par src/lib/zip-read.ts, formats texte en UTF-8 ou Windows-1252) et calcule les écarts ligne à ligne (src/lib/line-diff.ts, algorithme de Myers), affichés avec deux lignes de contexte, numéros des deux côtés, lignes ajoutées sur l'accent et supprimées barrées (CSS module src/components/dialogs/compare.module.css, jetons Nocturne). Droits de la route fichier (`readableVersions`, src/lib/queries.ts, `readerMaySeeVersion`, D-14) : hors du cercle de rédaction, seule la révision en vigueur se lit, toute autre version répond 404 sans rien lire ni journaliser ; chaque version comparée est journalisée comme une consultation (« B.2 · Comparaison »). Bornes : 20 Mo par fichier (`CODEX_COMPARE_MAX_MB`), 15 s d'extraction, 20 000 lignes et 2 millions de caractères par texte, entrées de ZIP bornées à 50 Mo décompressés, 1 000 pages de PDF, 3 000 lignes ajoutées ou supprimées (au-delà, « les textes diffèrent trop »), 2 000 lignes affichées, trois comparaisons à la fois (503), limite de débit `CODEX_RATE_COMPARE` (30 par minute) ; un format non pris en charge (Office 97-2003, images, plans), un fichier sans texte, protégé, endommagé, absent du stockage ou altéré (empreinte) est dit tel quel. Choix non confirmés dans docs/decisions.md. Reste : la comparaison visuelle (deux aperçus côte à côte, avec l'outil de conversion du point 15), les fichiers Office 97-2003, le texte des PDF numérisés (reconnaissance de caractères), et le niveau attendu à faire préciser par l'utilisateur. Tests : tests/unit/line-diff.test.ts, tests/unit/text-extract.test.ts, tests/integration/compare.test.ts, tests/integration/rate-limits.test.ts.
 
 - **Effort** : moyen · **Références** : G05
 
@@ -278,6 +351,7 @@ src/components/dialogs/Dialogs.tsx:531-550 : le dialogue `Compare` n'affiche que
 </details>
 
 #### 15. Aperçu des fichiers Office : service de conversion en PDF
+- **Fait le 18 octobre 2026** : aperçu PDF des fichiers Word, Excel, PowerPoint et OpenDocument (src/lib/office-preview.ts, réglages dans src/lib/preview-config.ts), **désactivé par défaut** : LibreOffice sans interface (`CODEX_PREVIEW_SOFFICE`, chemin absolu de `soffice`, lancé dans un dossier temporaire avec son propre profil et sans les variables de Codex, tué au-delà du délai) ou Gotenberg (`CODEX_PREVIEW_GOTENBERG_URL`) ; les deux définis, aucun. Conversion à la première consultation, hors transaction comme `stageUpload`, une à la fois par version et deux au plus par processus, bornée par `CODEX_PREVIEW_TIMEOUT_S` (60 s) et `CODEX_PREVIEW_MAX_MB` (20 Mo) ; le rendu va dans le stockage local et la nouvelle table `version_previews` (clé, nombre de pages calculé sur le rendu par `countPdfPages`, empreinte, outil ; migration incrémentale `drizzle/0002_apercu_office.sql`) ; un échec y est noté et retenté une heure plus tard. Servi par la route fichier (`?preview=pdf`), avec les mêmes droits (D-14), validateurs et plages que le fichier, nommé `{ID}_{version}_APERCU.pdf`, vérifié contre son empreinte, refait s'il manque ou est altéré ; sans outil ou après un échec, un PDF d'une page le dit. La fiche affiche le rendu avec sa pagination et `preview_note` sous la pagination comme la maquette, ou « Aperçu indisponible » et le téléchargement. Cohérence : le nettoyage des orphelins compte les rendus comme référencés, la sauvegarde les archive (table absente d'une base antérieure tolérée), l'export complet les laisse de côté (`DERIVED_TABLES`, docs/export.md), le contrôle de configuration signale un réglage invalide ou un `soffice` introuvable. Installation (Linux, macOS et app Mac D-22, Gotenberg) dans docs/exploitation.md §6. Vérifié avec le LibreOffice 24.2 du conteneur (conversion réelle d'un fichier Word dans `npm run dev`). Reste : choisir l'outil avec l'hébergement, l'essayer sur macOS (app Mac), la conversion de Microsoft Graph si SharePoint est activé (O-01), et les questions de M12 (PDF/A, filigrane, en-têtes générés). Tests : tests/integration/office-preview.test.ts (faux `soffice` et faux Gotenberg ; conversion réelle avec `CODEX_TEST_SOFFICE`), tests/unit/preview-config.test.ts, tests/integration/orphans.test.ts, tests/integration/backup.test.ts, tests/integration/full-export.test.ts.
 
 - **Effort** : moyen · **Références** : M12
 
@@ -330,6 +404,7 @@ Seuls deux exports existent. src/app/api/export/search/route.ts:7-23 produit un 
 </details>
 
 #### 18. Conservation : classe modifiable document par document et répercussion des règles du type
+- **Fait le 17 octobre 2026** : action `setRetentionClass` (droit Archiver et écran Archivage, refusée sous gel juridique), bouton « Classe de conservation » sur la fiche ; colonne `documents.retention_override` (dérogation), migration régénérée. Le journal garde la classe et la dérogation avant → après, avec la règle du type ; « Revenir à la règle du type » lève la dérogation, un changement de type aussi. Dans le dialogue d'un type, une case (décochée par défaut) applique la règle aux documents qui la suivent, avec l'aperçu du nombre de documents à mettre à jour, des dérogations et des documents gelés laissés tels quels ; une entrée de journal par document et une sur le type. Archivage › Règles compte les dérogations par type. Conservation toujours comptée par document (O-09). Seules les durées attendent O-07 ; le sort final à échéance attend O-07/M03.
 
 - **Effort** : moyen · **Références** : G39, D-20, ACC-06
 
@@ -346,6 +421,7 @@ src/lib/actions.ts:71-111 : `Fields` et `readFields` ne contiennent aucun champ 
 </details>
 
 #### 19. Reprise des documents d'une personne qui part
+- **Fait le 18 octobre 2026** (constat vérifié : les utilisateurs ne sont toujours pas administrables et n'ont pas d'indicateur actif ; `delegateStep` reste réservé au titulaire) : Administration › Reprise (départ) (`src/app/administration/Transfer.tsx`, état dans l'URL : `person`, `replacement`), réservé aux gestionnaires documentaires ayant l'accès Administration (`mayTransferHoldings`, src/lib/access.ts). Après le choix de la personne et d'un remplaçant (aucun n'est proposé d'office), la simulation (`transferView`, src/lib/queries.ts) exécute le transfert dans une transaction annulée (`src/lib/transfer.ts`) et montre, par nature, ce qui sera transféré et ce qui ne peut pas l'être avec la raison : propriété des documents, verrouillés compris ; propriété de processus ; lecteur désigné ; auteur désigné des révisions ouvertes (s'il peut rédiger, règle `mayDraft`) ; étapes de circuit en attente, avec les contrôles de `delegateStep` (pas de document verrouillé, pas d'auto-validation, droit de valider) ; titulariats de fonctions (droit de valider) ; une propriété ou une rédaction qui rendrait le remplaçant juge de sa propre révision reste en place. Sont seulement listés : l'auteur désigné par Vigie d'une modification acceptée, le chef de projet (Keystone), le responsable de programme. « Confirmer le transfert » (`transferHoldings`, src/lib/actions.ts) renvoie l'empreinte de la simulation : un plan changé entre-temps est refusé sans rien écrire ; sinon tout passe en une transaction, une entrée de journal par objet (`transfer`, avant → après, celle d'un auteur ou d'une étape rattachée à sa révision, D-14) et une de synthèse sur la personne (`transfer_summary`). Validations : un gestionnaire documentaire réassigne l'étape en cours détenue par une autre personne (`reassignStep`, mêmes règles qu'une délégation, journalisé `reassign` sur la révision). Essai réel sur une copie de la démo : reprise de Gabriel Comte par Hélène Sauvage (10 documents et 2 titulariats transférés, 1 document refusé car elle validait la révision en cours), puis réassignation de son étape et transfert du dernier document. Reste (décisions) : la règle par défaut du remplaçant et les obligations du propriétaire, de l'auteur et du propriétaire de processus (A15) ; la désactivation des comptes et la détection des départs (O-02) ; le changement du chef de projet (Keystone, O-03) et de l'auteur désigné par Vigie (O-10). Choix non confirmés dans `docs/decisions.md` ; tests : tests/integration/transfer.test.ts.
 
 - **Effort** : moyen · **Références** : A15, M16 (la désactivation des comptes dépend de O-02)
 
@@ -404,6 +480,7 @@ Constaté. src/app/api/documents/[id] ne contient que file/route.ts. Aucune rout
 ### Sécurité et conformité (12)
 
 #### 22. Historique des métadonnées (valeurs avant et après)
+- **Fait le 17 octobre 2026** : le constat n'était plus vrai depuis l'étape 6 (10 octobre, commit 5e15449) : `updateMeta` compare chaque champ (`metaChanges`, src/lib/actions.ts) et journalise l'avant et l'après dans `audit_log.data`, rendus dans la langue du lecteur et retenus hors du cercle de rédaction pour un brouillon ou un niveau plus strict. Ajouté le 17 octobre : une vue « Métadonnées » dans l'onglet Historique de la fiche (modifications et reclassements seuls) et des tests (`tests/integration/metadata-history.test.ts`).
 
 - **Effort** : faible · **Références** : G05, ACC-05
 
@@ -418,6 +495,8 @@ src/lib/actions.ts:306 : `tx.update(s.documents).set({ ...f, ... })` écrase les
 </details>
 
 #### 23. Authentification entre serveurs : registre ouvert, jetons statiques sans signature ni rotation
+- **Fait le 18 octobre 2026** (constat vérifié au commit `ccf5940` : registre sans contrôle, une seule valeur par jeton, aucune signature) : `src/lib/server-auth.ts` vérifie, en plus ou à la place du jeton selon ce qui est défini (tout ce qui est défini est exigé), une signature HMAC-SHA256 de `"<horodatage>." + corps brut` (`X-Codex-Timestamp`, `X-Codex-Signature: v1=…`) sur `POST /api/integrations/vigie` (`VIGIE_WEBHOOK_SECRET`) et `POST /api/import` (`CODEX_IMPORT_SECRET`, corps multipart compris, vérifié avant toute lecture), avec une fenêtre de 300 s de part et d'autre (`CODEX_SIGNATURE_WINDOW_S`) et un anti-rejeu en base (table `integration_signatures` : une signature n'est acceptée qu'une fois, quel que soit le processus) ; chaque jeton et secret a un `…_NEXT` accepté pendant une rotation ; `GET /api/registry` reste ouvert par défaut (Keystone) et demande `CODEX_REGISTRY_TOKEN` s'il est défini (alors `Cache-Control: private`) ; chaque refus va au journal technique (route, adresse, raison, variable, jamais la valeur) et compte dans `CODEX_RATE_TOKEN_FAILURES` ; le contrôle de configuration applique la règle des 32 caractères aux secrets et aux `…_NEXT` et signale `rotation_incomplete`, `token_shared` (une valeur sous deux noms), `signature_window_invalid`, `registry_open`. Contrat dans `docs/api.md` (« Authentification »), `signRequest` prêt pour les futurs appels sortants. Reste : l'alignement avec Vigie et Keystone eux-mêmes (O-03, O-10), les appels sortants signés quand ils existeront (T-01), des identifiants OAuth selon le fournisseur (O-02). Tests : tests/unit/server-auth.test.ts, tests/integration/server-auth.test.ts, tests/unit/config-check.test.ts ; essai réel par `curl` (signé, rejoué, expiré, sans signature ; registre avec et sans jeton).
+
 
 - **Effort** : faible · **Références** : T-01
 
@@ -512,6 +591,7 @@ Constaté : src/lib/actions.ts:302, dans updateMeta, avant la première approbat
 </details>
 
 #### 28. Journaliser les consultations
+- **Fait le 17 octobre 2026** : l'ouverture d'une fiche (« Consultation de la fiche », Server Action `recordConsultation` appelée par le navigateur, jamais au préchargement) et le fichier affiché dans l'aperçu (« Consultation du fichier », route fichier sans `download=1` : réponse entière, première plage ou 304 ; ni plage plus loin, ni HEAD) sont journalisés, une fois par personne, document, révision et version toutes les 30 minutes (`journalConsultation`, src/lib/lifecycle.ts). Rattachées à leur révision, elles suivent D-14 ; hors des flux d'activité, elles se lisent dans l'onglet Historique de la fiche (« Consultations ») et se filtrent dans l'onglet Journal. Restent à l'utilisateur (M05) : qui lit ces consultations et combien de temps on les garde ; la valeur probante dépend d'O-02.
 
 - **Effort** : faible · **Références** : G48, M05
 
@@ -562,6 +642,7 @@ Constaté. src/app/api/export/search/route.ts:8-22 et src/app/api/export/audit/r
 </details>
 
 #### 31. Empreinte SHA-256 des fichiers : intégrité (« coffre-fort ») et détection des doublons
+- **Fait le 17 octobre 2026** : empreinte SHA-256 calculée par `stageFile` sur les octets reçus (nouveau document, copie d'un modèle, version de travail, import) et gardée dans `working_versions.sha256` (migration unique régénérée) ; affichée en entier sous chaque version de l'onglet Révisions, en début dans la comparaison des versions, en entier pour le fichier approuvé dans la fiche de visa, en début dans le journal des dépôts au seul cercle de rédaction (D-14). Vérification d'intégrité (`src/lib/integrity-core.mjs`) depuis Administration › Journal d'audit › Intégrité des fichiers (gestionnaires documentaires ayant l'accès Administration, `mayCheckIntegrity`) ou par `npm run integrity` serveur arrêté (code 1 en cas d'écart) : relit chaque fichier, signale les altérés et les absents, enregistre l'empreinte des fichiers déposés avant son calcul, journalise « Vérification d'intégrité » (documents et nombres montrés aux seuls gestionnaires). Téléchargement complet vérifié au passage : un fichier altéré est coupé avant ses derniers octets et journalisé « Fichier altéré détecté » (les plages d'octets ne sont pas vérifiées) ; copie d'un modèle altéré refusée. Avertissement non bloquant au dépôt quand le même fichier existe déjà, ne nommant que ce que l'utilisateur peut avoir (D-14 : hors du cercle, le seul fichier en vigueur), et `warnings[].code = duplicate_file` à l'import pour un fichier en vigueur Public, Restreint ou Interne. L'export complet exporte l'empreinte et liste dans son manifeste les fichiers qui ne lui correspondent plus (`files.altered`). Choix non confirmés dans `docs/decisions.md`. Reste à l'utilisateur : fréquence et planification de la vérification (point 38), alerte en cas d'écart (M22), essai sur un vrai SharePoint (O-01). Tests : tests/unit/integrity-core.test.ts, tests/integration/file-integrity.test.ts, tests/integration/integrity-command.test.ts, cas ajoutés dans full-export, approval et working-versions.
 
 - **Effort** : moyen · **Références** : ARC-03, G02, §7.4, M09, P06
 
@@ -655,6 +736,8 @@ Constaté : src/lib/lifecycle.ts:141-149 (retour d'erreur sans écriture pour un
 
 #### 36. Nettoyage des fichiers orphelins
 - **Fait en partie le 15 octobre 2026** : dans Administration › Journal d'audit, un gestionnaire documentaire ayant l'accès Administration (`mayCleanStorage`, src/lib/access.ts : les noms stockés portent l'ID et la version des brouillons, D-14) lance une simulation qui liste sans rien supprimer les fichiers orphelins (`src/lib/orphans.ts` : fichiers nommés par Codex qu'aucun `working_versions.file_key` ne référence et touchés il y a plus que le délai de grâce `CODEX_ORPHAN_GRACE_HOURS`, 24 h par défaut, date la plus récente de `mtime` et `ctime` ; stockage local et, quand SharePoint sert, `_staging/`), puis, sur confirmation, supprime du stockage local les seuls fichiers listés qui sont encore orphelins, chacun revérifié juste avant, 200 au plus par passage, avec une entrée « Fichiers orphelins supprimés » au journal (noms montrés aux seuls gestionnaires) et une ligne par fichier au journal du serveur. Reste : le lancement par le planificateur (point 38), qui appellera `purgeOrphans` (pas de commande npm : PGlite n'ouvre la base que dans le processus du serveur) ; la reprise de `nameStoredFile` sur les clés restées sous leur nom provisoire ; la suppression sur SharePoint après un essai sur un vrai tenant (O-01). Tests : tests/unit/orphans.test.ts, tests/integration/orphans.test.ts.
+- **Complété le 18 octobre 2026** (point 38, lot 9, étape 4) : le planificateur lance la même suppression quand `CODEX_SCHEDULE_ORPHANS` en donne la fréquence (désactivée par défaut, `docs/exploitation.md` §4). Restent la reprise de `nameStoredFile` sur les clés restées sous leur nom provisoire et la suppression sur SharePoint (O-01).
+- **Complété le 18 octobre 2026** (lot 9, étape 9) : reprise des noms provisoires (`src/lib/provisional.ts`). Administration › Journal d'audit › « Fichiers sous un nom provisoire » : simulation qui liste, sans rien changer, les versions de travail dont la clé est restée provisoire (`<uuid>-upload.<ext>` en local, `PROVISIONAL_LOCAL_KEY` ; élément de `_staging` sur SharePoint), avec le nom qu'elles recevront, passé le délai de grâce des orphelins (`CODEX_ORPHAN_GRACE_HOURS`) ; récents et fichiers absents comptés à part ; puis, sur confirmation, « Renommer ces fichiers » (Server Action `renameProvisionalFiles`, gestionnaire documentaire avec l'accès Administration, `mayCleanStorage`) donne leur nom `{ID}_{lettre}.{n}.{ext}` aux seuls fichiers listés, chacun revérifié juste avant, 200 au plus, sous l'identifiant actuel du document ; une entrée « Fichiers renommés » au journal (anciens et nouveaux noms aux seuls gestionnaires, D-14), une ligne par fichier au journal du serveur. Tâche du planificateur `renames` (`CODEX_SCHEDULE_RENAMES`, désactivée par défaut). Le renommage local reprend un renommage arrêté à mi-chemin (nom final déjà lié au même fichier) et ne remplace jamais un autre fichier ; `nameStoredFile` en profite aussi. SharePoint : par l'interface existante (`FileStore.rename`), non essayée sur un vrai tenant. Reste : la suppression des orphelins sur SharePoint et l'essai du renommage sur un vrai tenant (O-01). Tests : tests/integration/provisional.test.ts.
 
 - **Effort** : faible · **Références** : T-01 (partie SharePoint)
 
@@ -669,6 +752,8 @@ La partie SharePoint ne pourra être vérifiée que sur un vrai tenant (T-01).
 Vérifié : le fichier est déposé avant la transaction (src/lib/actions.ts:185-186 ; addWorkingVersion l.236). `withStaged` (actions.ts:134-141) ne le supprime que si la transaction lève une exception : un arrêt du processus entre le dépôt et le commit le laisse sans enregistrement. `nameStoredFile` (src/lib/storage.ts:216-227) est fait « au mieux ». En local, il crée d'abord un lien dur (l.49) puis met la base à jour (l.221) : si la mise à jour échoue, le nouveau nom reste orphelin ; si `remove` échoue (l.222), l'ancien nom reste orphelin. Même schéma dans l'import (src/lib/importer.ts:372-376) et dans `renameDocFiles` (storage.ts:233-245). Aucun code ne compare le stockage (`.data/files` ou `_staging/` de SharePoint, storage.ts:100) aux `working_versions.file_key`.
 
 </details>
+
+- **Préparé le 18 octobre 2026** (lot 10, étape 3) : la partie SharePoint est essayée contre un faux Microsoft Graph (`tests/support/fake-graph.ts`, `tests/integration/sharepoint-store.test.ts`). La liste paginée de `_staging`, la reprise des noms provisoires (`renameProvisional`, journalisée) et le nettoyage des orphelins, qui les liste sans jamais envoyer de suppression à Graph, sont couverts. Reste : la suppression des orphelins sur SharePoint et l'essai sur un vrai tenant (O-01, `npm run storage:check`).
 
 #### 37. Vérifier la configuration au démarrage
 - **Fait le 15 octobre 2026** (procédure : `docs/exploitation.md` §3) : `src/instrumentation.ts` (`register`, appelé une fois au démarrage de `next dev`, `next start` et de l'app Mac, jamais pendant `next build`) lance `src/lib/config-check.ts`, qui lit chaque variable de `.env.example` comme le code la lit et écrit chaque constat au journal technique (scope `config`), avec un code et la variable à corriger, puis un résumé. Erreurs : `CODEX_STORAGE` inconnu (y compris `SharePoint` ou ` sharepoint`, que `storage.ts` prendrait en silence pour le stockage local), `sharepoint` sans l'une des quatre `CODEX_SP_*` (nommées) ou avec un identifiant mal formé, jeton d'intégration de moins de 32 caractères, trop simple ou contenant un espace, adresse Vigie ou Keystone qui n'est pas une URL http(s) ou qui porte un identifiant, `CODEX_CLAMD` illisible, dossier de données (ou `files/`) non inscriptible et impossible à créer. Avertissements : `VIGIE_API_URL` défini alors que Codex n'appelle pas Vigie (la simulation disparaît), sans `VIGIE_WEBHOOK_TOKEN`, variables SharePoint inutilisées, jetons identiques, valeurs ignorées au profit d'un défaut (tailles, extensions, limites de débit, drapeaux, délai de grâce, rotation, journal), sauvegardes dans la base ou les fichiers, antivirus absent et authentification simulée (O-02) en production. L'absence d'un jeton est une simple information (503 voulu). En production, une erreur arrête le serveur (code de sortie 1 ; l'app Mac affiche « Le serveur s'est arrêté au démarrage. ») ; en développement, elle est seulement écrite ; `CODEX_CONFIG_CHECK` (`strict`, `warn`) change ce comportement. Sans aucune variable, aucune erreur. Aucun constat ne recopie un secret ni une adresse qui pourrait en porter. Tests : tests/unit/config-check.test.ts, tests/unit/instrumentation.test.ts (refus par `register`, code de sortie 1) ; essai réel de `next start` refusé puis démarré.
@@ -692,6 +777,8 @@ Vérifié :
 </details>
 
 #### 38. Planificateur : mise en vigueur différée, relances, nettoyage, envois sortants
+- **Fait en partie le 18 octobre 2026** (constat vérifié au commit `ccf5940`, sauf que `src/instrumentation.ts` existe depuis le point 37) : `src/lib/scheduler.ts`, démarré par `register` après le contrôle de configuration (jamais pendant `next build` ni dans les tests), lance dans le processus du serveur la mise en vigueur différée toutes les 5 minutes (`CODEX_SCHEDULE_PROMOTE`) : `promoteDue`, plus l'application d'une acceptation de Vigie restée en attente alors que plus rien ne la retient (`applyDuePendingDecisions`) ; tant qu'il le fait, `getCtx` ne l'appelle plus à chaque requête (`CODEX_SCHEDULER=off` rend l'ancien comportement). Tâches d'exploitation désactivées par défaut, fréquence par variable : suppression des orphelins (`purgeOrphans`, `CODEX_SCHEDULE_ORPHANS`), vérification d'intégrité (`CODEX_SCHEDULE_INTEGRITY`), sauvegarde (`CODEX_SCHEDULE_BACKUP`, sautée sur un serveur PostgreSQL), export complet écrit et relu dans `<dossier de données>-exports` avec rotation (`CODEX_SCHEDULE_EXPORT`, `CODEX_SCHEDULE_EXPORT_KEEP`). Une exécution à la fois par tâche même à plusieurs processus (bail en base, table `scheduler_runs`, renouvelé pendant l'exécution, repris à échéance) ; chaque exécution au journal technique (scope `scheduler`), ce qu'elle change au journal d'audit sous l'acteur Codex ; état (fréquence, dernière exécution, résultat, prochaine) dans Administration › Journal d'audit › Planificateur ; valeurs illisibles signalées par le contrôle de configuration. Essai réel : `npm run dev` avec des périodes de 10 à 20 s, révision approuvée du jour mise en vigueur au premier passage, sans visite. Reste : les relances et notifications hors application (destinataires et échéances M19, canal non décidé) et les envois vers Vigie et Keystone (T-01, O-03, O-10), pour lesquels seul le point d'extension est prévu (`docs/exploitation.md` §4) ; la reprise de `nameStoredFile` sur les noms provisoires (point 36) ; les fréquences d'exploitation, à fixer avec l'hébergement (M22). Tests : tests/integration/scheduler.test.ts, tests/unit/scheduler.test.ts, tests/unit/instrumentation.test.ts.
+
 
 - **Effort** : faible · **Références** : D-11, O-09, M19, T-01
 
@@ -708,6 +795,7 @@ Vérifié : `promoteDue` n'est appelé que dans `getCtx` (src/lib/context.ts:50 
 </details>
 
 #### 39. Index de base de données manquants
+- **Fait le 17 octobre 2026** : constat revérifié au commit `b6e825c` (les index `audit_log_at` et `audit_log_doc` existaient déjà, `working_versions_sha256` aussi ; le reste manquait). Ajout dans `src/db/schema.ts`, migration unique régénérée, de 17 index : GIN `jsonb_path_ops` sur `documents.aliases` (et `getDoc` résout un ancien ID par `aliases @>` au lieu de charger la table), `working_versions(doc_id)` et `(file_key)`, `workflows(doc_id)` et `(revision_id)`, `workflow_steps(assignee_id)`, `workflow_comments(workflow_id)`, `change_requests(doc_id)` et `(replacement_id)` partiel, `document_links(source_id)` et `(target_id)`, `document_readers(user_id)`, `project_expected(project_code)` et `(doc_id)`, `audit_log(user_id, at, id)`, `(action, at, id)` et `(revision_id)` partiel. Mesuré sur 5 000 documents et 125 000 entrées de journal (médiane de 15 exécutions, PGlite) : ancien ID 198 → 1,1 ms, journal d'une révision 27 → 0,8 ms, dernier contrôle d'intégrité 13 → 0,6 ms, journal filtré par personne 23 → 5,9 ms, versions par clé de fichier 3,1 → 0,3 ms, reclassement (cascades) 6,0 → 1,1 ms ; écriture de 1 000 entrées du journal 18 → 27 ms. Les écrans qui chargent des tables entières (point 47, « Chaque navigation recharge toutes les tables ») n'en profitent pas encore.
 
 - **Effort** : faible
 
@@ -736,6 +824,8 @@ Vérifié :
 </details>
 
 #### 41. Passer aux migrations incrémentales avant la première base de production
+- **Fait le 17 octobre 2026** : constat revérifié au commit `7d3db2e` (une seule migration, `drizzle/0000_init.sql` du commit `c80d6ae`, que `drizzle-kit generate` confirme égale au schéma : « No schema changes »). Elle devient la base figée ; chaque changement de schéma ajoute une migration (`npm run db:generate -- --name <sujet>`), relue, jamais régénérée. Au démarrage, `src/db/migrations.ts` compare les migrations appliquées par la base à celles du code (rang, instant, SHA-256) et refuse une base faite par un autre schéma, une migration modifiée, sautée ou hors d'ordre, avant que drizzle ne rejoue quoi que ce soit ; s'il en manque à une base qui a des données, le serveur la sauvegarde d'abord (archive de `npm run backup`, entrée « Sauvegarde créée · migration … » au journal ; `CODEX_MIGRATION_BACKUP=off` pour s'en passer, refus de démarrer si l'archive échoue), puis drizzle applique les migrations en une transaction. Retour arrière : restaurer cette archive avec la version précédente (docs/sauvegarde.md). Fonctions et déclencheurs restent posés à chaque démarrage (`openDb`, commentaire mis à jour). `npm run db:check` (`drizzle-kit check`) ajouté à la CI ; tests/integration/migrations.test.ts vérifie que le schéma a sa migration (diff vide avec le dernier instantané) et qu'une base créée par la chaîne de migrations a exactement la structure d'une base créée d'un coup depuis le schéma (colonnes, contraintes, index lus dans le catalogue Postgres), et le refus d'une base d'un autre schéma ; tests/unit/migrations.test.ts couvre les règles. Essayé dans une copie : migration factice `0001_factice` (colonne ajoutée), démarrage sur la base de démo existante (sauvegarde, migration, journal), tests verts, détection d'un schéma modifié sans migration et d'une migration retouchée, restauration de l'archive. CLAUDE.md, README et docs/sauvegarde.md décrivent la procédure.
+
 
 - **Effort** : faible
 
@@ -748,6 +838,8 @@ Vérifié : la règle de CLAUDE.md (« rm -rf drizzle && npx drizzle-kit generat
 </details>
 
 #### 42. Le build dépend de Google Fonts
+- **Fait le 17 octobre 2026** : Inter est dans le dépôt (`src/fonts/inter/`, licence OFL 1.1 dans `OFL.txt`) : les sept sous-ensembles woff2 que `next/font/google` téléchargeait, identiques à l'octet (SHA-1 comparés avec ceux de `.next/static/media`), servis par `next/font/local` (`src/fonts/inter.ts`) avec les plages Unicode de Google, le latin seul préchargé, la même variable `--font-inter` et la même police de secours (« Inter Fallback », Arial ajustée aux valeurs de `next/font/google`, déclarée dans `src/app/globals.css`) : rendu inchangé. `layout.tsx` et `global-error.tsx` l'importent ; `npm run build` passe avec le proxy réseau coupé. L'app Mac (`desktop/build-app.sh`) n'a plus besoin du réseau pour construire.
+
 
 - **Effort** : faible
 
@@ -762,6 +854,7 @@ Vérifié : `import { Inter } from 'next/font/google'` (src/app/layout.tsx:2) et
 #### 43. Version de Node non déclarée
 
 - **Fait en partie le 10 octobre 2026** : package.json déclare `"engines": { "node": "^20.19.0 || >=22.12.0" }` et non `>=20.9`, car Vitest 4 s'appuie sur Vite 7, qui demande Node 20.19+ ou 22.12+ (Next seul accepterait 20.9) ; la CI tourne sous Node 22. Restent `.nvmrc`, l'alignement de `@types/node` (^20) et la vérification de version dans desktop/build-app.sh.
+- **Fait le 18 octobre 2026** (lot 9, étape 9) : `.nvmrc` donne la version de référence (22, celle de la CI, qui la lit par `node-version-file`) ; `@types/node` passe de `^20` à `^22.12.0`, aligné sur elle et sur la borne 22 d'`engines` ; comme ses types ne signaleraient plus une API absente de Node 20.19, un job de la CI (« Tests on Node 20.19 ») lance `npm test` sous la plus basse version qu'`engines` admet (toute la suite y passe : 95 fichiers, vérifié avec Node 20.19.0). `scripts/codex-node-check.mjs` dit si le Node lancé satisfait `engines` (formes `^`, `>=`, exacte, jointes par `||` ; toute autre forme refusée plutôt que devinée) ; `desktop/build-app.sh` l'appelle juste après avoir choisi son `node` : une ligne, inoffensive (le build s'arrête avec un message au lieu d'une erreur plus loin), non essayée sous macOS. Tests : tests/unit/tooling.test.ts.
 - **Effort** : faible
 
 À faire : déclarer `"engines": { "node": ">=20.9" }`, choisir une version de référence (LTS) dans `.nvmrc`, aligner `@types/node` sur cette version et faire vérifier la version minimale par desktop/build-app.sh.
@@ -773,6 +866,7 @@ Vérifié : package.json n'a pas de champ `engines`, et le dépôt n'a ni .nvmrc
 </details>
 
 #### 44. Erreurs : pas de global-error.tsx, messages non traçables
+- **Fait le 17 octobre 2026** : constat revérifié au commit `b6e825c` (le journal technique du lot 7 notait déjà le digest des erreurs de rendu, mais aucun écran ne le montrait). `src/app/global-error.tsx` (propre `<html>`, Nocturne et Inter importés, FR · EN côte à côte, référence, « Réessayer » par `retry()`, retour à l'accueil par rechargement complet) ; `error.tsx` passé à `retry`, dans la langue de l'utilisateur, avec la référence et un retour à l'accueil, jamais le message ; `not-found.tsx` dans le shell (page introuvable, 404) et `documents/[id]/not-found.tsx` (document introuvable : `notFound()`, 404 au lieu de 200). La référence d'une action en échec est son identifiant de requête (`traceAction` le pose comme digest, que Next garde et transmet au navigateur) ; celle d'un rendu, le digest de Next, que l'entrée « request failed » porte. `useSubmit`, `ActionButton`, `CommentBox` et `DueTable` affichent « Une erreur est survenue · Réf. … » (`src/lib/errors.ts`). Vérifié en développement et en build de production. Reste : une erreur survenue dans le navigateur n'a pas de référence et n'est pas remontée au serveur.
 
 - **Effort** : faible
 
@@ -789,6 +883,8 @@ Constaté dans le code. Seul src/app/error.tsx existe : il n'y a ni global-error
 </details>
 
 #### 45. Séparer l'amorçage du référentiel et les données de démonstration
+- **Fait le 17 octobre 2026** : `CODEX_SEED=demo|minimal` (`src/lib/seed-mode.ts`, `.env.example`), **demo par défaut partout** pour ne rien changer (l'app Mac tourne en production). `seed()` (`src/db/seed.ts`) pose d'abord le référentiel commun (départements et sites provisoires, acteurs système, familles, 69 types, fonctions, matrice des droits), puis soit la démonstration (personnes, titulaires, projets, programmes, recherches enregistrées, documents…), soit un administrateur initial `admin` (« Administrateur Codex », gestionnaire documentaire, droit Administrer), pour que `getCtx` ait une personne. La base n'est amorcée que si elle n'a ni personne ni type ; une valeur inconnue est une erreur du contrôle de configuration et laisse la base vide. Vérifié : démarrage réel dans les deux modes (écrans principaux en 200, administration comprise), tests/integration/registry-apply.test.ts (contenu du mode minimal, ouverture sur l'administrateur). Reste : `none` n'existe pas (une base vide ne s'ouvre pas) ; départements, sites et personnes réels attendent l'organigramme (O-04) et l'authentification (O-02).
+
 
 - **Effort** : faible · **Références** : D-02, D-19
 
@@ -807,6 +903,7 @@ src/db/index.ts:21-22 lance seed() dès que la table users est vide. seed() (src
 #### 46. Servir les fichiers en flux, avec les requêtes partielles (Range)
 - **Fait en partie le 15 octobre 2026** : la route fichier sert le stockage en flux (`openStored`, src/lib/storage.ts ; pour SharePoint, corps de `/content` relayé avec l'en-tête Range, non essayé sur un vrai tenant) avec `Accept-Ranges`, 206 et `Content-Range`, 416, le fichier entier pour plusieurs plages, `If-Range`, ETag, Last-Modified, 304 et un HEAD cohérent (`src/lib/ranges.ts`), après les mêmes contrôles d'accès, D-14, suffixes et limite de débit qu'avant, un téléchargement étant journalisé quand sa réponse part du premier octet, et le navigateur garde, revalidé à chaque usage (`private, no-cache`), le seul fichier final de la révision en vigueur sous Confidentiel, dont l'aperçu paginé obtient un 304 à chaque page. Reste : pour un brouillon, une révision en circuit (`in_review`, `approved`) ou un document confidentiel ou très confidentiel, toujours en `no-store`, l'aperçu paginé recrée son iframe (`key={page}`, src/app/documents/[id]/DocClient.tsx:33) et retélécharge tout le fichier à chaque page : la seconde option de l'étape 3, changer de page sans recréer l'iframe, reste à faire et à essayer dans Chromium et dans l'app Mac (WebKit, session macOS) ; l'étape 4, le dépôt en flux (écriture sur disque puis comptage des pages), avec l'import par morceaux (points 98 et 106). Tests : tests/unit/ranges.test.ts, tests/integration/file-stream.test.ts.
 
+- **Complété le 18 octobre 2026** (lot 9, étape 9) : l'aperçu paginé d'un PDF (fichier stocké ou rendu PDF d'un fichier Office) télécharge le fichier une fois, en garde une copie en mémoire (`useLocalCopy`, `src/app/documents/[id]/DocClient.tsx` : `fetch` puis adresse `blob:`, libérée quand la fiche se ferme ou montre un autre fichier) et change de page sur cette copie (un nouveau cadre par page, que Chromium seul accepte pour `#page=` : changer seulement le fragment du même cadre ne tourne pas la page, essayé). Les réponses restent `no-store` pour un brouillon, une révision en circuit et un document confidentiel (D-14) : la copie n'est ni dans le cache ni dans l'historique du navigateur. `frame-src 'self' blob:` dans la politique de sécurité (les adresses `blob:` sont propres à l'origine). Si le téléchargement échoue, la visionneuse ouvre l'adresse comme avant. Mesuré par `npm run e2e` (Chromium, brouillon de 3 pages, pages 1 à 3) : 3 téléchargements avant, 1 après ; capture : la page 3 s'affiche. Reste : l'essai dans l'app Mac (WebKit, session macOS) ; l'étape 4, le dépôt en flux, avec l'import par morceaux (points 98 et 106).
 - **Effort** : moyen
 
 Le constat est juste, mais la cause du rechargement à chaque page est surtout l'iframe recréée (`key={page}`, DocClient.tsx:30), combinée au `no-store` (route.ts:81). Range seul ne la corrige pas. À faire :
@@ -823,6 +920,9 @@ Vérifié : src/app/api/documents/[id]/file/route.ts:91-116 lit tout le fichier 
 
 #### 47. Chaque navigation recharge toutes les tables
 
+- **Fait le 17 octobre 2026** : constat revérifié au commit `c80d6ae`. `listDocs` et `listWorkflows` étaient déjà en cache par requête, mais le layout lisait encore tous les documents (`listDocs`, `listTemplates`), « À traiter » tous les documents et tous les circuits avec leurs étapes et commentaires, et l'accueil, Archivage, les pages département et la fiche relisaient tous les documents. Chaque écran lit maintenant ce qu'il montre (`src/lib/queries.ts`), en SQL, avec les règles de visibilité de `readableSql` : le layout lit « À traiter » (seuls les circuits en cours où l'utilisateur a une étape, les révisions en rédaction qui peuvent l'attendre et leurs documents : `myActions`, `actionsAmong`), les modèles (documents FRM), l'activité récente (`recentActivity`, par lots, dans la même fenêtre de 60 entrées) et plus aucune liste de tous les documents ; l'accueil lit ses 5 documents récents, les échéances (`dueDeadlines` : documents qui peuvent avoir une échéance sous 90 jours) et compte « Mis en vigueur cette semaine » par un agrégat SQL sur toute la semaine du journal (`inForceThisWeek`) et non plus sur ses 500 dernières entrées ; Archivage ne lit que l'onglet ouvert (échéances, comptes par type en SQL, dates d'événement, archives) ; une page département ses documents et ses circuits en cours ; la fiche ses propres circuits, les documents de son projet et, pour ses dialogues (remplacement, lien), cinq champs des documents lisibles au lieu de leur vue complète. `listWorkflows` est réécrit sur `workflowsWhere` (circuits choisis, avec leurs seules étapes, commentaires, documents et révisions) ; l'index d'accès ne lit plus que les circuits en cours. Ce que voit chaque utilisateur ne change pas : tests/integration/targeted-reads.test.ts compare chaque lecture à l'ancien calcul sur `listDocs` et `listWorkflows`, sur la démo (chaque personne sous son rôle et cinq sous un autre) et sur des documents variés (chaque personne sous chaque rôle) ; dans Chromium, 96 écrans (16 écrans × 6 personnes ou rôles) ont le même texte, la même cloche, les mêmes modèles, les mêmes listes de dialogue et le même « À traiter » avant et après, sur une base de 3 843 documents. Mesures (build de production, médiane de 5 requêtes) : 0,70 à 1,16 s avant, 0,14 à 0,51 s après (détail dans `docs/historique.md` §18.1). Reste : l'index d'accès (`getAccessIndex`) lit encore à chaque requête tous les lecteurs désignés, les révisions ouvertes et les titulaires de fonctions ; /validations lit encore tous les circuits ; la fiche transmet toujours à ses dialogues la liste de tous les documents lisibles (identifiant et titre), qu'une recherche à la saisie remplacerait ; le layout reste rendu à chaque chargement complet et après chaque mutation.
+
+- **Complété le 18 octobre 2026** (lot 9, étape 9) : l'index d'accès d'une requête (`getAccessIndex(ctx)`, `src/lib/access.ts`) ne lit plus que les lignes de la personne (ses lectures nommées, ses révisions ouvertes, les étapes qu'elle tient dans les circuits en cours, ses fonctions rattachées à un projet ; les chefs de projet, quelques lignes, restent lus en entier), ce qui suffit à toutes les règles sur elle, pour tout document ; un index se construit aussi pour des documents (`docs` : tous leurs membres, pour lister les personnes qui peuvent rédiger un document dans `src/lib/lifecycle.ts`) ; une question hors de sa portée lève une erreur au lieu de répondre faux (`Members`). Pas de cache entre requêtes : rien ne peut y être périmé après une mutation, et une action relit l'index après sa transaction quand elle en a besoin (`pendingApplied`). Les lecteurs nommés affichés par la fiche sont lus par `namedReaders`. /validations est filtré, compté et paginé en base (`validationsPage`, `src/lib/queries.ts` : visibilité `readableSql`, cercle de rédaction et révision visible en SQL ; agrégat des quatre filtres ; pages de 50, `?p=`, la page qui contient le circuit demandé à défaut) et ne lit entiers que les circuits de la page. Index `revisions_open_modifier` et `workflows_requester` (migration `0005_index_acces_validations`). Mesures sur 10 000 documents (PGlite, build de production) : Validations 1,60 s → 0,26 s (gestionnaire) et 1,71 s → 0,37 s (collaborateur), les autres écrans 10 à 30 % plus rapides (`docs/performances.md`). Tests : `tests/integration/validations-sql.test.ts` (mêmes comptes, mêmes circuits dans le même ordre page après page, même circuit montré, même réponse pour un circuit caché, chaque personne sous chaque rôle, démo et documents variés, pages de 3 et de 50), `tests/support/varied.ts` (index de la personne et index des documents comparés à l'index complet, sur la démo et sur des documents variés). Reste : la fiche transmet toujours à ses dialogues la liste des documents lisibles (identifiant et titre) ; le layout reste rendu à chaque chargement complet et après chaque mutation.
 - **Effort** : moyen
 
 Le titre exagère : ce n'est pas « chaque navigation », mais chaque chargement complet et chaque mutation, plus `listDocs` dans chaque page. À faire :
@@ -862,7 +962,7 @@ Vérifié :
 </details>
 
 #### 49. Journalisation technique et supervision
-- **Fait en partie le 15 octobre 2026** (procédure : `docs/exploitation.md`) : (1) `src/lib/log.ts` écrit le journal technique, distinct du journal d'audit, une entrée par ligne : JSON en production, lisible en développement (`CODEX_LOG_FORMAT`), niveau `CODEX_LOG_LEVEL` (`info`), avec l'identifiant de la requête (`X-Request-Id` d'un reverse proxy s'il est un simple jeton, sinon un UUID, renvoyé sur les réponses d'API) ; jamais de jeton, cookie, corps de requête, contenu de document ni chaîne de requête ; d'une erreur, nom, message, code, `digest` et lignes « at » de la pile, jamais les valeurs d'une requête de base en échec (message de Drizzle réduit au SQL paramétré, valeur citée par PostgreSQL masquée), et une Server Action qui échoue ainsi remet à Next.js une erreur refaite sans elles. Les `console.*` du serveur passent tous par lui, sauf ceux de `src/lib/backup-core.mjs`, partagé avec les commandes de sauvegarde. Chaque route d'API (`withRequestLog`) écrit méthode, route (son modèle), statut, durée et taille, et répond 500 `{"error":"internal","requestId"}` à une erreur levée (de même `/api/import` et `/api/integrations/vigie` pour celle qu'elles rattrapent), niveau `error` pour un 5xx sauf la 503 `disabled` prévue ; chaque Server Action d'écriture (29, `traceAction`) écrit son nom, son issue (`ok`, `refused`, `stale`) et sa durée, une écriture refusée par la limite de débit son utilisateur. (2) `checkBearer` écrit en `warn` chaque jeton refusé (401, 429) avec la route, l'adresse et la raison, sans le jeton (adresse `client` derrière un proxy de confiance seulement, sinon `forwardedFor` non fiable), et en `info` un appel à un point d'entrée désactivé (503). (3) `src/instrumentation.ts` exporte `onRequestError` : toute erreur serveur rattrapée par Next.js (rendu, Server Action, route, proxy) est écrite une fois. (4) `GET`/`HEAD /api/health` (src/app/api/health/route.ts) : `select 1` par `getDb()`, dossier `files/` lisible et inscriptible ou bibliothèque SharePoint joignable (gardé une minute, sonde et jeton partagés par les appels simultanés, non essayé sur un vrai tenant, O-01), 5 s au plus par contrôle ; 200 ou 503 avec la version et le résultat de chaque contrôle, sans la raison (au journal) ni aucune donnée. Pas de `/api/ready` distincte (un seul processus). Reste, selon l'hébergement (question 3 de l'audit) : métriques et alertes, conservation, rotation et centralisation du journal ; la joignabilité de clamd n'est pas sondée ; les lignes « ⨯ » que Next.js écrit lui-même pour une erreur de requête pendant le rendu d'une page reprennent ses valeurs (`docs/exploitation.md` §4). Tests : tests/unit/log.test.ts, tests/unit/instrumentation.test.ts, tests/integration/supervision.test.ts (chaque action d'écriture et chaque route d'API y sont vérifiées).
+- **Fait en partie le 15 octobre 2026** (procédure : `docs/exploitation.md`) : (1) `src/lib/log.ts` écrit le journal technique, distinct du journal d'audit, une entrée par ligne : JSON en production, lisible en développement (`CODEX_LOG_FORMAT`), niveau `CODEX_LOG_LEVEL` (`info`), avec l'identifiant de la requête (`X-Request-Id` d'un reverse proxy s'il est un simple jeton, sinon un UUID, renvoyé sur les réponses d'API) ; jamais de jeton, cookie, corps de requête, contenu de document ni chaîne de requête ; d'une erreur, nom, message, code, `digest` et lignes « at » de la pile, jamais les valeurs d'une requête de base en échec (message de Drizzle réduit au SQL paramétré, valeur citée par PostgreSQL masquée), et une Server Action qui échoue ainsi remet à Next.js une erreur refaite sans elles. Les `console.*` du serveur passent tous par lui, sauf ceux de `src/lib/backup-core.mjs`, partagé avec les commandes de sauvegarde. Chaque route d'API (`withRequestLog`) écrit méthode, route (son modèle), statut, durée et taille, et répond 500 `{"error":"internal","requestId"}` à une erreur levée (de même `/api/import` et `/api/integrations/vigie` pour celle qu'elles rattrapent), niveau `error` pour un 5xx sauf la 503 `disabled` prévue ; chaque Server Action d'écriture (29, `traceAction`) écrit son nom, son issue (`ok`, `refused`, `stale`) et sa durée, une écriture refusée par la limite de débit son utilisateur. (2) `checkBearer` écrit en `warn` chaque jeton refusé (401, 429) avec la route, l'adresse et la raison, sans le jeton (adresse `client` derrière un proxy de confiance seulement, sinon `forwardedFor` non fiable), et en `info` un appel à un point d'entrée désactivé (503). (3) `src/instrumentation.ts` exporte `onRequestError` : toute erreur serveur rattrapée par Next.js (rendu, Server Action, route, proxy) est écrite une fois. (4) `GET`/`HEAD /api/health` (src/app/api/health/route.ts) : `select 1` par `getDb()`, dossier `files/` lisible et inscriptible ou bibliothèque SharePoint joignable (gardé une minute, sonde et jeton partagés par les appels simultanés, non essayé sur un vrai tenant, O-01), 5 s au plus par contrôle ; 200 ou 503 avec la version et le résultat de chaque contrôle, sans la raison (au journal) ni aucune donnée. Pas de `/api/ready` distincte (un seul processus). Reste, selon l'hébergement (question 3 de l'audit) : métriques et alertes, conservation, rotation et centralisation du journal ; la joignabilité de clamd n'est pas sondée ; les lignes « ⨯ » que Next.js écrit lui-même pour une erreur de requête pendant le rendu d'une page reprennent ses valeurs (`docs/exploitation.md` §5). Tests : tests/unit/log.test.ts, tests/unit/instrumentation.test.ts, tests/integration/supervision.test.ts (chaque action d'écriture et chaque route d'API y sont vérifiées).
 
 - **Effort** : moyen
 
@@ -882,6 +982,8 @@ Constaté dans le code. Il n'y a que cinq console.error côté serveur, tous non
 
 #### 50. Recherche, facettes et listes : filtrer et paginer en SQL plutôt qu'en mémoire
 - **Fait en partie le 12 octobre 2026** : visibilité traduite en conditions SQL (`readableSql`, `draftingCircleSql`, src/lib/access.ts), `canRead` gardé comme référence et comparé pour chaque personne sous chaque rôle sur des documents variés et sur la base de démo (`tests/integration/access-sql.test.ts`, `seed-sql.test.ts`). Recherche (`searchDocs`, src/lib/queries.ts) : une requête calcule visibilité, texte sans accents ni casse (table `document_terms` tenue par un déclencheur, index trigrammes `pg_trgm`, repli `codex_fold` de la base appliqué aux valeurs comme à la requête), période, comptes des facettes (`GROUP BY`/`GROUPING SETS`, sans compter l'invisible), tri (collation ICU `codex_fr` pour le titre et l'ID) et page (50 résultats, `?page=`) ; seules les lignes affichées sont lues entières ; l'export CSV passe par la même requête. Explorateur (`explorerDocs`) : comptes et liste paginée (50, `?page=`). Onglet Journal (`auditPage`) : filtres document ou cible, personne, action, période ; 100 entrées par page, curseur. Mêmes résultats, comptes et ordre que la version en mémoire (`runSearch` sur `listDocs`), qui reste la référence des tests (`tests/integration/search-sql.test.ts`, `seed-sql.test.ts`) ; mesures dans docs/historique.md §15.6. **Reste** : l'en-tête commun (src/app/layout.tsx : activité récente, modèles, « À traiter ») et l'Accueil, Archivage, les pages de département et la fiche lisent encore tous les documents visibles (`listDocs`), et `listWorkflows` tous les circuits ; Validations n'est pas paginé ; contenu des fichiers non indexé (G15) ; Postgres serveur (point 51).
+- **Mis à jour le 18 octobre 2026** : le reste ci-dessus est en partie fait par le point 47 (17 octobre) : l'en-tête commun, l'Accueil, Archivage, les pages de département et la fiche ne lisent plus tous les documents. Restent : Validations lit tous les circuits et n'est pas paginé, l'index d'accès lit à chaque requête les lecteurs désignés, révisions ouvertes et titulaires (point 47), le contenu des fichiers n'est pas indexé (point 82, O-01, O-11).
+- **Complété le 18 octobre 2026** (lot 9, étape 9, avec le point 47) : /validations filtré, compté et paginé en base, l'index d'accès limité aux lignes de la personne. Reste : le contenu des fichiers n'est pas indexé (point 82, O-01, O-11).
 
 - **Effort** : important · **Références** : G15, M18, FON-04, ARC-01
 
@@ -906,7 +1008,10 @@ Vérifié :
 
 #### 51. Base Postgres serveur à la place de PGlite embarqué
 
-- **Effort** : important · **Références** : D-02, G02, ARC-01, M22, O-03
+- **Fait en partie le 18 octobre 2026** (option, PGlite reste le défaut ; `docs/postgres.md`) : `DATABASE_URL` fait travailler Codex sur un serveur PostgreSQL 18 (pilote node-postgres, pool de `CODEX_DB_POOL_MAX` connexions, 10 par défaut ; `src/db/sql-client.ts`), avec les mêmes migrations, fonctions et déclencheurs, `pg_trgm` et ICU, posés sous un verrou consultatif (deux serveurs démarrés ensemble sur une base vide : une migration, un amorçage) ; serveur antérieur à PostgreSQL 18 refusé (`pg_unicode_fast`) ; valeurs lues comme sur PGlite (`int8` en nombre, dates à minuit UTC, marque d'ordre d'octets retirée) ; base serveur neuve amorcée en référentiel minimal par défaut ; `DATABASE_URL` déclarée dans .env.example et vérifiée au démarrage. Sauvegarde (Administration, `npm run backup`, `restore`), `npm run export` et `integrity` refusent avec un message ; migration en attente refusée sans `CODEX_MIGRATION_BACKUP=off` ; export complet en `REPEATABLE READ` sur une connexion gardée ; `registry:apply` marche sur le serveur (`--apply --no-backup`). `npm run test:pg` (`CODEX_TEST_DATABASE_URL`, une base par fichier) : toute la suite passe sur PostgreSQL 18.3 (1 172 tests) et la CI la rejoue sur un service `postgres:18` ; `tests/integration/postgres-server.test.ts` prouve entre connexions l'attente sur un compteur, le numéro rendu par une transaction annulée, l'absence de doublon (60 créations simultanées), l'échec de l'ancien max + 1 et l'import un par un. **Reste** : la sauvegarde du serveur et l'hébergement (M22, O-03) ; les migrations au déploiement plutôt qu'au premier accès ; la revue une à une des transactions qui relisent avant d'écrire, en `READ COMMITTED` ; plusieurs processus (limites de débit en mémoire, fichiers locaux, verrou du dossier de données).
+- **Complété le 18 octobre 2026** (lot 9, étape 9, ce qui ne dépend pas de l'hébergement) : `npm run db:migrate` (`scripts/codex-migrate.mts`) applique les migrations au déploiement, comme le démarrage (`openDb` : schéma vérifié, migrations en une transaction, fonctions et déclencheurs reposés), sans amorcer ; `--check` dit ce qui est en attente sans rien changer (code 1) ; PGlite : serveur arrêté (verrou `codex.lock`, nouveau type `migrate`), sauvegarde avant migration journalisée ; serveur PostgreSQL : une base qui a des données seulement avec `--no-backup` ; le démarrage migre toujours si la commande n'a pas été lancée. Revue une à une des transactions qui relisent avant d'écrire, en `READ COMMITTED` (`docs/postgres.md`, « Transactions ») : règle du verrou de la ligne du document en tête (`lockDoc`, `lockDocs`, `lockWorkflow`, dans l'ordre des identifiants), appliquée aux décisions de circuit (`decideStep`, rappel, délégation, réassignation), à `promoteDue`, aux décisions Vigie et à la greffe (demande relue sous verrou), aux demandes de validation et de modification, à la revue, au dépôt et à la restauration de versions, à l'archivage, au gel et à sa levée, aux liens, au transfert ; pièce attendue remplie par mise à jour conditionnelle ; ligne verrouillée pour les droits, le registre et les filtres de département. `tests/integration/read-committed.test.ts` : sur PostgreSQL 18.3, ses 6 tests échouaient tous avec l'ancien code (double approbation, double mise en vigueur, demandes en double, décision Vigie appliquée deux fois, bascule de droit perdue) et passent ; `tests/integration/migrate-command.test.ts` (base neuve, migration en attente sauvegardée et journalisée, refus pendant le serveur). Plusieurs processus : documenté comme limite (`docs/exploitation.md` §7 : limites de débit en mémoire, fichiers locaux et verrou du dossier, verrous « déjà en cours » par processus), pas développé. Restent : la sauvegarde du serveur et l'hébergement (M22, O-03), plusieurs processus.
+- **Complété le 22 octobre 2026** (lot 11, décision M-01 : base commune `epc2i`, un schéma par outil) : réunion avec la bascule de `main` ; toutes les tables, fonctions et déclencheurs et le journal des migrations dans le schéma `codex`, sur le serveur et en PGlite ; rôle `codex_app` sans `CREATE` sur la base (migrateur propre, aucune migration avec `CREATE SCHEMA`, `CREATE EXTENSION` ni `public`) ; base de migrations refaite (`0000_init`, `0001_partage` avec les 7 vues `pub_` du partage) ; reprise automatique d'une base PGlite de la branche d'avant le lot 11, refus avec remède des autres ; sur le serveur, rien n'est rempli sans `CODEX_SEED` ou `CODEX_SEED_DEMO=1` (page `/base-vide`) ; déclaration du schéma à Matrix ; `npm run test:pg` dans des bases disposées comme le socle (rôle sans `CREATE` ni `TEMPORARY`) ; socle Matrix rejoué sur PostgreSQL 18.3, `verifier-droits.sql` conforme avec Codex en place. Écarts à porter dans le dépôt Matrix (`pub_journal.quand`, `pg_trgm`, version 18) : `docs/postgres.md`. Restent : la mise en service du serveur commun et sa sauvegarde (M22), plusieurs processus.
+- **Effort** : important · **Références** : D-02, G02, ARC-01, M22, O-03, M-01
 
 Point confirmé. À faire :
 - choisir le pilote selon `DATABASE_URL` : node-postgres avec un pool, et PGlite pour le développement, la démo et l'app Mac ;
@@ -931,6 +1036,8 @@ Vérifié :
 #### 52. Intégration continue
 
 - **Fait en partie le 10 octobre 2026** : `.github/workflows/ci.yml` (GitHub Actions, Node 22) lance `npm ci`, `npm run typecheck`, `npm run lint`, `npm test` et `npm run build` à chaque push et pull request, sur toutes les branches. Restent `drizzle-kit check` et `npm audit` (`npm ci` signale 9 vulnérabilités le 10 octobre : 4 modérées, 5 élevées).
+- **Complété le 17 octobre 2026** : `npm run db:check` (`drizzle-kit check`) dans la CI, après `npm ci` (point 41) ; le build n'a plus besoin de Google Fonts (point 42). Reste `npm audit`.
+- **Fait le 18 octobre 2026** (lot 9, étape 9) : `npm run deps:audit` (`scripts/codex-audit.mjs`) juste après `npm ci` dans la CI : deux passages de `npm audit --json` ; échec sur tout avis de gravité élevée ou critique des dépendances de l'application (`--omit=dev` : aucun avis aujourd'hui), et des outils de développement sauf avis accepté dans le script avec sa raison ; avis modérés ou faibles listés ; un audit qui n'a pas pu se faire échoue aussi. Les 9 alertes de `npm audit` (5 élevées, 4 modérées) viennent de deux avis : `braces` ≤ 3.0.3 (élevé), atteint par `eslint-config-next` → `fast-glob` → `micromatch`, sans version corrigée publiée (3.0.3 est la dernière) : accepté, outil de lint seulement ; `esbuild` ≤ 0.24.2 (modéré, serveur de développement d'esbuild, que Codex n'utilise pas), atteint par `drizzle-kit` : la seule « correction » proposée est `drizzle-kit` 0.18, une régression majeure, non appliquée. Tests : tests/unit/tooling.test.ts.
 - **Effort** : faible
 
 Il faut un workflow GitHub Actions sur les pull requests vers main : npm ci, `next typegen` puis tsc (voir le point suivant), eslint, tests (dès que le point « Tests automatisés » existe), next build, `drizzle-kit check`, npm audit.
@@ -946,6 +1053,7 @@ Aucun dossier `.github/`, ni dans l'arbre de travail ni dans origin/main (`git l
 </details>
 
 #### 53. Docs en retard sur le code
+- **Fait le 18 octobre 2026** (lot 9, étape 8) : (1) G04 de l'audit dit « corrigé le 9 octobre » (`renameDocFiles`, commit `44bd1b8`, T-03) au lieu de la réserve ; (2) `docs/avancement-v2.md` est daté du 18 octobre et réécrit à la fin du lot 9 : fait par thème avec renvoi aux points, reste classé selon ce qui le bloque ; T-03 y figure dans « Fait », sauf la conservation par révision remplacée (O-09, point 72) ; la mention de `next typegen` est sans objet, `npm run typecheck` le lance ; (3) `docs/decisions.md` (« Authentification cible Entra ID » et réponse « Fournisseur d'authentification ») ne cite plus que `docs/modele-cible.md`, qui présente Entra ID comme « proposé, non confirmé » ; M16 de l'audit cite cette formule ; O-02 n'est pas tranché ; (4) le constat 33 de `docs/historique.md` est « Corrigé (sans objet sur base neuve) ». Les autres écarts trouvés en relisant les documents sont au point 54.
 
 - **Effort** : faible · **Références** : T-03, O-02
 
@@ -965,6 +1073,7 @@ Ce ne sont que des corrections de documentation, sans développement :
 </details>
 
 #### 54. Incohérences entre documentation et code, non relevées ailleurs
+- **Fait le 18 octobre 2026** (lot 9, étape 8) : (1) les actions d'administration, les commentaires et les exports sont journalisés depuis le 10 octobre (point 33) ; le README nomme ce qui ne l'est pas : le changement d'utilisateur ou de langue simulé, la création et la suppression d'une recherche enregistrée ; (2) le détail de T-03 (`docs/decisions.md`) disait déjà « en local, à plat avec un préfixe unique » ; `docs/modele-cible.md` §3 et le commentaire de `FileStore.rename` (`src/lib/storage.ts`) le disent aussi ; (3) « plein texte » est remplacé, dans le README et l'audit, par la liste des métadonnées cherchées (identifiant et anciens identifiants, titre, mots-clés, référence externe, ID d'étude, type, sous-type, organisme source, propriétaire, auteur ; pas le contenu des fichiers), et le commentaire de `matches` (`src/lib/search.ts`) est corrigé. Autres écarts trouvés en relisant README, `docs/avancement-v2.md`, `docs/api.md`, `docs/modele-cible.md`, l'audit et `docs/decisions.md` contre le code, et corrigés : bouton « Nouveau » de l'Explorateur (README), organisation du code (codification, dates, format, csv, errors, titles, intégrité, aide, `npm run a11y`), déclencheur du journal « pas dans la migration, que l'on régénère » (`docs/decisions.md`), exemple `PRO-QHS-0012` (`docs/modele-cible.md` §3), statuts de l'audit en retard (sauvegarde et PostgreSQL serveur, classe de conservation par document et dates d'événement, consultations journalisées, historique des métadonnées, lectures ciblées, M14), « reste » des points 36 et 50 déjà fait par les points 38 et 47. `docs/api.md` n'avait pas d'écart.
 
 - **Effort** : faible
 
@@ -983,6 +1092,7 @@ Constaté.
 </details>
 
 #### 55. Accessibilité : audit systématique
+- **Fait le 18 octobre 2026** (lot 9, étape 8 ; bilan dans `docs/accessibilite.md`) : (1) « Aller au contenu » (« Skip to content »), premier élément de la page, visible quand il a le focus, vers `<main id="contenu" tabindex="-1">` (`src/app/layout.tsx`) ; (2) `npm run a11y` (`scripts/codex-a11y.mts`, dépendances `axe-core` et `playwright-core`) : le build de production servi sur une base de démo jetable (dossier temporaire, jamais `.data/`), 30 écrans et onglets et 20 dialogues en français (`--lang all` : aussi en anglais), règles WCAG 2.0 à 2.2 A et AA et bonnes pratiques d'axe ; échec sur une violation sérieuse ou critique ; contrôle du lien d'évitement et du focus des dialogues ; 70 s environ, même résultat sur trois passages : ajouté à la CI après le build ; (3) contrastes mesurés sur les fonds Nocturne : `.text-muted` passe (5,19 sur le fond, 4,83 sur une surface), comme les textes de 10 à 11 px qui l'utilisent ; échouaient et sont corrigés au plus près de la maquette : ligne d'information des cartes (4,25 → 4,83), portée des titulaires et usages des termes (4,47 → 5,47), nombre de termes dans un titre de section (3,18 → 7,64), petites mentions de la page maquette de l'aperçu (3,96 → 4,9) ; (4) violations corrigées : contrôles imbriqués (lignes des versions de travail), attribut ARIA interdit (pagination), cibles de moins de 24 px, titres (le nom de l'écran en `<h1>`, sections en `<h2>`, même rendu), repères sans nom, en-têtes de tableau vides. axe : 82 éléments en violation sérieuse ou critique et 52 en violation modérée ou mineure au commit `65af2e6`, 0 et 0 après, en français et en anglais. Tests : `tests/integration/shell-a11y.test.ts`. Reste : test manuel avec un lecteur d'écran, zoom à 200 % et affichage étroit, PDF générés non balisés, app Mac (macOS) ; le RGAA n'est pas exigé.
 
 - **Effort** : moyen
 
@@ -996,6 +1106,7 @@ Une partie du manque est confirmée, mais deux constats doivent être corrigés.
 
 #### 56. Pas de jeu de données volumineux ni de mesure des performances
 
+- **Fait le 18 octobre 2026** (`docs/performances.md`) : `npm run seed:large -- --docs N` (`scripts/codex-seed-large.mts`) écrit une base à part (`.data-large/` par défaut, ou `--data-dir`, ou `--database-url` ; jamais la base de démo par défaut, base qui a des documents refusée sans `--append`) : démonstration, 200 personnes fictives et N documents tirés selon le registre, avec révisions, versions de travail, circuits terminés et en cours, commentaires, lecteurs nommés et journal (10 000 documents en 27 s sur PGlite) ; `npm run perf` (`scripts/codex-perf.mjs`) mesure 14 écrans et routes (accueil, recherche, explorateur, fiche, validations, archivage, département, journal, exports CSV, santé) par personne et rôle, puis 10 requêtes simultanées. À 10 000 documents : 0,4 à 0,6 s par écran sur PGlite, 0,2 à 0,3 s sur PostgreSQL (70 à 110 ms sur la démo) ; Validations 1,6 s et 0,63 s, export CSV complet 1,1 s et 0,44 s ; les requêtes simultanées passent l'une après l'autre dans le processus Node. Les volumes cibles restent à fixer (M18, O-11) pour refaire ces mesures.
 - **Effort** : moyen · **Références** : M18, O-11
 
 À faire dès maintenant :
@@ -1013,6 +1124,8 @@ Constaté. src/db/seed-docs.ts contient 63 entrées `title:`. package.json n'a a
 #### 57. Tests automatisés
 
 - **Fait en partie le 10 octobre 2026** : Vitest (`npm test`) lance des tests unitaires des règles pures (`tests/unit/`) et des tests d'intégration des règles métier et des Server Actions sur un PGlite en mémoire (`tests/integration/`, base ouverte par `openDb` dans `src/db/index.ts`, `next/headers` et `next/cache` simulés), dont le handler du webhook `/api/integrations/vigie`. Le 11 octobre, `tests/integration/files.test.ts` appelle les handlers `POST /api/import` et `GET`/`HEAD /api/documents/[id]/file` : type de fichier enregistré, `Content-Type` et `Content-Disposition` servis, nom proposé, aperçu correspondant. Restent : les autres réponses de ces deux routes par leurs handlers (401, 400, 413, 415 et 409 de l'import, dont seuls les cas 409 sont testés, par `importDocument` ; 404 de la route fichier pour un document ou une version non visibles, la règle étant testée par `readerMaySeeVersion` ; 502 du stockage ; ligne de journal d'un téléchargement), les parcours Playwright, et l'atomicité des compteurs entre connexions (PGlite n'a qu'une connexion : il faut un Postgres serveur).
+- **Complété le 18 octobre 2026** (lot 9, étape 9) : `tests/integration/route-errors.test.ts` appelle les handlers : `POST /api/import` répond 401 sans jeton ou avec un autre, 415 à un corps ni JSON ni multipart et à un format de fichier refusé, 400 à un corps illisible, sans métadonnées, à un JSON invalide, à un « fichier » qui est un champ texte et à des métadonnées qui ne tiennent pas, 413 à un fichier au-delà de la limite et à un corps coupé en lecture, 409 au rejeu d'une référence et à une référence qui est un identifiant Codex, 500 avec l'identifiant de la requête sans la cause ; `GET`/`HEAD /api/documents/[id]/file` répondent 404 au document inconnu comme au document illisible, à une version invalide, d'un autre document ou que le lecteur n'a pas (D-14), à un aperçu demandé à tort, au fichier absent du stockage, et 502 au stockage injoignable (lien en boucle en local, SharePoint sans réglages), sans rien journaliser ; un téléchargement et une consultation sont journalisés (personne, fichier, révision), un `HEAD` non. Parcours de bout en bout `npm run e2e` (`scripts/codex-e2e.mts`, playwright-core, outillage commun avec `npm run a11y` dans `scripts/codex-browser.mts`, base de démo jetable) : création d'un document avec son PDF, aperçu paginé téléchargé une fois, demande de validation, chaque étape approuvée par son titulaire lu à l'écran, document en vigueur ; 15 à 17 s, cinq passages identiques : ajouté à la CI après `npm run a11y`. L'atomicité des compteurs entre connexions est testée sur PostgreSQL depuis le point 51. Reste : d'autres parcours (rejet, rappel, demande Vigie, import) si on les juge utiles.
+- **Avancé le 18 octobre 2026** (lot 10, étape 5) : `npm run e2e` compte cinq parcours indépendants : approbation, rejet avec motif puis nouvelle version de travail et nouvelle demande, rappel par le demandeur, demande de modification acceptée par la simulation Vigie (révision suivante ouverte, puis une deuxième modification en attente et greffée pendant la rédaction, une troisième en attente seulement pendant la validation, D-26) et import par l'API (simulation `?dryRun=1`, import réel au même identifiant, document vu dans l'application, brouillon importé vu de son seul propriétaire) ; chacun vérifie qu'une lectrice hors du cercle de rédaction ne voit pas le brouillon (D-14). 72 à 73 s, trois passages identiques, tous dans la CI. `tests/integration/import-dry-run.test.ts` couvre la simulation d'import. Reste : WebKit (app Mac, session macOS) et les parcours des autres écrans si on les juge utiles.
 - **Effort** : important
 
 Le manque est réel. Il faut une base de tests, sans changer le périmètre :
@@ -1046,6 +1159,7 @@ research_programs n'est rempli que par src/db/seed.ts:104 (PROGRAMS, src/db/seed
 </details>
 
 #### 59. Vocabulaires contrôlés : mots-clés, organisme source, sous-type, langue
+- **Fait le 18 octobre 2026** (constat vérifié : mots-clés et organisme source en texte libre, langue non contrôlée par le serveur ; les sous-types sont éditables dans le registre depuis le point 61) : langue `fr`, `en` ou vide, quelle que soit la casse, contrôlée par `validateFields` (une autre valeur déjà portée par un document y reste) et par l'import (`invalid_lang`). Tables `source_orgs` et `keyword_terms` (nom, clé repliée unique, alias), migration incrémentale `drizzle/0003_vocabulaires.sql` avec reprise des valeurs des documents (un terme par graphie repliée : casse, accents, espaces) et des langues en majuscules ; le seed et `npm run seed:large` remplissent les vocabulaires. Les documents gardent le nom du terme en texte (recherche, termes de recherche, facettes « Mots-clés » et « Organisme source », export complet, sauvegarde et `registry:apply` inchangés). Formulaires : saisie par sélection avec autocomplétion (mots-clés en étiquettes), graphie du terme reprise, nouveau terme ajouté seulement après confirmation (exigée aussi par le serveur, `readVocab`) et termes proches proposés (« Nordvolt Energy » → « Nordvolt ») ; seuls les termes de documents lisibles ou d'aucun document sont proposés (`vocabSuggestions`, readableSql, D-14). Import : terme inconnu ajouté et journalisé (`term_added`), alias résolus. Administration › Vocabulaires (droit « Administrer ») : ajout, renommage, fusion de doublons (documents mis à jour sauf sous gel juridique, journalisés `vocab_apply` ; anciennes graphies gardées en alias), valeurs de documents sans terme, sous-types hors de la liste de leur type à ajouter au registre (`adoptSubtype`) ; la liste des sous-types reste ouverte côté serveur (sous-type ramené à la graphie du type quand il s'y retrouve, avertissement `subtype_unlisted` à l'import). Essai réel sur une copie de la démo : courrier externe créé avec « Nordvolt » choisi parmi les termes proches et deux mots-clés (« LEVAGE » ramené à « levage », « essai vocabulaire » ajouté après confirmation), puis fusion d'un doublon et renommage d'un organisme. Reste : qui gouverne les termes (A05) et le choix thésaurus fermé ou libre (A21) ; la liste réelle des organismes et des mots-clés (reprise de l'existant, O-11). Choix non confirmés dans `docs/decisions.md` ; tests : tests/integration/vocab.test.ts, tests/unit/vocab-rules.test.ts, tests/integration/migrations.test.ts (reprise).
 
 - **Effort** : moyen · **Références** : MET-07, MET-17, G32, G40, G03, A21, A05
 
@@ -1067,6 +1181,8 @@ La recherche plein texte couvre bien ces champs (src/lib/search.ts:32), mais il 
 </details>
 
 #### 60. Appliquer les évolutions du registre à une base existante
+- **Fait le 17 octobre 2026** : `npm run registry:apply` (`scripts/codex-registry.mts`, lancé par `tsx`, ajouté aux devDependencies ; règles dans `src/lib/registry-apply.ts`), serveur arrêté (verrou `codex.lock`, type « registry ») : simulation par défaut (la même transaction, annulée, donc exactement ce que l'écriture ferait), `-- --apply` pour écrire après une sauvegarde (`--no-backup` pour s'en passer). Familles et types de `src/db/registry.ts`, fonctions de `src/db/seed-org.ts`. Ce que l'Administration a réglé, d'après le journal (entrées écrites par une personne), l'emporte : champ modifié conservé, entrée créée, renommée (le registre s'applique sous le nouveau code) ou supprimée laissée telle quelle. Règles de l'administration : aucun code renommé ni supprimé, type absent du registre désactivé (famille ou fonction absente seulement signalée), nouveau code en collision refusé (`typeCodeIssue`), documents qui suivent la famille de leur type, réglage plus étroit que des documents existants retenu (à confirmer dans l'administration), portée d'une fonction à titulaires conservée, conservation des documents inchangée. Chaque changement est journalisé comme ceux de l'administration (acteur Codex, détail « npm run registry:apply ») ; les valeurs de journal sont partagées avec les Server Actions (`src/lib/journal-values.ts`). Refusée tant que la base n'a pas les migrations du code. Tests : tests/integration/registry-apply.test.ts ; essayé dans une copie de la base de démo (libellé changé, type ajouté, type retiré désactivé, refus serveur en marche, idempotence). Reste : départements et sites (organigramme, O-04) ne sont pas couverts ; pas d'import/export JSON du registre dans l'administration.
+
 
 - **Effort** : moyen · **Références** : O-05, O-07, D-07
 
@@ -1118,6 +1234,7 @@ addOrgValue (src/lib/actions.ts:711-730) ne fait qu'insérer et n'écrit rien au
 ### Interface et maquette (7)
 
 #### 63. Onglet Projet : remettre le stepper des phases de la maquette
+- **Fait le 18 octobre 2026** : l'onglet Projet montre les 12 phases de Keystone en frise compacte (`HStepper` sans titres, `src/components/ui/Stepper.tsx` ; phases passées, courante, à venir), la phase courante nommée sous la frise avec « Phase 9 sur 12 », chaque point nommé au survol et pour les lecteurs d'écran ; une phase inconnue garde son étiquette. Libellés anglais des phases (provisoires, à aligner sur Keystone, O-03) aussi dans la fiche, la recherche, le journal et le choix de la phase. Reste : la liste des phases et leurs libellés réels avec le branchement de Keystone (O-03).
 
 - **Effort** : faible · **Références** : D-04, M15
 
@@ -1130,6 +1247,7 @@ Le manque est confirmé. La maquette dessine le stepper aux lignes design/GED Gr
 </details>
 
 #### 64. Limites de taille incohérentes et message d'erreur générique pour un gros fichier
+- **Vérifié le 18 octobre 2026** : déjà fait le 15 octobre (ligne suivante) ; sélecteur, serveur et README conformes, rien de changé.
 - **Fait le 15 octobre 2026**, avec le point 32 : une seule taille maximale, `CODEX_MAX_FILE_MB` (50 Mo par défaut, 250 Mo au plus avec SharePoint), pour l'écran et l'import, qui remplace `CODEX_IMPORT_MAX_MB` ; `next.config.ts` en tire la limite des Server Actions (plus 1 Mo pour les autres champs). Le sélecteur de fichier affiche « 50 Mo au plus », refuse tout de suite un fichier plus gros avec la taille et la limite, et le serveur rend le même message (README, « Fichiers déposés »). Contrairement à ce que proposait ce point, les deux limites sont alignées plutôt que documentées séparément : choix signalé dans `docs/decisions.md`.
 
 - **Effort** : faible
@@ -1143,6 +1261,7 @@ Le manque est confirmé. next.config.ts:7 fixe serverActions.bodySizeLimit à '5
 </details>
 
 #### 65. Onglet Révisions : bouton « Restaurer » de la maquette absent
+- **Fait le 18 octobre 2026** : bouton « Restaurer » à côté de « Comparer » (`RevisionsTab`, `src/app/documents/[id]/DocClient.tsx`), actif quand une version de travail antérieure de la révision en brouillon est sélectionnée, avec confirmation ; Server Action `restoreWorkingVersion` (`src/lib/actions.ts`) : contrôles d'`addWorkingVersion` (droit Déposer, lecture, cercle de rédaction D-14, auteur désigné, verrou, brouillon, dernière version vue), version de la révision ouverte avec fichier et non la dernière, fichier relu, comparé à son empreinte et recontrôlé comme un dépôt, version suivante commentée « Restaurée depuis A.2 », journalisée (`working`). Revenir à une révision en vigueur reste une demande à Vigie (D-16). Tests : tests/integration/restore-version.test.ts. Reste : rien.
 
 - **Effort** : faible · **Références** : D-12, D-16
 
@@ -1155,6 +1274,7 @@ Le manque est confirmé. La maquette a deux boutons à la ligne design/GED Group
 </details>
 
 #### 66. Modèles : compteur d'utilisations de la maquette
+- **Fait le 18 octobre 2026** : colonne `documents.template_id` (migration incrémentale `drizzle/0004_modele_source.sql`, et non la régénération décrite ci-dessous, désormais interdite), remplie par `createDocument` quand le fichier du modèle est copié ; reprise des documents existants seulement quand le commentaire de A.1 (FR et EN) et le journal nomment le même modèle FRM, sinon nul ; `listTemplates` compte les documents que le lecteur peut lire (`readableSql`, D-14 ; tous pour un gestionnaire) ; colonne « Utilisations » d'Administration › Modèles et « n utilisations » dans le choix du modèle ; trois documents de démonstration rattachés à leur modèle. Export complet et sauvegarde reprennent la colonne d'eux-mêmes (toutes les tables, toutes les colonnes). Tests : tests/integration/template-uses.test.ts, tests/integration/migrations.test.ts. Reste : les documents créés depuis un modèle avant le 18 octobre et dont la source n'est pas sûre restent sans modèle.
 
 - **Effort** : faible · **Références** : G06
 
@@ -1167,6 +1287,7 @@ Le manque est confirmé. La maquette a une colonne {{ t.uses }} dans Administrat
 </details>
 
 #### 67. Petits écarts avec la maquette : rattachement à une affaire, dépôt depuis l'explorateur
+- **Fait le 18 octobre 2026** : (a) l'onglet Projet est toujours présent ; sans projet, « Ce document n'est rattaché à aucun projet » et « Rattacher à un projet » (propriétaire ou gestionnaire, mêmes refus que « Modifier les métadonnées »), qui ouvre ce dialogue avec le rattachement projet choisi quand le type l'admet ; sinon, ou une fois une révision approuvée (identifiant figé, D-10), une note le dit ; l'onglet par défaut reste Fiche. (b) « Déposer un fichier » dans la barre de l'explorateur ; ce bouton et « Nouveau document » proposent le département, la famille ou le type choisis dans l'arbre. Reste : rien (le projet choisi dans l'arbre n'est pas prérempli : il verrouillerait le rattachement).
 
 - **Effort** : faible · **Références** : D-08, D-10
 
@@ -1179,6 +1300,7 @@ Les deux écarts sont confirmés. (a) src/app/documents/[id]/page.tsx:87 (tabs.f
 </details>
 
 #### 68. Interface bilingue incomplète : libellés en une seule langue, journal et titre de page
+- **Fait le 18 octobre 2026** : sites déjà en FR/EN (point 62) ; fondement de conservation en anglais (`doc_types.retention_basis_en`, migration `0004_modele_source`, dialogue du type, Archivage, Administration, `GET /api/registry` `basisEn`, `registry:apply`, journal), vide pour tout le registre : le français s'affiche suivi de « (FR) » ; libellés EN des phases (provisoires) ; détail structuré du journal (`audit_log.data.text`, code et paramètres) rendu dans la langue du lecteur à l'écran et dans l'export CSV, pour les entrées nouvelles (tailles, lecteurs désignés, délégation, réassignation, transfert d'étape, auteur écarté, import, restauration), les anciennes inchangées ; `generateMetadata` dans le layout et chaque écran (« Recherche — Codex »), et la fiche (« {ID} · {titre} — Codex », titre générique pour une fiche illisible ou introuvable, D-14). Reste : traduire les fondements (après leur revue, O-07) ; libellés EN réels des phases (O-03) ; les pages 404 gardent le titre par défaut.
 
 - **Effort** : moyen
 
@@ -1195,6 +1317,7 @@ Constaté. Les sites n'ont qu'un `label` (src/db/schema.ts:30), recopié tel que
 </details>
 
 #### 69. Pas d'aide pour les utilisateurs
+- **Fait le 18 octobre 2026** (lot 9, étape 8) : page `/aide` (`src/app/aide/page.tsx`, `aide.module.css`, textes `HELP` de `src/lib/i18n.ts`, en français et en anglais), ouverte à tous les rôles, liée dans la barre latérale au-dessus de « Notes de conception » : sommaire et dix parcours tirés de `docs/modele-cible.md` et `docs/decisions.md`, limités à ce que l'application fait (ce qui est simulé d'abord : utilisateur, Vigie, Keystone ; créer un document, avec origine, rattachement, type et modèle ; déposer, puis restaurer une version de travail ; demander une validation et la rappeler ; valider, rejeter, déléguer ; demander une modification ou un retrait à Vigie, attente ou greffe quand une révision est ouverte (D-26) ; comparer ; confidentialité et cercle de rédaction ; recherche dans les métadonnées), avec un lien vers l'écran où chacun commence si le rôle y a accès. Aides contextuelles ajoutées aux dialogues : origine, rattachement, version de travail, circuit de validation, délégation et réassignation. Tests : `tests/integration/help-page.test.ts` (rendu dans les deux langues, liens selon le rôle, titre de la page, chaque libellé cité entre guillemets présent dans le dictionnaire). Reste, à décider (M14) : formation, utilisateurs clés, pilote, date d'interdiction des dépôts hors GED ; retrait des notes de conception en production (O-02).
 
 - **Effort** : moyen · **Références** : M14, O-02
 
@@ -1218,6 +1341,7 @@ Ces points dépendent d'une question ouverte (O-01 à O-11 dans `docs/decisions.
 #### 70. Champ « sens entrant / sortant » absent pour les documents externes
 
 - **Effort** : faible · **Références** : MET-19, G43, C11
+- **Revérifié le 18 octobre 2026** : toujours aucun champ de sens. Références à jour : colonnes `source_org`, `external_ref`, `received_at` (src/db/schema.ts:231-233 ; l'organisme source est devenu un vocabulaire contrôlé, point 59) ; `readFields` et `validateFields` (src/lib/actions.ts:191 et 303) ; champ Organisme source dans `DocFields` (src/components/dialogs/Dialogs.tsx:294 et 382) ; `parseImportMeta` (src/lib/importer.ts:220-259). Reste après la décision : inchangé.
 
 L'absence est confirmée. D-08 (« Origine et rattachement ») réduit le besoin, puisqu'un document émis par EPC2I est d'origine interne, mais l'utilisateur n'a pas écarté explicitement le champ. Il faut lui demander de le garder ou de l'écarter. Ce n'est pas une question O-xx : elle relève de C11 et G43.
 
@@ -1237,6 +1361,7 @@ src/db/schema.ts:154-157 : documents.source_org, external_ref et received_at, sa
 #### 71. Documents externes : ni l'édition ni la date d'émission de l'émetteur
 
 - **Effort** : faible · **Références** : A17, G43, MET-19
+- **Revérifié le 18 octobre 2026** : constat inchangé. `issuedAt` est écrit par `putInForce` à la première mise en vigueur (src/lib/lifecycle.ts:163-171) ; les champs externes sont src/db/schema.ts:231-233, affichés sur la fiche (src/app/documents/[id]/page.tsx:538) ; aucune colonne d'édition ou de date d'émission de l'émetteur, ni dans `documents` ni dans `revisions`. Reste après A17 : inchangé.
 
 À faire selon la réponse à A17 :
 - deux champs par révision : « édition / indice de l'émetteur » et « date d'émission de l'émetteur » (chaque révision Codex d'un document externe correspond à une édition) ;
@@ -1252,6 +1377,7 @@ Constaté. issuedAt vaut la première mise en vigueur dans Codex (src/lib/lifecy
 #### 72. Conservation comptée par révision remplacée (seul reste de T-03)
 
 - **Effort** : moyen · **Références** : O-09, T-03, WFL-05
+- **Revérifié le 18 octobre 2026** : constat inchangé. `triggerDate` : `case 'superseded'` lit `obsoleteAt ?? archivedAt` (src/lib/retention.ts:31) ; `revisions.superseded_at` (src/db/schema.ts:387) n'est écrit que par `putInForce` (src/lib/lifecycle.ts:166). La conservation reste par document (O-09, T-03 dans docs/decisions.md).
 
 Constat confirmé : une révision remplacée suit la conservation de son document, et le déclencheur « superseded » ne part que du retrait ou de l'archivage du document entier. Il n'y a rien à développer tant que l'utilisateur n'a pas tranché, car le comptage par révision changerait le modèle (§8). S'il le valide, il faudra :
 - calculer une fin de conservation par révision à partir de `revisions.superseded_at` (une variante de `retainUntil`) ;
@@ -1268,6 +1394,7 @@ src/lib/retention.ts:16-18 : `case 'superseded': return d.obsoleteAt ?? d.archiv
 #### 73. Métadonnées d'un document en vigueur modifiables sans demande
 
 - **Effort** : moyen · **Références** : G09, WFL-04 (question à poser, liée à O-09)
+- **Revérifié le 18 octobre 2026** : constat inchangé : `updateMetaNow` (src/lib/actions.ts:644-728) ne contrôle que le droit Modifier, propriétaire ou gestionnaire (l.653), `lockOf` (l.658) et, pour un reclassement, l'absence de circuit en cours (l.675) ; l'ID n'est renuméroté qu'avant toute approbation (`everApproved`, l.690-697), donc type et département restent modifiables après, avec l'ancien préfixe. Dialogue : `classificationLocked` (src/app/documents/[id]/page.tsx:284, Dialogs.tsx:635), bouton « Modifier les métadonnées » (page.tsx:603). Reste après la décision (question nouvelle liée à O-09) : inchangé.
 
 Le constat est confirmé et va plus loin que prévu : on peut aussi changer le type ou le département d'un document approuvé, et son ID garde alors l'ancien préfixe.
 
@@ -1286,6 +1413,7 @@ src/lib/actions.ts:278-322 : `updateMeta` ne vérifie que le droit edit, le stat
 #### 74. Champs de niveau 4 : obligatoires dans le deck, facultatifs et libres dans Codex
 
 - **Effort** : moyen · **Références** : MET-18, MET-19, MET-20, MET-21, G42, G43, G44, G45, A24
+- **Revérifié le 18 octobre 2026** : constat inchangé. `validateFields` (src/lib/actions.ts:303-318) n'exige que projet, programme et organisme source d'un document externe ; dans `DocFields`, seul l'organisme source porte `required` parmi les champs de niveau 4 (Dialogs.tsx:382) ; la phase reste une datalist de `PROJECT_PHASES` (Dialogs.tsx:307-308), jamais préremplie depuis `projects.stage` (préremplissage toujours faisable sans décision).
 
 L'écart est confirmé. Il dépend de l'utilisateur, car A24 (listes de valeurs et qui les maintient) n'a pas reçu de réponse, et `modele-cible` §7 rend explicitement facultatif le propriétaire de processus (choix de l'assistant). Il faut lui demander :
 - quels champs deviennent obligatoires ;
@@ -1320,6 +1448,7 @@ src/db/schema.ts ne contient aucune table de diffusion, de destinataires ni d'ac
 #### 76. Propositions de l'assistant non confirmées (codification, cycle de vie, circuits, retrait)
 
 - **Effort** : moyen · **Références** : O-09
+- **Revérifié le 18 octobre 2026** : les propositions sont listées dans docs/decisions.md, « Choix de l'assistant non validés explicitement » (à partir de la ligne 468), et dans la fiche O-09 (docs/fiches-decision.md). Références à jour : `contextOf` et `seqWidth` (src/lib/codes.ts:11 et 19) ; alias au reclassement avant toute approbation (`updateMetaNow`, src/lib/actions.ts:690-697) ; `nameStoredFile` et `renameDocFiles` (src/lib/storage.ts:488 et 521) ; `approveRevision` et `promoteDue` (src/lib/lifecycle.ts:191 et 205, `promoteDue` aussi lancé par le planificateur, tâche `promote`) ; `circuitExclusions` (lifecycle.ts:272) ; `applyChangeDecision` (lifecycle.ts:410) ; filtrage croisé `normalize` et `applyPatch` (Dialogs.tsx:143 et 154). Reste : inchangé.
 
 Rien n'est à développer tant que l'utilisateur n'a pas répondu à O-09. S'il confirme, rien à faire. S'il refuse un choix, il faut retoucher `codes.ts`, `codification.ts`, `lifecycle.ts`, `actions.ts`, `storage.ts` ou le dialogue de création. Le seul développement identifié qui attend explicitement O-09 est la conservation comptée par révision remplacée (T-03) au lieu de par document : il touche `retention.ts`, `deadlines` dans `queries.ts` et l'écran Archivage. À reposer une fois en citant O-09.
 
@@ -1340,6 +1469,7 @@ La conservation par révision remplacée, laissée de côté dans T-03, dépend 
 #### 77. Indicateurs et tableau de bord documentaire
 
 - **Effort** : moyen · **Références** : M13
+- **Revérifié le 18 octobre 2026** : toujours aucun tableau de bord. L'Accueil a trois compteurs (src/app/page.tsx:59-62) ; les onglets d'Administration (src/app/administration/page.tsx:32) n'ont pas d'écran d'indicateurs ; les pages de département (point 11) comptent seulement documents, circuits et échéances du département. Le seul indicateur de circuit ajouté depuis est l'affichage « En retard » du point 87.
 
 Il n'existe aucun tableau de bord : pas de volumes par type, département ou site, pas de délais de validation, pas de circuits en retard ni de documents en retard de revue, pas de complétude des métadonnées. L'utilisateur doit choisir les indicateurs, leurs destinataires et leur fréquence (M13). Ensuite : un écran réservé aux gestionnaires, avec des requêtes agrégées dans `queries.ts` filtrées selon la visibilité, et un export CSV.
 
@@ -1352,6 +1482,7 @@ src/app/page.tsx:51-55 : l'Accueil n'a que trois compteurs (à valider, échéan
 #### 78. Distinction document maîtrisé / enregistrement
 
 - **Effort** : moyen · **Références** : M02 (question d'audit non reprise dans O-01..O-11 ; à rattacher aux arbitrages du registre O-05)
+- **Revérifié le 18 octobre 2026** : constat inchangé. `RegistryType` n'a toujours aucun champ de nature (src/db/registry.ts:7-13) ; REC (registry.ts:452) garde un circuit ; `requestChangeNow` (src/lib/actions.ts:1236) accepte une demande sur tout type en vigueur ; un type sans circuit est approuvé dès la demande (`requestValidationNow`, actions.ts:936 et 962 : `approveRevision`), LET, RFQ, PHO (registry.ts:1193, 1988, 2323). Ce point cite M02 et O-05, ni O-01 ni O-11 (état récapitulatif corrigé le même jour).
 
 Reste à faire :
 - ajouter au registre une nature par type (document maîtrisé ou enregistrement) ;
@@ -1370,6 +1501,8 @@ Le manque est réel. Le registre ne distingue pas un document maîtrisé d'un en
 #### 79. Accès terrain et mobile
 
 - **Effort** : moyen · **Références** : M23 (question de l'audit restée sans réponse, hors O-01..O-11)
+- **Avancé le 18 octobre 2026** (lot 10, étape 6) : `npm run a11y -- --narrow` rend les 30 écrans et 20 dialogues à 320 px et à 1 280 px zoomé à 200 % (WCAG 1.4.10, 1.4.4) et relève débordement de la page, contenus hors fenêtre, masqués, tronqués, superposés et violations axe (docs/accessibilite.md, « Affichage étroit et zoom »). Corrigé sans effet sur le bureau (captures à 1 440 px identiques) : barre latérale qui défile, onglets d'Administration et d'Archivage qui vont à la ligne, en-têtes de colonne réservés aux lecteurs d'écran gardés dans leur cellule, ligne d'un modèle tronquée ; à 200 %, 3 écrans sur 50 restent plus larges que la fenêtre au lieu de 15, 28 éléments hors fenêtre au lieu de 252. Reste, selon M23 : à 320 px tout écran (barre latérale de 224 px, en-tête), le panneau de fiche de 400 px, les trois colonnes de l'Explorateur, la colonne des filtres de la Recherche, les tableaux en défilement horizontal. Aucune mise en page mobile, ni barre repliable, ni PWA : le point attend toujours M23. Lot 10, étape 7 : la référence d'un modèle sur une ligne survolée de « Nouveau document », relevée à 4,38:1, passe à 4,91:1 (texte atténué à 60 % sur une ligne survolée).
+- **Revérifié le 18 octobre 2026** : constat inchangé, avec des nuances : quatre media queries existent désormais (administration, aide, pages de département), mais la grille de l'application garde sa barre latérale de 224 px (src/app/globals.css:22) et le panneau de la fiche ses 400 px (src/app/documents/[id]/document.module.css:45) ; ni manifeste ni service worker. Le point cite M23 et O-02 (hébergement : M22), ni O-01 ni O-11 (état récapitulatif corrigé le même jour).
 
 Il faut d'abord la réponse de l'utilisateur à M23 : faut-il un accès en chantier ou en dépôt, la consultation hors ligne des révisions en vigueur, le dépôt d'une photo depuis le terrain ? Selon cette réponse : (1) adaptation à largeur mobile : barre latérale repliable, panneau de fiche en pleine largeur, tableaux en liste (effort moyen) ; (2) hors ligne éventuel : PWA avec un cache des révisions en vigueur, en respectant canRead et la confidentialité (effort important) ; (3) dépôt depuis le terrain : capture photo dans FilePicker (accept/capture). L'accès au réseau depuis un chantier dépend aussi de l'hébergement et de l'authentification (O-02).
 
@@ -1382,6 +1515,7 @@ Le besoin n'est pas tranché. M23 est marqué « Suite : Ouvert » dans docs/aud
 #### 80. Le drapeau « livrable client » du registre n'a aucun effet
 
 - **Effort** : moyen · **Références** : O-05 (point 4 du registre), O-03, P08, M07
+- **Revérifié le 18 octobre 2026** : le drapeau est désormais modifiable dans Administration › Registre (`TypeEditor`, Dialogs.tsx:1493), journalisé, repris par `npm run registry:apply` et le cahier `types.csv` ; il est publié par `GET /api/registry` (src/app/api/registry/route.ts:64). Aucune logique ne le lit encore pour un document : constat inchangé sur le fond.
 
 Il faut demander à l'utilisateur ce que ce drapeau doit déclencher. Exemples :
 - un bordereau de transmission (révision, date, destinataire) ;
@@ -1399,6 +1533,7 @@ Constaté par grep. clientDeliverable n'apparaît que dans src/db/schema.ts:74 (
 #### 81. Gestion multilingue : une seule langue par document et aucune traduction liée
 
 - **Effort** : moyen · **Références** : A18, MET-03
+- **Revérifié le 18 octobre 2026** : constat en partie périmé : la langue (`documents.lang`, src/db/schema.ts:206) est contrôlée (`fr`, `en` ou vide : `DOC_LANGS` et `docLang`, src/lib/vocab-rules.ts:106-114, point 59) et la recherche a une facette Langue (`FACET_KEYS`, src/lib/search.ts:11-14). Restent une seule langue par document, aucun lien de traduction ni alerte, et la liste des langues à fixer (A18).
 
 Questions A18 à poser :
 - une traduction est-elle un document distinct ou une variante du même ID ?
@@ -1420,6 +1555,7 @@ Constaté. `lang` est une valeur texte unique (src/db/schema.ts:140). Le dialogu
 #### 82. Recherche dans le contenu des fichiers
 
 - **Effort** : important · **Références** : M10, G15 (question d'audit non numérotée en O-xx)
+- **Revérifié le 18 octobre 2026** : la recherche passe par la table `document_terms` (src/db/schema.ts:330, déclencheur `documents_terms` dans src/db/index.ts) et `score` (src/lib/search.ts:204-210) : métadonnées seules. Une extraction de texte existe depuis le point 14 (src/lib/text-extract.ts : PDF par unpdf, Office Open XML, OpenDocument, texte), mais seulement pour comparer deux versions : rien n'est stocké ni indexé. Le point cite M10 et G15, ni O-01 ni O-11 (état récapitulatif corrigé le même jour) ; le volume (O-11, M18) ne joue que sur le réglage.
 
 L'absence est réelle, mais le besoin n'est ni exigé par le deck ni confirmé par l'utilisateur : M10 est une question d'audit restée sans réponse, qui ne figure pas parmi O-01 à O-11. Il faut la faire trancher avant de lancer ce chantier coûteux. Si c'est validé :
 - extraire le texte au dépôt (`stageFile`) et à l'import, et le stocker par version de travail ;
@@ -1437,6 +1573,7 @@ L'OCR des documents numérisés reste un point séparé (M09).
 #### 83. Préremplir l'en-tête du fichier créé depuis un modèle
 
 - **Effort** : important · **Références** : A22, M12
+- **Revérifié le 18 octobre 2026** : constat inchangé. Le modèle est lu (`readStored`) puis enregistré tel quel (`stageFile`) dans `createDocumentNow` (src/lib/actions.ts:382-414), désormais après contrôle de son empreinte SHA-256 ; un lecteur ZIP existe (src/lib/zip-read.ts, comparaison), aucun outil d'écriture DOCX ou XLSX (package.json).
 
 Le fichier créé depuis un modèle est une copie brute : ni l'ID, ni la révision, ni le titre ne sont injectés. À faire, si l'utilisateur le confirme :
 - à la création, puis à chaque nouvelle révision ou version de travail, renseigner dans le DOCX ou le XLSX des propriétés personnalisées ou des contrôles de contenu (ID, titre, révision, statut, propriétaire) ;
@@ -1453,6 +1590,7 @@ src/lib/actions.ts:169-176 et 185 : le contenu du modèle est lu (`readStored`) 
 #### 84. Édition Office en ligne et coédition
 
 - **Effort** : important · **Références** : O-01
+- **Revérifié le 18 octobre 2026** : constat inchangé. Toujours aucun hôte WOPI ni édition en ligne ; le pilote SharePoint (`sharepoint()`, src/lib/storage.ts:196-327) n'a été essayé que contre un faux Microsoft Graph (lot 10, étape 3, point 103).
 
 Aujourd'hui, on modifie un fichier en le téléchargeant puis en le redéposant comme version de travail. Correction au point : la coédition ne suppose pas forcément un accès direct à la bibliothèque SharePoint. Un hôte WOPI dans Codex le permettrait aussi (Office pour le web, sous programme partenaire Microsoft, ou Collabora / OnlyOffice). Mais cela créerait des versions hors du modèle de Codex : D-06 veut que SharePoint ne reçoive que le fichier, son nom et sa version, et que Codex fasse foi. Rien n'est à développer tant que l'utilisateur n'a pas dit si l'édition en ligne est nécessaire et n'a pas tranché O-01.
 
@@ -1465,6 +1603,7 @@ Aucune intégration d'édition en ligne (WOPI, Office pour le web, Collabora, On
 #### 85. Numérisation, OCR et valeur probante
 
 - **Effort** : important · **Références** : M09, M10
+- **Revérifié le 18 octobre 2026** : constat inchangé. La recherche ne porte que sur les métadonnées (`document_terms`, src/lib/search.ts:204-210) ; l'extraction de texte du point 14 lit la couche texte d'un PDF (un scan sans couche texte ne donne rien), sans OCR ; aucune empreinte d'horodatage ni procédure de valeur probante.
 
 Les scans ne sont pas cherchables, et rien n'encadre la valeur probante des copies (norme NF Z42-026, destruction des originaux papier). L'utilisateur doit d'abord décider :
 - qui numérise, avec quel outil ;
@@ -1481,6 +1620,7 @@ src/lib/search.ts:28-33 : la recherche ne porte que sur les métadonnées (titre
 #### 86. Rendu PDF de diffusion figé à la mise en vigueur
 
 - **Effort** : important · **Références** : M12 (question d'audit non reprise dans O-01..O-11) ; O-01 pour le choix du moteur de conversion
+- **Revérifié le 18 octobre 2026** : constat en partie périmé. Il existe maintenant : une liste blanche commune des formats, réglable (`CODEX_FILE_EXTENSIONS`, src/lib/filetypes.ts, contrôlée par `stageFile`, src/lib/storage.ts:444), mais pas par type ; un aperçu PDF des fichiers Office par LibreOffice ou Gotenberg (src/lib/office-preview.ts, point 15), produit à la première consultation et gardé, pas figé à la mise en vigueur. `putInForce` (src/lib/lifecycle.ts:163) ne produit toujours aucun rendu ; pas de PDF/A, ni filigrane, ni cartouche ; aucune bibliothèque d'écriture PDF (`simplePdf`, src/lib/pdf.ts, ne fait que le PDF de remplacement). Restent après M12 (et O-01 pour le moteur de Microsoft Graph) : formats par type, rendu figé, filigrane.
 
 Reste à faire :
 - choisir les formats de diffusion admis par type (nouveau champ du registre et contrôle au dépôt, avec une taille maximale) ;
@@ -1497,6 +1637,8 @@ Le manque est réel. putInForce (src/lib/lifecycle.ts:45-53) change seulement de
 #### 87. Circuits : délai unique de 7 jours, étapes seulement séquentielles, pas de suppléance
 
 - **Effort** : important · **Références** : O-06, A07, WFL-02
+- **Revérifié le 18 octobre 2026** : `due: addDays(today, 7)` est maintenant src/lib/actions.ts:955 ; `workflow_steps` n'a ni échéance ni rang parallèle (src/db/schema.ts:506) ; la délégation reste manuelle (`delegateStep`, actions.ts:1116) et un gestionnaire peut réaffecter une étape (`reassignStep`, actions.ts:1158, point 19), sans notion d'absence. Reste après A07 et O-06 : inchangé.
+- **Avancé le 18 octobre 2026** (lot 10, étape 4, sans décision ; le point reste bloqué) : indicateur « En retard » (affichage seul) d'un circuit en cours dont l'échéance `workflows.due` est passée, dès le lendemain en heure de Paris (`isCircuitLate`, `circuitDaysLate`, src/lib/review.ts ; `daysLate`, `lateL`, `lateTitle` de `workflowsWhere`, src/lib/queries.ts), avec le nombre de jours de retard en info-bulle, dans Validations (liste et en-tête), l'onglet Validation de la fiche et la page de département ; libellés `wf_late`, `wf_late_title` (FR/EN). Rien sur un circuit que l'utilisateur ne voit pas (D-14 : mêmes listes qu'avant). Inchangés : le délai de 7 jours, l'absence de relance, « À traiter » ; l'Accueil n'a pas d'indicateur. Tests : tests/unit/review.test.ts, tests/integration/circuit-late.test.ts.
 
 Faisable dès maintenant : un indicateur « en retard » dans Validations (liste et en-tête) et sur l'accueil, calculé à partir de workflows.due, déjà stocké.
 À développer une fois A07 et O-06 tranchés :
@@ -1516,6 +1658,8 @@ Constaté. src/lib/actions.ts:437 fixe `due: addDays(today, 7)` pour tout circui
 #### 88. Chiffrement au repos des fichiers stockés
 
 - **Effort** : moyen · **Références** : O-01, G02, M22
+- **Revérifié le 18 octobre 2026** : constat inchangé : le store local écrit et lit en clair (`local`, src/lib/storage.ts:120-143, dans `FILES_DIR`, src/db/index.ts:30) ; la base, les sauvegardes et les exports ne sont pas chiffrés.
+- **Avancé le 18 octobre 2026** (lot 10, étape 4, sans décision ; le point reste bloqué) : le chiffrement du volume est documenté (docs/exploitation.md §9, docs/sauvegarde.md « Chiffrement ») : volumes de `.data` (base et fichiers), des sauvegardes et des exports chiffrés, clés hors du serveur, sauvegarde des clés et restauration d'essai avec la clé de secours. Rien n'est codé ; le choix entre stockage chiffré, chiffrement applicatif et SharePoint attend O-01 et l'hébergement (M22).
 
 Si SharePoint est activé (O-01), Microsoft 365 chiffre les fichiers au repos ; il restera la base PGlite, à placer sur un volume chiffré. Sinon, deux options :
 - un stockage objet chiffré (Azure Blob par exemple) derrière l'interface `FileStore` (storage.ts:24-35) ;
@@ -1531,6 +1675,7 @@ Constaté : src/lib/storage.ts:40-63 (store local : writeFile/readFile/link en c
 #### 89. Comptes et rôles : provisionnement, attribution des rôles, départs
 
 - **Effort** : moyen · **Références** : O-02, O-04, M16
+- **Revérifié le 18 octobre 2026** : constat inchangé sur le fond : `users` (src/db/schema.ts:56-65) n'a ni identifiant externe, ni e-mail, ni statut actif ; aucune action ne crée ni ne modifie une personne. Depuis le point 19, Administration › Reprise transfère à un remplaçant les documents, étapes et rôles d'une personne qui part (`transferHoldings`, src/lib/actions.ts:2139 ; src/lib/transfer.ts), sans la désactiver. Références à jour : `approverCheck` et `defaultModifier` (src/lib/lifecycle.ts:278 et 325), `SIM_ROLES` (src/lib/i18n.ts:972).
 
 Le modèle et l'administration des comptes sont à écrire :
 - colonnes `external_id` (oid/UPN), `email` et `active` (avec date de départ) dans `users` ;
@@ -1550,6 +1695,7 @@ Constaté : src/db/schema.ts:35-44 (users : id, name, initials, role, title, dep
 #### 90. Sort final à échéance : destruction et revue de conservation non exécutées
 
 - **Effort** : moyen · **Références** : G39, M03, O-07, ACC-06
+- **Revérifié le 18 octobre 2026** : constat inchangé. Les échéances proposent « destroy » ou « review » (`deadlines`, src/lib/queries.ts:1180) ; seules actions d'Archivage : `archiveDocuments` et `holdDocuments` (src/app/archivage/DueTable.tsx:50-51 ; src/lib/actions.ts:1429-1560 pour archivage, gel, levée, restauration) ; `ENFORCED_PERMS` sans 'destroy' (src/lib/i18n.ts:981) ; le gel journalise toujours le code du type (`holdDocumentsNow`, actions.ts:1475). Une date d'événement saisie (`setRetentionEvent`, actions.ts:1564) rend calculable la fin de conservation des types « durée de vie de l'actif » et « départ du salarié ».
 
 Une fois le processus de fin de conservation tranché (M03 : qui valide, quelle preuve) et les durées validées (O-07) :
 - un circuit de destruction : proposition, puis validation par le droit Détruire, ajouté à `ENFORCED_PERMS`. Il est refusé sous gel juridique, avant l'échéance (`retainUntil`) ou si une révision est ouverte. Il supprime les fichiers dans le stockage (`remove`), efface ou anonymise la fiche en gardant un squelette (ID, type, dates) et laisse au journal un procès-verbal non effaçable ;
@@ -1567,6 +1713,7 @@ Constaté : src/lib/queries.ts:222 (échéance de conservation proposée « dest
 #### 91. Rôle « Audit & conformité » : pas d'accès au journal, aux circuits ni aux documents confidentiels
 
 - **Effort** : moyen · **Références** : M05, ACC-05, G48
+- **Revérifié le 18 octobre 2026** : constat inchangé. Ligne de l'auditeur dans la matrice : Lire seul (src/db/seed-org.ts:123) ; `workflow: role !== 'auditeur'` (src/lib/context.ts:88) ; journal global et son export réservés à l'accès Administration (src/app/api/export/audit/route.ts:29) ; `canRead` sans exception pour l'auditeur (src/lib/access.ts:155-175).
 
 Le rôle peut auditer un document à la fois, et seulement parmi ceux qu'il peut lire. Il n'a ni journal global, ni export, ni détail des circuits terminés, ni accès aux documents Confidentiels et Très confidentiels hors de son département.
 À demander (M05, ouvert dans docs/audit-deck-epc2i.md:1526-1530) :
@@ -1586,6 +1733,7 @@ Constaté. Dans src/db/seed-org.ts:123, la ligne de l'auditeur n'a que Lire. src
 #### 92. Droits fins : trois niveaux de confidentialité identiques, tout le Très confidentiel visible des gestionnaires
 
 - **Effort** : moyen · **Références** : A12, ACC-04, D-13, D-14, O-04
+- **Revérifié le 18 octobre 2026** : constat inchangé, avec une nuance : un document Confidentiel est aussi lisible par l'équipe de son projet (`ix.team`, `canRead`, src/lib/access.ts:155-175), Public, Restreint et Interne restent confondus (l.162-165) ; `inDraftingCircle` (l.132) inclut toujours gestionnaires et propriétaire. `document_readers` ne porte que la personne (src/db/schema.ts:298-305) ; `download=1` ne change que l'en-tête et le journal (src/app/api/documents/[id]/file/route.ts:64).
 
 À demander, puis à développer :
 - le sens propre de Public (diffusion sans authentification ?) et de Restreint (diffusion externe désignée), aujourd'hui confondus avec Interne ;
@@ -1602,6 +1750,7 @@ Constaté. Dans canRead (src/lib/access.ts:74-78), public, restreint et interne 
 #### 93. Authentification réelle à la place de l'identité choisie par cookie
 
 - **Effort** : important · **Références** : O-02, T-01, D-03, G13, G48, M16, ACC-01, ACC-02, ACC-03
+- **Revérifié le 18 octobre 2026** : constat en partie périmé : `src/proxy.ts` existe désormais, mais il ne pose que la politique de sécurité du contenu avec un nonce par requête et, avec `CODEX_HTTPS`, HSTS ; il ne contrôle aucune session. L'identité reste lue dans les cookies `codex-user` et `codex-role` (src/lib/context.ts:11-12 et 68-71) ; `simulateUser` (src/lib/actions.ts:170-180) pose ces cookies sans `httpOnly` ni `secure`, ouvert à tous ; la route fichier et les exports passent par `getCtx`. Les appels entre serveurs (import, webhook Vigie, registre) sont, eux, authentifiés par jeton ou signature HMAC (src/lib/server-auth.ts). Reste après O-02 : la connexion OIDC, la session signée et le contrôle dans `src/proxy.ts` et les routes.
 
 Une fois le fournisseur choisi (O-02 ; Entra ID est proposé, pas confirmé) :
 - connexion OIDC (code + PKCE), session signée en cookie httpOnly/secure/SameSite, route de rappel, déconnexion ;
@@ -1619,6 +1768,8 @@ Constaté : src/lib/context.ts:46-68 (utilisateur et rôle lus dans les cookies 
 #### 94. Niveau « Restreint » : diffusion externe encadrée (« Partager » ne fait que copier l'URL)
 
 - **Effort** : important · **Références** : D-13, ACC-02, G31, M07, O-02
+- **Revérifié le 18 octobre 2026** : constat inchangé sur le fond : Public, Restreint et Interne sont lus de la même façon (`canRead`, src/lib/access.ts:162-165) ; aucun partage externe, accès invité ni filigrane.
+- **Avancé le 18 octobre 2026** (lot 10, étape 4, sans décision ; le point reste bloqué) : le bouton de la fiche (`ShareButton`, src/components/ui/client.tsx) a pour nom accessible et info-bulle « Copier le lien du document » / « Copy the document link » (libellé `copy_link`, qui remplace `share`), ce qu'il fait réellement ; visuel inchangé (icône de la maquette). La diffusion encadrée attend toujours M07 et O-02.
 
 Reste à faire trancher par l'utilisateur (M07 ; dépend aussi d'O-02 pour des accès invités) comment se fait la diffusion d'un document Restreint au client ou au partenaire désigné : lien de partage expirant, accès invité, export tracé avec filigrane ou cartouche, ou simple bordereau de transmission. Il faudra ensuite :
 - le destinataire externe désigné sur le document ;
@@ -1636,6 +1787,7 @@ Constaté : src/lib/access.ts:74-78 (public, restreint et interne renvoient true
 #### 95. Signature électronique des étapes de circuit
 
 - **Effort** : important · **Références** : G17, M04
+- **Revérifié le 18 octobre 2026** : constat inchangé : toutes les étapes sont créées avec `sign: false` (src/lib/actions.ts:956) ; l'action de journal 'sign' n'est jamais atteinte (actions.ts:1056) ; la mention eIDAS n'apparaît que si `r.current?.sign` (src/app/validations/page.tsx:176).
 
 Une fois tranchée par l'utilisateur la question d'audit M04 (types concernés, niveau eIDAS simple, avancé ou qualifié, prestataire Yousign, DocuSign ou autre, et si une approbation vaut signature) :
 - un attribut `sign` par étape de circuit dans le registre (`circuit` de src/db/registry.ts et écran Registre), repris par `requestValidation` à la place de `sign: false` ;
@@ -1651,6 +1803,7 @@ Constaté : src/lib/actions.ts:438 (toutes les étapes sont insérées avec `sig
 #### 96. Données personnelles (RGPD) des documents RH
 
 - **Effort** : important · **Références** : M17 (pas de numéro O-xx) ; O-07, O-05, O-04 ; lien M03 (destruction)
+- **Revérifié le 18 octobre 2026** : constat en partie périmé. (c) existe : la date de l'événement (départ du salarié, fin de vie de l'actif) se saisit sur la fiche ou dans Archivage (`retention_event_at`, src/db/schema.ts:229 ; `setRetentionEvent`, src/lib/actions.ts:1564), et `triggerDate` la lit (src/lib/retention.ts:39-40) : un document RHF a une fin de conservation une fois la date saisie, sans source RH automatique. Restent (a), (b), (d) et (e) : aucun indicateur « données personnelles », accès selon la seule confidentialité (RHF, src/db/registry.ts:637), aucune destruction (`ENFORCED_PERMS`, src/lib/i18n.ts:981), aucun champ « personne concernée ».
 
 Ce qui reste à développer, une fois que l'utilisateur a dit quels types ou sous-types contiennent des données personnelles et quelles durées s'appliquent (O-07, O-05 ; validation par le DPO, question M17 à poser) :
 (a) un indicateur « données personnelles » par type ou sous-type dans le registre, recopié sur le document ;
@@ -1677,6 +1830,7 @@ M17 n'a pas de numéro O-xx. Ses dépendances sont O-07 (durées par type), O-05
 #### 97. Dépôt depuis Keystone : lien profond vers le dialogue de création prérempli
 
 - **Effort** : faible · **Références** : O-03
+- **Revérifié le 18 octobre 2026** : constat inchangé. Le seul point d'entrée prérempli reste le bouton « Déposer » d'une pièce attendue dans l'onglet Projet d'un document du projet (src/app/documents/[id]/page.tsx:483) ; `AppProvider` ne lit aucun paramètre d'URL ; src/app a désormais `aide` et `departements`, mais toujours aucune page projet.
 
 Le manque est confirmé, et il est un peu plus large que décrit. Aucune URL n'ouvre « Nouveau document » prérempli. Surtout, la liste des pièces attendues et le bouton « Déposer » n'existent que dans l'onglet Projet de la fiche d'un document déjà rattaché au projet (page.tsx:249-289). Pour un projet qui n'a encore aucun document dans Codex, il n'y a donc aucun point d'entrée.
 À écrire :
@@ -1694,6 +1848,7 @@ Constaté : src/components/ui/client.tsx:11-18 (DialogButton → open(spec), ét
 #### 98. SharePoint : envoi par session d'upload au-delà de 250 Mo
 
 - **Effort** : faible · **Références** : O-01
+- **Revérifié le 18 octobre 2026** : le plafond cité n'est plus celui de la route d'import : une seule limite vaut pour l'interface et l'import, `maxFileBytes` (src/lib/filetypes.ts:85-89) : `CODEX_MAX_FILE_MB`, 50 Mo par défaut, bornée à 250 Mo avec SharePoint (`SHAREPOINT_MAX_FILE_MB`, l.74) ; la route d'import l'applique (src/app/api/import/route.ts:59-60) et lit le corps en entier (l.66 et 98) ; next.config.ts règle `bodySizeLimit` sur cette limite plus 1 Mo. Le pilote fait toujours un envoi simple dans `_staging` (src/lib/storage.ts:256-257), essayé contre un faux Microsoft Graph (point 103). Reste si O-01 l'active : la session d'envoi par plages, puis relever la borne de 250 Mo.
 
 Le point est confirmé. Le pilote fait un PUT simple, d'où le plafond de 250 Mo de l'import quand SharePoint est actif (import/route.ts:12). À faire, si SharePoint est activé (O-01) :
 - `put` par `createUploadSession` et envoi par plages (Content-Range), avec reprise par plage ;
@@ -1709,6 +1864,7 @@ Constaté : src/lib/storage.ts:98-104 (PUT simple sur /content, commentaire « �
 #### 99. Import : documents obsolètes ou archivés, gel juridique et approbation d'origine
 
 - **Effort** : faible · **Références** : O-11, A23, D-21
+- **Revérifié le 18 octobre 2026** : constat inchangé : `status` n'accepte que `in_force` et `draft` (src/lib/importer.ts:193) ; l'insertion (importer.ts:411-440) n'écrit ni état, ni gel, ni approbateurs d'origine.
 
 Selon la réponse à A23 et O-11 (reprend-on les documents périmés et l'historique ?) :
 - accepter `state: obsolete | archived` avec `obsoleteAt` ou `archivedAt`, ainsi que `legalHold` et `legalHoldAt`, puis refreshHeadline ;
@@ -1725,6 +1881,7 @@ Constaté. Dans src/lib/importer.ts:181, `status` n'accepte que in_force et draf
 #### 100. Webhook Vigie : accepter les demandes nées dans Keystone et les ECO portant sur plusieurs documents
 
 - **Effort** : moyen · **Références** : O-10, D-18, D-16
+- **Revérifié le 18 octobre 2026** : constat inchangé : le webhook répond 404 `not_found` à une demande inconnue (src/app/api/integrations/vigie/route.ts:93-94, docs/api.md:605) ; `change_requests.doc_id` et `requester_id` (src/db/schema.ts:544-545), index d'une demande en attente par document (`change_requests_pending`) ; `submitChange` accepte une source (src/lib/vigie.ts:34-43) que `requestChange` ne passe pas. Le webhook est désormais signé (HMAC, anti-rejeu, corps borné : src/lib/server-auth.ts).
 
 Le manque est confirmé, avec une correction. Ce n'est pas l'index `change_requests_pending` (schema.ts:315) qui limite une demande à un seul document : cet index n'autorise qu'une demande en attente par document. La limite vient de `doc_id`, une colonne unique et obligatoire (schema.ts:301). L'index pose en plus un problème : un ECO multi-documents entrerait en conflit avec une demande déjà en attente sur l'un de ces documents. Il faut aussi que le demandeur existe dans `users` (FK, schema.ts:302), ce qui suppose la correspondance des personnes avec Keystone.
 À faire, une fois le contrat fixé avec Vigie (O-10) :
@@ -1742,6 +1899,7 @@ Constaté : src/app/api/integrations/vigie/route.ts:48-49 (404 not_found si la r
 #### 101. Pièces attendues : contrat dans les deux sens avec Keystone
 
 - **Effort** : moyen · **Références** : O-03, D-18, M15
+- **Revérifié le 18 octobre 2026** : constat inchangé : `project_expected` n'est rempli que par le seed (src/db/seed.ts:296) ; `createDocumentNow` lie la pièce (src/lib/actions.ts:444) et `releasePieces` la libère (actions.ts:625-629), localement ; aucun appel sortant vers Keystone.
 
 Le manque est confirmé. Tout reste local : la liste des pièces (libellé, type, « attendue plus tard ») vient uniquement du seed (seed.ts:226), et Keystone n'est jamais informé d'un dépôt ni d'une libération. L'import de migration ne rattache aucune pièce (importer.ts). La fiche ne marque une pièce « Déposée » qu'une fois sa révision en vigueur (page.tsx:145) : Keystone doit donc aussi apprendre les changements de statut.
 À écrire :
@@ -1759,6 +1917,7 @@ Constaté : src/lib/actions.ts:199-208 (createDocument écrit project_expected.d
 #### 102. Équipe projet : alimenter depuis Keystone les fonctions de portée projet
 
 - **Effort** : moyen · **Références** : O-03, O-06
+- **Revérifié le 18 octobre 2026** : constat inchangé : fonctions de portée projet src/db/seed-org.ts:67-70, titulaires l.92-94 ; `resolveFunction` (src/lib/actions.ts:878-893 : portée, chef de projet pour `PROJECT_MANAGER_FUNCTIONS`, src/lib/registry-rules.ts:20, puis titulaire « groupe ») ; `addFunctionHolder` (actions.ts:2082).
 
 Le manque est confirmé, avec une correction. Un nouveau projet n'échoue pas en `no_holder` (actions.ts:443) avec le seed actuel : les quatre fonctions de portée projet ont un titulaire « groupe » (seed-org.ts:92-94), et `resolveFunction` s'y rabat (actions.ts:383). Le vrai défaut, c'est que les étapes partent vers des personnes génériques :
 - mkerviel pour referent_ingenierie, oblanc pour resp_chantier ;
@@ -1776,8 +1935,10 @@ Constaté : src/db/seed-org.ts:67-70 (chef_projet, referent_ingenierie, resp_cha
 </details>
 
 #### 103. SharePoint : décider de l'activation, puis tester le pilote sur un vrai tenant
+- **Préparé le 18 octobre 2026** (lot 10, étape 3, sans activer SharePoint) : le pilote est essayé contre un faux Microsoft Graph (`tests/support/fake-graph.ts`, `tests/integration/sharepoint-store.test.ts`). Sont couverts : envoi dans `_staging`, nommage dans le dossier de l'ID, `renameDocFiles`, route fichier avec plage, export complet, sonde, reprises 429/503, 401. Quatre défauts sont corrigés : délai d'envoi non entier (aucun envoi n'aurait abouti), jeton refusé gardé en cache, `Retry-After: 0` lu comme 2 s, corps des réponses de limitation non libérés. `npm run storage:check` essaie le stockage actif sans base. La procédure d'essai sur un tenant (inscription, Sites.Selected, consentement, variables `CODEX_SP_*`, retour arrière) est dans `docs/exploitation.md` §8. Restent : la décision O-01, l'essai sur un vrai tenant (notamment le déplacement par `parentReference.path`), la suppression des orphelins de `_staging`, la session d'envoi au-delà de 250 Mo et la reprise des fichiers locaux à la bascule.
 
 - **Effort** : moyen · **Références** : O-01, D-06, T-01, ARC-03, G02
+- **Revérifié le 18 octobre 2026** : références à jour : pilote `sharepoint()` (src/lib/storage.ts:196-327, commentaire « Tried against a fake Microsoft Graph only »), `stores()` (l.334), `renameDocFiles` (l.521) ; variables `CODEX_STORAGE` et `CODEX_SP_*` (.env.example:77 et suivantes). Aucune action de destruction.
 
 Le point est confirmé. Le pilote n'a jamais tourné sur un tenant, `renameDocFiles` non plus. Restent à décider (O-01) : l'activation, un fichier par version de travail ou par révision, et l'absence d'accès direct des utilisateurs à la bibliothèque.
 Ensuite :
@@ -1796,6 +1957,7 @@ Constaté : src/lib/storage.ts:65 (« Not exercised against a real tenant yet »
 #### 104. Notifications hors de l'application, relances et escalade
 
 - **Effort** : moyen · **Références** : G19, M19, O-02
+- **Revérifié le 18 octobre 2026** : constat en partie périmé : un planificateur existe (src/lib/scheduler.ts, tâches `promote`, `orphans`, `renames`, `integrity`, `backup`, `export` ; docs/exploitation.md §4), avec un point d'extension prévu pour les relances et les envois sortants, aucun encore. Toujours ni e-mail dans `users` (src/db/schema.ts:56-65), ni SMTP ni Graph, ni relance ; la cloche est src/components/shell/Header.tsx:90. Le délai de 7 jours est src/lib/actions.ts:955 ; l'indicateur « En retard » du point 87 est un affichage seul.
 
 Le manque est confirmé. Personne n'est prévenu hors de Codex :
 - d'une étape de circuit assignée ou d'un rejet ;
@@ -1814,6 +1976,7 @@ Constaté : src/components/shell/Header.tsx:89-115 (cloche limitée aux étapes 
 #### 105. Conservation « fin de projet » incalculable (26 types) : date de clôture à recevoir de Keystone
 
 - **Effort** : moyen · **Références** : O-03, O-05, O-07, G39, M15
+- **Revérifié le 18 octobre 2026** : constat en partie périmé : `asset_life` (14 types) et `employee_departure` (1 type) ne sont plus dans le même cas : leur date se saisit sur la fiche (`retention_event_at`, `setRetentionEvent`), lue par `triggerDate` (src/lib/retention.ts:39-40). `project_end` (26 types) reste sans date (`default`, retention.ts:41) ; `projects` n'a ni date ni statut de clôture (src/db/schema.ts:130-139), `research_programs` n'a qu'un drapeau `active` (l.151), sans date de fin.
 
 Le point est confirmé : 26 types déclenchés par `project_end` n'ont aucune date de fin de conservation (retention.ts:25) et n'apparaissent jamais dans les échéances d'Archivage (queries.ts:222). À faire :
 - une colonne de clôture sur `projects` (schema.ts:101-110), alimentée par l'événement de clôture de Keystone, puis le cas `project_end` dans `triggerDate` ;
@@ -1830,6 +1993,8 @@ Constaté : src/lib/retention.ts:12-26 (triggerDate : default → null pour proj
 #### 106. API d'import : reprise des révisions antérieures et import par lot
 
 - **Effort** : moyen · **Références** : O-11, D-21
+- **Revérifié le 18 octobre 2026** : constat inchangé : une seule révision par document à l'import (src/lib/importer.ts:193 et 423) ; un document par appel (src/app/api/import/route.ts:8), corps lu en entier (l.66 et 98), dans la limite commune `maxFileBytes` (point 98).
+- **Préparé le 18 octobre 2026** (lot 10, étape 5) : `POST /api/import?dryRun=1` simule un import sans rien enregistrer (mêmes contrôles et mêmes refus, identifiant prévu et avertissements ; [api.md](api.md), « Simulation ») : l'outil de migration peut vérifier un lot avant de l'envoyer. Rien de ce que demande ce point n'est fait : toujours une révision et un document par appel, corps lu en entier ; le point reste bloqué par O-11.
 
 Le point est confirmé. `POST /api/import` crée une seule révision, en vigueur, approuvée ou brouillon (importer.ts:349-354), avec au plus une version de travail. L'historique des révisions remplacées ne peut donc pas être repris. Il n'y a pas d'appel par lot (route.ts:4), et chaque fichier est chargé entièrement en mémoire (route.ts:44). Si l'utilisateur veut garder l'historique, ou si les volumes l'exigent (O-11), l'API devra accepter :
 - plusieurs révisions par document, dont les révisions « Remplacé » avec leur date ;
@@ -1846,6 +2011,7 @@ Constaté : src/lib/importer.ts:181-183 (une seule lettre de révision, statut i
 #### 107. Capture des e-mails
 
 - **Effort** : moyen · **Références** : M08 (question d'audit ouverte, hors liste O-01 à O-11 ; liée à M11, à C15 et, pour un complément Outlook, à O-02)
+- **Revérifié le 18 octobre 2026** : constat en partie périmé : `.eml` et `.msg` sont des formats admis (src/lib/filetypes.ts:46, signature OLE2 contrôlée pour `.msg`), mais ni `EXT_BY_MIME` ni l'aperçu ne les connaissent (src/lib/storage.ts:340-348) et rien ne lit expéditeur, date, Message-ID ni pièces jointes. Le point cite M08 (et O-02 pour un complément Outlook), ni O-01 ni O-11 (état récapitulatif corrigé le même jour).
 
 Aujourd'hui, on peut seulement déposer à la main un fichier .eml ou .msg (ou un PDF imprimé depuis la messagerie) dans un document LET de sous-type « Email formalisé », en saisissant soi-même l'organisme source, la référence externe et la date de réception. Reste à développer, une fois la méthode choisie par l'utilisateur. 1) Reconnaître les formats .eml (message/rfc822) et .msg (application/vnd.ms-outlook) dans src/lib/storage.ts, avec un aperçu lisible : en-têtes et corps. 2) À l'analyse du fichier, pré-remplir les métadonnées dans le formulaire de dépôt et dans updateMeta : expéditeur vers sourceOrg, date vers receivedAt, Message-ID vers externalRef, objet vers le titre. 3) Selon le choix de l'utilisateur, soit garder les pièces jointes dans l'e-mail, soit les classer comme documents séparés. Ce second cas suppose une table de liens entre documents, qui n'existe pas (M11). 4) Un éventuel complément Outlook dépendrait en plus du fournisseur d'authentification (O-02). L'effort est moyen pour un dépôt .eml/.msg avec extraction automatique ; il devient important avec le classement séparé des pièces jointes ou un complément Outlook. La question est à reposer à l'utilisateur sous la référence M08, car elle n'a pas de numéro O-xx. Elle touche aussi C15 : les e-mails suivent-ils le cycle maîtrisé ?
 
@@ -1858,6 +2024,7 @@ Manque constaté dans le code. Le type LET a bien le sous-type « Email formalis
 #### 108. Frontière avec les autres outils (Cursus, Sage X3, SolidWorks PDM, modules qualité de Vigie)
 
 - **Effort** : moyen · **Références** : P04, Q06
+- **Revérifié le 18 octobre 2026** : constat inchangé : `requestValidationNow` refuse une révision sans version de travail (`need_file`, src/lib/actions.ts:929) ; les seules API de dépôt restent `POST /api/import` (jeton `CODEX_IMPORT_TOKEN` ou signature HMAC).
 
 À demander (P04, Q06) : pour les NC, audits, CAPA et la veille réglementaire (Vigie), les supports de formation (Cursus), les plans (SolidWorks PDM), les commandes et factures (Sage X3), la GED est-elle maître, garde-t-elle une copie figée, ou un lien seulement ?
 Selon la réponse :
@@ -1874,6 +2041,7 @@ Constaté. requestValidation refuse une révision sans version de travail (src/l
 #### 109. Vigie : envoyer réellement les demandes et suivre leur avancement
 
 - **Effort** : important · **Références** : O-10, T-01, D-16, D-17
+- **Revérifié le 18 octobre 2026** : constat en partie périmé : un planificateur existe (src/lib/scheduler.ts), avec un point d'extension pour les envois sortants (docs/exploitation.md §4) ; aucun envoi vers Vigie n'y est branché. `submitChange` fabrique toujours la référence ECR et n'écrit que la table miroir (src/lib/vigie.ts:37-45, appel réel en commentaire l.42) ; `vigieSimulated` dépend de la seule présence de `VIGIE_API_URL` (vigie.ts:26-27) ; `simulateVigieDecision` est refusée dès qu'elle est définie (src/lib/actions.ts:1280) ; lien `/changements/{id}` (vigie.ts:14).
 
 Le manque est réel. Aujourd'hui, `submitChange` (src/lib/vigie.ts:24-31) fabrique elle-même la référence ECR et n'écrit que dans la table miroir. Il y a aussi un piège : définir `VIGIE_API_URL` coupe la simulation (actions.ts:592) alors que rien n'est envoyé. Les demandes resteraient alors « Transmise à Vigie » indéfiniment. À faire, une fois le contrat de l'API Vigie connu :
 (1) un client HTTP authentifié qui envoie le document, le titre, la révision en vigueur, le type, le propriétaire, le demandeur, le motif et le kind, puis enregistre la référence renvoyée par Vigie ;
@@ -1892,6 +2060,7 @@ Constaté : src/lib/vigie.ts:24-31 (submitChange calcule ECR-AAAA-NNN l.27-28, n
 #### 110. Keystone : synchroniser les projets au lieu des tables miroir du seed
 
 - **Effort** : important · **Références** : O-03, T-01, D-04, M15, G44
+- **Revérifié le 18 octobre 2026** : constat inchangé : les projets ne sont écrits que par le seed (src/db/seed.ts:140) ; `validateFields` refuse un projet inconnu (src/lib/actions.ts:308) ; `ctx.projects` lit la table (src/lib/context.ts) ; aucune route `/api/integrations/keystone`.
 
 Le manque est confirmé. Les projets n'existent que par le seed (seed.ts:103). Un nouveau projet Keystone est donc refusé à la création (actions.ts:122) comme à l'import (importer.ts:221). Le libellé « Synchronisé depuis Keystone à … » (page.tsx:255) affiche une date figée. Le chef de projet doit exister dans `users` (schema.ts:106). Lot et work package sont saisis en texte libre (Dialogs.tsx:273, G44).
 À faire, selon O-03 :
@@ -1910,6 +2079,7 @@ Constaté : src/lib/keystone.ts:16-38 (lecture des tables locales, synced = proj
 #### 111. Index des documents pour Keystone : événements sortants et API de lecture
 
 - **Effort** : important · **Références** : O-03, T-01, M15
+- **Revérifié le 18 octobre 2026** : constat en partie périmé : un planificateur existe (src/lib/scheduler.ts) ; il met en vigueur les révisions datées toutes les 5 minutes par défaut (tâche `promote`) au lieu d'attendre la requête suivante (`promoteDue` reste appelé par requête quand la tâche est coupée, src/lib/context.ts:52). `GET /api/registry` peut être fermé par `CODEX_REGISTRY_TOKEN` (src/app/api/registry/route.ts:10-11), et les jetons et signatures sont mutualisés (src/lib/server-auth.ts). Restent : aucun événement sortant ni outbox, aucune API de lecture des documents d'un projet ; src/app/api compte aussi `health` et `export/full`.
 
 Le manque est confirmé. Codex n'expose que `GET /api/registry`, sans authentification (route.ts:6-7), et n'émet aucun événement.
 À écrire, selon O-03 (avec une base partagée, la partie événements pourrait ne plus servir) :
@@ -1929,6 +2099,8 @@ Constaté : src/app/api/ ne contient que registry, import, integrations/vigie, d
 #### 112. Hébergement et déploiement
 
 - **Effort** : moyen · **Références** : M22, audit §6.6 q3
+- **Préparé le 18 octobre 2026** (lot 10, étape 6) : image générique (`Dockerfile` en trois étapes, `.dockerignore` limité à ce que lit le build), sortie `standalone` de Next.js seulement avec `CODEX_STANDALONE=1` (build par défaut, `npm start` et app Mac inchangés), utilisateur non root, volume `/var/lib/codex` (données, sauvegardes, exports), `HEALTHCHECK` sur `/api/health`, variables au lancement seulement, `CODEX_SEED` non posé, commandes de sauvegarde, d'export et d'intégrité incluses ; construite et essayée dans la session (docs/exploitation.md §10). Rien de choisi pour l'exploitant : ni hébergeur, ni reverse proxy, ni TLS, ni procédure propre à une plateforme ; le verrou du dossier de données ne traversait pas les conteneurs (documenté). Lot 10, étape 7 : le verrou enregistre un identifiant de processus et l'espace de processus (conteneur ou machine), le serveur le rafraîchit toutes les 30 s ; une commande lancée dans un autre conteneur à côté du serveur refuse proprement (essayé avec Docker). Le point attend toujours M22.
+- **Revérifié le 18 octobre 2026** : constat en partie périmé : `.github/workflows/ci.yml` existe (intégration continue, point 52) ; la santé (`GET /api/health`), le journal technique en JSON, le contrôle de la configuration, HSTS (`CODEX_HTTPS`) et les migrations au déploiement sont faits et documentés (docs/exploitation.md §1 à §7). Toujours ni Dockerfile, ni compose, ni proxy ou TLS, ni gestionnaire de processus (`next start --port 3100`, package.json:11). Le point cite M22 et §6.6 q3, ni O-01 ni O-11 (état récapitulatif corrigé le même jour).
 
 Qui héberge, qui exploite et où sont les données n'a pas été décidé. Ce choix ne figure pas parmi O-01..O-11 : c'est la question §6.6 q3 de l'audit. Une fois le choix fait : une image (sortie `standalone` de Next), la procédure de déploiement avec migrations, le reverse proxy et TLS, la supervision (journaux, santé) et le plan de reprise. Seule une image générique pourrait être préparée avant.
 
@@ -1943,6 +2115,8 @@ Vérifié : package.json:8 (`next start --port 3100`) ; ni Dockerfile, ni compos
 #### 113. Durées de conservation par type à valider
 
 - **Effort** : faible · **Références** : O-07, ACC-06, G39, D-20
+- **Préparé le 18 octobre 2026** : cahier `types.csv` (`npm run registry:review -- --out <dossier>`, src/lib/registry-review.ts) : durée, déclencheur, sort final et fondement FR et EN de chaque type, avec les 16 types sans durée (O-07) et les 26 types « fin de projet » (point 3 du registre) signalés et des colonnes de réponse vides ; `-- --check` contrôle le cahier rempli et montre l'écart avec src/db/registry.ts, sans rien écrire. Aucune durée n'est validée : le point attend toujours O-07. Mode d'emploi : docs/registre-points-ouverts.md, « Valider le registre avec le cahier ».
+- **Revérifié le 18 octobre 2026** : deux constats sont périmés. La répercussion existe : dans le dialogue d'un type, une case applique la règle aux documents qui la suivent (`applyTypeRetention`, src/lib/actions.ts:2453, point 18). Le fondement est modifiable, en français et en anglais (`TypeEditor`, Dialogs.tsx:1522-1527). Les 14 types « durée de vie de l'actif » ont une fin calculable une fois la date de l'événement saisie (`retention_event_at`, point 105). Reste : la validation des durées (O-07), puis la destruction réelle (G39, M03).
 
 L'utilisateur doit valider type par type les durées, déclencheurs et sorts finaux (O-07, points 3 et 6 de docs/registre-points-ouverts.md). Une fois les durées validées, il reste du développement :
 - updateType (src/lib/actions.ts:777) ne met à jour que doc_types, alors que chaque document a copié la règle à sa création (actions.ts:191) ou à son changement de type (actions.ts:305). Une durée corrigée ne s'appliquera donc pas aux documents existants : il faut une propagation, au moins proposée à la validation.
@@ -1961,6 +2135,8 @@ RSQ fixe 40 ans à partir de la création pour ses 3 sous-types (analyse de risq
 #### 114. Matrice type → circuit et titulaires des fonctions définitifs
 
 - **Effort** : faible · **Références** : O-06, D-15, WFL-02, M01
+- **Préparé le 18 octobre 2026** : cahier `fonctions.csv` (`npm run registry:review -- --out <dossier>`) : 16 fonctions, portées, titulaires de démonstration et types qui les nomment, et colonne « Circuit » de `types.csv` (LET, RFQ, PHO signalés sans circuit) ; `-- --check` contrôle clés, portées, fonctions des circuits et titulaires (personnes d'un organigramme avec `--org`), sans rien écrire. Aucun circuit n'est validé : le point attend toujours O-06. Mode d'emploi : docs/registre-points-ouverts.md, « Valider le registre avec le cahier ».
+- **Revérifié le 18 octobre 2026** : le premier cas est périmé : `createFunction` et `updateFunction` créent et modifient une fonction dans Administration › Fonctions & circuits (src/lib/actions.ts:2580 et 2609). Reste vrai : les portées sont global, department, project et research (src/db/schema.ts:115), pas de titulaire par site. Références à jour : `updateType` (actions.ts:2401), `addFunctionHolder` et `removeFunctionHolder` (actions.ts:2082 et 2109), `FUNCTIONS` et `HOLDERS` (src/db/seed-org.ts:62 et 82).
 
 C'est surtout une saisie de données après validation de l'utilisateur (O-06), à faire dans Administration › Registre et Fonctions & circuits. Il faudra du développement seulement dans deux cas :
 - le RACI introduit de nouvelles fonctions : aucune action ne crée de fonction, la table functions n'est remplie que par le seed (seed.ts:101) ;
@@ -1976,6 +2152,8 @@ Le mécanisme est en place. Le circuit est porté par le type et modifiable dans
 #### 115. Types admettant « Public » et type « communication » absent
 
 - **Effort** : faible · **Références** : O-08, D-13, MET-09, G31
+- **Préparé le 18 octobre 2026** : colonnes « Niveaux admis » et « Niveau par défaut » de `types.csv` (`npm run registry:review -- --out <dossier>`), les 5 types qui admettent « Public » signalés (O-08) ; un type ajouté en ligne du cahier est contrôlé par `-- --check` (format, collisions de code). Rien n'est choisi : le point attend toujours O-08. Mode d'emploi : docs/registre-points-ouverts.md, « Valider le registre avec le cahier ».
+- **Revérifié le 18 octobre 2026** : périmé : un type se crée dans Administration › Registre (`createType`, src/lib/actions.ts:2369 ; une famille par `createFamily`, l.2504), sans réinitialisation de la base ; `confAllowed` se règle dans le même dialogue. Reste après O-08 : la liste des types, et un contrôle par famille si la règle porte sur la famille.
 
 Il faut que l'utilisateur dise quels types ou quelles familles admettent « Public ». Il parle de « familles », le registre applique la règle type par type. Ensuite :
 - ajuster confAllowed : c'est possible sans développement dans Administration › Registre (TypeEditor, Dialogs.tsx:770-777) ;
@@ -1991,6 +2169,8 @@ Dans src/db/registry.ts, seuls POL, REG, DTF, PUB et COL ont « public » dans c
 #### 116. Recueil des besoins par département
 
 - **Effort** : moyen · **Références** : O-04, G12, MIG-05, FON-06
+- **Préparé le 18 octobre 2026** : modèle `docs/modeles/organigramme.csv` et `npm run org:check -- <csv>` (src/lib/org-review.ts), pour fixer la liste des départements dont dépend le recueil ; rien n'est écrit en base. Le point attend toujours O-04. Mode d'emploi : docs/registre-points-ouverts.md, « Valider le registre avec le cahier ».
+- **Revérifié le 18 octobre 2026** : le constat date d'avant les points 2 et 11 : `saved_searches` a un propriétaire et une portée, et `saveSearch` et `deleteSavedSearch` (src/lib/actions.ts:1693 et 1724) créent et suppriment des recherches ; `/departements/[code]` existe. Reste : le recueil (O-04).
 
 Le recueil lui-même n'est pas du développement : il revient aux départements, une fois la liste fixée par l'organigramme (O-04). Il conditionne ce qui reste à développer pour G12/FON-06 :
 - des pages ou vues par département (squelette fait le 11 octobre 2026, point 11 : `/departements/[code]`, filtres mis en avant réglables dans Administration ; le contenu par métier attend le recueil) ;
@@ -2007,6 +2187,8 @@ Point confirmé. Le recueil prévu par la slide 9 (MIG-05) n'est pas fait (docs/
 #### 117. Organigramme définitif : sociétés, sites, départements, personnes
 
 - **Effort** : moyen · **Références** : O-04, O-02, D-19, MET-03, MET-04
+- **Préparé le 18 octobre 2026** : modèle `docs/modeles/organigramme.csv` (départements, sites, personnes, société en colonne facultative, sans table société) et `npm run org:check -- <csv>` : règles de src/lib/org-rules.ts, formats, doublons, références inconnues et collisions avec les codes de type (sur le modèle : COM, HSE, FIN, JUR), sans rien écrire. Le point attend toujours O-04 (et O-02 pour les personnes). Mode d'emploi : docs/registre-points-ouverts.md, « Valider le registre avec le cahier ».
+- **Revérifié le 18 octobre 2026** : références à jour : `DEPARTMENTS`, `SITES`, `USERS` (src/db/seed-org.ts:6, 24, 31) ; départements et sites se renomment ou se retirent dans l'Administration (point 62), et une personne qui part se reprend (point 19, Administration › Reprise) ; aucune action ne crée ni ne modifie une personne ; aucune notion de société dans src/db/schema.ts.
 
 Il faut attendre l'organigramme de l'utilisateur (O-04). Ensuite :
 - remplacer départements, sites et personnes, par l'administration ou par le script du point « Appliquer les évolutions du registre » ;
@@ -2025,6 +2207,8 @@ src/db/seed-org.ts contient des valeurs provisoires : DEPARTMENTS (l.6-22, 15 co
 #### 118. Appliquer les arbitrages du registre des types
 
 - **Effort** : moyen · **Références** : O-05
+- **Préparé le 18 octobre 2026** : cahier `types.csv` (`npm run registry:review -- --out <dossier>`) avec la question liée de chaque type (question 1 : FIN, HSE, COM, JUR ; question 3 : 26 types) et une colonne « Nouveau code (renommage) » ; `-- --check` contrôle les réponses avec src/lib/registry-rules.ts (formats, collisions, valeurs admises) et liste l'écart avec src/db/registry.ts, à reporter ensuite puis appliquer par `npm run registry:apply`. Rien n'est arbitré : le point attend toujours O-05. Mode d'emploi : docs/registre-points-ouverts.md, « Valider le registre avec le cahier ».
+- **Revérifié le 18 octobre 2026** : périmé : registry.ts n'est plus lu que par le seed : `npm run registry:apply` reporte un registre modifié sur une base existante (point 60, src/lib/registry-apply.ts), et les types se créent et se modifient dans l'Administration (point 61). JUR est ajouté à la question 1 de docs/registre-points-ouverts.md le 18 octobre (lot 10, étape 4).
 
 Il faut les réponses de l'utilisateur aux 9 questions et aux choix de fusion. Ensuite :
 - modifier src/db/registry.ts ;
@@ -2046,6 +2230,7 @@ Il faut des contenus ou des règles réels d'EPC2I.
 #### 119. Charger les vrais modèles EPC2I (FRM-QMS)
 
 - **Effort** : faible · **Références** : PAR-05, G06, A22
+- **Revérifié le 18 octobre 2026** : constat inchangé : les 4 modèles FRM de démonstration (src/db/seed-docs.ts:71-74, avec leurs types cibles) n'ont pas de fichier ; `isUsableTemplate` ne demande pas de fichier (src/lib/access.ts:217-219).
 
 Il n'y a rien à développer. Le dépôt passe déjà par Administration › Modèles (bouton « Nouveau modèle », src/app/administration/page.tsx:58) ou par POST /api/import. Il manque la liste et les fichiers Word/Excel des modèles du lancement, à fournir par l'utilisateur. Les 4 modèles fictifs seront ensuite à retirer de la démonstration. Le préremplissage de l'en-tête des fichiers (ID, révision), évoqué dans A22, n'est pas demandé.
 
@@ -2058,6 +2243,7 @@ Les 4 modèles FRM du jeu de démonstration (src/db/seed-docs.ts:67-70) reçoive
 #### 120. Conservation « clôture de l'exercice » fixée au 31 décembre
 
 - **Effort** : faible · **Références** : O-07, O-04, G39
+- **Revérifié le 18 octobre 2026** : références à jour : `fiscal_year_end` (src/lib/retention.ts:34-36) ; FIN, COM et PO (src/db/registry.ts:721, 1277, 2045). Constat inchangé.
 
 À faire :
 - une date de clôture paramétrable (globale aujourd'hui, par société quand l'organigramme en distinguera plusieurs), lue par triggerDate et modifiable dans Administration ;

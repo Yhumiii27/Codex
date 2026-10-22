@@ -36,6 +36,7 @@ Conventions :
 | 11 oct. | Fonctions du deck (lot 5), une étape par fonction : « Mes demandes Vigie », « À traiter » complet, rejet motivé et rappel, recherches enregistrées partagées, facettes et tri de la recherche, pages par département | 14 |
 | 12 oct. | Lot 6 : points développables de reste-a-faire.md, une étape par point. Étape 1 : dates, format contrôlé et cohérence émission ≤ effet ≤ expiration. Étape 2 : expiration et revue périodique. Étape 3 : lien « remplacé par ». Étape 4 : fiche de visa. Étape 5 : modifications simultanées détectées. Étape 6 : recherche, explorateur et journal filtrés et paginés en base | 15 |
 | 15 oct. | Lot 7 : suite des points développables de reste-a-faire.md. Étape 1 : en-têtes de sécurité HTTP et limitation de débit des API | 16 |
+| 18 oct. | Lot 10 : préparer les réponses aux questions ouvertes sans rien trancher. Étape 1 : fiches de décision O-01 à O-11. Étape 2 : cahiers de validation du registre et de l'organigramme. Étape 3 : SharePoint essayé contre un faux Microsoft Graph, quatre défauts corrigés, `npm run storage:check` | 19 |
 
 La session a été coupée plusieurs fois par une limite d'usage ou de dépense :
 - le 7 octobre à 13:38, reprise à 17:31 sur « Try again » ;
@@ -314,8 +315,9 @@ Constats confirmés, dans la numérotation du workflow :
 30. Les libellés des dialogues n'étaient pas associés aux champs. Corrigé : dialogues nommés, focus gardé à l'intérieur.
 31. Un dialogue se fermait quand on relâchait la souris sur le fond. Corrigé.
 32. Un fichier non prévisualisable affichait une page factice. Corrigé : un panneau de téléchargement la remplace.
-33. La pagination restait sur « Page 1 sur 1 » quand le nombre de pages était inconnu. **Partiel** : les PDF déjà
-    stockés ne sont pas recomptés, ce qui est sans objet après une remise à zéro de la base.
+33. La pagination restait sur « Page 1 sur 1 » quand le nombre de pages était inconnu. **Corrigé (sans objet sur
+    base neuve)** : les PDF déjà stockés ne sont pas recomptés, ce qui est sans objet après une remise à zéro de la
+    base.
 34. Le dialogue « Déléguer » proposait le demandeur. Corrigé.
 35. Des textes n'étaient pas traduits. Corrigé.
 36. Le rôle en lecture seule pouvait faire des demandes de modification ou de retrait. Corrigé côté serveur.
@@ -1899,7 +1901,7 @@ qu'au premier appel à Graph.
     chacune coupée à 300 caractères. Next.js imprimant lui-même, dans la même sortie, l'erreur entière d'une Server
     Action (propriétés et cause comprises), `traceAction` lui remet une erreur refaite sans ces valeurs
     (`withoutQueryValues`). Une erreur de requête pendant le rendu d'une page reste imprimée telle quelle par Next.js :
-    limite consignée dans `docs/exploitation.md` §4 ;
+    limite consignée dans `docs/exploitation.md` §5 ;
   - la 503 `disabled` d'un point d'entrée d'intégration sans jeton, état par défaut, était écrite au niveau `error` :
     n'importe quel client remplissait le journal d'erreurs. Elle est marquée prévue (`expectedAnswer`) et écrite en
     `info`, la ligne `auth` aussi ; `error` reste aux 500, au stockage injoignable (502) et à la santé en échec ;
@@ -2164,3 +2166,1018 @@ configuration par défaut qui fonctionne en local (`npm run dev`, app Mac), déc
 chaque choix qui dépend d'une question ouverte (O-01 SharePoint, O-02 authentification, hébergement et M22, A05 droits,
 O-04 organigramme, O-09, O-11) prend l'option la plus prudente et figure dans « Choix de l'assistant non validés
 explicitement » de [decisions.md](decisions.md).
+
+## 17. Lot 8 (17 oct.)
+
+Suite des points « développables maintenant » de [reste-a-faire.md](reste-a-faire.md), mêmes règles que les lots 6 et
+7 : une étape par point ou groupe de points, relue avant son commit ; aucune question ouverte n'est tranchée, un choix
+qui en dépend prend l'option la plus prudente et est consigné dans « Choix de l'assistant non validés explicitement »
+de [decisions.md](decisions.md).
+
+| Étape | Commit | Points | Ce qui change | Choix prudents |
+|---|---|---|---|---|
+| 1. Empreintes SHA-256 | `a44601a` | 31 | Empreinte calculée sur les octets reçus à chaque dépôt et import, gardée sur la version de travail ; affichée (Révisions, comparaison, fiche de visa) ; vérification d'intégrité depuis Administration et par `npm run integrity` ; téléchargement complet vérifié au passage ; avertissement de doublon ; colonne et fichiers altérés dans l'export complet | Vérification à la demande seulement (planification, point 38, et alertes, M22, non décidées) ; rien n'est réparé ni supprimé ; empreinte d'un fichier ancien établie à la première vérification ; doublon non bloquant, ne nommant que ce que l'utilisateur peut avoir (D-14) ; début de l'empreinte au journal pour le seul cercle de rédaction |
+| 2. Consultations et historique des métadonnées | `cea4652` | 28, 22 | Ouverture d'une fiche et fichier affiché dans l'aperçu journalisés, dédoublonnés par demi-heure ; onglet Historique de la fiche en trois vues (activité, métadonnées avant → après, consultations) ; consultations filtrables dans le journal, retirées des fils d'activité | Tous les niveaux de confidentialité journalisés ; fiche journalisée par le navigateur une fois affichée, jamais au préchargement ; lecteurs du journal inchangés (D-14 ; restreindre la liste des consultants relève de M05) ; pas de réglage de la fenêtre par variable |
+| 3. Auteur désigné et modèles rattachés aux types | `b13794a` | 4, 6 | Auteur choisi parmi les personnes du groupe ou saisi en texte libre (MET-10), partout le même (fiche, recherche, exports) ; types cibles d'un modèle FRM (FON-12), réglés depuis sa fiche ou Administration, proposés en tête de « Nouveau depuis un modèle » | L'auteur ne donne aucun droit et n'entre pas dans le cercle de rédaction ; créateur par défaut ; aucun refus d'un modèle prévu pour d'autres types ; type visé par un modèle compté comme utilisé |
+| 4. Conservation par document et dates d'événement | `b6e825c` | 7, 18 | Date de l'événement déclencheur (fin de vie de l'actif, départ du salarié) saisie et journalisée ; classe de conservation modifiable par document (dérogation) et retour à la règle du type ; répercussion facultative de la règle d'un type sur ses documents, avec aperçu ; onglet Archivage › Dates d'événement | Fin de projet non saisissable (attend Keystone, O-03) ; durée nulle laissée « à fixer » (O-07) ; répercussion décochée par défaut, documents gelés laissés tels quels ; rien n'est archivé ni détruit automatiquement (O-07, M03) |
+| 5. Pages d'erreur traçables et index de base | `c80d6ae` | 44, 39 | `global-error.tsx`, `error.tsx` (avec `retry`), `not-found.tsx` dans le style Nocturne, FR/EN, avec une référence reliée au journal technique et jamais le message ; document introuvable en 404 ; référence affichée par les dialogues et boutons d'action ; 17 index pour les requêtes ciblées et les cascades, mesurés avant et après | Référence = identifiant de requête pour une action, digest de Next.js pour un rendu ; erreur du navigateur non remontée au serveur (O-02) ; page d'erreur racine en deux langues ; document non lisible toujours « pas d'accès » en 200 ; coût des index à l'écriture accepté, aucun index pour les listes qui chargent encore toute la table |
+
+### 17.5 Pages d'erreur traçables et index de base
+
+Points 44 et 39 de [reste-a-faire.md](reste-a-faire.md), revérifiés au commit `b6e825c` : seul `src/app/error.tsx`
+existait (avec `reset`, et le message de l'erreur quand elle n'avait pas de digest) ; une URL inconnue affichait la page
+404 de Next.js en anglais, un document introuvable un message en HTTP 200 ; les dialogues et boutons d'action
+remplaçaient toute erreur par « Une erreur est survenue », sans référence. Le journal technique du lot 7 notait déjà le
+digest des erreurs de rendu, mais aucun écran ne le montrait, et une action en échec n'avait que son identifiant de
+requête, que le navigateur ne recevait pas. Côté base, seuls `audit_log_at`, `audit_log_doc`, `working_versions_sha256`
+et les index uniques existaient.
+
+- **Référence d'erreur** (`src/lib/errors.ts`) : Next.js garde le digest qu'une erreur porte déjà et le transmet au
+  navigateur, jamais le message en production. `traceAction` (`src/lib/log.ts`) pose donc l'identifiant de requête de
+  l'action comme digest (`withDigest`) : la référence affichée est celle de l'entrée « action failed ». Pour un rendu,
+  c'est le digest calculé par Next.js, que `logRequestError` écrit dans `err.digest`.
+- **Écrans** : `global-error.tsx` (erreur du layout racine : base injoignable, migration en échec) a ses propres
+  `<html>` et `<body>`, importe Nocturne et Inter et montre les deux langues ; ses textes viennent de
+  `src/lib/i18n-errors.ts`, repris par les dictionnaires de `src/lib/i18n.ts`. `error.tsx` passe à `retry` (qui
+  recharge l'écran depuis le serveur). `not-found.tsx` et `documents/[id]/not-found.tsx` s'affichent dans le shell, en
+  404. `useSubmit`, `ActionButton`, `CommentBox` et `DueTable` affichent « Une erreur est survenue · Réf. … ».
+- **Vérification** : en développement et en build de production (`next start`), avec une route de test temporaire,
+  retirée avant le commit : rendu en échec (500, référence = digest de l'entrée du journal), action en échec (toast
+  avec l'identifiant de requête de l'entrée « action failed »), base au schéma périmé (global-error, 500, référence
+  retrouvée dans le journal), adresse et document inconnus (404, FR et EN). Aucun message interne dans le HTML.
+- **Index** (`src/db/schema.ts`, migration unique régénérée) : GIN `jsonb_path_ops` sur `documents.aliases`, utilisé
+  par `getDoc`, qui résout un ancien identifiant par `aliases @>` au lieu de charger toute la table ; par document et
+  par clé de fichier sur `working_versions` ; par document et par révision sur `workflows` ; par personne sur
+  `workflow_steps` et `document_readers` (sous-requêtes de visibilité) ; par circuit sur `workflow_comments` ; par
+  document et par document de remplacement sur `change_requests` ; par extrémité sur `document_links` ; par projet et
+  par document sur `project_expected` ; par personne, par action et par révision sur `audit_log`.
+- **Mesures** (script hors dépôt, PGlite en mémoire, 5 000 documents, 5 714 révisions, 17 142 versions, 5 496
+  circuits, 125 001 entrées de journal ; médiane de 15 exécutions) :
+
+| Requête | Avant (ms) | Après (ms) |
+|---|---|---|
+| Document par ancien identifiant (table entière → `aliases @>`) | 198 | 1,1 |
+| Versions d'un document | 2,7 | 0,6 |
+| Version par clé de fichier (`nameStoredFile`) | 3,1 | 0,3 |
+| Circuits d'un document / d'une révision | 1,2 / 1,1 | 0,5 / 0,4 |
+| Journal d'une révision (fiche de visa) | 27,3 | 0,8 |
+| Dernier contrôle d'intégrité | 13,3 | 0,6 |
+| Journal filtré par personne (500 dernières entrées) | 23,1 | 5,9 |
+| Journal filtré par action (500 dernières entrées) | 7,3 | 6,0 |
+| Lecteurs désignés / étapes d'une personne | 2,2 / 3,0 | 0,6 / 1,1 |
+| Documents lisibles par une personne (`readableSql`, compte) | 9,9 | 7,0 |
+| Reclassement d'un document (cascades) | 6,0 | 1,1 |
+| Écriture de 1 000 entrées du journal | 17,7 | 27,2 |
+
+Les autres requêtes ciblées (demandes, liens, attendus d'un projet) restent sous la milliseconde sur ce volume. Les
+écrans qui chargent des tables entières (`listDocs`, `listWorkflows`, index d'accès) n'en profitent pas encore : c'est
+le point 47 de reste-a-faire.md (« Chaque navigation recharge toutes les tables »).
+
+### Bilan du lot 8
+
+Cinq étapes, neuf points de [reste-a-faire.md](reste-a-faire.md) (31, 28, 22, 4, 6, 7, 18, 44, 39), tous développables
+sans décision de l'utilisateur : intégrité des fichiers (étape 1), traçabilité des lectures et des métadonnées (2),
+métadonnées du deck encore manquantes (auteur, types cibles des modèles, 3), conservation document par document (4),
+erreurs traçables et index (5). Aucune question ouverte n'a été tranchée ; chaque choix qui en dépend (O-01, O-02, O-03,
+O-07, O-09, M03, M05, M22) prend l'option la plus prudente et figure dans « Choix de l'assistant non validés
+explicitement » de [decisions.md](decisions.md).
+
+## 18. Lot 9 (17 oct.)
+
+Suite des points « développables maintenant » de [reste-a-faire.md](reste-a-faire.md), mêmes règles que les lots 6 à
+8 : une étape par point ou groupe de points, relue avant son commit ; aucune question ouverte n'est tranchée, un choix
+qui en dépend prend l'option la plus prudente et est consigné dans « Choix de l'assistant non validés explicitement »
+de [decisions.md](decisions.md).
+
+| Étape | Commit | Points | Ce qui change | Choix prudents |
+|---|---|---|---|---|
+| 1. Rechargement en boucle en développement et lectures ciblées par navigation | commit « Lot 9, étape 1 », qui suit `c80d6ae` | bogue, 47 | Cache disque de Turbopack désactivé pour `next dev` ; chaque écran lit ce qu'il montre au lieu de tous les documents et circuits, à l'identique pour chaque utilisateur | Cache de développement désactivé plutôt que montée de version de Next.js ; « Mis en vigueur cette semaine » compté sur toute la semaine ; fenêtres de l'activité récente gardées (60 et 500 entrées) |
+| 2. Police locale, migrations incrémentales, amorçage séparé et application du registre | commit « Lot 9, étape 2 », qui suit `7d3db2e` | 42, 41, 45, 60 (et 52 en partie) | Inter servie depuis le dépôt (build sans réseau) ; migrations versionnées à partir de `0000_init`, contrôlées et précédées d'une sauvegarde ; `CODEX_SEED=demo|minimal` ; `npm run registry:apply` | Mêmes fichiers de police que Google, à l'octet ; refus d'une base d'un autre schéma, sauvegarde obligatoire avant migration ; démo par défaut partout, administrateur initial fictif en minimal ; simulation par défaut, l'administration l'emporte, codes figés, types retirés désactivés |
+| 3. Postgres serveur en option et mesures sur gros volume | commit « Lot 9, étape 3 », qui suit `98b45db` | 51 (en partie), 56 | `DATABASE_URL` : serveur PostgreSQL 18 par node-postgres, mêmes migrations et compléments sous verrou consultatif ; suite de tests rejouée sur un serveur (`npm run test:pg`, CI) ; `npm run seed:large` et `npm run perf`, mesures dans `docs/performances.md` | PGlite par défaut ; PostgreSQL 18 exigé ; référentiel minimal par défaut sur un serveur ; sauvegarde, restauration, `export` et `integrity` en ligne de commande refusés sur un serveur ; migration d'une base serveur seulement avec `CODEX_MIGRATION_BACKUP=off` ; `READ COMMITTED` ; volume dans une base à part |
+| 4. Planificateur interne et signature des échanges entre serveurs | commit « Lot 9, étape 4 », qui suit `ccf5940` | 38 (en partie), 23 | Mise en vigueur différée lancée par le serveur toutes les 5 minutes, tâches d'exploitation réglables ; signature HMAC avec fenêtre et anti-rejeu sur le webhook Vigie et l'import, rotation par `…_NEXT`, registre protégeable par jeton | Tâches d'exploitation désactivées par défaut ; pages qui ne mettent plus en vigueur tant que le planificateur le fait ; aucune relance ni envoi sortant ; registre ouvert par défaut ; tout ce qui est défini est exigé ; fenêtre de 5 minutes |
+| 5. Comparaison du contenu des versions et aperçu des fichiers Office | commit « Lot 9, étape 5 », qui suit `3586ab8` | 14, 15 | « Comparer » montre, sous les attributs, le texte des deux versions comparé ligne à ligne (PDF, Word, Excel, PowerPoint, OpenDocument, texte), lu sur le serveur sous les droits du fichier ; aperçu PDF des fichiers Office par LibreOffice sans interface ou Gotenberg, converti à la première consultation, gardé (table `version_previews`, migration `0002_apercu_office`) et servi par la route fichier (`?preview=pdf`) | Texte et non visuel ; formats Office 97-2003 non lus ; bornes de taille, de temps et de lignes ; aperçu désactivé sans outil configuré, conversion à la demande plutôt qu'au dépôt, échec retenté après une heure, rendus dans le stockage local même avec SharePoint, sauvegardés mais hors de l'export complet ; ni PDF/A ni filigrane (M12) |
+| 6. Reprise des documents d'une personne qui part et vocabulaires contrôlés | commit « Lot 9, étape 6 », qui suit `5f92467` | 19, 59 | Administration › Reprise (départ) : simulation puis transfert journalisé, à un remplaçant choisi, des documents et processus possédés, révisions à rédiger, étapes en attente, titulariats et lectures désignées ; réassignation d'une étape par un gestionnaire ; langue contrôlée ; référentiels des organismes sources et des mots-clés (tables `source_orgs`, `keyword_terms`, migration `0003_vocabulaires` avec reprise), autocomplétion et ajout confirmé, Administration › Vocabulaires (ajout, renommage, fusion, sous-types hors liste) | Aucun remplaçant proposé, aucun compte désactivé ; gestionnaires documentaires seulement ; simulation = transfert annulé, empreinte exigée ; documents verrouillés repris, étapes figées par un verrou laissées ; documents gardant le nom du terme en texte ; nouveau terme confirmé dans les formulaires, ajouté à l'import ; termes proposés selon la lecture (D-14) ; sous-types non fermés ; gel juridique respecté au renommage |
+| 7. Finitions de l'interface : phases, Restaurer, compteur des modèles, écarts avec la maquette, bilinguisme | commit « Lot 9, étape 7 », qui suit `2d36d97` | 63, 64 (vérifié), 65, 66, 67, 68 | Phases Keystone en frise compacte ; « Restaurer » une version de travail du brouillon (`restoreWorkingVersion`) ; `documents.template_id` et compteur d'utilisations (migration `0004_modele_source` avec reprise sûre) ; onglet Projet toujours présent et « Rattacher à un projet » ; « Déposer » dans l'explorateur prérempli par l'arbre ; fondement de conservation en anglais, phases en anglais, détail du journal structuré et traduit, titres de page par écran et par fiche | Frise sans libellés sauf la phase courante, libellés EN des phases provisoires ; restauration limitée au brouillon ouvert, journalisée comme une version de travail ; compte limité aux documents lisibles, reprise seulement sur trois indices concordants ; projet non prérempli depuis l'arbre ; aucun fondement traduit, français suivi de « (FR) » ; anciennes entrées du journal non réécrites ; titre générique pour une fiche illisible ou introuvable |
+| 8. Accessibilité, aide aux utilisateurs et documentation alignée sur le code | commit « Lot 9, étape 8 », qui suit `65af2e6` | 55, 69, 53, 54 | Lien « Aller au contenu » ; contrôle axe-core `npm run a11y` (30 écrans, 20 dialogues, base de démo jetable) ajouté à la CI ; contrastes et violations corrigés (82 éléments sérieux et 52 modérés ou mineurs → 0, FR et EN) ; page `/aide` bilingue et aides contextuelles des dialogues ; README, avancement, audit, décisions et modèle cible relus contre le code | WCAG 2.2 AA comme démarche de qualité, sans RGAA ; seules les couleurs qui échouaient changent, d'un cran, Nocturne intact ; titres `<h1>`/`<h2>` au même rendu ; aide limitée à ce que l'application fait, simulations signalées, liens selon le rôle ; notes de conception gardées (O-02) ; formation et pilote laissés à M14 |
+| 9. Restes développables sans décision | commits « Lot 9, étape 9 », qui suivent `d0ed61e` | 43, 52, 47, 50, 51, 36, 46, 57 (restes) | Version de Node et audit des dépendances dans la CI ; index d'accès limité à la personne, Validations paginé en base ; `npm run db:migrate`, verrou du document dans les transactions qui relisent avant d'écrire ; reprise des noms provisoires ; aperçu paginé sans retéléchargement ; tests des réponses d'erreur des routes, `npm run e2e` | Version de référence 22 et tests sous Node 20.19 ; exception d'audit écrite et motivée, seulement pour un outil sans correction publiée ; aucun cache entre requêtes ; pages de 50 circuits ; le démarrage migre toujours, verrou de ligne plutôt que `SERIALIZABLE`, plusieurs processus laissés en limite ; noms provisoires : même délai de grâce et mêmes droits que les orphelins, tâche désactivée par défaut ; copie en mémoire plutôt que cache du navigateur ; un seul parcours, Chromium seul |
+
+### 18.1 Rechargement en boucle en développement et lectures ciblées
+
+**Le bogue.** Sous `npm run dev`, une page ouverte dans Chromium se rechargeait environ trois fois par seconde, sans
+qu'aucun fichier source ne change ; la build de production n'était pas touchée. Le journal du serveur alternait
+« GET / 200 » et « ✓ Compiled in 1ms ». Reproduit au commit `b6e825c` et au commit `c80d6ae`, mais pas à chaque
+démarrage : seulement au premier démarrage après un changement des sources fait serveur arrêté (passage d'un commit à
+un autre), environ un démarrage sur six, la boucle s'arrêtant d'elle-même après quelques secondes à une minute. Elle
+n'apparaît jamais sur des sources inchangées (9 écrans × 4 personnes, ouverts à la suite pendant plusieurs minutes), ni après
+`rm -rf .next`.
+
+- **Cause** (relevée en journalisant, dans une copie modifiée du client de Next.js, chaque rechargement et sa raison,
+  et les messages du WebSocket de rechargement à chaud) : à chaque nouvelle page, l'abonnement de rechargement à chaud
+  à la liste de fragments du runtime client (React, client Next.js, outils de développement) recevait d'emblée une
+  mise à jour de type `restart`, qui fait avancer la version de rechargement du serveur (« Compiled in 1ms ») ; le
+  second abonnement de la même page, envoyé avec l'ancienne version, était alors refusé par « HMR hash mismatch », et
+  le serveur demandait à la page de se recharger (`reloadPage`). La page rechargée s'abonnait de nouveau, et ainsi de
+  suite. Ce « restart » vient de l'état que Turbopack restaure de son cache disque de développement
+  (`.next/dev/cache/turbopack`, actif par défaut depuis Next.js 16) quand les sources ont changé depuis : il ne
+  survient qu'au premier démarrage qui restaure un tel cache, jamais à froid.
+- **Pistes écartées** : écritures sous le dossier surveillé (base `.data`, journal des consultations, `next typegen`
+  et `npm run build` lancés pendant que le serveur tourne : aucun « Compiled ») ; `refresh()` en boucle (aucune requête
+  RSC pendant la boucle, la consultation de fiche n'appelle pas `refresh()`) ; nonce de la CSP (aucune erreur
+  d'hydratation) ; WebSocket bloqué par la CSP (« [HMR] connected » à chaque page). Le JavaScript de Next.js 16.4.2
+  (version que le serveur annonce) ne change rien à ce mécanisme.
+- **Correction** : `experimental.turbopackFileSystemCacheForDev: false` dans `next.config.ts`. Chaque démarrage du
+  serveur de développement part d'un état neuf (environ 3 s de compilation à la première visite d'un écran) ; la build
+  garde son cache. Choix consigné dans [decisions.md](decisions.md).
+- **Vérification** (Chromium sans interface, `playwright-core`) : avant, 4 boucles relevées sur une vingtaine de
+  premiers démarrages après changement de commit (15 à 23 chargements de « / » en 4 à 6 s au lieu d'un) ; après, même
+  recette (passage entre `cea4652`, `b6e825c` et `c80d6ae` avec une modification nouvelle à chaque fois, nouvelle base),
+  9 démarrages sur 9 sans rechargement ni « Compiled ». Faute d'affichage dans le conteneur, pas d'essai dans un
+  navigateur avec interface ; le mécanisme ne dépend pas du navigateur.
+
+**Le point 47.** Revérifié au commit `c80d6ae` : `listDocs` et `listWorkflows` étaient déjà en cache par requête, mais
+le layout lisait encore tous les documents, et « À traiter » tous les documents et tous les circuits avec leurs étapes
+et commentaires ; l'accueil, Archivage, les pages département et la fiche relisaient tous les documents.
+
+- **Lectures ciblées** (`src/lib/queries.ts`) : `visibleWhere` lit, en SQL et avec les règles de `readableSql`, les
+  seuls documents qu'une condition choisit, dans l'ordre de `listDocs`, et ne lit en entier que ceux-là. Dessus :
+  `recentDocs`, `dueDeadlines` (documents qui peuvent avoir une échéance sous 90 jours : expiration, revue, fin de
+  conservation par déclencheur, avec un jour de marge ; `deadlines` tranche), `departmentDocs`, `eventDocs`,
+  `archivedDocs`, `typeCounts`, `readableBriefs` (cinq champs pour les dialogues de la fiche), `projectDocs`.
+  `workflowsWhere` donne les circuits choisis comme `listWorkflows`, qui n'en est plus que le cas « tous ».
+  `myActions` choisit les circuits en cours où l'utilisateur a une étape, les révisions en rédaction qui peuvent
+  l'attendre (auteur désigné, propriétaire, rédacteur renvoyé par un circuit) et leurs documents, puis `actionsAmong`
+  applique les règles d'avant. `recentActivity` lit l'activité par lots dans la même fenêtre qu'avant ;
+  `inForceThisWeek` compte la semaine entière du journal par un agrégat SQL. L'index d'accès ne lit plus que les
+  circuits en cours (les autres n'ouvraient déjà aucun brouillon).
+- **Équivalence** : tests/integration/targeted-reads.test.ts compare chaque lecture à l'ancien calcul sur `listDocs`
+  et `listWorkflows`, sur la démo et sur des documents variés (conservation, dates d'événement, entrées en vigueur
+  autour de minuit, circuits renvoyés à un autre rédacteur) ; chaque comparaison doit rencontrer des éléments, et les
+  mutations essayées (marge de conservation, rédacteur renvoyé, révision d'une entrée hors du cercle) le font échouer.
+  Dans Chromium, sur une base de 3 843 documents (la démo et 60 copies de chacun de ses documents, 6 100 révisions,
+  610 circuits, 10 248 entrées de journal), 16 écrans (accueil, Archivage et ses onglets, trois départements, quatre
+  fiches, Validations, Explorateur, Recherche) pour cbardet (gestionnaire), jwagner (collaborateur et auditeur),
+  gcomte et lfabre (validateurs), jholt (auditeur) : texte de la page, cloche, modèles, listes de remplacement et
+  « À traiter » identiques avant et après (96 écrans), et HTML de même taille.
+- **Mesures** (build de production, `next start`, même base ; médiane de 5 requêtes, en secondes) :
+
+| Écran | cbardet avant | après | jwagner avant | après | gcomte avant | après | jholt avant | après |
+|---|---|---|---|---|---|---|---|---|
+| Accueil | 0,85 | 0,27 | 0,78 | 0,26 | 0,81 | 0,27 | 0,75 | 0,24 |
+| Archivage | 0,79 | 0,25 | 0,75 | 0,19 | 0,73 | 0,22 | 0,78 | 0,21 |
+| Département QUA | 0,73 | 0,29 | 0,76 | 0,26 | 0,70 | 0,26 | 0,78 | 0,25 |
+| Fiche PRO-QUA-0001 | 0,83 | 0,30 | 0,74 | 0,26 | 0,74 | 0,25 | 0,75 | 0,23 |
+| Fiche BOM-HLT-026-001 (projet) | 1,10 | 0,39 | 1,08 | 0,47 | 1,10 | 0,41 | 1,16 | 0,39 |
+| Validations | 0,71 | 0,45 | 0,74 | 0,51 | 0,74 | 0,44 | 0,72 | 0,14 |
+| Explorateur | 0,81 | 0,21 | 0,71 | 0,22 | 0,79 | 0,19 | 0,80 | 0,19 |
+| Recherche | 0,87 | 0,26 | 0,86 | 0,29 | 0,82 | 0,22 | 0,83 | 0,21 |
+
+  Validations lit encore tous les circuits : il ne gagne que le layout. Restent au point 47 : l'index d'accès (lecteurs,
+  révisions ouvertes, titulaires de fonctions lus à chaque requête), /validations, la liste des documents lisibles
+  que la fiche transmet à ses dialogues.
+- **Vérifié** : `npm test`, `npm run typecheck`, `npm run lint`, `npm run build`.
+
+### 18.2 Police locale, migrations incrémentales, amorçage séparé, registre sur une base existante
+
+Les quatre constats ont été revérifiés au commit `7d3db2e` : `next/font/google` dans `layout.tsx` et
+`global-error.tsx` ; une seule migration, `drizzle/0000_init.sql` (commit `c80d6ae`), égale au schéma
+(`drizzle-kit generate` : « No schema changes ») ; `seed()` amorce référentiel et démonstration ensemble dès que `users`
+est vide ; aucune commande pour appliquer `src/db/registry.ts` à une base existante.
+
+- **Police (point 42).** Les sept sous-ensembles woff2 d'Inter que `next/font/google` téléchargeait (Inter 4.001,
+  Google Fonts v20, axe de graisse 100 à 900) sont dans `src/fonts/inter/`, identiques à l'octet à ceux de
+  `.next/static/media`, avec la licence OFL 1.1. `src/fonts/inter.ts` les déclare par `next/font/local`, un appel par
+  sous-ensemble (la fonction n'accepte pas de plage Unicode par fichier), avec les plages de Google ; le latin seul est
+  préchargé et porte la variable `--font-inter`. Turbopack nomme la famille de la variable d'après la constante
+  (`inter`), que CSS rapproche des faces `Inter` sans tenir compte de la casse. La police de secours reste l'Arial
+  ajustée de `next/font/google` (`Inter Fallback`, mêmes valeurs, dans `globals.css`) : celle que `next/font/local`
+  calcule depuis le fichier latin différait légèrement (89,79 % au lieu de 90,44 % de hauteur, 107,89 % au lieu de
+  107,12 % de taille), et elle dessine les caractères qu'aucun sous-ensemble ne couvre (flèches). Vérifié : CSS
+  produit (8 `@font-face`), fichier servi (48 432 octets), `npm run build` avec un proxy réseau inaccessible.
+- **Migrations incrémentales (point 41).** `0000_init` est figée. `src/db/migrations.ts` lit les migrations
+  appliquées (`drizzle.__drizzle_migrations`) et celles du code (journal, SHA-256 comme drizzle) : la base doit avoir
+  appliqué les premières migrations du code, les mêmes fichiers, dans l'ordre. Sinon le démarrage s'arrête avant toute
+  écriture (drizzle seul ne compare que des instants : il aurait rejoué `0000_init` sur une base faite par une version
+  régénérée, ignoré une migration d'une autre branche datée plus tôt, ou rien dit d'une base faite par un Codex plus
+  récent). S'il manque des migrations à une base qui a des données, `src/db/index.ts` écrit d'abord une sauvegarde
+  (`createBackup` de `backup-core.mjs`, origine application, par Codex) et ne démarre pas s'il n'y arrive pas
+  (`CODEX_MIGRATION_BACKUP=off` pour passer outre, signalé par le contrôle de la configuration) ; drizzle applique
+  ensuite les migrations en une transaction, puis l'entrée « Sauvegarde créée » est journalisée avec « migration … ».
+  Fonctions et déclencheurs restent hors migrations, posés à chaque démarrage. `npm run db:check` (`drizzle-kit
+  check`) entre dans la CI. `tests/integration/migrations.test.ts` : diff vide entre le schéma et le dernier
+  instantané ; une base créée par la chaîne de migrations et une base créée d'un coup depuis le schéma
+  (`generateMigration` de `drizzle-kit/api`) ont les mêmes colonnes, contraintes et index dans le catalogue Postgres
+  (`pushSchema` et `drizzle-kit pull`, essayés d'abord, donnent des faux écarts ou perdent les paramètres des requêtes
+  sur PGlite) ; refus d'une base d'un autre schéma, laissée intacte.
+- **Essai d'une migration incrémentale** (copie du dépôt dans le dossier temporaire de la session, pas dans le dépôt) :
+  base de démo créée, colonne `users.nickname` ajoutée au schéma, `drizzle-kit generate --name factice` →
+  `0001_factice.sql` ; `drizzle-kit check` et les tests de migration passent ; au démarrage, sauvegarde
+  (`backup written before migrating`), migration appliquée, entrée « Sauvegarde créée · migration 0001_factice » ; le
+  test échoue si l'on ajoute une colonne au schéma sans migration, ou si l'on retouche le SQL de `0001_factice` ;
+  `npm run restore -- latest --replace` remet la base d'avant (`backup:check` : « migrations appliquées au démarrage :
+  0001_factice »).
+- **Amorçage (point 45).** `CODEX_SEED` (`src/lib/seed-mode.ts`) : `demo` par défaut, `minimal` sur demande, autre
+  valeur refusée. `seed()` pose le référentiel commun (`seedReference` : départements et sites provisoires, acteurs
+  système, familles, types, fonctions, matrice), puis la démonstration ou l'administrateur initial `admin`. Une base
+  n'est amorcée que sans personne ni type. Démarrages réels : `npm run db:reset` puis `npm run dev` (« new database
+  seeded mode=demo ») et `CODEX_SEED=minimal npm run dev` (« mode=minimal » ; accueil, explorateur, recherche,
+  validations, archivage, administration et ses onglets, page QUA en 200, ouverts sur « Administrateur Codex »).
+- **Registre sur une base existante (point 60).** `npm run registry:apply` (`scripts/codex-registry.mts`, par `tsx`,
+  désormais en devDependency ; règles dans `src/lib/registry-apply.ts`, valeurs du journal partagées avec les Server
+  Actions dans `src/lib/journal-values.ts`) : simulation par défaut, `-- --apply` après sauvegarde. L'historique de
+  l'Administration est relu dans le journal (créations, renommages, suppressions, champs modifiés, par une personne) ;
+  ce qu'elle a réglé l'emporte. Codes jamais renommés ni supprimés ; type absent désactivé ; collision de code
+  refusée ; réglage plus étroit que les documents existants retenu ; portée d'une fonction à titulaires gardée ;
+  chaque changement journalisé par Codex. Essayé dans la copie : libellé de PRO changé, type ajouté, type GA retiré
+  (désactivé, ses documents gardés), refus tant que le serveur tourne ou que la base n'a pas les migrations, puis plus
+  rien à faire au second passage.
+- **Pour l'utilisateur sur son Mac** : rien à faire si sa base a été créée ou réinitialisée depuis le commit `c80d6ae`
+  (lot 8, étape 5) ; sinon un dernier `npm run db:reset` (ou, pour l'app, la suppression de son dossier de données),
+  le démarrage le lui dit. Ensuite, plus de réinitialisation à chaque changement de schéma.
+- **Vérifié** : `npm test`, `npm run typecheck`, `npm run lint`, `npm run db:check`, `npm run build` (aussi sans
+  réseau), démarrages réels en mode démo et en mode minimal.
+
+### 18.3 Postgres serveur en option et mesures sur gros volume
+
+Points 51 et 56 de [reste-a-faire.md](reste-a-faire.md), vérifiés au commit `98b45db` : seul pilote `drizzle-orm/pglite`
+(`src/db/index.ts`), pas de `DATABASE_URL`, aucun générateur de volume ni script de mesure (constats exacts, sauf que les
+recherches et filtres passaient déjà par SQL depuis le point 50).
+
+- **Postgres serveur (point 51, en partie ; [postgres.md](postgres.md)).** `DATABASE_URL` choisit un serveur ; sans
+  elle, rien ne change. `src/db/sql-client.ts` donne aux deux moteurs la même connexion brute (`query`, `exec`,
+  `transaction`, `close` : l'interface de PGlite que le code utilisait), le pool node-postgres et ses réglages de
+  lecture (`int8` en nombre, dates à minuit UTC, marque d'ordre d'octets retirée, comme PGlite), et met en file les
+  requêtes envoyées en même temps sur une connexion (node-postgres 9 les refusera). `openDb` (`src/db/index.ts`) ouvre
+  PGlite ou un serveur : version 18 exigée (`pg_unicode_fast`), `pg_trgm` créée, migrations, fonctions et
+  déclencheurs posés sous `pg_advisory_lock`, amorçage d'une base neuve sous un second verrou. Ce qui suppose PGlite
+  refuse proprement sur un serveur : « Sauvegarder maintenant » (message traduit), `npm run backup`, `restore`,
+  `export`, `integrity` ; la migration d'une base qui a des données attend `CODEX_MIGRATION_BACKUP=off`.
+  `registry:apply` marche sur un serveur (`--apply --no-backup`). L'export complet passe en `REPEATABLE READ` sur une
+  connexion gardée (ses tables temporaires n'existent que sur elle). Le contrôle de la configuration vérifie
+  `DATABASE_URL` et `CODEX_DB_POOL_MAX` ; `CODEX_SEED` vaut `minimal` par défaut sur un serveur.
+- **Serveur dans le conteneur.** Le paquet Ubuntu donne PostgreSQL 16, sans la collation `pg_unicode_fast` ; le dépôt
+  PGDG est inaccessible (proxy). PostgreSQL 18.3 a été lancé depuis les binaires npm `@embedded-postgres/linux-x64`
+  (18.3.0-beta.17, hors du dépôt, dans un dossier temporaire), avec ICU 60 et `pg_trgm`.
+- **Tests sur serveur.** `CODEX_TEST_DATABASE_URL` : `openDb()` sans dossier ouvre une base neuve sur ce serveur,
+  supprimée à la fermeture ; `npm run test:pg` rejoue toute la suite (job « Tests on PostgreSQL 18 » de la CI, service
+  `postgres:18`). Les tests de sauvegarde restent sur PGlite (`setupDb({ engine: 'pglite' })`). Premier passage : 5
+  échecs, tous corrigés à la source : une marque d'ordre d'octets rendue par node-postgres et retirée par PGlite
+  (réglage de lecture ajouté), l'export complet dont les tables temporaires étaient lues par d'autres connexions
+  (connexion gardée), un test d'export qui espionnait la connexion du pool, et le test de tri `codex_fr`, qui
+  diffère avec l'ICU 60 du serveur d'essai sur l'apostrophe droite et typographique (sauté pour un ICU antérieur à
+  Unicode 16, vérifié partout ailleurs). Un second passage a fait apparaître une exception non interceptée de
+  l'adaptateur `Readable.toWeb` (« Controller is already closed ») quand une réponse de fichier était annulée pendant
+  qu'une écriture du journal la retenait : `src/lib/storage.ts` lit maintenant les fichiers locaux par un flux à la
+  demande sur le descripteur ouvert. Résultat : 1 172 tests réussis sur PostgreSQL 18.3 (2 sautés), 1 165 sur PGlite
+  (9 sautés, dont les 8 propres au serveur).
+- **Concurrence réelle.** `tests/integration/postgres-server.test.ts` tient des transactions ouvertes sur des
+  connexions distinctes : second tirage d'un compteur en attente puis numéro suivant, numéro d'une transaction annulée
+  rendu, autres compteurs libres, 60 créations simultanées sans doublon et consécutives, ancien max + 1 en échec sur
+  la clé primaire, huit imports simultanés d'une référence pour un seul document. Mesure : 1 000 créations envoyées
+  ensemble en 3,0 s sur PGlite et 1,15 s sur le serveur (pool de 10), sans doublon ; deux serveurs Codex démarrés en
+  même temps sur une base vide n'ont migré et amorcé qu'une fois.
+- **Volume et mesures (point 56 ; [performances.md](performances.md)).** `npm run seed:large` (`.data-large/` par
+  défaut, refus d'une base qui a des documents sans `--append`) : 10 000 documents, 18 417 révisions, 36 843 versions,
+  8 418 circuits, 109 335 entrées de journal en 27 s (PGlite) ou 22 s (serveur). `npm run perf` sur une build de
+  production : à 10 000 documents, 0,4 à 0,6 s par écran sur PGlite et 0,2 à 0,3 s sur le serveur (70 à 110 ms sur la
+  démo) ; Validations 1,61 s et 0,63 s, export CSV complet 1,13 s et 0,44 s ; 10 requêtes simultanées prennent environ
+  10 fois une requête sur les deux moteurs (le processus Node est le goulot) ; 40 à 55 requêtes SQL et plus de 20 000
+  lignes lues par écran, surtout pour l'en-tête commun (point 50).
+- **Vérifié** : `npm test`, `npm run test:pg` (PostgreSQL 18.3), `npm run typecheck`, `npm run lint`,
+  `npm run db:check`, `npm run build` ; démarrages réels `npm run dev` sur PGlite (base de démo) et sur le serveur
+  (démo et minimal), `npm run start` sur les deux bases de 10 000 documents ; refus des commandes en ligne avec
+  `DATABASE_URL`.
+- **Reste** : sauvegarde du serveur et hébergement (M22, O-03) ; migrations lancées au déploiement ; revue des
+  transactions en `READ COMMITTED` ; plusieurs processus ; mesures avec les volumes réels (M18, O-11) et un serveur
+  distant.
+
+### 18.4 Planificateur interne et signature des échanges entre serveurs
+
+Points 38 et 23 de [reste-a-faire.md](reste-a-faire.md), vérifiés au commit `ccf5940` : `promoteDue` appelé seulement
+par `getCtx` (une révision approuvée n'entrait en vigueur à sa date qu'à l'ouverture d'une page), aucune boucle ni
+cron ; `GET /api/registry` sans contrôle, `checkBearer` à une seule valeur par variable, aucune signature ni horodatage.
+Seule différence : `src/instrumentation.ts` existait déjà (point 37).
+
+- **Planificateur (point 38, en partie ; [exploitation.md](exploitation.md) §4).** `src/lib/scheduler.ts`, démarré
+  par `register` une fois la configuration acceptée. Par défaut, une seule tâche : la mise en vigueur différée, toutes
+  les 5 minutes (`promoteDue`, plus `applyDuePendingDecisions` qui applique une acceptation de Vigie restée en attente
+  sans plus rien pour la retenir) ; `getCtx` ne la fait plus tant que le planificateur du processus la fait
+  (`src/lib/scheduler-state.ts`, sur `globalThis` : l'instrumentation est empaquetée à part des pages). Les tâches
+  d'exploitation existantes se branchent sans changer : `purgeOrphans`, `checkFilesNow`, `backUpNow`, et l'export
+  complet, qui s'écrit maintenant aussi dans un fichier (`writeFullExport` : nom provisoire, relecture, rotation des
+  seuls exports du planificateur). Chacune est désactivée tant que sa variable `CODEX_SCHEDULE_*` n'en donne pas la
+  fréquence. Une exécution à la fois par tâche : bail dans `scheduler_runs` (migration `0001_planificateur_signatures`,
+  première migration incrémentale), pris par une mise à jour conditionnelle, renouvelé pendant l'exécution, repris à
+  échéance ; les verrous « déjà en cours » de ces tâches passent sur `globalThis` pour valoir entre l'Administration et
+  le planificateur. Journal technique à chaque exécution ; état dans Administration › Journal d'audit › Planificateur.
+  Relances, notifications et envois sortants : point d'extension documenté, rien d'inventé (M19, T-01).
+- **Signature des échanges (point 23 ; [api.md](api.md), « Authentification »).** `src/lib/server-auth.ts` reprend
+  `checkBearer` de `src/lib/importer.ts` et ajoute `checkSignature` : HMAC-SHA256 de `"<horodatage>." + corps brut`,
+  fenêtre de 300 s, anti-rejeu dans `integration_signatures` (vidée de ce qui sort de la fenêtre). Le webhook lit son
+  corps brut avant de le décoder ; l'import lit le sien (dans la limite de taille) quand un secret est défini, puis
+  l'analyse. Variables `…_SECRET`, `…_NEXT` pour la rotation, `CODEX_REGISTRY_TOKEN` (registre ouvert sans elle,
+  `Cache-Control: private` avec), `CODEX_SIGNATURE_WINDOW_S` ; règles et constats du contrôle de configuration
+  étendus (`src/lib/integration-credentials.ts`, sans base, partagé avec lui).
+- **Vérifié** : `npm test`, `npm run typecheck`, `npm run lint`, `npm run db:check`, `npm run build` ; `npm run dev` sur
+  une copie de la base de démonstration avec des périodes de 10 à 20 s : migration `0001` appliquée au premier passage
+  (sauvegarde avant), révision B approuvée du jour de `AUD-QUA-0001` mise en vigueur sans visite (« Mise en vigueur ·
+  B », Codex), passages suivants toutes les 10 s, état visible dans l'Administration ; `curl` sur le webhook : sans
+  signature 401 `signature_missing`, signé 200, rejoué 401 `signature_replayed`, expiré 401 `signature_expired`,
+  re-signé 200 `alreadyApplied` ; registre 401 sans jeton, 200 `private` avec.
+- **Reste** : relances et notifications (M19, canal), envois vers Vigie et Keystone (T-01, O-03, O-10), reprise des
+  noms provisoires (point 36), fréquences d'exploitation et heure fixe éventuelle (M22), alignement du contrat de
+  signature avec Vigie et Keystone, identifiants OAuth (O-02).
+
+### 18.5 Comparaison du contenu des versions et aperçu des fichiers Office
+
+Points 14 et 15 de [reste-a-faire.md](reste-a-faire.md) (G05, M12), vérifiés au commit `3586ab8` : le dialogue
+`Compare` ne montrait que les attributs, aucune bibliothèque d'extraction n'était installée ; un fichier Office
+n'avait que « Aperçu indisponible » et le téléchargement, `preview_note` n'était affiché nulle part, et
+`working_versions` n'avait pas de place pour un rendu.
+
+- **Comparer (point 14).** `GET /api/documents/[id]/compare?a=&b=` (`src/lib/compare.ts`) relit les deux versions sous
+  les règles de la route fichier (`readableVersions`, `src/lib/queries.ts`, D-14), extrait leur texte
+  (`src/lib/text-extract.ts`) et le compare ligne à ligne (`src/lib/line-diff.ts`, algorithme de Myers, borné). PDF
+  par `unpdf` 1.7.0 (pdf.js ; la 1.9.0, publiée trois jours plus tôt, et la 1.8 exigent Node 22, alors que Codex
+  admet Node 20.19) ; Office Open XML et OpenDocument par un lecteur de ZIP borné écrit pour l'occasion
+  (`src/lib/zip-read.ts`), Excel feuille par feuille et PowerPoint diapositive par diapositive. Le dialogue garde le
+  tableau des attributs et ajoute le contenu (CSS module `compare.module.css`, couleurs de Nocturne : la maquette ne
+  prévoit ni rouge ni vert). Nouvelle limite de débit `CODEX_RATE_COMPARE`. Chaque version comparée est journalisée
+  comme une consultation.
+- **Aperçu des fichiers Office (point 15 ; [exploitation.md](exploitation.md) §6).** `src/lib/office-preview.ts` :
+  `soffice --headless --convert-to pdf` (chemin dans `CODEX_PREVIEW_SOFFICE`, dossier, profil et environnement à lui,
+  tué au-delà du délai) ou Gotenberg (`CODEX_PREVIEW_GOTENBERG_URL`), désactivé sans réglage. Conversion à la première
+  demande de la route fichier avec `?preview=pdf`, hors transaction, une par version, deux par processus ; rendu dans
+  le stockage local et dans `version_previews` (migration incrémentale `0002_apercu_office`, `0000` et `0001`
+  inchangées), avec son nombre de pages (`countPdfPages`) et son empreinte, vérifiée à chaque envoi ; échec noté et
+  retenté une heure plus tard. La fiche montre le rendu avec sa pagination et `preview_note` comme la maquette.
+  Orphelins, sauvegarde (y compris celle d'avant migration, sur une base sans la table), export complet
+  (`DERIVED_TABLES`) et contrôle de configuration suivent.
+- **Vérifié** : `npm test` (88 fichiers, 1 260 tests passés, 10 ignorés), `npm run typecheck`, `npm run lint`,
+  `npm run db:check`, `npm run build` ; avec `CODEX_TEST_SOFFICE=/usr/bin/soffice`, conversion réelle par le
+  LibreOffice 24.2 du conteneur. `npm run dev` puis `npm start` sur une copie de la base de démonstration (migrations
+  `0001` et `0002` appliquées après sauvegarde) : deux versions Word déposées sur `CTR-JUR-0001`, aperçu converti
+  (« Page 1 sur 1 · Aperçu PDF généré par le service de conversion »), comparaison A.4 → A.5 dans le dialogue (« 2
+  ligne(s) ajoutée(s), 1 ligne(s) supprimée(s) »), comparaison Word contre PDF par l'API ; pour deux personnes hors du
+  cercle de rédaction, comparaison, aperçu et fichier répondent 404 ; sans outil configuré, « Aperçu indisponible »
+  et le PDF de remplacement.
+- **Reste** : comparaison visuelle côte à côte, fichiers Office 97-2003, PDF numérisés (reconnaissance de
+  caractères) ; choix de l'outil de conversion avec l'hébergement et essai sur macOS (app Mac, D-22) ; conversion par
+  Microsoft Graph si SharePoint est activé (O-01) ; PDF/A, filigrane et en-têtes générés (M12).
+
+### 18.6 Reprise des documents d'une personne qui part et vocabulaires contrôlés
+
+Points 19 et 59 de [reste-a-faire.md](reste-a-faire.md) (A15, M16, MET-07, MET-17, G32, G40, G03, A21, A05), vérifiés
+au commit `5f92467` : les utilisateurs ne sont toujours ni administrables ni marqués actifs ou partis ; seul le
+titulaire d'une étape la délègue ; mots-clés et organisme source sont du texte libre, la langue n'est contrôlée que par
+le formulaire ; les sous-types sont éditables dans le registre (point 61) mais libres sur les documents.
+
+- **Reprise (point 19).** `src/lib/transfer.ts` exécute le transfert nature par nature (propriété de documents,
+  verrouillés compris ; propriété de processus ; lecteur désigné ; auteur désigné des révisions ouvertes ; étapes en
+  attente ; titulariats), chaque objet contrôlé contre l'état que laissent les précédents (règles de `delegateStep`,
+  `mayDraft`, exclusions du circuit), et journalise chaque objet puis la synthèse. La simulation est ce même transfert
+  dans une transaction annulée ; la confirmation (`transferHoldings`) recalcule le plan sous un verrou consultatif et
+  le refuse, sans rien écrire, si son empreinte n'est plus celle qui a été montrée. `circuitExclusions` et
+  `approverCheck` sont passés de `src/lib/actions.ts` à `src/lib/lifecycle.ts` pour être partagés. `reassignStep`
+  laisse un gestionnaire documentaire réassigner l'étape en cours (dialogue de délégation réutilisé). Onglet réservé aux
+  gestionnaires documentaires (`mayTransferHoldings`), état dans l'URL (`person`, `replacement`).
+- **Vocabulaires (point 59).** `src/lib/vocab-rules.ts` (règles pures : graphie repliée, alias, termes proches,
+  sous-type, langue), `src/lib/vocab.ts` (lecture des valeurs d'un formulaire ou d'un import, ajout journalisé, valeurs
+  des documents), tables `source_orgs` et `keyword_terms` par la migration incrémentale `0003_vocabulaires`, complétée à
+  la main pour reprendre les valeurs existantes (repli écrit en SQL, `codex_fold` n'existant pas encore sur une base
+  neuve à ce stade ; le test des migrations vérifie qu'il donne la clé de `vocabKey`). Formulaires : mots-clés en
+  étiquettes avec autocomplétion, organisme source avec liste et termes proches, case de confirmation par nouveau terme
+  (exigée aussi par le serveur), indication d'un sous-type hors liste (CSS module `vocab.module.css`). Suggestions
+  lues par le layout racine en un passage sur les documents (`bothDocumentValues`) : environ 27 ms par page pour un
+  contributeur sur la base de 10 000 documents de `docs/performances.md` (PGlite), rien à lire pour un gestionnaire ni
+  pour qui ne peut ni déposer ni modifier. Import : langue contrôlée (`invalid_lang`), termes inconnus ajoutés
+  (`term_added`), sous-type hors liste gardé (`subtype_unlisted`). Seed et `npm run seed:large` remplissent les
+  vocabulaires (`seedVocabularies`). Recherche, termes de recherche, export complet, sauvegarde et `registry:apply`
+  inchangés : les documents gardent le nom du terme en texte.
+- **Vérifié** : `npm test` (91 fichiers dont 1 ignoré, 1 298 tests passés, 10 ignorés, aussi avec `.data` déplacé),
+  `npm run typecheck`, `npm run lint`, `npm run db:check`, `npm run build`. `npm run dev` sur une copie de la base de
+  démonstration (migrations `0001` à `0003` appliquées après sauvegarde automatique ; 8 organismes et 20 mots-clés
+  repris) : reprise de Gabriel Comte par Hélène Sauvage simulée (12 transférables, 1 refusé : elle validait la
+  révision en cours de `RPT-HLT-026-001`), confirmée (12 entrées `transfer` et la synthèse au journal), puis étape
+  réassignée par Claire Bardet et dernier document devenu transférable ; création par Julien Wagner d'un courrier
+  externe avec « Nordvolt » choisi parmi les termes proches de « Nordvolt Energy », « LEVAGE » ramené à « levage » et
+  « essai vocabulaire » ajouté après confirmation (envoi bloqué tant que la case n'est pas cochée) ; ajout d'un
+  doublon refusé, fusion de « Nordvolt Energy SAS » dans « Nordvolt », renommage d'« Apave » (document mis à jour et
+  journalisé) ; écrans en français et en anglais.
+- **Reste** : règle par défaut du remplaçant et obligations du propriétaire, de l'auteur et du propriétaire de
+  processus (A15) ; désactivation des comptes et détection des départs (O-02) ; changement du chef de projet
+  (Keystone, O-03) et de l'auteur désigné par Vigie (O-10) ; gouvernance des termes (A05), thésaurus fermé ou libre
+  (A21) ; listes réelles d'organismes et de mots-clés (reprise de l'existant, O-11).
+
+### 18.7 Finitions de l'interface : phases, Restaurer, compteur des modèles, écarts avec la maquette, bilinguisme
+
+Points 63 à 68 de [reste-a-faire.md](reste-a-faire.md) (M15, D-12, D-16, G06, D-08, D-10, WCAG 2.4.2), vérifiés au
+commit `2d36d97` : l'onglet Projet n'avait que l'étiquette de la phase et disparaissait sans projet ; aucun
+« Restaurer » ; aucun lien d'un document à son modèle ; l'explorateur n'avait que « Nouveau » ; sites déjà en FR/EN
+(point 62) mais fondement de conservation, phases, une partie du journal et le titre des pages dans une seule langue.
+Le point 64 était déjà fait (15 octobre) : rien de changé.
+
+- **Phases (point 63).** `HStepper` accepte un mode compact (`titleSize` 0 : points et traits, chaque étape nommée
+  par `hint` au survol et pour les lecteurs d'écran, liste et `aria-current`) ; l'onglet Projet affiche les 12 phases
+  de `PROJECT_PHASES` sur une ligne du panneau de 400 px et nomme la courante (« Chantier · Phase 9 sur 12 ») ; une
+  phase inconnue garde son étiquette. `PROJECT_PHASES_EN` et `phaseLabel` (`src/lib/i18n.ts`, provisoires) servent à
+  la fiche, aux facettes, au journal et au choix de la phase (valeur enregistrée inchangée).
+- **Restaurer (point 65).** `restoreWorkingVersion` (`src/lib/actions.ts`) : contrôles d'`addWorkingVersion`, version
+  de la révision en brouillon avec fichier et non la dernière, fichier relu, comparé à son empreinte et repassé par
+  `stageFile`, version suivante « Restaurée depuis A.2 », entrée `working` avec un détail structuré. Bouton dans
+  `RevisionsTab` (raison affichée quand il est inactif, confirmation). Ajoutée à `tests/integration/rate-limits.test.ts`.
+- **Modèles (point 66).** `documents.template_id` (clé étrangère vers le modèle, en cascade sur un renommage, index
+  partiel) et `doc_types.retention_basis_en` dans la migration incrémentale `drizzle/0004_modele_source.sql`, complétée à
+  la main pour reprendre le modèle des documents existants quand le commentaire de A.1 (FR et EN) et le journal le
+  nomment et qu'il existe en type FRM. `listTemplates` compte par `template_id` sous `readableSql` ; colonne
+  « Utilisations » d'Administration › Modèles et « n utilisations » dans le choix du modèle. Le seed rattache trois
+  documents à leur modèle.
+- **Écarts avec la maquette (point 67).** Onglet Projet toujours présent ; sans projet, message et « Rattacher à un
+  projet » (dialogue de métadonnées avec `attach: 'project'`) ; l'explorateur a « Déposer un fichier », et les deux
+  boutons reçoivent le département, la famille ou le type choisis dans l'arbre (`preset.department`, `preset.family`).
+- **Bilinguisme (point 68).** Fondement anglais : dialogue du type, Archivage, Administration, `GET /api/registry`
+  (`basisEn`), `registry:apply`, journal (`retentionBasisEn`). Journal : `AuditData.text` (code et paramètres, types
+  dans `src/db/schema.ts`), rendu par `auditTextL` (`src/lib/queries.ts`) à l'écran et dans l'export CSV ; écrit par
+  le dépôt, la version de travail, la restauration, l'import, les lecteurs désignés, la délégation, la
+  réassignation, le transfert d'une étape et l'auteur écarté par Codex ; la colonne `detail` garde une forme sans mots
+  (la délégation garde la sienne, lue par la fiche de visa). Titres : `generateMetadata` du layout (titre et
+  description par langue) et de chaque écran (`src/lib/titles.ts`), fiche « {ID} · {titre} — Codex » si `getDoc` la
+  rend lisible, « Fiche document — Codex » sinon.
+
+- **Vérifié** : `npm test` (93 fichiers dont 1 ignoré, 1 308 tests passés, 10 ignorés, aussi avec `.data` déplacé),
+  `npm run typecheck`, `npm run lint`, `npm run db:check`, `npm run build`. `npm run dev` sur une copie de la base de
+  démonstration (migrations `0001` à `0004` appliquées après sauvegarde automatique ; aucun document existant n'avait
+  de modèle sûr à reprendre) : frise des phases de `PV-HLT-026-001` (« Chantier · Phase 9 sur 12 », « Site works ·
+  Phase 9 of 12 ») ; « Rattacher à un projet » sur `PRO-QUA-0001` (dialogue avec « Projet » choisi, note d'identifiant
+  figé) et refusé sur un document obsolète ; « Déposer un fichier » depuis HSE dans l'explorateur (département
+  prérempli), puis A.2 et restauration de A.1 en A.3 (confirmation, commentaire, même empreinte, journal « restaurée
+  depuis A.1 · 26 o » / « restored from A.1 · 26 B ») ; création depuis `FRM-QMS-002` : 1 utilisation pour Claire
+  Bardet, 0 pour Julien Wagner (brouillon hors de son cercle) ; fondement anglais saisi pour POL, les autres en
+  français suivis de « (FR) » ; titres « Recherche — Codex », « Browse — Codex », « PV-HLT-026-001 · PV de réception
+  des fondations — Codex », « Fiche document — Codex » pour un brouillon illisible comme pour un identifiant inconnu.
+- **Reste** : libellés anglais réels des phases et liste des phases avec Keystone (O-03) ; traduction des fondements
+  après leur revue (O-07) ; titre des pages 404.
+
+### 18.8 Accessibilité, aide aux utilisateurs et documentation alignée sur le code
+
+Points 55, 69, 53 et 54 de [reste-a-faire.md](reste-a-faire.md), vérifiés au commit `65af2e6` : aucun lien
+d'évitement, `<main>` sans id ; aucun contrôle d'accessibilité automatisé (Vitest existait, sans navigateur) ; aucune
+aide hors des notes de conception ; les constats de documentation du 9 octobre étaient en partie déjà corrigés (T-03
+local « à plat avec un préfixe unique », mentions d'Entra ID retirées d'`api.md` et d'`avancement-v2.md`, actions
+d'administration journalisées), les autres restaient, avec de nouveaux écarts nés des lots 6 à 9.
+
+- **Contrôle automatisé (point 55).** `scripts/codex-a11y.mts` (`npm run a11y`, dépendances `axe-core` 4.14.0 et
+  `playwright-core` 1.56.1) : `next start` du build (ou `next dev` avec `--dev`, ou un serveur existant avec `--url`)
+  sur une base de démo neuve dans un dossier temporaire ; axe (WCAG 2.0 à 2.2 A et AA, bonnes pratiques) sur 30 écrans
+  et onglets et 20 dialogues, ouverts puis fermés par Échap sans rien envoyer ; contrôle du lien d'évitement, du focus
+  des dialogues, des statuts HTTP et des erreurs JavaScript ; échec sur une violation sérieuse ou critique. Environ 70 s
+  en français, 125 s avec l'anglais ; trois passages identiques ; ajouté à la CI après le build. Mesure au commit
+  `65af2e6` (même script) : 82 éléments en violation sérieuse ou critique (contraste 65, contrôles imbriqués 8, cibles
+  6, attribut ARIA interdit 3) et 52 modérés ou mineurs (pas de `<h1>` 30, en-têtes de tableau vides 14, ordre des
+  titres 7, repère 1). Après : 0 et 0, en français et en anglais.
+- **Corrections.** « Aller au contenu » vers `<main id="contenu" tabindex="-1">` ; nom de l'écran en `<h1>` et titres de
+  section en `<h2>` (`.sec-title` reprend le dessin du `h6` de Nocturne : captures identiques) ; navigation et colonnes
+  de l'Explorateur nommées ; étiquette de version de travail en bouton à bascule au lieu d'une ligne-bouton contenant
+  un lien ; « page précédente » inactive en lien désactivé ; en-têtes « Actions » et « Attribut » lus seulement par les
+  lecteurs d'écran ; cibles de 24 px. Contrastes mesurés sur les fonds Nocturne (`docs/accessibilite.md`) :
+  `.text-muted` passe (5,19 et 4,83) ; corrigés au plus près : `.card-meta` 4,25 → 4,83 (dans `globals.css`, la copie
+  de Nocturne intacte), portée des titulaires et usages des termes 4,47 → 5,47, nombre de termes dans un titre 3,18 →
+  7,64, petites mentions de la page maquette 3,96 → 4,9.
+- **Aide (point 69).** `/aide` (`src/app/aide/page.tsx`, `aide.module.css`, textes `HELP` de `src/lib/i18n.ts`) : dix
+  parcours, en français et en anglais, de « ce qui est simulé » à la recherche, dont la demande à Vigie avec l'attente
+  ou la greffe de D-26 ; chaque parcours ne décrit que ce que l'application fait et mène à son écran si le rôle y a
+  accès ; lien « Aide » au-dessus de « Notes de conception ». Aides contextuelles : origine, rattachement, version de
+  travail, circuit, délégation et réassignation.
+- **Documentation (points 53 et 54).** README (recherche dans les métadonnées et non « plein texte », ce qui n'est pas
+  journalisé, « Nouveau » de l'Explorateur, `/aide`, `npm run a11y`, organisation du code), `docs/avancement-v2.md`
+  réécrit au 18 octobre, audit (G04, M16, M14, sauvegarde et PostgreSQL, conservation par document, consultations,
+  historique des métadonnées, lectures ciblées), `docs/decisions.md` (Entra ID, déclencheur du journal),
+  `docs/modele-cible.md` §3 (nom stocké en local), commentaires de `matches` et de `FileStore.rename`, constat 33 de ce
+  fichier, « reste » des points 36 et 50 ; `docs/api.md` n'avait pas d'écart. Nouveau : `docs/accessibilite.md`.
+- **Vérifié** : `npm test` (95 fichiers dont 1 ignoré, 1 319 tests passés, 10 ignorés, aussi avec `.data` déplacé ; nouveaux :
+  `tests/integration/help-page.test.ts`, `shell-a11y.test.ts`), `npm run typecheck`, `npm run lint`, `npm run db:check`,
+  `npm run build`, `npm run a11y` (0 violation). `npm run dev` sur une base de démo du scratchpad : `/aide` en français
+  (« Aide — Codex ») et en anglais (« Help — Codex »), lien d'évitement au premier Tab, aides des dialogues « Nouveau
+  document » et « Déléguer » ; 19 écrans capturés avant et après, différents seulement sur les éléments corrigés.
+- **Reste** : test manuel avec un lecteur d'écran, zoom et affichage étroit, PDF générés non balisés, app Mac
+  (macOS) ; formation, utilisateurs clés et pilote (M14) ; retrait des notes de conception en production (O-02).
+
+### 18.9 Restes développables sans décision
+
+Restes des points 36, 43, 46, 47, 50, 51, 52 et 57 de [reste-a-faire.md](reste-a-faire.md), ceux que l'état
+récapitulatif classait « Rien : développable dans une session cloud », vérifiés au commit `d0ed61e`. Un commit par
+groupe de points, chacun vérifié.
+
+- **Version de Node et audit des dépendances (points 43 et 52).** Constats exacts : ni `.nvmrc` ni contrôle de version
+  dans `desktop/build-app.sh`, `@types/node` en `^20` ; `npm audit` hors de la CI, 9 alertes (5 élevées, 4 modérées).
+  `.nvmrc` (22) et `@types/node` `^22.12.0` ; la CI lit `.nvmrc` et lance en plus `npm test` sous Node 20.19 (la plus
+  basse version d'`engines`, que les types 22 ne protègent plus ; toute la suite y passe, 95 fichiers).
+  `scripts/codex-node-check.mjs`, appelé par `desktop/build-app.sh` (une ligne, non essayée sous macOS).
+  `npm run deps:audit` (`scripts/codex-audit.mjs`) après `npm ci` : les 9 alertes viennent de deux avis, `braces`
+  (élevé, lint, aucune version corrigée publiée : accepté avec sa raison) et `esbuild` (modéré, par `drizzle-kit`,
+  signalé) ; aucun avis sur les dépendances de l'application.
+- **Index d'accès et Validations (points 47 et 50).** Constats exacts : `getAccessIndex` lisait à chaque requête
+  tous les lecteurs nommés, toutes les révisions ouvertes, tous les circuits en cours et leurs étapes et tous les
+  titulaires (70 ms de requêtes sur PGlite à 10 000 documents) ; /validations chargeait tous les circuits
+  (`listWorkflows`) et les filtrait en mémoire. L'index d'une requête ne lit plus que les lignes de la personne
+  (`AccessScope`, `Members` : une question hors de portée lève une erreur), sans cache entre requêtes ;
+  `validationsPage` fait visibilité, filtres, comptes, ordre et pages en SQL (pages de 50, `?p=`) ; index
+  `revisions_open_modifier` et `workflows_requester` (migration `0005`). Comparé à l'ancien calcul pour chaque
+  personne sous chaque rôle (démo, documents variés) ; Validations 1,60 s → 0,26 s à 10 000 documents, les autres
+  écrans 10 à 30 % plus rapides ([performances.md](performances.md)).
+- **Migrations au déploiement et transactions en `READ COMMITTED` (point 51, hors hébergement).** Constats exacts :
+  migrations seulement au premier accès ; aucune revue des transactions pour un serveur. `npm run db:migrate`
+  (`--check`, `--no-backup`), serveur arrêté sur PGlite, sauvegarde journalisée ; le démarrage migre toujours sans
+  elle. Revue des 55 transactions ([postgres.md](postgres.md), « Transactions ») : verrou de la ligne du document en
+  tête (`lockDoc`, `lockDocs`, `lockWorkflow`) partout où l'état d'un document est relu avant d'écrire, ligne
+  verrouillée pour les droits et le registre, pièce attendue en mise à jour conditionnelle. Sur PostgreSQL 18.3,
+  `read-committed.test.ts` échouait 6 fois sur 6 avec l'ancien code et passe ; plusieurs processus documentés comme
+  limite ([exploitation.md](exploitation.md) §7).
+- **Noms provisoires (point 36).** Constat exact : rien ne reprenait une clé restée `<uuid>-upload.<ext>` (local) ou
+  dans `_staging` (SharePoint) après un arrêt entre l'enregistrement et `nameStoredFile`. `src/lib/provisional.ts` :
+  simulation dans Administration › Journal d'audit, puis renommage des fichiers listés (`renameProvisionalFiles`),
+  journalisé (« Fichiers renommés »), tâche `renames` du planificateur désactivée par défaut ; le renommage local
+  reprend un lien déjà fait vers le même fichier et refuse tout autre fichier sous le nom final.
+- **Aperçu paginé (point 46).** Constat exact : pour un brouillon ou un document confidentiel (`no-store`), la
+  visionneuse recréait son cadre à chaque page et retéléchargeait le fichier. Essai dans Chromium : changer seulement
+  le fragment `#page=` du même cadre ne tourne pas la page ; un cadre neuf sur une adresse `blob:` le fait sans
+  réseau. La fiche télécharge donc le fichier une fois et pagine sur sa copie en mémoire (`useLocalCopy`), libérée à la
+  fermeture ; `frame-src 'self' blob:`. Brouillon de 3 pages, pages 1 à 3 : 3 téléchargements avant, 1 après ; la page
+  3 s'affiche (capture, Chromium complet).
+- **Tests des routes et parcours de bout en bout (point 57).** Constat exact : les réponses d'erreur de l'import (401,
+  400, 413, 415, 409, 500) et de la route fichier (404, 502, journal) n'étaient pas testées par leurs handlers ; aucun
+  parcours dans un navigateur. `tests/integration/route-errors.test.ts` ; `npm run e2e` (`scripts/codex-e2e.mts`,
+  outillage commun avec `npm run a11y` dans `scripts/codex-browser.mts`) : création avec un PDF, aperçu paginé
+  téléchargé une fois, demande de validation, chaque étape approuvée par son titulaire lu à l'écran, en vigueur ;
+  15 à 17 s, ajouté à la CI.
+- **Vérifié** (à chaque commit, et en fin d'étape) : `npm run typecheck`, `npm run lint`, `npm run db:check`, `npm test`
+  (101 fichiers, 1 356 tests passés, 11 sautés, aussi avec `.data` déplacé), `npm run test:pg` sur PostgreSQL 18.3
+  (1 364 passés, 3 sautés), toute la suite sous Node 20.19.0, `npm run build`, `npm run a11y` (0 violation),
+  `npm run e2e` (6 étapes, 18 s, passages identiques) ; `npm run db:migrate` sur une copie de la base de démonstration
+  (cinq migrations en attente, sauvegarde, puis rien à faire) et sur une base PostgreSQL neuve ; Administration ›
+  « Fichiers sous un nom provisoire » sur une copie de la démo ; mesures à 10 000 documents
+  ([performances.md](performances.md)).
+- **Reste** : essais sous macOS (contrôle de version de l'app, aperçu dans WebKit) ; SharePoint sur un vrai tenant
+  (O-01) ; sauvegarde du serveur PostgreSQL et plusieurs processus (M22) ; contenu des fichiers non indexé (82).
+
+### Bilan du lot 9
+
+Neuf étapes, 24 points de [reste-a-faire.md](reste-a-faire.md) (47, 42, 41, 45, 60, 52 en partie, 51 en partie, 56, 38 en
+partie, 23, 14, 15, 19, 59, 63 à 68, 55, 69, 53, 54) et un bogue (rechargement en boucle de `next dev`), tous
+développables sans décision. Avec ce lot, les 69 points « développables maintenant » de l'inventaire du 9 octobre sont
+traités : 55 entièrement, 14 en partie, leurs restes listés en tête de reste-a-faire.md avec ce qui les bloque.
+L'étape 9 a repris les restes que rien ne bloquait (36, 43, 46, 47, 50, 51, 52, 57) : 58 points entièrement faits,
+11 en partie, dont les restes attendent tous une décision, l'hébergement ou une session macOS ; plus aucun reste
+n'est développable sans eux. Le lot a rendu Codex plus rapide (lectures ciblées, index d'accès, Validations paginé), déployable sur une vraie base (migrations incrémentales, PostgreSQL
+serveur, amorçage minimal, planificateur, signatures entre serveurs), plus complet pour les utilisateurs (comparaison
+du contenu, aperçu Office, reprise d'une personne qui part, vocabulaires, finitions de la maquette, bilinguisme, aide)
+plus sûr sur un serveur (transactions revues pour `READ COMMITTED`, migrations au déploiement) et vérifié pour
+l'accessibilité et de bout en bout. Aucune question ouverte n'a été tranchée ; chaque choix qui en dépend (O-01 à O-11,
+M14, M22, A05) prend l'option la plus prudente et figure dans « Choix de l'assistant non validés explicitement » de
+[decisions.md](decisions.md). Ce qui reste attend une décision de l'utilisateur (49 points), ses données (2) ou une
+session sur macOS (9).
+
+### 18.10 Revue du lot 9
+
+Revue à charge du diff `d7ee1de..HEAD` (lot 9 entier), le 18 octobre 2026 : chaque constat suivi depuis un appelant
+réel (route, Server Action, page, planificateur) ; chaque défaut confirmé d'abord par un test qui échoue, puis corrigé
+au plus juste. Aucun choix de [decisions.md](decisions.md) n'a été changé, aucune question ouverte tranchée.
+
+**Défauts confirmés et corrigés**
+
+| Gravité | Défaut et chemin | Correction | Test |
+|---|---|---|---|
+| Moyenne | **Anti-rejeu contourné pendant une rotation de secret.** `checkSignature` retenait la signature reconnue ; une requête signée avec le secret et son `_NEXT` (ce que [api.md](api.md) recommande pendant une rotation), renvoyée avec la seconde signature seule, était acceptée une seconde fois (webhook Vigie, import). | La clé anti-rejeu porte sur l'horodatage et le SHA-256 du corps brut, quelle que soit la signature reconnue (`src/lib/server-auth.ts`). | `tests/integration/server-auth.test.ts` (rejeu avec chaque signature seule, dans l'autre ordre, en majuscules) |
+| Faible à moyenne | **Corps du webhook Vigie lu sans borne avant toute authentification** quand seul `VIGIE_WEBHOOK_SECRET` est défini (avant le lot 9, un jeton était exigé avant la lecture) : un client quelconque pouvait faire lire un corps de plusieurs centaines de Mo en mémoire. | Corps borné à 64 Kio (`Content-Length` ou lecture coupée) : 413 `too_large` avant la signature (`src/app/api/integrations/vigie/route.ts`, [api.md](api.md)). | `server-auth.test.ts` (avec et sans `Content-Length`) |
+| Moyenne (serveur PostgreSQL) | **Règle de conservation d'un type appliquée par-dessus un gel posé entre-temps.** `applyTypeRetention` (Administration › Registre, « appliquer aux documents ») lisait les documents sans verrou ; un gel juridique ou une dérogation engagés pendant la transaction étaient écrasés (`READ COMMITTED`). | Documents du type verrouillés dans l'ordre de leurs identifiants, puis relus (`src/lib/actions.ts`). | `tests/integration/read-committed.test.ts` (sur PostgreSQL 18.3 : échouait, passe) |
+| Faible (serveur PostgreSQL) | **Mot-clé perdu au renommage ou à la fusion d'un terme.** `applyTerm` réécrivait les mots-clés d'après une lecture sans verrou : un mot-clé ajouté au document pendant le renommage disparaissait. | `documentsWith` verrouille les documents concernés, puis les relit (`src/lib/vocab.ts`). | `read-committed.test.ts` (sur PostgreSQL 18.3 : échouait, passe) |
+| Faible à moyenne (D-14) | **Chiffres du planificateur montrés à tout administrateur.** Administration › Journal d'audit › Planificateur affichait à quiconque a l'accès Administration les chiffres de chaque exécution (fichiers vérifiés, altérés, absents, nom et taille des archives), que le journal réserve aux gestionnaires documentaires parce qu'ils comptent les brouillons (`integrityL`, `backupL`, `archiveL`). | `schedulerOverview(viewer, …)` ne donne les chiffres qu'aux gestionnaires documentaires ; les autres voient le résultat et la raison d'une exécution sautée (`summaryShown`, `src/lib/scheduler.ts` ; [exploitation.md](exploitation.md) §4). | `tests/integration/scheduler-panel.test.ts` |
+| Faible (i18n) | **« Comparaison » en français dans le journal anglais** : la consultation d'une version comparée n'avait pas de détail structuré, alors que le lot a traduit le journal. | Détail structuré `compared` (`journalConsultation` accepte des données ; « Comparison » en anglais) ; le détail libre reste celui qui sert à ne journaliser qu'une fois. | `tests/integration/compare.test.ts` |
+
+**Constats écartés**
+
+- Signature HMAC : comparaisons en temps constant (empreintes de longueur fixe, `timingSafeEqual` sur chaque paire),
+  fenêtre bornée dans les deux sens, empreinte gardée jusqu'à la fin de la fenêtre de son horodatage, corps brut signé
+  tel que reçu : conformes.
+- Secrets dans les journaux : les refus nomment la variable, jamais la valeur ; le contrôle de configuration ne cite
+  aucun jeton ni secret.
+- LibreOffice : arguments sans interpréteur de commandes, nom de fichier fixe, extension d'une liste fermée,
+  environnement réduit, groupe de processus tué au délai, dossier temporaire supprimé dans tous les cas ; Gotenberg :
+  redirections refusées, réponse bornée. Seul ajout, documentaire : isoler la conversion du réseau
+  ([exploitation.md](exploitation.md) §6).
+- ZIP et extraction de texte : taille dépliée bornée par entrée (`maxOutputLength`), lignes, caractères et durée bornés.
+- Comparaison et aperçu (D-14) : `readableVersions` et la route fichier appliquent `readerMaySeeVersion` avant toute
+  lecture ; le cache de textes, indexé par empreinte, ne sert qu'après ce contrôle.
+- Autocomplétion, compte des modèles, comptes de Validations : filtrés par `readableSql` et `workflowVisibleSql`.
+- Synthèse d'une reprise et fichiers renommés dans le journal : comptes et noms déjà réservés aux gestionnaires
+  (`transferL`, `renameL`).
+- Nouvelles Server Actions (`restoreWorkingVersion`, `reassignStep`, `renameProvisionalFiles`, `transferHoldings`,
+  vocabulaires, `adoptSubtype`) : droits contrôlés côté serveur avant toute lecture, limitées (`throttled`), déjà dans
+  `rate-limits.test.ts`.
+- Migrations 0001 à 0005 : appliquées une fois par drizzle dans une transaction, contraintes et index égaux au schéma
+  (`db:check`, `migrations.test.ts`) ; les mises à jour de 0003 et 0004 font avancer `documents.version` (déclencheur
+  déjà posé sur une base existante), ce qui est voulu : un dialogue resté ouvert pendant le déploiement est averti.
+- Copie en mémoire de l'aperçu : adresse `blob:` révoquée au démontage, `frame-src` limité à `'self' blob:`.
+- Antérieurs au lot 9, hors de son diff : existence d'un circuit invisible signalée par `/validations?r=` ; noms des
+  lecteurs désignés sur la fiche ; doublons possibles d'une consultation sur un serveur (déjà notés).
+- Interblocage possible entre un renommage de terme (verrou de la table du vocabulaire) et une modification de fiche
+  qui ajoute un terme de ce vocabulaire : PostgreSQL l'interrompt par une erreur, sans incohérence ; laissé.
+- `npm run lint` signale deux erreurs dans `.claude/worktrees/` : copie de travail non versionnée d'un autre agent, hors
+  du dépôt ; `eslint . --ignore-pattern '.claude/**'` ne trouve rien.
+
+**Choix documentés qui méritent l'attention de l'utilisateur** (non changés)
+
+- Vocabulaires : un terme qu'on ne propose pas est reconnu quand on le saisit. [decisions.md](decisions.md) dit que
+  « seule la casse ou les accents pourraient trahir son existence » ; en fait l'absence de demande de confirmation le
+  trahit aussi (un appel direct sans case cochée réussit si le terme existe, échoue sinon), donc l'existence d'un
+  mot-clé porté seulement par des brouillons.
+- Administration › Vocabulaires compte les documents de chaque terme, brouillons et confidentiels compris, pour toute
+  personne qui a l'accès Administration, alors que le journal réserve ce genre de comptes aux gestionnaires
+  documentaires (D-14).
+- Import signé sans jeton : le corps (jusqu'à `CODEX_MAX_FILE_MB` + 1 Mo) est lu en mémoire avant que la signature
+  puisse être vérifiée ; définir aussi `CODEX_IMPORT_TOKEN` fait refuser plus tôt un client inconnu.
+
+**Vérifié** : `npm run typecheck`, `npm run lint` (hors `.claude/`), `npm run db:check`, `npm test` (102 fichiers dont 1
+sauté, 1 360 tests passés, 13 sautés, aussi avec `.data` déplacé), `npm run test:pg` sur PostgreSQL 18.3 (102
+fichiers, 1 370 passés, 3 sautés), `npm run build`. Chaque nouveau test a d'abord échoué sur le code du lot 9 (les deux
+cas `READ COMMITTED` sur le serveur seulement).
+
+## 19. Lot 10 (18 oct.)
+
+Les points développables sans décision étant traités (fin du lot 9), le lot 10 prépare les réponses de l'utilisateur
+aux questions ouvertes de [decisions.md](decisions.md), **sans en trancher aucune** : outils et documents qui
+présentent l'état du code et recueillent les réponses ; rien n'est préréglé, recommandé ni appliqué.
+
+| Étape | Commit | Points | Ce qui change | Choix prudents |
+|---|---|---|---|---|
+| 1. Fiches de décision pour les questions O-01 à O-11 | `79d2dc2` | 70 à 120 (préparation) | [fiches-decision.md](fiches-decision.md) : une fiche par question (question citée, état du code, options, effort, irréversible, points débloqués, données attendues) ; JUR relevé en collision type/département | Propositions de l'assistant étiquetées « non validée » ; aucune question reposée plus d'une fois |
+| 2. Cahiers de validation du registre et de l'organigramme | commit « Lot 10, étape 2 », qui suit `79d2dc2` | 113 à 118 (préparation, toujours bloqués) | `npm run registry:review` (cahiers `types.csv` et `fonctions.csv`, contrôle d'un cahier rempli et écart avec le code) ; modèle `docs/modeles/organigramme.csv` et `npm run org:check` | Cahiers tirés du code, pas d'une base ; réponses vides ; aucune table société ; rien n'est écrit ni en base ni dans `registry.ts`, `seed-org.ts` |
+| 3. SharePoint sans tenant | commits « Lot 10, étape 3 » (deux) | 36, 103 (préparation, O-01 toujours ouverte) | Faux Microsoft Graph et 26 tests du pilote ; quatre défauts corrigés (délai d'envoi non entier, jeton refusé gardé en cache, `Retry-After`, corps des réponses de limitation) ; `npm run storage:check` ; procédure d'essai sur un tenant (`docs/exploitation.md` §8) | `CODEX_STORAGE` reste `local` par défaut ; aucune suppression sur SharePoint ; pas de session d'envoi ; plafond de 250 Mo inchangé |
+| 4. Constats remis à jour et corrections neutres | commit « Lot 10, étape 4 » | 70 à 120 (constats), 87, 88, 94 (avancés, toujours bloqués) | 50 constats revérifiés ; état récapitulatif recompté par question (O-01 : 5 points au lieu de 11, O-11 : 2 au lieu de 9) et annexe B des fiches alignée ; vocabulaires : un terme non proposé est traité comme inconnu, comptes réservés aux gestionnaires (D-14) ; indicateur « En retard » des circuits ; chiffrement au repos documenté ; bouton « Copier le lien du document » ; JUR dans la question 1 du registre | Aucune question tranchée ; délai de 7 jours, relances et « À traiter » inchangés ; rien de chiffré par Codex |
+| 5. Parcours de bout en bout et simulation d'import | commit « Lot 10, étape 5 » | 57 (avancé), 106 (préparé, toujours bloqué) | `npm run e2e` : cinq parcours indépendants (approbation, rejet avec motif puis nouvelle demande, rappel, demande Vigie acceptée puis greffe ou attente, import simulé puis réel), chacun avec le contrôle D-14 hors du cercle de rédaction ; `POST /api/import?dryRun=1` | Simulation : transaction annulée, aucun fichier stocké, rien au journal d'audit, aucun champ ni limite de plus ; paramètre d'adresse inconnu refusé ; identifiant prévu non réservé ; parcours lancés tous dans la CI (stables sur trois passages) |
+| 6. Affichage étroit et image générique | commits « Lot 10, étape 6 » (deux) | 79 (avancé), 112 (préparé), toujours bloqués | `npm run a11y -- --narrow` (320 px, 1 280 px à 200 %) ; quatre débordements corrigés sans effet sur le bureau ; `Dockerfile` et `.dockerignore`, sortie autonome seulement avec `CODEX_STANDALONE=1` ; image construite et essayée | Captures du bureau identiques avant et après ; ni mise en page mobile, ni barre repliable, ni PWA (M23) ; ni hébergeur, ni proxy, ni TLS, `CODEX_SEED` non posé (M22) ; build par défaut inchangé |
+| 7. Verrou entre conteneurs et contraste au survol | commit « Lot 10, étape 7 » | 112 (préparé), 79 (avancé), toujours bloqués | `codex.lock` enregistre aussi un identifiant tiré au hasard par processus et l'espace de processus (démarrage du noyau, espace de noms, départ de son premier processus ; nom de machine hors Linux) ; le serveur rafraîchit son verrou toutes les 30 s ; une commande lancée dans un autre conteneur à côté du serveur refuse ; texte atténué à 60 % sur une ligne survolée (4,38 → 4,91:1) | Un verrou d'un autre espace n'est jugé que par son rafraîchissement (10 min) ; ancien format lu par son numéro, jamais pris pour le sien ; un serveur ne refuse toujours pas le verrou d'un serveur ; teinte de survol de Nocturne inchangée ; aucun hébergement choisi (M22) |
+
+### 19.1 Cahiers de validation du registre et de l'organigramme
+
+**Le besoin.** O-04 à O-08 attendent des tableaux de l'utilisateur (fiches, « Ce dont l'assistant a besoin ») : types
+avec durées, circuits et niveaux, fonctions et titulaires, organigramme. Sans support, une réponse saisie à la main
+pouvait reprendre un code déjà pris (FIN-FIN-0001) ou une valeur que Codex refuse, et l'écart avec le registre restait
+à relever ligne à ligne.
+
+- **Cahiers** (`src/lib/registry-review.ts`, règles pures sur `TYPES`, `FAMILIES`, `FUNCTIONS`, `HOLDERS`) :
+  `npm run registry:review -- --out <dossier>` (`scripts/codex-registry-review.mts`) écrit `types.csv` (69 lignes : code,
+  libellés, famille, origines, rattachements, sous-types, circuit, conservation, fondement FR et EN, niveaux, livrable
+  client, ISO, source) et `fonctions.csv` (16 fonctions, portée, titulaires de démonstration, types qui les nomment),
+  au format des exports (`src/lib/csv.ts` : BOM, point-virgule, formules neutralisées). Colonne « Question liée » ;
+  colonnes « Validé (oui/non) », « Correction » et, pour les types, « Nouveau code (renommage) », laissées vides. Un
+  cahier déjà présent n'est pas écrasé sans `--force`.
+- **Drapeaux comptés dans le registre** : 16 types sans durée (O-07 ; 14 « durée de vie de l'actif », GOV et PUB
+  permanents), 26 « fin de projet » (question 3 du registre), 5 admettant « Public » (O-08 : POL, REG, DTF, PUB,
+  COL), 4 codes aussi codes de département (question 1 : FIN, HSE, COM et JUR, que la liste du registre omet), 3 sans
+  circuit (O-06 : LET, RFQ, PHO).
+- **Contrôle** : `-- --check <cahier>` (un ou deux cahiers, reconnus à leur en-tête ; `--org` pour les personnes et
+  départements d'un organigramme) applique les règles de l'Administration (`src/lib/registry-rules.ts` : formats,
+  collisions avec un type, un département, un projet, un programme ou `QMS`, valeurs admises, portée fixe des
+  fonctions des règles de Codex, modèles sans rattachement), signale chaque refus au lieu de l'écarter, puis liste les
+  réponses, l'écart champ par champ avec le code, les renommages demandés, les lignes ajoutées et absentes. Il n'écrit
+  rien. Les quatre codes déjà en collision restent tels quels, comme dans l'Administration ; un nouveau code ou un
+  renommage en collision est refusé.
+- **Organigramme** : modèle `docs/modeles/organigramme.csv` (une ligne par département, site ou personne ; société en
+  colonne facultative, Codex n'ayant pas de table société), rempli des 15 départements et 3 sites provisoires, sans
+  personne. `npm run org:check -- <csv>` (`src/lib/org-review.ts`, `scripts/codex-org-check.mts`) : libellés
+  (`orgLabels`), formats, un département au moins, doublons, références inconnues (département, site, responsable),
+  collisions des codes de département avec les codes de type ; sur le modèle, les quatre collisions et rien d'autre.
+  Aucune base n'est ouverte.
+- **Lecture d'un CSV** : `parseCsv` et `unneutralise` ajoutés à `src/lib/csv.ts` (BOM, point-virgule ou virgule,
+  guillemets, retours à la ligne, apostrophe de neutralisation retirée avant comparaison).
+- **Documentation** : [registre-points-ouverts.md](registre-points-ouverts.md) (« Valider le registre avec le
+  cahier », valeurs admises, format de l'organigramme), renvois dans les fiches O-04 à O-08
+  ([fiches-decision.md](fiches-decision.md)), README, ligne « Préparé le 18 octobre 2026 » des points 113 à 118 de
+  [reste-a-faire.md](reste-a-faire.md), qui restent bloqués.
+- **Outillage** : `.claude/**` ignoré par ESLint et `.claude/worktrees/` par git (copies de travail d'autres agents).
+- **Tests** : `tests/unit/registry-review.test.ts` (69 lignes, drapeaux, réponses vides, relecture du CSV, cahier
+  inchangé sans écart, cahier modifié : réponses, écarts, renommage, valeurs refusées colonne par colonne, fonctions
+  d'un cahier joint, titulaires d'un organigramme) et `tests/unit/org-review.test.ts` (fichier valide, société
+  facultative, collisions FIN, HSE, COM, JUR et QMS, doublons, références inconnues, valeurs fautives, modèle).
+- **Vérifié** : `npm run typecheck`, `npm run lint`, `npm run db:check`, `npm test` (104 fichiers dont 1 sauté, 1 385
+  tests passés, 13 sautés, aussi avec `.data` déplacé), `npm run build` ; `npm run registry:review` et
+  `npm run org:check` lancés sur les cahiers écrits, un cahier modifié et le modèle.
+
+### 19.2 SharePoint sans tenant (lot 10, étape 3)
+
+- **Demande** : tester le pilote SharePoint existant (`sharepoint()`, `src/lib/storage.ts`) sans tenant, sans activer
+  SharePoint ni changer le défaut de `CODEX_STORAGE` (O-01 reste ouverte).
+- **Faux Graph** : `tests/support/fake-graph.ts`, une bibliothèque en mémoire derrière `fetch`. Il répond au jeton
+  Entra ID, à l'envoi dans `_staging` (`conflictBehavior=fail`), à la création de dossier, au renommage avec
+  déplacement, à la lecture par redirection (Range conservé, Authorization retiré), à la suppression, à la liste
+  paginée et à la sonde. Il sait injecter 429/503 avec Retry-After, 401 et des jetons révoqués.
+- **Tests** : `tests/integration/sharepoint-store.test.ts` (26 tests). Dépôt et nommage, reclassement, route fichier
+  avec plage, liste de `_staging` et reprise des noms provisoires, orphelins listés jamais supprimés, export complet,
+  sonde et son cache, reprises, 401, commande d'essai.
+- **Défauts prouvés puis corrigés** (test rouge d'abord) :
+  - le délai d'envoi n'était pas un entier, donc `AbortSignal.timeout` levait une erreur et aucun envoi SharePoint
+    n'aurait abouti ;
+  - un jeton refusé (401) restait en cache jusqu'à son expiration ; il est maintenant oublié et redemandé une fois ;
+  - `Retry-After: 0` était lu comme 2 s et une date HTTP n'était pas lue (`retryAfterSeconds`) ;
+  - le corps des réponses 429/503 n'était pas libéré.
+  `resetStores()` oublie aussi le stockage actif (accès de test), et `storeFor(name)` est ajouté.
+- **Commande** : `npm run storage:check` (`scripts/codex-storage-check.mts`, `src/lib/storage-check.ts`). Elle essaie
+  le stockage actif sans base : envoi, nommage, lecture complète et par plage, suppression, avec un message clair
+  par étape.
+- **Procédure** : `docs/exploitation.md` §8, « Essayer SharePoint sur un tenant » (inscription de l'application,
+  Sites.Selected, consentement, accès au site en écriture, variables `CODEX_SP_*`, `storage:check`, retour arrière).
+- **Reste** : l'essai sur un vrai tenant, notamment la forme du déplacement par `parentReference.path`. Restent aussi
+  la décision O-01, la suppression des orphelins sur SharePoint, la session d'envoi au-delà de 250 Mo et la sauvegarde
+  des fichiers SharePoint.
+
+### 19.3 Constats remis à jour et corrections neutres (lot 10, étape 4)
+
+Rien de ce qui suit ne tranche une question ouverte ; aucun point bloqué ne change d'état.
+
+- **Constats des points 70 à 120** ([reste-a-faire.md](reste-a-faire.md)) : chacun revérifié dans le code ; une
+  ligne « Revérifié le 18 octobre 2026 » ajoutée aux 50 points dont le constat ou les références avaient changé (75
+  inchangé). Constats périmés confirmés : 93 (`src/proxy.ts` existe, mais ne pose que la CSP et HSTS, aucune session),
+  104, 109 et 111 (planificateur `src/lib/scheduler.ts`, sans envoi sortant), 112 (`.github/workflows/ci.yml`, santé,
+  journal, migrations au déploiement ; toujours ni image ni proxy), 113 (fondement modifiable, répercussion du point
+  18, durée de vie de l'actif calculable une fois la date saisie), 114 et 115 (`createFunction`, `createType`,
+  `createFamily`), 96 (c) et 105 (`retention_event_at` saisissable pour le départ du salarié et la fin de vie de
+  l'actif ; la fin de projet reste incalculable), 98 (une seule limite `maxFileBytes`, 50 Mo par défaut, 250 Mo au
+  plus avec SharePoint, au lieu du plafond propre à l'import), 81 (langue contrôlée, facette Langue), 86 (liste
+  blanche commune et aperçu Office, pas de rendu figé), 107 (`.eml` et `.msg` admis, sans lecture), 116 (recherches
+  enregistrées), 118 (`npm run registry:apply`) ; numéros de ligne remis à jour partout ailleurs.
+- **État récapitulatif recompté** (tête de [reste-a-faire.md](reste-a-faire.md)) : chaque point rattaché aux
+  questions que citent ses références et son constat. 73, 78, 79, 82, 86, 107 et 112 sortent des listes d'O-01 et
+  d'O-11 (seul 86 cite O-01, aucun O-11) ; 82 et 112 rejoignent les points qui n'attendent qu'une question de l'audit
+  (M10, M22) ; les restes de 46 et 50 rejoignent O-11. Décomptes (points, puis avec les restes) : O-01 5 (9), O-02 7
+  (8), O-03 7 (9), O-04 6 (7), O-05 6 (7), O-06 4, O-07 6, O-08 1, O-09 4 (7), O-10 2 (3), O-11 2 (4) ; 13 points
+  n'attendent qu'une question de l'audit. Annexe B de [fiches-decision.md](fiches-decision.md) alignée, l'écart qu'elle
+  signalait est corrigé.
+- **Vocabulaires, D-14** (choix documentés de la revue du lot 9, §18.10) : un terme qu'on ne propose pas à
+  l'utilisateur (porté seulement par des documents qu'il ne peut pas lire) est traité comme un terme inconnu :
+  `readVocab` demande la même confirmation avec le même message (`offeredTerms`, `src/lib/queries.ts` ; paramètre
+  `offered` de `readTerms`, `src/lib/vocab.ts`) ; une fois la case cochée, le terme existant est écrit, sans doublon
+  ni entrée « terme ajouté ». Administration › Vocabulaires : nombre de documents par terme réservé aux gestionnaires
+  documentaires, comme les chiffres du planificateur (`summaryShown`) ; un autre administrateur voit « — » et, parmi
+  les valeurs et sous-types hors liste, seulement ceux d'un document qu'il peut lire (`vocabOverview`). Mention
+  correspondante de [decisions.md](decisions.md) mise à jour. Tests : `tests/integration/vocab.test.ts` (deux
+  utilisateurs : réponse identique pour un terme caché et un terme inconnu, création et modification, pas de doublon ;
+  administrateur non gestionnaire) ; les trois cas qui décrivent la correction échouaient sur le code d'avant.
+- **Indicateur « En retard »** (point 87, affichage seul) : `isCircuitLate` et `circuitDaysLate` (`src/lib/review.ts`,
+  même règle de jour que l'expiration : le lendemain de l'échéance, en heure de Paris) ; `daysLate`, `lateL` et
+  `lateTitle` dans `workflowsWhere` ; étiquette dans Validations (liste et en-tête), l'onglet Validation de la fiche
+  (cercle de rédaction) et la page de département, info-bulle avec la date prévue et le nombre de jours ; libellés
+  `wf_late`, `wf_late_title` (FR/EN). Mêmes listes qu'avant, donc rien sur un circuit invisible (D-14). Tests :
+  `tests/unit/review.test.ts`, `tests/integration/circuit-late.test.ts` (bascule à minuit à Paris, anglais, circuit
+  terminé, utilisateur hors du circuit).
+- **Chiffrement au repos** (point 88) : [exploitation.md](exploitation.md) §9 et [sauvegarde.md](sauvegarde.md)
+  (« Chiffrement ») : volumes de `.data`, des sauvegardes et des exports chiffrés, clés hors du serveur et
+  sauvegardées ; documentation seulement.
+- **Bouton de la fiche** (point 94) : nom accessible et info-bulle « Copier le lien du document » (`copy_link`),
+  visuel inchangé.
+- **Registre** : JUR ajouté à la question 1 de [registre-points-ouverts.md](registre-points-ouverts.md) (la question
+  ne change pas).
+- **Vérifié** : `npm run typecheck`, `npm run lint`, `npm run db:check`, `npm test` (105 fichiers dont 1 sauté, 1 421
+  tests passés, 13 sautés, aussi avec `.data` déplacé), `npm run build`, `npm run a11y` (30 écrans et 20 dialogues, 0
+  violation). Essai réel sur une copie de la base de démonstration (serveur de production, `CODEX_DATA_DIR` dans le
+  dossier de travail) : les 8 circuits en cours de Claire Bardet portent « En retard » (3 à 19 jours au 18 octobre),
+  aucun circuit terminé ; même étiquette sur l'onglet Validation de `FDS-HLT-026-001` et sur la page du département
+  QUA, « Overdue » en anglais ; un collaborateur hors de ces circuits n'en voit aucun ni sur la fiche ni sur la page
+  du département.
+
+### 19.4 Parcours de bout en bout et simulation d'import (lot 10, étape 5)
+
+Rien de ce qui suit ne tranche une question ouverte ; aucun point bloqué ne change d'état.
+
+- **Parcours** (`scripts/codex-e2e.mts`, outillage commun `scripts/codex-browser.mts` : build de production, base de
+  démonstration jetable dans un dossier temporaire, jamais `.data/`) : cinq parcours indépendants, chacun dans son
+  propre contexte de navigateur et sur ses propres documents ; un parcours en échec n'arrête pas les autres (code de
+  sortie 1, capture de l'écran avec `CODEX_E2E_SHOTS`) ; `-- --only <noms>` en lance certains.
+  - **approbation** (celui du lot 9) : création avec un PDF, aperçu paginé téléchargé une fois, chaque étape approuvée
+    par son titulaire lu à l'écran, document en vigueur, alors visible de la lectrice hors du cercle ;
+  - **rejet** : l'étape tenue par Gabriel Comte est rejetée avec un motif (obligatoire dans le dialogue) ; la fiche
+    dit qui a rejeté et pourquoi, le circuit se dit « Rejeté », la révision revient en rédaction ; nouvelle version de
+    travail A.2, nouvelle demande de validation (nouveau circuit) ;
+  - **rappel** : Julien Wagner (collaborateur, pas gestionnaire) crée et soumet un document, puis rappelle sa demande
+    avec un motif ; circuit « Rappelé », révision en rédaction, le titulaire de l'étape n'a plus rien à décider ;
+  - **vigie** : un document en vigueur de Julien Wagner (préparé par l'import), une demande de modification acceptée
+    par la simulation Vigie (gestionnaire documentaire, `simulateVigieDecision`) ouvre la révision B en brouillon pour
+    lui ; une deuxième demande, acceptée pendant la rédaction de B, est **en attente** et la fiche propose la
+    **greffe**, que Julien Wagner fait ; une troisième, acceptée une fois B.1 déposée et B en validation, est en
+    attente **sans** greffe proposée (« en cours de validation »). C'est le comportement de l'application, testé tel
+    quel : l'attente vaut par défaut, la greffe se choisit sur la fiche tant que la révision est en rédaction (D-26 et
+    ses interprétations non confirmées) ;
+  - **import** : `POST /api/import?dryRun=1` avec le jeton tiré pour ce serveur (variables posées pour la base jetable
+    seulement), identifiant prévu, rien créé (la fiche répond 404) ; import réel : même identifiant, révision C en
+    vigueur avec son fichier, vue avec son aperçu par la gestionnaire et la lectrice hors du cercle, ancienne référence
+    résolue ; rejeu 409 ; brouillon importé vu de son seul propriétaire.
+  - **D-14 dans chaque parcours** : Léa Marchand (collaboratrice PRJ, lectrice des documents du groupe, hors de ces
+    circuits) reçoit « Vous n'avez pas accès à ce document » sur la fiche d'un brouillon et 404 sur son fichier ; sur
+    le document en vigueur du parcours vigie, elle ne voit que la révision A : ni « Rév. B en cours », ni version B, ni
+    révision ouverte ou greffée dans les demandes, ni bouton de greffe.
+  - Durées (build de production, ce conteneur) : 72 à 73 s au total dont 5 s de démarrage ; approbation 15 s, rejet
+    14 s, rappel 8 s, vigie 22 s, import 6 s ; 32 étapes, identiques sur trois passages : tous les parcours sont dans la
+    CI.
+  - Défauts trouvés par les parcours : aucun dans l'application. Un piège de l'outil corrigé en route (le parcours
+    vigie cliquait la greffe sous l'identité de la lectrice laissée par le contrôle D-14 : bouton absent, comme il se
+    doit).
+- **Simulation d'import** (`POST /api/import?dryRun=1`, [api.md](api.md) « Simulation ») : mêmes contrôles que
+  l'import (jeton, signature, débit, corps, fichier dont l'antivirus, métadonnées, rejeu, identifiant, avertissements),
+  réponse **200** `{dryRun, id, warnings}`, mêmes refus. `importDocument(raw, file, { dryRun })` (`src/lib/importer.ts`)
+  contrôle le fichier sans le déposer (`checkFile`, extrait de `stageFile` dans `src/lib/storage.ts`) puis exécute la
+  même transaction, annulée à la fin par une exception qui porte le résultat (comme `simulateTransfer`,
+  `src/lib/transfer.ts`) : ni document, ni compteur, ni terme de vocabulaire, ni entrée d'audit ; un fichier infecté
+  n'est noté qu'au journal technique. Une ligne `import simulated (dry run), nothing written` au journal technique.
+  - L'identifiant prévu n'est pas réservé : un document créé entre-temps le prend, l'import reçoit le suivant (testé et
+    documenté).
+  - La signature ne couvre pas l'adresse : la même requête signée renvoyée sans `?dryRun=1` est refusée comme rejeu
+    (testé) ; l'import qui suit est signé à nouveau. La mémoire anti-rejeu (`integration_signatures`) est la seule
+    ligne écrite par une simulation signée.
+  - Paramètres : `dryRun` seul, valeurs `1`/`true`/`0`/`false` ; tout autre paramètre ou valeur → 400 `invalid_query`
+    avant la lecture du corps (une faute de frappe n'importe pas pour de bon).
+  - Aucun champ ni aucune limite de plus (ni état, ni gel, ni approbation d'origine, ni plusieurs révisions : points 99
+    et 106 toujours bloqués par O-11).
+  - Tests : `tests/integration/import-dry-run.test.ts` (10 tests, FILES_DIR jetable, clamd simulé) : réponse,
+    avertissements identiques à ceux de l'import, aucun fichier stocké, toutes les tables inchangées (contenu de chaque
+    table comparé avant et après), identifiant égal à celui de l'import qui suit, identifiant au format Codex,
+    brouillon, fichier identique à un fichier en vigueur, identifiant pris entre-temps, mêmes réponses que l'import sur
+    huit refus, 409, 422 sans journal d'audit, 503, signature et rejeu, paramètres d'adresse.
+- **Documentation** : [api.md](api.md) (section « Simulation », réponses, exemple), README (`npm run e2e`, API), CI
+  (commentaire), [reste-a-faire.md](reste-a-faire.md) (points 57 et 106).
+- **Vérifié** : `npm run typecheck`, `npm run lint`, `npm run db:check`, `npm test` (106 fichiers dont 1 sauté, 1 431
+  tests passés, 13 sautés, aussi avec `.data` déplacé), `npm run build`, `npm run a11y` (30 écrans et 20 dialogues, 0
+  violation), `npm run e2e` trois fois (5 parcours sur 5, 32 étapes, 72 à 73 s).
+
+### 19.5 Affichage étroit et image générique (lot 10, étape 6)
+
+Rien de ce qui suit ne tranche une question ouverte : M22 (hébergement), M23 (accès terrain et mobile) et O-02
+(authentification) restent ouvertes ; les points 79 et 112 restent bloqués.
+
+- **Affichage étroit** (`npm run a11y -- --narrow`, `scripts/codex-narrow.mts`, [accessibilite.md](accessibilite.md)
+  « Affichage étroit et zoom ») : les 30 écrans et 20 dialogues du contrôle d'accessibilité rendus à 1 440 × 900
+  (référence), 320 × 256 (WCAG 1.4.10) et 640 × 400 px CSS à deux pixels par px (1 280 px zoomé à 200 %, WCAG 1.4.4) ;
+  axe à chaque taille, puis débordement horizontal de la page, textes et contrôles hors fenêtre, masqués par un bloc,
+  tronqués par des points de suspension, blocs à défilement horizontal et superpositions. Constats listés sans faire
+  échouer la commande ; `--json` pour le détail, `--shots <dossier>` (aussi sans `--narrow`) pour une capture de chaque
+  écran et dialogue.
+  - **Mesures** (français) : à 200 %, écrans ou dialogues plus larges que la fenêtre 15 → 3 sur 50, éléments hors
+    fenêtre 252 → 28 ; à 320 px, 30 écrans sur 30 restent plus larges (305 px de trop au lieu de 305 à 1 124), éléments
+    hors fenêtre 1 162 → 529 ; au bureau, débordement invisible de 4 px du Registre supprimé, 0 violation.
+  - **Corrections** (sans effet sur le bureau) : barre latérale qui défile (Aide, notes, profil étaient sous le bord à
+    200 %) ; `Seg` prend `wrap` (`.seg-wrap`) pour les onglets d'Administration et d'Archivage et les filtres des
+    échéances, qui vont à la ligne au lieu de pousser l'écran (une règle sur tous les contrôles segmentés déformait
+    l'en-tête : écartée) ; en-têtes de colonne réservés aux lecteurs d'écran gardés dans le flux de leur cellule
+    (`th > .sr-only`, ils prolongeaient la page jusqu'au bord d'un tableau large ; la cellule positionnée, essayée
+    d'abord, couvrait le trait sous les en-têtes) ; référence d'un modèle tronquée dans « Nouveau document ».
+  - **Bureau inchangé** : 30 écrans et 20 dialogues capturés à 1 440 px sur le code d'avant et d'après, 49 captures
+    identiques au pixel près, la cinquantième ne différant que par les heures du planificateur.
+  - **Reste, selon M23** : 320 px (barre latérale de 224 px et en-tête), panneau de fiche de 400 px, trois colonnes de
+    l'Explorateur, colonne des filtres de la Recherche, tableaux qui défilent dans leur bloc, zone d'aperçu de la fiche
+    sans focus à 320 px (axe, 14 écrans). Constat hors débordement : la référence d'un modèle sur une ligne survolée
+    donne 4,38:1 (présent au bureau ; non corrigé à cette étape, corrigé à l'étape 7, §19.6).
+- **Image générique** ([exploitation.md](exploitation.md) §10, `Dockerfile`, `.dockerignore`) : trois étapes (`npm ci`,
+  build avec `CODEX_STANDALONE=1`, exécution sur `node:22-bookworm-slim`) ; l'image ne garde que `server.js`,
+  `package.json`, `node_modules` réduit, `.next` et ses fichiers statiques, `drizzle/` et les commandes de sauvegarde,
+  d'export et d'intégrité ; utilisateur `node` non root, `/app` à root ; volume `/var/lib/codex` (`CODEX_DATA_DIR`,
+  sauvegardes et exports à côté) ; `HEALTHCHECK` sur `/api/health` par Node ; `CODEX_SEED` non posé ; aucun secret,
+  `.env` ni donnée dans le contexte ; proxy TLS d'entreprise pris en charge au build (`HTTPS_PROXY`, secret `npm_ca`).
+  - **`next.config.ts`** : `output: 'standalone'` seulement quand `CODEX_STANDALONE=1`. Deux builds par défaut, avant et
+    après, ont les mêmes 560 fichiers et la même configuration serveur ; les écarts sont ceux de deux builds du même code
+    (identifiant de build, noms de morceaux), plus l'empreinte de `next.config.ts` dans deux traces.
+  - **Piège relevé** : Next.js trace tout le projet (le serveur lit `drizzle/` et `package.json` dans son dossier), donc
+    `.next/standalone` reprend `.data/` en local ; `outputFileTracingExcludes` n'atteint pas la trace d'`instrumentation`
+    (essayé, retiré). D'où la copie explicite dans le `Dockerfile` et l'avertissement dans la documentation.
+  - **Limite relevée** : le verrou `codex.lock` compare des numéros de processus, qui ne traversent pas les conteneurs ;
+    une commande lancée dans un autre conteneur, numéro 1 comme le serveur, prend son verrou pour le sien (vérifié).
+    Documenté : arrêter le conteneur du serveur avant toute commande, jamais deux conteneurs sur un volume, sauvegarde
+    depuis l'Administration pendant que le serveur tourne. Non corrigé à cette étape (le verrou est partagé par toutes les commandes) ; corrigé à l'étape 7 (§19.6).
+  - **Essayé** : le démon Docker de la session lancé à la main, l'image de base prise sur `mirror.gcr.io` (quota de
+    Docker Hub épuisé), build par le proxy de la session ; image de 436 Mo sur disque (106 Mo compressés), conteneur
+    `healthy` en 15 s, `npm run a11y -- --url` sur le conteneur sans violation ni erreur au journal, arrêt en 0,3 s avec
+    le verrou libéré, base conservée au redémarrage, redémarrage après `docker kill`, sauvegarde créée et listée depuis
+    un autre conteneur, ni `.env` ni secret dans l'image ; hors Docker, sortie autonome copiée comme dans l'image,
+    `/api/health` 200, `npm run a11y -- --url` sans violation, sauvegarde, vérification, restauration, export et
+    intégrité.
+- **Documentation** : [accessibilite.md](accessibilite.md), [exploitation.md](exploitation.md) §2 et §10, README
+  (contrôles, exploitation, organisation du code), `.env.example` (`CODEX_STANDALONE`),
+  [reste-a-faire.md](reste-a-faire.md) (lignes « Avancé » du point 79 et « Préparé » du point 112, état récapitulatif).
+- **Vérifié** : `npm run typecheck`, `npm run lint`, `npm run db:check`, `npm test` (106 fichiers dont 1 sauté, 1 431
+  tests passés, 13 sautés, aussi avec `.data` déplacé), `npm run build` (sans `.next/standalone`), `npm run a11y`
+  (30 écrans et 20 dialogues, 0 violation), `npm run a11y -- --narrow` (190 s), `npm run e2e` (5 parcours sur 5,
+  32 étapes, 73 s), `docker build` et le conteneur comme ci-dessus.
+
+### 19.6 Verrou entre conteneurs et contraste au survol (lot 10, étape 7)
+
+Deux défauts relevés à l'étape 6, corrigés sans rien décider (M22 reste ouverte).
+
+- **Verrou du dossier de données** (`src/lib/backup-core.mjs`, [exploitation.md](exploitation.md) §10,
+  [sauvegarde.md](sauvegarde.md)).
+  - **Défaut** : `codex.lock` identifiait son détenteur par son seul numéro de processus. Dans deux conteneurs sur un
+    même volume, le serveur et une commande ont tous deux le numéro 1 : la commande prenait le verrou du serveur pour
+    le sien, et un numéro absent de son conteneur le lui faisait croire périmé. Reproduit d'abord par cinq tests
+    (`tests/unit/backup-core.test.ts`, verrou d'un « autre espace » simulé : même numéro, autre identifiant et autre
+    espace), tous en échec sur le code d'avant.
+  - **Correction** : le verrou enregistre en plus `id`, tiré au hasard une fois par processus (gardé sur `globalThis`,
+    commun aux copies du module dans un bundle), et `space`, l'espace de processus. Sous Linux, ce sont le démarrage du
+    noyau (`boot_id`), l'espace de noms des processus (`/proc/self/ns/pid`) et l'instant de départ de son premier
+    processus (`/proc/1/stat`) ; ailleurs, le nom de la machine. Un verrou est « le mien » par son `id` seulement.
+    Un verrou d'un autre espace n'est jamais jugé par son numéro : il tient tant qu'il est rafraîchi, et cesse
+    10 minutes après. Le serveur rafraîchit désormais son verrou toutes les 30 s, comme les commandes, pour qu'un autre
+    conteneur sache qu'il vit. Les messages des commandes le disent : « processus 1, dans un autre conteneur ou sur
+    une autre machine ».
+  - **Compatibilité** : un verrou de l'ancien format (sans `id` ni `space`) est jugé par son numéro comme avant, mais
+    n'est jamais pris pour celui du processus qui le lit : on ne sait pas d'où il vient. Un serveur démarre dessus ;
+    une commande de même numéro refuse, avec la consigne de supprimer le fichier si aucun serveur ne tourne.
+  - **Piège relevé à l'essai** : le noyau réutilise le numéro d'un espace de noms disparu. Le conteneur lancé après un
+    serveur tué a reçu le même `pid:[…]` : sans autre indice, il aurait jugé le verrou par son numéro dans son propre
+    espace. D'où l'instant de départ du premier processus, propre à chaque conteneur.
+  - **Inchangé** : un serveur ne refuse jamais le verrou d'un serveur (redémarrage après un arrêt brutal) ; deux
+    conteneurs serveurs sur un volume restent à proscrire, et arrêter le serveur avant une commande reste la règle.
+  - **Essayé avec Docker** (démon de la session, image reconstruite) : serveur en marche, `backup create`,
+    `restore latest --replace`, `export create` et `integrity check` dans un autre conteneur refusent (code 1) ;
+    `docker exec` aussi. Battement relevé toutes les 30 s. Après `docker kill`, la commande refuse, puis passe une fois
+    le verrou vieilli de 11 minutes ; le serveur relancé démarre. Après `docker stop` (0,2 s), plus de verrou. Verrou
+    de l'ancien format : la commande refuse, le serveur démarre.
+- **Contraste au survol** ([accessibilite.md](accessibilite.md)) : dans « Nouveau document », la référence d'un modèle
+  (`.text-muted` à 55 %, 11 px) sur une ligne survolée (`hover-tint`) donnait 4,38:1 (axe : #95969e sur #2f313d).
+  Sur une ligne survolée, le texte atténué passe à 60 %, le cran des en-têtes de tableau : 4,91:1 (#9f9fa7). Teinte
+  de survol de Nocturne et rendu hors survol inchangés (`src/app/globals.css`). Mesuré par axe dans Chromium sur le
+  build de production, ligne survolée, avant (règle neutralisée) et après.
+- **Documentation** : [exploitation.md](exploitation.md) §10, [sauvegarde.md](sauvegarde.md) (verrou, dépannage),
+  [accessibilite.md](accessibilite.md), README (image générique), [reste-a-faire.md](reste-a-faire.md) (points 79
+  et 112).
+- **Vérifié** : `npm run typecheck`, `npm run lint`, `npm run db:check`, `npm test` (106 fichiers dont 1 sauté,
+  1 436 tests passés, 13 sautés, aussi avec `.data` déplacé), `npm run build`, `npm run a11y` (30 écrans et
+  20 dialogues, 0 violation), `npm run e2e` (5 parcours sur 5, 32 étapes, 72 s), image Docker et scénarios ci-dessus.
+
+
+### Bilan du lot 10
+
+Le lot 10 a préparé, sans en trancher aucune, les réponses que Codex attend de l'utilisateur, et fait ce qui pouvait
+l'être sans elles.
+
+- **Pour décider** : une fiche par question O-01 à O-11 ([fiches-decision.md](fiches-decision.md)) ; cahiers de
+  validation du registre et de l'organigramme (`npm run registry:review`, `npm run org:check`) ; procédure d'essai de
+  SharePoint sur un tenant et `npm run storage:check` ; simulation d'import (`POST /api/import?dryRun=1`) ; image
+  générique pour l'hébergement (M22).
+- **Vérifié sans décision** : pilote SharePoint contre un faux Microsoft Graph (quatre défauts corrigés) ; constats
+  des points 70 à 120 revérifiés et état récapitulatif recompté ; cinq parcours de bout en bout dans la CI ; affichage
+  étroit et zoom mesurés, débordements neutres corrigés ; verrou du dossier de données essayé entre deux conteneurs.
+- **Corrections neutres** : vocabulaires et D-14, indicateur « En retard », bouton de copie du lien, chiffrement au
+  repos documenté, barre latérale, onglets et en-têtes de colonne à l'écran étroit, verrou du dossier de données
+  valable d'un conteneur à l'autre, contraste de la référence d'un modèle sur une ligne survolée (§19.6).
+- **Points** : aucun ne change d'état. Préparés : 36 (reste), 103, 106, 112, 113 à 118 ; avancés : 57, 79, 87, 88, 94.
+- **Toujours ouvert** : O-01 à O-11 ; M22 (hébergement, exploitation) ; M23 (accès terrain et mobile) ; les autres
+  questions de l'audit listées en tête de [reste-a-faire.md](reste-a-faire.md).
+- **Suites possibles sans décision** : `--narrow --lang en`.
+
+
+## 20. Lot 11 (22 oct.)
+
+**Réunir la branche et `main` : PostgreSQL commun (schéma `codex`) et déclaration à Matrix.** `main` avait reçu, le
+17 octobre, deux commits absents de la branche v2 : `944d80e` (déclaration du schéma à Matrix, `src/lib/matrix.ts`) et
+`5f692f3` (bascule vers le serveur commun, décision M-01 du 15 octobre : « Oui, je valide le format postgreSQL commun
+avec un schema par outil »). Le site Coolify, construit depuis `main`, était en panne : son volume `/data/pglite`
+contenait une base d'avant le schéma `codex`, refusée exprès. Le lot réunit les deux par un **commit de fusion**
+(`git merge origin/main`, ni rebase ni réécriture), sans rediscuter M-01 et sans trancher aucune question O-01 à O-11.
+
+| Sujet | Ce qui est retenu | Pourquoi |
+| --- | --- | --- |
+| Schéma | `pgSchema('codex')` (non exporté) de `main`, appliqué aux 31 tables de la branche ; fonctions, déclencheurs, collation et journal des migrations dans `codex`, sur le serveur et en PGlite (`src/lib/pglite-options.mjs` : `search_path` « codex, public » au démarrage de PGlite, qui ne lit pas `ALTER DATABASE … SET`) | M-01 ; un seul code pour les deux moteurs |
+| Migrateur | celui de la branche (`src/db/migrations.ts` : empreintes, refus d'une autre chaîne, une transaction, sauvegarde avant, `npm run db:migrate`), sans `migrate()` de Drizzle (`CREATE SCHEMA`) ; `src/db/migrate.ts` et `src/db/types.ts` de `main` retirés | `codex_app` n'a pas `CREATE` sur la base ; garder les garanties de la branche |
+| Base de migrations | `0000_init` régénérée (tout le schéma) et `0001_partage` (colonnes D01, D10, D18, 7 vues `pub_` de `main`), figées | aucune base de production ; deux fichiers relus plutôt qu'une migration de rattrapage (`decisions.md`, choix non validés) |
+| Bases anciennes | base PGlite de la branche (chaîne `0000` à `0005`, dans `public`) reprise automatiquement après sauvegarde ; toute autre refusée, intacte, avec le remède | données locales de la branche (app Mac) gardées ; structure reprise comparée à une base neuve par test |
+| Serveur | pool `search_path=codex`, `application_name=codex`, `CODEX_DB_POOL` (ancien `CODEX_DB_POOL_MAX` lu) ; schéma exigé, jamais créé ; `pg_trgm` installé par le superutilisateur hors de `codex` ; verrous de la branche (`READ COMMITTED`), pas le verrou global `codex.ecritures` | socle Matrix ; `droits.verifier()` |
+| Remplissage | `CODEX_SEED=demo|minimal` et `CODEX_SEED_DEMO=1` (= `demo`, refusé avec un autre `CODEX_SEED`) ; sur un serveur, rien sans l'un d'eux : page `/base-vide` au lieu de l'erreur `user.role` de `getCtx`, `/api/health` 200 avec `empty: true` | le plus prudent : rien n'est écrit sans demande |
+| Matrix | déclaration gardée, jamais attendue ni bloquante, jamais pendant `next build` (`NEXT_PHASE`), juste après les migrations, au premier accès à la base (requête ou premier passage du planificateur) | comme `main` |
+| Export complet | sans `TEMPORARY` (socle), instantané dans des tables `unlogged` `codex_export_*` du schéma, supprimées à la fin ; journal des migrations exclu | export sur le serveur commun |
+| Image | contrat Coolify gardé (port 3000, `CODEX_DATA_DIR=/data`, volume `/data`, sauvegardes `/data/backups`) avec les apports du lot 10 (sortie autonome, non root, `HEALTHCHECK`, aucun secret) ; point d'entrée qui rend à `node` un volume créé en root par l'ancienne image ; `NEXT_PUBLIC_*` lues au lancement | ne rien casser côté serveur |
+| Build | `databaseIsEmpty` appelle `connection()` : le prérendu de `/_not-found` n'ouvre plus la base au build | trouvé par le build : la mise en page interrogeait la base avant `cookies()` |
+
+**Écarts avec le dépôt Matrix** (non modifié ; correctifs décrits dans [postgres.md](postgres.md)) : `pub_journal.quand`
+(instant UTC dans la branche : `40-codex.sql` rejoué tel quel échoue sur le changement de type ; corrigé, il laisse les
+7 vues identiques) ; `pg_trgm` à installer par le socle dans un schéma `extensions` (dans `codex`, `90-droits.sql`
+échoue : fonctions de l'extension exécutables par tous) ; socle en PostgreSQL 16 alors que Codex exige 18 ; commentaire
+de `pub_journal.objet` ; plan § 4.5 et § 6 (verrou d'écriture, `migrate.ts`).
+
+**Vérifications** (conteneur Linux, Node 22, PostgreSQL 18.3 de `/opt/codex-pg18` dans `/var/tmp`, port 55433) :
+
+- Socle Matrix rejoué (`init/01` à `03`, faute de psql par un petit lecteur de ses commandes `\getenv`, `\gset`,
+  `\gexec`, `\if`, `\connect`) : `verifier-droits.sql` conforme, 109 cas, avant et après Codex.
+- Codex en `codex_app` : sans `pg_trgm`, refus clair et schéma intact ; avec, `npm run db:migrate` applique `0000_init`
+  et `0001_partage` (32 tables dont le journal, 7 vues, tout à `codex_app`, rien dans `public`) ; partage 10, 40
+  corrigé, 90, 95 rejoués, `droits.verifier()` sans erreur ; Keystone lit 62 documents publiés sur 63 (un « très
+  confidentiel »), pas la table ; `matrix.journal_unifie` reçoit les 168 entrées de Codex.
+- `npm run build && npm start` avec `DATABASE_URL` : sans remplissage, `/api/health` 200 `empty: true`, chaque page
+  rend « La base de Codex est vide », aucune erreur ; déclaration à Matrix écrite (31 tables, ni journal ni vues) ;
+  avec `CODEX_SEED_DEMO=1`, base remplie une fois, 9 écrans en 200 ou redirection attendue.
+- Image Docker : voir [exploitation.md](exploitation.md) §10 (refus de la vieille base, `rm -rf /data/pglite`, démarrage
+  sous `node`, `HEALTHCHECK` sain ; même image sur le serveur).
+- `npm test` (PGlite, `.data` déplacé) et `npm run test:pg` (bases disposées comme le socle : rôle sans `CREATE` ni
+  `TEMPORARY`, `pg_trgm` dans `extensions`) : 1 454 tests réussis et 13 sautés sur PGlite (avec et sans `.data`, laissé
+  intact), 1 464 réussis et 3 sautés sur PostgreSQL 18.3, 109 fichiers, aucune base ni aucun rôle d'essai laissé ;
+  nouveaux tests `partage.test.ts` (contrat des
+  vues), `empty-database.test.ts`, reprise et refus dans `migrations.test.ts`, règles des migrations dans
+  `tests/unit/migrations.test.ts`. `npm run a11y` (0 violation) et `npm run e2e` (5 parcours) passent.
+- **Coolify, à faire** : rien sur le port ni le volume ; supprimer `/data/pglite` (procédure §10) ; la case « disponible
+  au build » des `NEXT_PUBLIC_*` n'est plus utile ; au raccordement au serveur commun, `DATABASE_URL` et
+  `CODEX_SEED_DEMO=1` ou `CODEX_SEED=minimal`.

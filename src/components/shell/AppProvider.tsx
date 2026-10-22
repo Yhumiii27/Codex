@@ -7,7 +7,8 @@ import { latestTodo } from './todo';
 import type { DialogData, DialogSpec } from '@/components/dialogs/types';
 import { Dialogs } from '@/components/dialogs/Dialogs';
 
-type Toast = { id: number; text: string; error?: boolean };
+/** `error`: a refusal; 'warn': done, with something to know (ActionResult.warning), left on screen longer. */
+type Toast = { id: number; text: string; error?: boolean | 'warn' };
 
 type AppCtx = {
   t: T;
@@ -15,7 +16,7 @@ type AppCtx = {
   data: DialogData;
   open: (d: DialogSpec) => void;
   close: () => void;
-  toast: (text: string, error?: boolean) => void;
+  toast: (text: string, error?: boolean | 'warn') => void;
   /** « À traiter » (lib/queries.ts myTodo): the sidebar badge and the bell, the most recent list the shell was given. */
   todo: MyAction[];
   reportTodo: (x: Todo) => void;
@@ -48,10 +49,10 @@ export function AppProvider({ t, lang, data, todo, children }: { t: T; lang: Lan
   const reportTodo = useCallback((x: Todo) => setReported((r) => (r ? latestTodo(r, x) : x)), []);
   const items = latestTodo(todo, reported).items;
 
-  const toast = useCallback((text: string, error?: boolean) => {
+  const toast = useCallback((text: string, error?: boolean | 'warn') => {
     const id = ++seq.current;
     setToasts((xs) => [...xs, { id, text, error }]);
-    setTimeout(() => setToasts((xs) => xs.filter((x) => x.id !== id)), 3200);
+    setTimeout(() => setToasts((xs) => xs.filter((x) => x.id !== id)), error === 'warn' ? 10_000 : 3200);
   }, []);
   const close = useCallback(() => setDialog(null), []);
   const value = useMemo(() => ({ t, lang, data, open: setDialog, close, toast, todo: items, reportTodo }), [t, lang, data, close, toast, items, reportTodo]);
@@ -62,7 +63,7 @@ export function AppProvider({ t, lang, data, todo, children }: { t: T; lang: Lan
       {dialog && <Dialogs spec={dialog} />}
       <div className="toasts" aria-live="polite">
         {toasts.map((x) => (
-          <div key={x.id} className={x.error ? 'toast toast-error' : 'toast'}>{x.text}</div>
+          <div key={x.id} className={x.error === 'warn' ? 'toast toast-warn' : x.error ? 'toast toast-error' : 'toast'} role={x.error === 'warn' ? 'status' : undefined}>{x.text}</div>
         ))}
       </div>
     </Ctx.Provider>

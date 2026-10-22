@@ -42,7 +42,7 @@ export function makeNonce(): string {
  * The policy of a page. What Codex loads: its own scripts (Next.js runtime and chunks, nonce and 'strict-dynamic');
  * its own style sheets plus style attributes and the style elements React and Next.js insert ('unsafe-inline' for
  * styles only); the Inter font self-hosted by next/font; images from the file route, data: and blob:; the file route
- * framed by the document preview. `dev`: React's development build needs eval, and the dev server's hot reload its
+ * framed by the document preview, and the copy of a paged PDF it keeps in memory (blob:). `dev`: React's development build needs eval, and the dev server's hot reload its
  * own WebSocket ('self' covers ws: on the same host in current browsers).
  */
 export function contentSecurityPolicy({ nonce, dev = false, https = false }: { nonce: string; dev?: boolean; https?: boolean }): string {
@@ -53,7 +53,7 @@ export function contentSecurityPolicy({ nonce, dev = false, https = false }: { n
     "img-src 'self' data: blob:",
     "font-src 'self'",
     "connect-src 'self'",
-    "frame-src 'self'",
+    "frame-src 'self' blob:",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",

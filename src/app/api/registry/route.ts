@@ -4,13 +4,17 @@ import { getDb, schema as s } from '@/db';
 import { CONF_LEVELS, DICT, type TKey } from '@/lib/i18n';
 import { withRequestLog } from '@/lib/log';
 import { limitRequest } from '@/lib/ratelimit';
+import { checkBearer, credentialsOf } from '@/lib/server-auth';
 
-// Register of document types, read by Keystone (docs/api.md). Read-only and open within the group network until
-// real authentication is plugged in; nothing user-specific, so no session is read.
+// Register of document types, read by Keystone (docs/api.md). Read-only; nothing user-specific, so no session is read.
+// Open by default, so that Keystone keeps reading it; CODEX_REGISTRY_TOKEN (and its _NEXT during a rotation) closes it
+// to callers without that bearer token (lib/server-auth.ts).
 
 const labels = (key: string) => ({ fr: DICT.fr[key as TKey] ?? key, en: DICT.en[key as TKey] ?? key });
 
 async function handleGet(req: Request) {
+  const denied = checkBearer(req, 'registry');
+  if (denied) return denied;
   const limited = limitRequest(req, 'registry');
   if (limited) return limited;
   const db = await getDb();
@@ -49,6 +53,8 @@ async function handleGet(req: Request) {
         disposition: t.retentionDisposition,
         dispositionLabels: labels(`disp_${t.retentionDisposition}`),
         basis: t.retentionBasis,
+        /** English wording of `basis`; null until written (Administration › Registre des types). */
+        basisEn: t.retentionBasisEn || null,
       },
       /** Periodic review in months, null without one: the next review date of a document entering into force without one. */
       reviewMonths: t.reviewMonths,
@@ -63,7 +69,9 @@ async function handleGet(req: Request) {
 
   // The ETag covers the register only, so an unchanged register answers 304 whatever the time of the request.
   const etag = `"${createHash('sha1').update(JSON.stringify(data)).digest('base64url')}"`;
-  const headers = { ETag: etag, 'Cache-Control': 'public, max-age=60, must-revalidate' };
+  // Behind a token, no shared cache may keep it: one would hand it to callers without the token.
+  const closed = credentialsOf('registry').tokens.length > 0;
+  const headers = { ETag: etag, 'Cache-Control': `${closed ? 'private' : 'public'}, max-age=60, must-revalidate` };
   const match = req.headers.get('if-none-match');
   if (match && match.split(',').some((x) => x.trim().replace(/^W\//, '') === etag)) return new Response(null, { status: 304, headers });
   return Response.json({ ...data, generatedAt: new Date().toISOString() }, { headers });

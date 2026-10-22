@@ -137,6 +137,11 @@ export type VisaRecord = {
   rev: {
     letter: string; status: string; createdAt: string; approvedAt: string | null; effectiveAt: string | null; inForceAt: string | null;
     supersededAt: string | null; modifier: string | null; changeRefs: string[];
+    /**
+     * The file approved: the last working version of the revision, its name and size (formatted), and the SHA-256
+     * recorded when it entered Codex (null when it was stored before fingerprints were computed); null without file.
+     */
+    file: { name: string; size: string; sha256: string | null } | null;
   };
   /**
    * The revision was migrated from the legacy system (/api/import): when, under which reference, and whether it was
@@ -183,6 +188,7 @@ export function visaLines(t: T, lang: Lang, x: VisaRecord): PdfLine[] {
     ...(doc.state ? [field(t.visa_state, doc.state)] : []),
     ...(rev.modifier ? [field(t.modifier, rev.modifier)] : []),
     field(t.visa_eco, rev.changeRefs.length ? rev.changeRefs.join(', ') : '—'),
+    ...(rev.file ? [field(t.visa_file, `${rev.file.name} · ${rev.file.size}`), field('SHA-256', rev.file.sha256 ?? t.visa_no_sha)] : []),
 
     heading(t.visa_dates),
     field(t.visa_created, day(rev.createdAt)),

@@ -31,3 +31,16 @@
 .orphanStore { font-weight: 500; margin-right: 8px; }
 .orphanTable { font-size: 12px; }
 .orphanKey { word-break: break-all; }
+/* Reprise tab (point 19): the choice of the two people, the simulation by kind, what the transfer leaves to others. */
+.transfer { display: flex; flex-direction: column; gap: 18px; }
+.transferHead { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; font-size: 13px; }
+.transferTable { font-size: 12.5px; }
+.transferTable td:first-child { width: 60%; }
+.transferStatus { font-size: 12px; }
+.transferNotes { margin: 0; padding-left: 18px; font-size: 12.5px; color: var(--color-neutral-400); display: flex; flex-direction: column; gap: 4px; }
+/* Vocabulaires tab (point 59): each vocabulary with its terms, then the values documents carry without a term. */
+.vocab { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.vocabHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.vocabUnlisted { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; }
+.vocabSplit { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; align-items: start; }
+@media (max-width: 1360px) { .vocabSplit { grid-template-columns: minmax(0, 1fr); } }

@@ -10,7 +10,7 @@ d'un document obsolète ou archivé, liens « remplace » / « remplacé par » 
 désactivation des départements et des sites (§2), partage des recherches enregistrées et pages par département (§5), longueur du
 motif de rejet, droit de rappeler une demande de validation et fiche de visa (§6), lecture stricte de la cohérence des dates,
 indicateurs d'expiration et de revue, « Revue effectuée » et périodicité de revue par type, détection des
-modifications simultanées (§4, §7).
+modifications simultanées, auteur désigné et types cibles des modèles (§4, §7).
 Elles sont listées dans `docs/decisions.md` (« Choix de l'assistant non validés explicitement », question O-09), qui
 prévaut en cas de doute.
 
@@ -60,7 +60,9 @@ autre segment d'identifiant (*proposé, non confirmé*, `docs/decisions.md`).
 
 Compteur par couple (type, contexte). ID attribué à la création du brouillon. Avant la première approbation, un
 reclassement attribue un nouvel ID et conserve l'ancien comme alias ; après, l'ID ne change plus jamais.
-Fichier stocké : `{ID}_{indice}.{ext}` (ex. `PRO-QHS-0012_B.2.pdf`).
+Fichier stocké : `{ID}_{indice}.{ext}` (ex. `PRO-QUA-0012_B.2.pdf`), nom proposé au téléchargement ; avec SharePoint,
+le fichier porte ce nom dans le dossier de l'ID ; sur le disque local, il est rangé à plat sous un préfixe unique
+(`{uuid}-{ID}_{indice}.{ext}`). Un reclassement renomme les fichiers déjà stockés.
 
 ## 4. Révisions et cycle de vie
 
@@ -231,6 +233,16 @@ Tronc commun : ID, Titre, Origine, Rattachement, Famille, Type, Sous-type, Propr
 Statut, Département, Site, Confidentialité, Mots-clés, Révision, dates d'émission / d'effet / de révision /
 d'expiration, Langue, Classe de conservation.
 
+**Auteur.** Une personne du groupe (par défaut celle qui crée le document) ou un texte libre pour un auteur externe,
+jamais les deux, choisi à la création et dans « Modifier les métadonnées » ; un changement est journalisé. C'est une
+métadonnée : elle ne fait pas entrer la personne dans le cercle de rédaction (§5). Un document repris sans auteur
+affiche son propriétaire. *Proposé, non confirmé.*
+
+**Types cibles d'un modèle.** Un modèle (FRM, contexte QMS) peut être rattaché à un ou plusieurs types de document, par
+son propriétaire ou un gestionnaire documentaire (fiche du modèle ou Administration › Modèles (QMS)), avec
+journalisation. « Nouveau depuis un modèle » propose d'abord les modèles du type choisi, puis les autres, qui restent
+utilisables pour tout type. Un type cible d'un modèle compte comme utilisé dans le registre. *Proposé, non confirmé.*
+
 Champs selon le contexte :
 - Externe : organisme source, référence externe, date de réception.
 - Projet : code projet, phase, lot / work package, discipline.
@@ -294,3 +306,9 @@ documentaire peut le lever (journalisé), le circuit en cours reprend alors.
 
 La conservation se compte **par document** : l'événement « remplacement » part du retrait du document (Vigie), à
 défaut de son archivage ; les révisions remplacées suivent la conservation du document.
+
+Pour « fin de vie de l'actif » et « départ du salarié », que Codex ne peut pas connaître, la date de l'événement se
+saisit sur la fiche (propriétaire ou gestionnaire) ; la fin de projet attend Keystone (O-03). Une classe modifiée sur un
+document est une dérogation : une règle du type modifiée ne s'applique qu'aux documents qui la suivent, et seulement si
+on le demande. Rien n'est archivé ni détruit automatiquement à l'échéance (O-07). Détail et choix non confirmés :
+`docs/decisions.md`, « Choix de l'assistant non validés explicitement ».

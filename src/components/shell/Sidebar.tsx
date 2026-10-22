@@ -17,8 +17,9 @@ const ITEMS: { key: Screen; href: string; icon: IconName }[] = [
   { key: 'admin', href: '/administration', icon: 'shield' },
 ];
 
-export function activeScreen(pathname: string): Screen | 'document' {
+export function activeScreen(pathname: string): Screen | 'document' | 'help' {
   if (pathname.startsWith('/documents/')) return 'document';
+  if (pathname === '/aide' || pathname.startsWith('/aide/')) return 'help';
   return ITEMS.find((i) => i.href !== '/' && pathname.startsWith(i.href))?.key ?? 'home';
 }
 
@@ -35,7 +36,7 @@ export function Sidebar({ screens, user, roleTitle, keystoneUrl }: {
   const pathname = usePathname();
   const sc = activeScreen(pathname);
   return (
-    <nav className={`nav ${styles.nav}`}>
+    <nav className={`nav ${styles.nav}`} aria-label={t.nav_label}>
       <div className={styles.brandRow}>
         <div className={styles.logo}><Icon name="doc" size={15} /></div>
         <div>
@@ -64,9 +65,15 @@ export function Sidebar({ screens, user, roleTitle, keystoneUrl }: {
             <Icon name="external" size={12} sw={1.8} style={{ opacity: 0.6 }} />
           </a>
         </div>
-        <button type="button" className="btn btn-ghost" onClick={() => open({ kind: 'notes' })} style={{ justifyContent: 'flex-start', fontSize: 12, padding: '6px 8px' }}>
-          <Icon name="info" size={14} />{t.notes}
-        </button>
+        {/* Help (/aide): what to do, step by step; the design notes: what the model is. */}
+        <div className={styles.helpRow}>
+          <Link href="/aide" className={`btn btn-ghost ${styles.help}`} aria-current={sc === 'help' ? 'page' : undefined}>
+            <Icon name="help" size={14} />{t.nav_help}
+          </Link>
+          <button type="button" className="btn btn-ghost" onClick={() => open({ kind: 'notes' })} style={{ justifyContent: 'flex-start', fontSize: 12, padding: '6px 8px' }}>
+            <Icon name="info" size={14} />{t.notes}
+          </button>
+        </div>
         <button type="button" className={`plain-btn ${styles.user}`} onClick={() => open({ kind: 'user' })} title={t.sim_title}>
           <div className={styles.avatar}>{user.initials}</div>
           <div style={{ minWidth: 0 }}>

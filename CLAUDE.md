@@ -27,14 +27,18 @@ numéro, sans les trancher à la place de l'utilisateur.
 | Fichier | Contenu |
 | --- | --- |
 | `docs/decisions.md` | **Journal des décisions de l'utilisateur** (citations exactes) et questions encore ouvertes. Les questions qui y sont tranchées ne se reposent pas. |
+| `docs/fiches-decision.md` | Fiches d'aide à la décision pour O-01 à O-11 : état du code, options, effort, ce qui deviendrait irréversible, données attendues. Elles ne tranchent rien ; `docs/decisions.md` prévaut. |
 | `docs/modele-cible.md` | Modèle fonctionnel qui fait foi : identifiants, révisions, confidentialité, circuits, conservation. Les propositions non confirmées qu'il contient sont signalées en tête ; en cas de doute, `docs/decisions.md` prévaut. |
 | `docs/audit-deck-epc2i.md` | Audit du deck (7 octobre 2026) : exigences, modèle de métadonnées, écarts avec Codex et leur statut actuel, architecture. |
 | `docs/sources/deck-ged-epc2i.md` | Texte intégral du deck. L'original est `docs/sources/creation-ged-epc2i.pptx`. |
 | `docs/historique.md` | Chronologie du travail : construction, audit, modèle v2, revues, app Mac, GitHub. |
 | `docs/avancement-v2.md` | État d'avancement et reste à faire. |
+| `docs/postgres.md` | PostgreSQL serveur en option (`DATABASE_URL`), limites, `npm run test:pg`. |
+| `docs/performances.md` | Mesures sur gros volume (`npm run seed:large`, `npm run perf`). |
 | `docs/reste-a-faire.md` | Inventaire vérifié du 9 octobre 2026 : 129 points ouverts, classés selon ce qui les bloque (rien, décision, données, macOS). |
 | `docs/registre-points-ouverts.md` | Points à arbitrer sur le registre des types (69 types, 23 familles). |
 | `docs/api.md` | API d'intégration : registre, import de migration, webhook Vigie. |
+| `docs/accessibilite.md` | Accessibilité : contrôle automatisé `npm run a11y`, contrastes mesurés, ce qui reste (lecteur d'écran). |
 | `README.md` | Démarrage, écrans, ce qui est réel ou simulé, organisation du code. |
 
 ## Décisions structurantes (détail et citations dans `docs/decisions.md`)
@@ -63,7 +67,8 @@ numéro, sans les trancher à la place de l'utilisateur.
 - **Conservation par type de document, selon les règles d'usage.** La migration de l'existant se fera par un code
   dédié, **hors de Codex**.
 - **Non tranché** : activation de SharePoint (O-01), fournisseur d'authentification (O-02 ; Entra ID est proposé, pas
-  confirmé), liaison avec Keystone par API ou base partagée (O-03), organigramme (O-04), arbitrages du registre (O-05).
+  confirmé), liaison avec Keystone par API ou base partagée (O-03, en partie répondue par M-01 : base commune, un
+  schéma par outil, la liaison reste une API), organigramme (O-04), arbitrages du registre (O-05).
 
 ## Lancer et vérifier
 
@@ -72,15 +77,55 @@ npm install
 npm run dev          # http://localhost:3100
 npm test             # Vitest : tests/unit et tests/integration (PGlite en mémoire), ~20 s, sans serveur ni .data/
 npm run typecheck && npm run lint && npm run build
+npm run a11y         # après le build : axe-core dans Chromium sur une base de démo jetable (docs/accessibilite.md)
 ```
 
-- **Intégration continue** : `.github/workflows/ci.yml` rejoue `npm ci`, typecheck, lint, tests et build à chaque push
-  et pull request.
+- **Intégration continue** : `.github/workflows/ci.yml` rejoue `npm ci`, `npm run db:check`, typecheck, lint, tests,
+  build et `npm run a11y` à chaque push et pull request.
 
-- **Base de démo.** Au premier lancement, elle est créée dans `.data/` (non versionné) puis remplie par
-  `src/db/seed*.ts`. Pour repartir de zéro : arrêter le serveur, `npm run db:reset`, relancer.
-- **Changement de `src/db/schema.ts`.** Tant qu'il n'y a pas de base de production, on régénère une migration
-  unique : `rm -rf drizzle && npx drizzle-kit generate --name init`, puis `npm run db:reset`.
+- **Base de démo.** Sans `DATABASE_URL`, elle est créée au premier lancement dans `.data/` (PGlite, non versionné)
+  puis remplie par `src/db/seed*.ts`. Pour repartir de zéro : arrêter le serveur, `npm run db:reset`, relancer.
+  - `CODEX_SEED=demo` (défaut en PGlite) charge le référentiel et la démonstration ; `CODEX_SEED=minimal` ne charge que
+    le référentiel (registre, fonctions, matrice des droits, organisation provisoire, acteurs système) et un
+    administrateur initial (`admin`). Lu seulement sur une base vide. `CODEX_SEED_DEMO=1` (variable du serveur commun)
+    vaut `demo` ; posée avec un autre `CODEX_SEED`, le serveur refuse de démarrer.
+- **Serveur commun (décision M-01).** Avec `DATABASE_URL`, Codex se connecte au serveur PostgreSQL commun EPC2I en
+  tant que `codex_app` (base `epc2i`, schéma `codex`, aucun accès ailleurs, aucun droit `CREATE` sur la base), pool
+  `search_path=codex`, `application_name=codex`, taille `CODEX_DB_POOL`. Sur le serveur, rien n'est rempli sans
+  `CODEX_SEED` ni `CODEX_SEED_DEMO=1` : la base reste vide et toutes les pages mènent à `/base-vide`, qui dit quoi
+  poser. Socle, rôles et partage : dépôt Matrix (`infra/postgres/`) ; détail et écarts : `docs/postgres.md`.
+  - Toutes les tables, fonctions, déclencheurs et le journal des migrations sont dans le schéma `codex`, **aussi en
+    PGlite** (`src/lib/pglite-options.mjs` : `search_path` « codex, public »). Les tables se déclarent avec
+    `codex.table(…)`, jamais `pgTable(…)`. L'objet `pgSchema` n'est jamais exporté : exporté, drizzle-kit ajoute un
+    `CREATE SCHEMA` que `codex_app` ne peut pas exécuter. Aucune migration ne contient `CREATE SCHEMA`,
+    `CREATE EXTENSION` ni `public` (`tests/unit/migrations.test.ts`).
+  - Déclaration à Matrix (`src/lib/matrix.ts`) juste après les migrations, jamais attendue ni bloquante, jamais
+    pendant `next build` ; sans `MATRIX_URL`, rien n'est envoyé.
+- **Changement de `src/db/schema.ts` : migrations incrémentales.** Depuis le lot 11 (22 octobre 2026), la base figée
+  est `drizzle/0000_init.sql` (tout le schéma de Codex dans `codex`, régénérée ce jour-là) suivie de
+  `drizzle/0001_partage.sql` (prérequis du partage et 7 vues `pub_`, écrites à la main d'après
+  `infra/postgres/partage/40-codex.sql` du dépôt Matrix). Ne plus jamais supprimer `drizzle/` ni régénérer ou modifier
+  une migration déjà commitée. Une vue `pub_` ne perd ni ne renomme jamais de colonne (sinon nouvelle vue `_v2`).
+  1. Modifier `src/db/schema.ts`, puis `npm run db:generate -- --name <sujet>` : une nouvelle migration
+     `drizzle/NNNN_<sujet>.sql`, qu'on relit (renommage de colonne : drizzle-kit pose la question ; données à
+     reprendre : compléter le SQL à la main avant de commiter).
+  2. `npm run db:check` et `npm test` (`tests/integration/migrations.test.ts` vérifie que le schéma a sa migration et
+     que la chaîne de migrations donne la structure du schéma).
+  3. Au démarrage (ou `npm run db:migrate`), Codex applique les migrations manquantes en une transaction, avec son
+     propre migrateur (`src/db/migrations.ts` : jamais de `CREATE SCHEMA`, journal `codex.__drizzle_migrations`), après
+     une sauvegarde automatique de la base PGlite (`CODEX_MIGRATION_BACKUP=off` pour s'en passer ; sur le serveur,
+     `pg_dump` d'abord). Il refuse une base faite par un autre schéma. Pas de `db:reset` à faire. Retour arrière :
+     `npm run restore` de cette sauvegarde avec la version précédente de Codex.
+  - **Ancienne base PGlite** (tables dans `public`) : celle de cette branche au 21 octobre (chaîne 0000 à 0005,
+    gardée dans `tests/fixtures/drizzle-public/`) est **reprise automatiquement** après sauvegarde : `public` devient
+    `codex`, puis `0001_partage`. Toute autre (démo de `main` d'avant le 17 octobre, chaîne plus ancienne) est refusée
+    avec le remède : `npm run db:reset` pour `.data`, suppression du dossier `pglite` quand `CODEX_DATA_DIR` est posé
+    (app Mac, image : `rm -rf /data/pglite`).
+  - Fonctions et déclencheurs (journal, version, termes de recherche) ne sont pas dans les migrations : ils sont
+    reposés à chaque démarrage par `openDb()` (`src/db/index.ts`), à garder cohérents avec le schéma.
+- **Évolution de `src/db/registry.ts`** (ou des fonctions de `src/db/seed-org.ts`) : `npm run registry:apply`
+  (serveur arrêté) montre l'écart avec la base, `-- --apply` l'applique après une sauvegarde, journalisé. Ce qui a été
+  réglé dans l'Administration est conservé ; un code n'est jamais renommé ni supprimé (un type retiré est désactivé).
 - **Utilisateur et rôle simulés** par cookie. Par défaut : Claire Bardet, gestionnaire documentaire. Pour changer,
   cliquer sur le profil en bas de la barre latérale.
 - **Pas de secrets dans le dépôt.** Les variables sont décrites dans `.env.example`, et `.gitignore` exclut `.env*`,
@@ -98,14 +143,14 @@ npm run typecheck && npm run lint && npm run build
     `getDb()` ouvrirait `.data/pglite`. S'il appelle des Server Actions, il simule aussi `next/headers` et
     `next/cache`, et choisit l'utilisateur avec `actAs()` (`tests/support/session.ts`). Les `vi.mock` à copier
     sont en tête de `tests/integration/locks.test.ts`.
-  - PGlite sérialise les transactions : les tests « simultanés » ne prouvent pas l'atomicité entre connexions.
+  - PGlite sérialise les transactions : les tests « simultanés » ne prouvent pas l'atomicité entre connexions ;
+    `npm run test:pg` rejoue la suite sur un PostgreSQL serveur (voir `docs/postgres.md`).
 
 ## Limites en session cloud (conteneur Linux)
 
 - Node 20.19+ ou 22.12+ est requis (`engines` de package.json : Next 16.4 et Vite 7 pour Vitest ; la session locale
-  utilise Node 26). La police Inter est chargée par
-  `next/font/google` : sans accès réseau à Google Fonts, `npm run build` peut échouer, `npm run dev` se rabat sur une
-  police de secours.
+  utilise Node 26). La police Inter est dans le dépôt (`src/fonts/`, `next/font/local`, licence OFL) : le build ne
+  demande plus d'accès réseau.
 - Une branche cloud créée avant le 9 octobre au soir ne contient pas ces documents : `git fetch origin && git merge
   origin/main`.
 

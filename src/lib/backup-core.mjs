@@ -19,8 +19,9 @@
 // bytes. Files no record of the dump points to (orphans, uploads whose record was not committed) are left out.
 
 import { createHash, randomUUID } from 'node:crypto';
-import { readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { readFileSync, readlinkSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { cp, lstat, mkdir, open, readdir, readFile, rename, rm, rmdir, stat, writeFile } from 'node:fs/promises';
+import { hostname } from 'node:os';
 import path from 'node:path';
 
 export const FORMAT = 'codex-backup';
@@ -40,9 +41,10 @@ const BLOCK = 512;
 const CHUNK = 1 << 20;
 const MAX_OCTAL = 0o77777777777;
 const MAX_MANIFEST = 256 * 1024 * 1024;
-/** A backup, restore or export command refreshes its lock this often while it runs... */
+/** The server and the commands (backup, restore, export...) refresh their lock this often while they run... */
 const BEAT_MS = 30_000;
-/** ...and its lock lapses, whatever its process number, when not refreshed for this long (killed, number reused). */
+/** ...and a command's lock, or any lock of another process space, lapses when not refreshed for this long (killed,
+ * number reused), whatever its process number. */
 const COMMAND_STALE_MS = 10 * 60_000;
 
 /**
@@ -84,6 +86,20 @@ export class BackupError extends Error {
 /** @typedef {{ query: (sql: string, params?: any[]) => Promise<{ rows: any[] }> }} Queryable */
 
 // ── Settings ────────────────────────────────────────────────────────────
+
+/**
+ * The refusal of a command that works on PGlite's data directory (npm run backup, restore, export, integrity) when
+ * DATABASE_URL names a PostgreSQL server (docs/postgres.md): it would read or replace a database Codex no longer uses.
+ * Null with the embedded database.
+ * @param {Readonly<Record<string, string | undefined>>} env
+ * @param {string} what the command, as the message names it
+ * @param {string} instead what to do on a server
+ */
+export function serverDatabaseRefusal(env, what, instead) {
+  if (!env.DATABASE_URL?.trim()) return null;
+  return `${what} : DATABASE_URL désigne un serveur PostgreSQL, et cette commande ne travaille que sur la base intégrée (PGlite) du dossier de données.\n${instead}\nVoir docs/postgres.md.`;
+}
+
 
 /**
  * Where archives go: CODEX_BACKUP_DIR, else beside the data directory (`.data` → `.data-backups`), outside it so that
@@ -141,9 +157,74 @@ function inside(child, parent) {
 // ── Lock of the data directory ──────────────────────────────────────────
 // PGlite cannot share a data directory between processes, and its own postmaster.pid always says -42. The server
 // writes codex.lock when it opens the database; the commands refuse to run while that process lives, and write their
-// own lock, which the server respects and which they refresh while they run.
+// own lock, which the server respects. Both refresh their lock every 30 s while they run.
+//
+// A process number only means something in the process space (pid namespace) it was given in: two containers on one
+// volume both run as pid 1 (lot 10, étape 7). So a lock also records a random id of the process that wrote it (« mine »
+// is that id, never the pid) and its process space. A lock of another space is never judged by its pid: it holds while
+// refreshed and lapses 10 minutes after its last refresh. A lock of the former format (pid, kind, since, beat only) is
+// judged by its pid as before, but is never this process's own.
 
-/** @typedef {{ pid: number, kind: 'server' | 'backup' | 'restore' | 'export', since: string, beat?: string }} DataDirLock */
+/**
+ * @typedef {{ pid: number, kind: 'server' | 'backup' | 'restore' | 'export' | 'integrity' | 'registry' | 'seed' | 'migrate', since: string, beat?: string,
+ *   id?: string, space?: string }} DataDirLock
+ */
+
+const LOCK_ID_KEY = Symbol.for('codex.lock.id');
+/** @type {string | undefined} */
+let lockSpace;
+
+/**
+ * Who this process is to the lock: a random id drawn once per process (kept on globalThis, so that every copy of this
+ * module in a bundle shares it), and its process space. Under Linux, the space is the boot (random per boot, shared
+ * by the containers of one kernel) and the pid namespace (one per container, unless --pid=host): two processes with the
+ * same space see the same process numbers. The kernel reuses the number of a namespace once it is gone (seen: a
+ * container started after a killed one got its number), so the start of the namespace's first process is added.
+ * Elsewhere (macOS), the host name.
+ * @returns {{ id: string, space: string }}
+ */
+export function lockIdentity() {
+  const g = /** @type {Record<symbol, string | undefined>} */ (/** @type {unknown} */ (globalThis));
+  const id = (g[LOCK_ID_KEY] ??= randomUUID());
+  if (lockSpace === undefined) {
+    try {
+      const boot = readFileSync('/proc/sys/kernel/random/boot_id', 'utf8').trim();
+      lockSpace = `boot:${boot}/${readlinkSync('/proc/self/ns/pid')}${initStart()}`;
+    } catch {
+      lockSpace = `host:${hostname()}`;
+    }
+  }
+  return { id, space: lockSpace };
+}
+
+/** When the first process of this pid namespace started (clock ticks since boot, /proc/1/stat), or '' if unreadable. */
+function initStart() {
+  try {
+    const stat = readFileSync('/proc/1/stat', 'utf8');
+    const start = stat.slice(stat.lastIndexOf(')') + 2).split(' ')[19];
+    return /^\d+$/.test(start ?? '') ? `/init:${start}` : '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Was the lock written in another process space (another container, another machine sharing the volume)? A lock of the
+ * former format, without a space, cannot tell: false.
+ * @param {DataDirLock | null} lock
+ */
+export function foreignLock(lock) {
+  return !!lock && typeof lock.space === 'string' && lock.space !== lockIdentity().space;
+}
+
+/**
+ * The holder's process number, for the commands' messages (French), saying when it is another container's or machine's.
+ * @param {{ pid: number, space?: string } | null | undefined} lock
+ */
+export function lockPid(lock) {
+  if (!lock) return '?';
+  return `${lock.pid}${foreignLock(/** @type {DataDirLock} */ (lock)) ? ', dans un autre conteneur ou sur une autre machine' : ''}`;
+}
 
 /**
  * @param {string} dataDir
@@ -152,7 +233,7 @@ function inside(child, parent) {
 export async function readLock(dataDir) {
   try {
     const v = JSON.parse(await readFile(path.join(dataDir, LOCK_FILE), 'utf8'));
-    return v && Number.isInteger(v.pid) && v.pid > 0 && ['server', 'backup', 'restore', 'export'].includes(v.kind) ? v : null;
+    return v && Number.isInteger(v.pid) && v.pid > 0 && ['server', 'backup', 'restore', 'export', 'integrity', 'registry', 'seed', 'migrate'].includes(v.kind) ? v : null;
   } catch {
     return null;
   }
@@ -169,14 +250,31 @@ export function pidAlive(pid) {
 }
 
 /**
- * Is the directory held by another live process? A command's lock lapses when it was not refreshed for 10 minutes (a
- * command killed before it released it, its process number then reused); a server's lasts as long as its process.
+ * Is this lock this process's own? Only by its id: a lock of the former format never is.
+ * @param {DataDirLock | null} lock
+ */
+function ownLock(lock) {
+  return !!lock && typeof lock.id === 'string' && lock.id === lockIdentity().id;
+}
+
+/**
+ * Is the directory held by another live process?
+ * - This process's own lock: no.
+ * - Another process space: yes while refreshed, for 10 minutes after the last refresh, whatever its pid.
+ * - The same space: a command's lock lapses when not refreshed for 10 minutes (killed, its number reused); otherwise it
+ *   holds while its process lives. A lock of the same space with this process's pid but another id was left by a
+ *   process that is gone (its number reused by this one).
+ * - The former format: judged by its pid as in the same space, but held even when its pid is this process's (written by
+ *   a former version, here or in another container: there is no telling).
  * @param {DataDirLock | null} lock
  * @param {number} [now]
  */
 export function lockHeld(lock, now = Date.now()) {
-  if (!lock || lock.pid === process.pid) return false;
-  if (lock.kind !== 'server' && !(now - Date.parse(lock.beat ?? lock.since) < COMMAND_STALE_MS)) return false;
+  if (!lock || ownLock(lock)) return false;
+  const fresh = now - Date.parse(lock.beat ?? lock.since) < COMMAND_STALE_MS;
+  if (foreignLock(lock)) return fresh;
+  if (lock.kind !== 'server' && !fresh) return false;
+  if (typeof lock.id === 'string' && lock.pid === process.pid) return false;
   return pidAlive(lock.pid);
 }
 
@@ -185,7 +283,7 @@ export function lockHeld(lock, now = Date.now()) {
  * @param {string} since
  */
 function lockRecord(kind, since) {
-  return JSON.stringify({ pid: process.pid, kind, since, beat: new Date().toISOString() });
+  return JSON.stringify({ pid: process.pid, kind, since, beat: new Date().toISOString(), ...lockIdentity() });
 }
 
 /**
@@ -200,46 +298,18 @@ async function writeLock(dataDir, kind, since) {
   await rename(tmp, file);
 }
 
-/** Refresh timers of the commands' locks, by data directory. @type {Map<string, NodeJS.Timeout>} */
+/** Refresh timers of this process's locks, by data directory. @type {Map<string, NodeJS.Timeout>} */
 const beats = new Map();
 
 /**
- * The server, opening the database: refuses while a backup, restore or export command works on the directory, then
- * writes its own lock, removed when the process exits. A lock it cannot write never stops it (a warning).
+ * Refreshes this process's lock every 30 s until unlock(). Written synchronously: no write still in flight once
+ * unlock() has stopped the timer and removed the file.
  * @param {string} dataDir
+ * @param {DataDirLock['kind']} kind
+ * @param {string} since
  */
-export async function lockForServer(dataDir) {
-  const held = await readLock(dataDir);
-  if (held && held.kind !== 'server' && lockHeld(held)) {
-    const file = path.join(dataDir, LOCK_FILE);
-    throw new BackupError('busy', `a ${held.kind} command (pid ${held.pid}) holds ${file}; if no backup, restore or export command is running, delete that file`);
-  }
-  try {
-    await writeLock(dataDir, 'server', new Date().toISOString());
-    process.once('exit', () => releaseSync(dataDir));
-  } catch (err) {
-    console.warn('[backup] could not write the lock of', dataDir, err);
-  }
-}
-
-/**
- * A command (backup, restore, export: scripts/codex-export.mjs): refuses while another live process holds the
- * directory (BackupError 'busy', with the lock), then holds it, refreshing the lock every 30 s until unlock().
- * @param {string} dataDir
- * @param {'backup' | 'restore' | 'export'} kind
- */
-export async function lockForCommand(dataDir, kind) {
-  const held = await readLock(dataDir);
-  if (held && lockHeld(held)) {
-    const err = new BackupError('busy', `${held.kind} (pid ${held.pid})`);
-    Object.assign(err, { lock: held });
-    throw err;
-  }
-  await mkdir(dataDir, { recursive: true });
-  const since = new Date().toISOString();
-  await writeLock(dataDir, kind, since);
+function keepLock(dataDir, kind, since) {
   const file = path.join(dataDir, LOCK_FILE);
-  // Written synchronously: no write still in flight once unlock() has stopped the timer and removed the file.
   const timer = setInterval(() => {
     try {
       writeFileSync(`${file}.${process.pid}.tmp`, lockRecord(kind, since));
@@ -254,20 +324,63 @@ export async function lockForCommand(dataDir, kind) {
 }
 
 /**
+ * The server, opening the database: refuses while a backup, restore, export or integrity command works on the directory, then
+ * writes its own lock, refreshed every 30 s and removed when the process exits. A lock it cannot write never stops it (a warning).
+ * @param {string} dataDir
+ */
+export async function lockForServer(dataDir) {
+  const held = await readLock(dataDir);
+  if (held && held.kind !== 'server' && lockHeld(held)) {
+    const file = path.join(dataDir, LOCK_FILE);
+    const where = foreignLock(held) ? ' in another container or on another machine' : '';
+    throw new BackupError('busy', `a ${held.kind} command (pid ${held.pid}${where}) holds ${file}; if no backup, restore, export, integrity, registry or migrate command is running, delete that file`);
+  }
+  try {
+    const since = new Date().toISOString();
+    await writeLock(dataDir, 'server', since);
+    keepLock(dataDir, 'server', since);
+    process.once('exit', () => releaseSync(dataDir));
+  } catch (err) {
+    console.warn('[backup] could not write the lock of', dataDir, err);
+  }
+}
+
+/**
+ * A command (backup, restore, export: scripts/codex-export.mjs, integrity: scripts/codex-integrity.mjs, registry:
+ * scripts/codex-registry.mts, seed: scripts/codex-seed-large.mts): refuses while another live process holds the
+ * directory (BackupError 'busy', with the lock), then holds it, refreshing the lock every 30 s until unlock().
+ * @param {string} dataDir
+ * @param {'backup' | 'restore' | 'export' | 'integrity' | 'registry' | 'seed' | 'migrate'} kind
+ */
+export async function lockForCommand(dataDir, kind) {
+  const held = await readLock(dataDir);
+  if (held && lockHeld(held)) {
+    const err = new BackupError('busy', `${held.kind} (pid ${held.pid}${foreignLock(held) ? ', another container or machine' : ''})`);
+    Object.assign(err, { lock: held });
+    throw err;
+  }
+  await mkdir(dataDir, { recursive: true });
+  const since = new Date().toISOString();
+  await writeLock(dataDir, kind, since);
+  keepLock(dataDir, kind, since);
+}
+
+/**
  * Removes this process's lock (another process's stays) and stops refreshing it.
  * @param {string} dataDir
  */
 export async function unlock(dataDir) {
   clearInterval(beats.get(path.resolve(dataDir)));
   beats.delete(path.resolve(dataDir));
-  if ((await readLock(dataDir))?.pid === process.pid) await rm(path.join(dataDir, LOCK_FILE), { force: true });
+  if (ownLock(await readLock(dataDir))) await rm(path.join(dataDir, LOCK_FILE), { force: true });
 }
 
 /** @param {string} dataDir */
 function releaseSync(dataDir) {
   try {
     const file = path.join(dataDir, LOCK_FILE);
-    if (JSON.parse(readFileSync(file, 'utf8')).pid === process.pid) rmSync(file, { force: true });
+    clearInterval(beats.get(path.resolve(dataDir)));
+    if (ownLock(JSON.parse(readFileSync(file, 'utf8')))) rmSync(file, { force: true });
   } catch {
     // Gone, or another process's: nothing to release.
   }
@@ -637,13 +750,33 @@ export async function readMigrations(folder) {
 }
 
 /**
+ * The migrations of this branch before lot 11 (22 October 2026), when Codex's tables were in the schema public and the
+ * journal in drizzle.__drizzle_migrations (src/db/migrations.ts). A PGlite database (or an archive of one) that applied
+ * exactly these is taken up into the schema codex when the server next opens it; its files are kept in
+ * tests/fixtures/drizzle-public for the test of that take-up.
+ * @type {readonly Migration[]}
+ */
+export const LEGACY_PUBLIC_CHAIN = Object.freeze([
+  { tag: '0000_init', createdAt: 1792232472935, hash: '2ece15046c3b662eabc79aff6833050f215dc3e387a06c91e0506013e287f874' },
+  { tag: '0001_planificateur_signatures', createdAt: 1792287567764, hash: '96fb91a795987d415203090fd18ed9d93c3aa8d2f436787e433e20517e1609aa' },
+  { tag: '0002_apercu_office', createdAt: 1792289677284, hash: '99462e4c73a5312ba3bf97b2fefff14d3e7a35f6e377391f296b6aed176b0ae1' },
+  { tag: '0003_vocabulaires', createdAt: 1792292401336, hash: '99f774e553121428f8951a0d79188aba5f75d21cade6a58fa0bd41de8d9279f7' },
+  { tag: '0004_modele_source', createdAt: 1792295122437, hash: '61c8ea2d4723221551b3018f42e27e4eb811e7adb69d7739e74cac970c7fd760' },
+  { tag: '0005_index_acces_validations', createdAt: 1792302725551, hash: '228733435c1d397798a7efb1ba300a2ab1d8d9978e95abd760093502ddb74dd4' },
+]);
+
+/**
  * Migrations of the code the restored database still lacks (applied when the server next opens it). Refuses an archive
  * whose last migration the code does not have: drizzle would replay a regenerated schema on top of the restored one.
+ * An archive made at the end of the chain before lot 11 (LEGACY_PUBLIC_CHAIN) is taken up into the schema codex at the
+ * next start: what remains is that take-up, then every migration after 0000_init.
  * @param {Manifest} manifest
  * @param {Migration[]} migrations
  */
 export function pendingMigrations(manifest, migrations) {
   const m = manifest.database.migration;
+  const last = LEGACY_PUBLIC_CHAIN[LEGACY_PUBLIC_CHAIN.length - 1];
+  if (m.hash === last.hash && m.createdAt === last.createdAt) return ['public → codex', ...migrations.slice(1).map((x) => x.tag)];
   const i = migrations.findIndex((x) => x.hash === m.hash && x.createdAt === m.createdAt);
   if (i < 0) throw new BackupError('schema_mismatch', m.tag ?? m.hash);
   return migrations.slice(i + 1).map((x) => x.tag);
@@ -660,7 +793,10 @@ async function readDbMeta(q) {
     (select count(*) from documents)::int as documents, (select count(*) from revisions)::int as revisions,
     (select count(*) from working_versions)::int as working_versions, (select count(*) from audit_log)::int as audit_entries,
     (select count(*) from users where not is_system)::int as people, version() as postgres`)).rows;
-  const [m] = (await q.query('select hash, created_at::text as created_at from drizzle.__drizzle_migrations order by created_at desc limit 1')).rows;
+  // codex.__drizzle_migrations since lot 11; drizzle.__drizzle_migrations in a database of the former layout (tables in
+  // public), backed up before its take-up.
+  const [{ journal }] = (await q.query(`select coalesce(to_regclass('codex.__drizzle_migrations'), to_regclass('drizzle.__drizzle_migrations'))::text as journal`)).rows;
+  const [m] = journal ? (await q.query(`select hash, created_at::text as created_at from ${journal} order by created_at desc limit 1`)).rows : [];
   if (!m) throw new BackupError('no_database', 'no migration applied');
   const refs = (await q.query(`select coalesce(storage, 'local') as storage, file_key from working_versions where file_key is not null`)).rows;
   /** @type {Set<string>} */
@@ -669,6 +805,12 @@ async function readDbMeta(q) {
   for (const r of refs) {
     if (r.storage === 'sharepoint') sharepoint++;
     else local.add(path.basename(String(r.file_key)));
+  }
+  // PDF renderings of the preview (lib/office-preview.ts), always in the local store. Looked up only when the table
+  // exists: the backup taken before a migration reads a database of an earlier schema.
+  const [{ renders }] = (await q.query(`select to_regclass('version_previews') is not null as renders`)).rows;
+  if (renders) {
+    for (const r of (await q.query(`select file_key from version_previews where file_key is not null`)).rows) local.add(path.basename(String(r.file_key)));
   }
   return {
     counts: { documents: c.documents, revisions: c.revisions, workingVersions: c.working_versions, auditEntries: c.audit_entries, people: c.people },
@@ -717,12 +859,13 @@ async function openStored(filesDir, file) {
  * @param {'backup_created' | 'backup_restored'} action
  * @param {string} archive
  * @param {Record<string, unknown>} backup
+ * @param {string} [detail] why it was made, when not asked for (the server's archive before migrating: src/db/index.ts)
  */
-export async function journal(q, action, archive, backup) {
+export async function journal(q, action, archive, backup, detail = '') {
   if (!(await q.query(`select 1 from users where id = 'codex'`)).rows.length) return false;
   await q.query(
-    `insert into audit_log (at, user_id, action, target_kind, target_id, detail, data) values ($1, 'codex', $2, 'backup', $3, '', $4::jsonb)`,
-    [new Date().toISOString(), action, archive, JSON.stringify({ backup })],
+    `insert into audit_log (at, user_id, action, target_kind, target_id, detail, data) values ($1, 'codex', $2, 'backup', $3, $4, $5::jsonb)`,
+    [new Date().toISOString(), action, archive, detail, JSON.stringify({ backup })],
   );
   return true;
 }
@@ -993,7 +1136,8 @@ async function undoMoves(moves) {
  * @param {string} o.dataDir
  * @param {boolean} [o.replace]
  * @param {typeof import('@electric-sql/pglite').PGlite} o.PGlite
- * @param {Record<string, any>} [o.extensions]
+ * @param {Record<string, any>} [o.options] options of the PGlite opened on the archive (lib/pglite-options.mjs
+ *   pgliteOptions: extensions and search_path); its dataDir is the staging folder's
  * @param {Migration[]} o.migrations
  * @param {Date} [o.now]
  * @returns {Promise<RestoreResult>}
@@ -1036,7 +1180,7 @@ export async function restoreBackup(o) {
       await fh.close();
     }
     if (!dump) throw new BackupError('entry_missing', DB_ENTRY);
-    pg = new o.PGlite({ dataDir: path.join(staging, 'pglite'), loadDataDir: new File([new Uint8Array(dump)], 'pglite.tar.gz', { type: 'application/x-gzip' }), extensions: o.extensions });
+    pg = new o.PGlite({ ...o.options, dataDir: path.join(staging, 'pglite'), loadDataDir: new File([new Uint8Array(dump)], 'pglite.tar.gz', { type: 'application/x-gzip' }) });
     await pg.waitReady;
     const meta = await readDbMeta(pg);
     const counts = /** @type {(keyof Manifest['counts'])[]} */ (Object.keys(manifest.counts));

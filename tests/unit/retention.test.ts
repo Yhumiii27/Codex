@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RetentionTrigger } from '@/db/schema';
-import { retainUntil, triggerDate } from '@/lib/retention';
+import { EVENT_TRIGGERS, isEventTrigger, parseEventDate, retainUntil, retentionGap, sameRule, triggerDate } from '@/lib/retention';
 
 // Retention class per document type (D-20), counted per document from its trigger event (docs/modele-cible.md §8).
 
@@ -55,6 +55,22 @@ describe('triggerDate and retainUntil, per trigger', () => {
     expect(retainUntil(draft)).toBe('2036-12-31');
   });
 
+  it('asset_life, employee_departure: from the date of the event entered on the record', () => {
+    for (const t of ['asset_life', 'employee_departure'] as const) {
+      const d = doc({ retentionTrigger: t, retentionYears: 5, retentionEventAt: '2026-04-30', issuedAt: '2026-06-01', archivedAt: '2029-01-01' });
+      expect(triggerDate(d), t).toBe('2026-04-30');
+      expect(retainUntil(d), t).toBe('2031-04-30');
+    }
+  });
+
+  it('project_end: never from a date entered by hand, it waits for Keystone (O-03)', () => {
+    const d = doc({ retentionTrigger: 'project_end', retentionEventAt: '2026-04-30' });
+    expect(triggerDate(d)).toBeNull();
+    expect(retainUntil(d)).toBeNull();
+    expect(isEventTrigger('project_end')).toBe(false);
+    expect([...EVENT_TRIGGERS]).toEqual(['asset_life', 'employee_departure']);
+  });
+
   it('project_end, asset_life, employee_departure: not computable, Codex does not know the event', () => {
     for (const t of ['project_end', 'asset_life', 'employee_departure'] as const) {
       const d = doc({ retentionTrigger: t, issuedAt: '2026-06-01', expiresAt: '2028-01-01', archivedAt: '2029-01-01' });
@@ -83,5 +99,37 @@ describe('retainUntil, permanent retention and missing durations', () => {
   it('keeps 29 February on the 28th in a non-leap year', () => {
     expect(retainUntil(doc({ retentionTrigger: 'in_force', retentionYears: 1, issuedAt: '2028-02-29' }))).toBe('2029-02-28');
     expect(retainUntil(doc({ retentionTrigger: 'in_force', retentionYears: 4, issuedAt: '2028-02-29' }))).toBe('2032-02-29');
+  });
+});
+
+describe('retentionGap: what an end of retention waits for', () => {
+  it('the event date to enter, a duration to set, an event to happen; nothing for an end or a permanent class', () => {
+    expect(retentionGap(doc({ retentionTrigger: 'asset_life', retentionYears: null }))).toBe('event_missing');
+    expect(retentionGap(doc({ retentionTrigger: 'employee_departure', retentionYears: 5 }))).toBe('event_missing');
+    expect(retentionGap(doc({ retentionTrigger: 'asset_life', retentionYears: null, retentionEventAt: '2026-01-01' }))).toBe('no_duration');
+    expect(retentionGap(doc({ retentionTrigger: 'superseded' }))).toBe('event_unknown');
+    expect(retentionGap(doc({ retentionTrigger: 'project_end' }))).toBe('event_unknown');
+    expect(retentionGap(doc({ retentionTrigger: 'employee_departure', retentionYears: 5, retentionEventAt: '2026-01-01' }))).toBeNull();
+    expect(retentionGap(doc({ retentionTrigger: 'permanent', retentionYears: null }))).toBeNull();
+    expect(retentionGap(doc({ retentionTrigger: 'asset_life', retentionDisposition: 'permanent' }))).toBeNull();
+  });
+});
+
+describe('parseEventDate and sameRule', () => {
+  it('a real day from 1900 to today; empty clears', () => {
+    expect(parseEventDate('', '2026-10-10')).toEqual({ ok: true, value: null });
+    expect(parseEventDate('  ', '2026-10-10')).toEqual({ ok: true, value: null });
+    expect(parseEventDate('2026-10-10', '2026-10-10')).toEqual({ ok: true, value: '2026-10-10' });
+    expect(parseEventDate('1900-01-01', '2026-10-10')).toEqual({ ok: true, value: '1900-01-01' });
+    expect(parseEventDate('2026-10-11', '2026-10-10')).toEqual({ ok: false, key: 'retention_event_future' });
+    for (const bad of ['1899-12-31', '2026-02-30', '10/10/2026', '2026-10-10T08:00:00Z', 'demain']) expect(parseEventDate(bad, '2026-10-10'), bad).toEqual({ ok: false, key: 'retention_event_invalid' });
+  });
+
+  it('compares duration, trigger and final disposition', () => {
+    const a = { retentionYears: 10, retentionTrigger: 'superseded', retentionDisposition: 'destroy' };
+    expect(sameRule(a, { ...a })).toBe(true);
+    expect(sameRule(a, { ...a, retentionYears: null })).toBe(false);
+    expect(sameRule(a, { ...a, retentionTrigger: 'creation' })).toBe(false);
+    expect(sameRule(a, { ...a, retentionDisposition: 'archive' })).toBe(false);
   });
 });

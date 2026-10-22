@@ -13,33 +13,52 @@
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:pg": "node -e \"if(!process.env.CODEX_TEST_DATABASE_URL?.trim()){console.error('npm run test:pg : CODEX_TEST_DATABASE_URL doit donner l’adresse d’un serveur PostgreSQL 18 dont l’utilisateur peut créer des bases (docs/postgres.md).');process.exit(2)}\" && vitest run",
     "db:generate": "drizzle-kit generate",
     "db:reset": "rm -rf .data",
+    "db:check": "drizzle-kit check",
+    "db:migrate": "tsx --conditions=react-server scripts/codex-migrate.mts",
+    "registry:apply": "tsx scripts/codex-registry.mts",
+    "registry:review": "tsx scripts/codex-registry-review.mts",
+    "org:check": "tsx scripts/codex-org-check.mts",
+    "storage:check": "tsx --conditions=react-server scripts/codex-storage-check.mts",
+    "seed:large": "tsx --conditions=react-server scripts/codex-seed-large.mts",
+    "perf": "node scripts/codex-perf.mjs",
+    "a11y": "tsx scripts/codex-a11y.mts",
+    "e2e": "tsx scripts/codex-e2e.mts",
     "backup": "node scripts/codex-backup.mjs create",
     "backup:list": "node scripts/codex-backup.mjs list",
     "backup:check": "node scripts/codex-backup.mjs check",
     "restore": "node scripts/codex-backup.mjs restore",
     "export": "node scripts/codex-export.mjs create",
     "export:check": "node scripts/codex-export.mjs check",
-    "app": "bash desktop/build-app.sh"
+    "integrity": "node scripts/codex-integrity.mjs check",
+    "app": "bash desktop/build-app.sh",
+    "deps:audit": "node scripts/codex-audit.mjs"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",
     "drizzle-orm": "^0.45.3",
     "next": "16.4.0",
+    "pg": "^8.23.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "server-only": "^0.0.1"
+    "server-only": "^0.0.1",
+    "unpdf": "1.7.0"
   },
   "devDependencies": {
-    "@types/node": "^20",
+    "@types/node": "^22.12.0",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "axe-core": "4.14.0",
     "drizzle-kit": "^0.31.11",
     "eslint": "^9",
     "eslint-config-next": "16.4.0",
+    "playwright-core": "1.56.1",
+    "tsx": "^4.23.15",
     "typescript": "^5",
-    "vite": "7.3.6",
-    "vitest": "4.1.11"
+    "vite": "7.3.7",
+    "vitest": "4.1.12"
   }
 }

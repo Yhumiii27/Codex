@@ -309,7 +309,7 @@ describe('designated author who can no longer draft when a pending acceptance ap
     await setRole('owner', 'auditeur');
     expect(await unlock({ legalHold: false })).toEqual({ setAside: 'writer', modifierId: 'owner', mayDraft: false });
     expect((await getRevision(db(), ID, 'B')).modifierId).toBe('owner');
-    expect((await journalOf(db(), ID)).at(-1)).toMatchObject({ userId: 'codex', action: 'ecr', detail: `${ECO} · writer → owner (Droit requis : Déposer)` });
+    expect((await journalOf(db(), ID)).at(-1)).toMatchObject({ userId: 'codex', action: 'ecr', detail: `${ECO} · writer → owner`, data: { text: { code: 'modifier_swap', params: { ref: ECO, from: 'writer', to: 'owner', denied: true } } } });
   });
 
   it('keeps the named author who can still draft: no substitution', async () => {

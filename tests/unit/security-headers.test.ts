@@ -26,7 +26,7 @@ describe('contentSecurityPolicy', () => {
     expect(d.get('font-src')).toEqual(["'self'"]);
     expect(d.get('img-src')).toEqual(["'self'", 'data:', 'blob:']);
     expect(d.get('connect-src')).toEqual(["'self'"]);
-    expect(d.get('frame-src')).toEqual(["'self'"]);
+    expect(d.get('frame-src')).toEqual(["'self'", 'blob:']);
   });
 
   it('lets only Codex itself frame its pages (the Mac app shows them as the top page)', () => {

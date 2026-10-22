@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { linkSync, mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { open } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -7,6 +7,7 @@ import { and, asc, eq, inArray } from 'drizzle-orm';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GET, HEAD } from '@/app/api/export/full/route';
 import { FILES_DIR, schema as s } from '@/db';
+import { PgServerClient, type SqlQueryable } from '@/db/sql-client';
 import { getCtx } from '@/lib/context';
 import { entryBuffer, verifyExport, zipEntries } from '@/lib/export-core.mjs';
 import { fmtSize } from '@/lib/format';
@@ -14,6 +15,9 @@ import { importDocument } from '@/lib/importer';
 import { auditDetailL } from '@/lib/queries';
 import { addDoc, addWorkflow, fixClock, getDoc, reset, setupDb } from '../support/db';
 import { actAs } from '../support/session';
+
+/** The last migration of the code: the one an export names (drizzle/meta/_journal.json). */
+const LATEST_MIGRATION = (JSON.parse(readFileSync(path.join(process.cwd(), 'drizzle/meta/_journal.json'), 'utf8')) as { entries: { tag: string }[] }).entries.at(-1)!.tag;
 
 // Full export for reversibility (point 17 of docs/reste-a-faire.md, lib/export-core.mjs, GET /api/export/full): an
 // archive of the test database read back whole (every entry against the manifest and SHA256SUMS), its counts against
@@ -127,13 +131,14 @@ describe('GET /api/export/full', () => {
     expect(res.headers.get('cache-control')).toBe('private, no-store');
     const { manifest, names, byName, json } = await readArchive(bytes);
 
-    expect(manifest).toMatchObject({ format: 'codex-export', version: 1, createdAt: '2026-10-15T08:00:00.000Z', mode: 'online', by: 'manager', schema: { migration: '0000_init' } });
+    expect(manifest).toMatchObject({ format: 'codex-export', version: 1, createdAt: '2026-10-15T08:00:00.000Z', mode: 'online', by: 'manager', schema: { migration: LATEST_MIGRATION } });
     expect(names[0]).toBe('LISEZMOI.txt');
     expect(names.slice(-2)).toEqual(['SHA256SUMS', 'manifest.json']);
 
-    // Every table of the application but the search index, each with as many rows as the database holds.
-    const { rows: tables } = await db().$client.query<{ name: string }>(`select tablename as name from pg_tables where schemaname = 'public' order by 1`);
-    const exported = tables.map((t) => t.name).filter((t) => t !== 'document_terms');
+    // Every table of the application but the derived ones (search index, preview renderings), each with as many rows as
+    // the database holds.
+    const { rows: tables } = await db().$client.query<{ name: string }>(`select tablename as name from pg_tables where schemaname = 'codex' and tablename <> '__drizzle_migrations' order by 1`);
+    const exported = tables.map((t) => t.name).filter((t) => t !== 'document_terms' && t !== 'version_previews');
     expect(Object.keys(manifest.tables).sort()).toEqual(exported);
     for (const t of exported) {
       const rows = json(manifest.tables[t]);
@@ -151,6 +156,7 @@ describe('GET /api/export/full', () => {
     expect(json('data/document_links.json')).toMatchObject([{ sourceId: 'PRO-QUA-0001', targetId: 'PID-HLT-026-001', kind: 'see_also' }]);
     expect(json('data/document_readers.json')).toEqual([{ docId: 'PID-HLT-026-001', userId: 'writer' }]);
     expect(manifest.tables).not.toHaveProperty('document_terms');
+    expect(manifest.tables).not.toHaveProperty('version_previews');
     expect(json('data/users.json')).toHaveLength(15);
 
     // The journal, its start entry included (written in the snapshot), its end entry not.
@@ -171,6 +177,7 @@ describe('GET /api/export/full', () => {
       count: 5, bytes: Object.values(expected).reduce((n, b) => n + b.length, 0),
       missing: [{ workingVersion: files.missing.id, path: path0('PRO-QUA-0002', 'A', 1) }],
       skipped: [{ workingVersion: files.sharepoint.id, path: path0('COR-QUA-0001', 'A', 1), storage: 'sharepoint' }],
+      altered: [],
     });
     expect(manifest.counts.files).toBe(5);
 
@@ -311,9 +318,18 @@ describe('GET /api/export/full', () => {
     await fill();
     actAs('manager');
     const client = db().$client;
-    const query = client.query.bind(client);
-    const failing = vi.spyOn(client, 'query').mockImplementation(((sql: string, params?: unknown[], ...rest: unknown[]) =>
-      params?.[2] === 'export_full_end' ? Promise.reject(new Error('disk full')) : (query as (...a: unknown[]) => unknown)(sql, params, ...rest)) as typeof client.query);
+    const failingQuery = <Q extends SqlQueryable['query']>(query: Q) => ((sql: string, params?: unknown[], ...rest: unknown[]) =>
+      params?.[2] === 'export_full_end' ? Promise.reject(new Error('disk full')) : (query as (...a: unknown[]) => unknown)(sql, params, ...rest)) as Q;
+    const query = failingQuery(client.query.bind(client));
+    vi.spyOn(client, 'query').mockImplementation(query);
+    // On a PostgreSQL server (npm run test:pg) the export runs on a connection of its own (PgServerClient.session).
+    if (client instanceof PgServerClient) {
+      const session = client.session.bind(client);
+      vi.spyOn(client, 'session').mockImplementation(async () => {
+        const s = await session();
+        return { ...s, query: failingQuery(s.query) };
+      });
+    }
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
       await download();
@@ -321,7 +337,7 @@ describe('GET /api/export/full', () => {
       expect(lines.some((l) => l.includes('[export] end of the export not journaled') && l.includes('disk full'))).toBe(true);
       expect(warn.mock.calls.every((c) => c.length === 1)).toBe(true);
     } finally {
-      failing.mockRestore();
+      vi.restoreAllMocks();
       warn.mockRestore();
     }
     expect((await exportEntries()).map((e) => e.action)).toEqual(['export_full']);
@@ -344,5 +360,23 @@ describe('GET /api/export/full', () => {
     const [v] = await db().select().from(s.workingVersions).where(eq(s.workingVersions.docId, 'PRO-QUA-0001'));
     const { readStored } = await import('@/lib/storage');
     expect((await readStored(v.storage, v.fileKey!)).equals(FILES.b2)).toBe(true);
+  });
+});
+
+describe('fingerprints recorded at upload (point 31)', () => {
+  it('lists in the manifest, and counts in the journal, the files archived whose bytes differ from their recorded SHA-256', async () => {
+    const files = await fill();
+    await db().update(s.workingVersions).set({ sha256: sha(FILES.b1) }).where(eq(s.workingVersions.id, files.b1.id));
+    await db().update(s.workingVersions).set({ sha256: sha('what was uploaded') }).where(eq(s.workingVersions.id, files.b2.id));
+    actAs('manager');
+    const { manifest, byName } = await readArchive((await download()).bytes);
+    const where = 'files/PRO-QUA-0001/PRO-QUA-0001_B.2.pdf';
+    // Archived as stored, and said.
+    expect(byName.get(where)!.equals(FILES.b2)).toBe(true);
+    expect(manifest.files.altered).toEqual([{ workingVersion: files.b2.id, path: where, recorded: sha('what was uploaded') }]);
+    const [, end] = await exportEntries();
+    expect(end.data?.archive?.altered).toBe(1);
+    const ctx = await getCtx();
+    expect(auditDetailL(ctx, end)).toContain('différents de leur empreinte : 1');
   });
 });

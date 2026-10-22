@@ -26,7 +26,8 @@ L'export n'est pas une sauvegarde : pour remettre Codex dans l'état d'une date,
   « Sécurité HTTP et limites de débit ») : au-delà, 429 sans rien exporter ni journaliser.
 - Journalisé deux fois (voir « Journal ») : au début, et à la fin avec la taille et le SHA-256 de l'archive.
 
-**En ligne de commande**, serveur arrêté (PGlite n'ouvre la base que dans un processus) :
+**En ligne de commande**, serveur arrêté (PGlite n'ouvre la base que dans un processus ; avec un serveur PostgreSQL,
+`DATABASE_URL`, la commande refuse : l'export se fait alors depuis l'Administration, voir [postgres.md](postgres.md)) :
 
 ```bash
 npm run export                                  # dans <dossier de données>-exports/ (.data-exports/ par défaut)
@@ -74,6 +75,12 @@ sous la clé que sa version de travail porte désormais.
 L'entrée de journal « Export complet » est écrite dans cette même transaction : l'archive la contient. L'entrée de
 fin, écrite après, n'y est pas.
 
+Avec un serveur PostgreSQL (`DATABASE_URL`), la transaction de copie est en `REPEATABLE READ` : toutes les tables
+viennent du même instantané, et les écritures continuent pendant la copie. L'export garde une connexion du pool pour
+lui seul, du début à la fin (seule cette connexion voit ses tables temporaires). Une entrée de journal écrite par une
+transaction encore en cours au moment de l'instantané, avec un numéro inférieur à la dernière entrée exportée, peut
+figurer dans l'archive ou non.
+
 ### Format ZIP
 
 - Éléments **stockés sans compression** (les fichiers déposés sont en général déjà compressés), sans chiffrement,
@@ -99,7 +106,7 @@ fin, écrite après, n'y est pas.
 | `schema` | `migration` (dernière migration appliquée à la base, ex. `0000_init`), `hash` (son SHA-256), `postgres` (version) |
 | `counts` | Nombre de lignes de chaque table exportée (clé : nom de la table), et `files` : fichiers dans l'archive |
 | `tables` | Élément de chaque table (`"documents": "data/documents.json"`) |
-| `files` | `count` et `bytes` des fichiers archivés ; `missing` : versions de travail dont le stockage n'avait pas le fichier (`workingVersion`, `path` prévu) ; `skipped` : fichiers d'un stockage que ce processus ne peut pas lire (SharePoint depuis la commande, ou SharePoint non configuré), avec `storage` |
+| `files` | `count` et `bytes` des fichiers archivés ; `missing` : versions de travail dont le stockage n'avait pas le fichier (`workingVersion`, `path` prévu) ; `skipped` : fichiers d'un stockage que ce processus ne peut pas lire (SharePoint depuis la commande, ou SharePoint non configuré), avec `storage` ; `altered` : fichiers archivés dont le SHA-256 diffère de celui enregistré à leur dépôt (`workingVersion`, `path`, `recorded` : l'empreinte enregistrée), archivés tels qu'ils sont stockés |
 | `entries` | Chaque élément sauf le manifeste : `name`, `size`, `sha256`, et `workingVersion` (identifiant de la version de travail) pour un fichier |
 
 ## `data/<table>.json`
@@ -112,8 +119,9 @@ dans l'ordre de la clé primaire (le journal par identifiant croissant).
 |---|---|
 | `documents` | Fiche de chaque document : identifiant et anciens identifiants (`aliases`), référence d'origine d'un document importé (`legacyRef`), axes de classement, type, département, site, propriétaire, auteur, confidentialité, mots-clés, état (`active`, `obsolete`, `archived`), statut affiché, lettres de la révision en vigueur et de celle en cours, dates, classe de conservation, champs des documents externes, de projet et de recherche, propriétaire de processus, gel juridique, `version` (détection des modifications simultanées) |
 | `revisions` | Révisions A, B… : statut (`draft`, `in_review`, `approved`, `in_force`, `superseded`, `cancelled`), dates d'approbation, d'effet, de mise en vigueur et de remplacement, modificateur désigné, ordre de modification qui l'a ouverte |
-| `working_versions` | Versions de travail A.1, A.2… : révision (`revisionId`), numéro, commentaire, auteur, date, fichier (`storage`, `fileKey`, `fileName` d'origine, `mime`, `size`, `pages`). Le fichier est dans `files/`, retrouvé par `entries[].workingVersion` du manifeste |
+| `working_versions` | Versions de travail A.1, A.2… : révision (`revisionId`), numéro, commentaire, auteur, date, fichier (`storage`, `fileKey`, `fileName` d'origine, `mime`, `size`, `pages`, `sha256` : empreinte calculée à son entrée dans Codex, nulle pour un fichier stocké avant qu'elle soit calculée). Le fichier est dans `files/`, retrouvé par `entries[].workingVersion` du manifeste |
 | `document_readers` | Lecteurs désignés des documents confidentiels et très confidentiels |
+| `template_types` | Types cibles des modèles (FRM) : « Nouveau depuis un modèle » les propose d'abord pour ces types |
 | `document_links` | Liens entre documents : `sourceId` remplace `targetId` (`replaces`), ou renvoi mutuel (`see_also`) |
 | `workflows`, `workflow_steps`, `workflow_comments` | Circuits de validation (révision, demandeur, échéance, étape courante, issue, motif), leurs étapes (fonction, titulaire, date de décision, signature), leurs commentaires |
 | `change_requests` | Demandes de modification et de retrait suivies par Vigie : statut, ECO, modificateur désigné, révision qui les porte, remplaçant proposé, dates |
@@ -127,7 +135,10 @@ dans l'ordre de la clé primaire (le journal par identifiant croissant).
 | `id_counters` | Dernier numéro attribué par séquence (identifiants, circuits, demandes) : pour reprendre la numérotation |
 | `audit_log` | Journal d'audit : instant, utilisateur, action, document (sous son identifiant de l'époque) ou cible, détail, données structurées (avant → après, export, lien…), révision |
 
-N'est pas exportée : `document_terms`, l'index de la recherche, que la base recalcule à partir des documents.
+Ne sont pas exportées, parce qu'elles se refont à partir de ce que l'archive contient :
+- `document_terms`, l'index de la recherche, que la base recalcule à partir des documents ;
+- `version_previews`, les rendus PDF de l'aperçu des fichiers Office (point 15 de `docs/reste-a-faire.md`), dont
+  l'archive ne contient pas non plus les fichiers : seuls les fichiers d'origine des versions y sont.
 
 Valeurs : texte et nombres tels quels ; dates `AAAA-MM-JJ` ; `audit_log.at` en UTC avec son décalage
 (`2026-10-15T16:53:07.587+00:00`) ; les horodatages sans fuseau (`change_requests.createdAt` et `decidedAt`,

@@ -16,26 +16,30 @@ function look(state: StepState, last: boolean, glow = 12, mutedPct = 55) {
   };
 }
 
-export type StepItem = { key: string | number; state: StepState; title: string; lines?: string[] };
+/** `hint`: the step's name on hover and for assistive technologies, when its title is not shown (compact stepper). */
+export type StepItem = { key: string | number; state: StepState; title: string; lines?: string[]; hint?: string };
 
-/** Horizontal stepper (project stages, workflow steps). */
+/** Horizontal stepper (project stages, workflow steps). `titleSize` 0: dots and lines only, each step named by its `hint`. */
 export function HStepper({ items, dot = 14, gap = 10, glow = 12, mutedPct = 55, titleSize = 13, minWidth = 150, wrap = true }: {
   items: StepItem[]; dot?: number; gap?: number; glow?: number; mutedPct?: number; titleSize?: number; minWidth?: number; wrap?: boolean;
 }) {
   return (
-    <div style={{ display: 'flex', flexWrap: wrap ? 'wrap' : 'nowrap', rowGap: 18 }}>
+    <div style={{ display: 'flex', flexWrap: wrap ? 'wrap' : 'nowrap', rowGap: 18 }} role={titleSize ? undefined : 'list'}>
       {items.map((it, i) => {
         const l = look(it.state, i === items.length - 1, glow, mutedPct);
         return (
-          <div key={it.key} style={{ flex: 1, minWidth, display: 'flex', flexDirection: 'column', gap }}>
+          <div
+            key={it.key} style={{ flex: 1, minWidth, display: 'flex', flexDirection: 'column', gap }} title={it.hint}
+            role={titleSize ? undefined : 'listitem'} aria-label={titleSize ? undefined : it.hint} aria-current={!titleSize && it.state === 'current' ? 'step' : undefined}
+          >
             <div style={{ display: 'flex', alignItems: 'center' }}>
               <div style={{ ...l.dot, width: dot, height: dot }} />
               <div style={{ flex: 1, height: 1, ...l.line }} />
             </div>
-            <div style={{ paddingRight: titleSize >= 13 ? 16 : 6 }}>
+            {titleSize > 0 && <div style={{ paddingRight: titleSize >= 13 ? 16 : 6 }}>
               <div style={{ fontSize: titleSize, color: l.name }}>{it.title}</div>
               {it.lines?.map((x, j) => <div key={j} className="text-muted" style={{ fontSize: 11 }}>{x}</div>)}
-            </div>
+            </div>}
           </div>
         );
       })}

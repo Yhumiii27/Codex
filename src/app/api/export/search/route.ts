@@ -24,10 +24,10 @@ async function handleGet(req: Request) {
   const { results } = await searchDocs(ctx, search, { all: true });
   const rows = [
     ['ID', t.title_label, t.type, t.family, t.origin, t.attachment, t.project_program, t.department, t.site_label, t.rev_in_force, t.rev_working, t.status,
-      t.owner, t.conf, t.keywords, t.modified, t.issued_at, t.effective_at, t.review_due_at, t.expires_at, t.end_date],
+      t.owner, t.author_label, t.conf, t.keywords, t.modified, t.issued_at, t.effective_at, t.review_due_at, t.expires_at, t.end_date],
     ...results.map((d) => [
       d.id, d.title, d.typeLabel, d.familyLabel, d.originL, d.attachmentL, d.attachedCode, d.departmentL, d.site ? d.siteL : '',
-      d.revInForce, d.workingLabel, d.statusLabel, d.owner, d.confL, d.keywords.join(', '), d.modifiedAt,
+      d.revInForce, d.workingLabel, d.statusLabel, d.owner, d.author, d.confL, d.keywords.join(', '), d.modifiedAt,
       d.issuedAt, d.effectiveAt, d.reviewDueAt, d.expiresAt,
       // ISO date when computable; "Conservation permanente" or empty otherwise.
       d.retainUntil ?? (d.untilF === '—' ? '' : d.untilF),

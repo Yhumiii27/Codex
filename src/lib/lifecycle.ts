@@ -1,11 +1,11 @@
 import 'server-only';
-import { and, asc, eq, inArray, isNull, lt, lte, ne, or } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNull, lt, lte, ne, or } from 'drizzle-orm';
 import { schema as s, type Db } from '@/db';
 import type { AuditData, AuditTargetKind, LinkKind } from '@/db/schema';
 import { buildAccessIndex, canRead, type AccessIndex } from './access';
 import { nextLetter } from './codification';
 import { nowStamp, todayIso } from './format';
-import { DICT, MATRIX_ROLE, type Perm, type SimRole } from './i18n';
+import { MATRIX_ROLE, type Perm, type SimRole } from './i18n';
 import { relOf, replacementOutcome, storedLink } from './links';
 import { reviewAfter } from './review';
 
@@ -14,6 +14,26 @@ import { reviewAfter } from './review';
 export type Tx = Db | Parameters<Parameters<Db['transaction']>[0]>[0];
 
 type DocRow = typeof s.documents.$inferSelect;
+
+/**
+ * Locks the rows of documents `ids` until the end of the transaction (SELECT … FOR UPDATE), in ascending ID order so
+ * that two transactions locking several never wait for each other, and returns those that exist, read once locked.
+ * On a PostgreSQL server (READ COMMITTED: each statement sees what was committed when it starts), a transaction that
+ * reads a document's state (its row, revisions, working versions, circuits, change requests) to decide what to write
+ * takes this lock first: another one working on the same document waits for its commit, then reads what it wrote,
+ * instead of deciding on what it read before (docs/postgres.md, « Transactions »). PGlite runs one transaction at a
+ * time: the lock changes nothing there.
+ */
+export async function lockDocs(tx: Tx, ids: readonly string[]): Promise<DocRow[]> {
+  const unique = [...new Set(ids)].sort();
+  if (!unique.length) return [];
+  return tx.select().from(s.documents).where(inArray(s.documents.id, unique)).orderBy(asc(s.documents.id)).for('update');
+}
+
+/** lockDocs for one document: its row, locked, or undefined when it does not exist. */
+export async function lockDoc(tx: Tx, id: string): Promise<DocRow | undefined> {
+  return (await lockDocs(tx, [id]))[0];
+}
 type RevRow = typeof s.revisions.$inferSelect;
 type UserRow = typeof s.users.$inferSelect;
 
@@ -28,6 +48,32 @@ export type AuditSubject = string | { kind: AuditTargetKind; id: string };
 export async function audit(tx: Tx, userId: string, action: string, subject: AuditSubject, detail = '', revisionId: number | null = null, data: AuditData | null = null) {
   const about = typeof subject === 'string' ? { docId: subject } : { targetKind: subject.kind, targetId: subject.id };
   await tx.insert(s.auditLog).values({ at: new Date().toISOString(), userId, action, ...about, detail, data, revisionId });
+}
+
+// ── Consultations ───────────────────────────────────────────────────────
+
+/** Minutes during which the same consultation by the same user is journaled once (journalConsultation). */
+export const CONSULT_WINDOW_MINUTES = 30;
+
+/**
+ * Journals a consultation: a record opened ('consult') or a file shown in the preview ('view'). Written once per user,
+ * document, action, revision and detail (the version and format of a file) every CONSULT_WINDOW_MINUTES, counted from
+ * the last entry written: paging through a preview, reloading the record or its revalidated file add nothing within
+ * that time. True when an entry was written. PGlite runs one transaction at a time; on a server with several
+ * connections, two requests at the same instant could each write one, which is harmless. `data`: the entry's structured
+ * part, such as its detail in the reader's language (a version read for a comparison, lib/compare.ts).
+ */
+export async function journalConsultation(db: Db, userId: string, action: 'consult' | 'view', docId: string, detail: string, revisionId: number | null, data: AuditData | null = null): Promise<boolean> {
+  const A = s.auditLog;
+  const since = new Date(Date.now() - CONSULT_WINDOW_MINUTES * 60_000).toISOString();
+  return db.transaction(async (tx) => {
+    const [seen] = await tx.select({ id: A.id }).from(A)
+      .where(and(eq(A.docId, docId), eq(A.userId, userId), eq(A.action, action), gte(A.at, since), eq(A.detail, detail), revisionId == null ? isNull(A.revisionId) : eq(A.revisionId, revisionId)))
+      .limit(1);
+    if (seen) return false;
+    await audit(tx, userId, action, docId, detail, revisionId, data);
+    return true;
+  });
 }
 
 // ── Links between documents ─────────────────────────────────────────────
@@ -152,26 +198,55 @@ export async function approveRevision(tx: Tx, revId: number): Promise<boolean> {
 }
 
 /**
- * Approved revisions whose effective date has come enter into force (run lazily at the start of each request).
- * Only on active documents free of legal hold: an archived, obsolete or frozen record never changes (same rule as lockOf).
+ * Approved revisions whose effective date has come enter into force: run by the scheduler (lib/scheduler.ts), or at the
+ * start of each request while the scheduler does not run it (lib/context.ts). Only on active documents free of legal
+ * hold: an archived, obsolete or frozen record never changes (same rule as lockOf). Returns how many entered into force.
  */
-export async function promoteDue(db: Db) {
+export async function promoteDue(db: Db): Promise<number> {
   const today = todayIso();
+  let promoted = 0;
   const due = await db
-    .select({ id: s.revisions.id })
+    .select({ id: s.revisions.id, docId: s.revisions.docId })
     .from(s.revisions)
     .innerJoin(s.documents, eq(s.documents.id, s.revisions.docId))
     .where(and(eq(s.revisions.status, 'approved'), or(isNull(s.revisions.effectiveAt), lte(s.revisions.effectiveAt, today)), eq(s.documents.state, 'active'), eq(s.documents.legalHold, false)));
-  for (const { id } of due) {
+  for (const { id, docId } of due) {
     await db.transaction(async (tx) => {
-      // Read again inside the transaction: a concurrent request may have promoted it, or the document changed meanwhile.
+      // Read again once the document is locked: a concurrent request (another page, another process) may have promoted
+      // it, or the document changed meanwhile; it waits for that one to commit, then sees what it wrote.
+      const d = await lockDoc(tx, docId);
       const [rev] = await tx.select().from(s.revisions).where(and(eq(s.revisions.id, id), eq(s.revisions.status, 'approved')));
       if (!rev) return;
-      const [d] = await tx.select().from(s.documents).where(eq(s.documents.id, rev.docId));
       if (!d || lockOf(d)) return;
       await putInForce(tx, rev, rev.effectiveAt ?? today);
+      promoted++;
     });
   }
+  return promoted;
+}
+
+/**
+ * Acceptances of Vigie still waiting ('accepted') although nothing holds them any more: the document is unlocked and, for
+ * a change, no revision is open. Lifting a lock and putting a revision in force or cancelling it apply them at once
+ * (applyPendingDecision); this catches one that a path not foreseen would have left waiting. Run by the scheduler; each
+ * one in its own transaction, the document's row locked as applyChangeDecision does. Returns how many applied.
+ */
+export async function applyDuePendingDecisions(db: Db): Promise<number> {
+  const waiting = await db
+    .select({ id: s.changeRequests.id, docId: s.changeRequests.docId })
+    .from(s.changeRequests)
+    .innerJoin(s.documents, eq(s.documents.id, s.changeRequests.docId))
+    .where(and(eq(s.changeRequests.status, 'accepted'), eq(s.documents.state, 'active'), eq(s.documents.legalHold, false)));
+  let applied = 0;
+  for (const { id, docId } of waiting) {
+    await db.transaction(async (tx) => {
+      await lockDoc(tx, docId);
+      await applyPendingDecision(tx, docId);
+      const [after] = await tx.select({ status: s.changeRequests.status }).from(s.changeRequests).where(eq(s.changeRequests.id, id));
+      if (after?.status === 'implemented') applied++;
+    });
+  }
+  return applied;
 }
 
 /** Approved revisions of a document waiting for an effective date already past: they enter into force today at the earliest. */
@@ -188,6 +263,25 @@ export async function openRevision(tx: Tx, docId: string, opts: { modifierId?: s
   const [rev] = await tx.insert(s.revisions).values({ docId, letter, status: 'draft', createdAt: todayIso(), modifierId: opts.modifierId ?? null, changeRef: opts.changeRef ?? null }).returning();
   await refreshHeadline(tx, docId);
   return rev;
+}
+
+/**
+ * People who never approve a revision (docs/modele-cible.md §6): whoever requested the validation, its designated
+ * author, the authors of its working versions, and the owner when nobody was designated to write it.
+ */
+export async function circuitExclusions(tx: Tx, d: Pick<DocRow, 'ownerId'>, rev: Pick<RevRow, 'id' | 'modifierId'>, requesterId: string): Promise<Set<string>> {
+  const versions = await tx.select({ authorId: s.workingVersions.authorId }).from(s.workingVersions).where(eq(s.workingVersions.revisionId, rev.id));
+  return new Set([requesterId, rev.modifierId ?? d.ownerId, ...versions.map((v) => v.authorId)]);
+}
+
+/** Who may approve with their default role (its row of the matrix), whatever role they simulate right now. */
+export async function approverCheck(tx: Tx, users: ReadonlyMap<string, Pick<UserRow, 'role' | 'isSystem'>>): Promise<(userId: string) => boolean> {
+  const rows = await tx.select().from(s.rolePermissions).where(and(eq(s.rolePermissions.perm, 'approve'), eq(s.rolePermissions.granted, true)));
+  const roles = new Set(rows.map((r) => r.role));
+  return (id) => {
+    const u = users.get(id);
+    return !!u && !u.isSystem && roles.has(MATRIX_ROLE[u.role as SimRole]);
+  };
 }
 
 /** Permissions a person holds with their default role (not the simulated one). */
@@ -213,12 +307,12 @@ function draftsFor(u: UserRow, perms: Set<Perm>, d: DocRow, ix: AccessIndex): bo
  */
 export async function mayDraft(tx: Tx, userId: string, d: DocRow): Promise<boolean> {
   const [u] = await tx.select().from(s.users).where(eq(s.users.id, userId));
-  return !!u && draftsFor(u, await defaultPerms(tx, u.role), d, await buildAccessIndex(tx, { pending: false }));
+  return !!u && draftsFor(u, await defaultPerms(tx, u.role), d, await buildAccessIndex(tx, { pending: false, users: [userId] }));
 }
 
 /** People who may draft the document (draftsFor): the authors a simulated Vigie decision may designate. */
 export async function draftersOf(tx: Tx, d: DocRow): Promise<string[]> {
-  const [users, ix] = await Promise.all([tx.select().from(s.users).where(eq(s.users.isSystem, false)), buildAccessIndex(tx, { pending: false })]);
+  const [users, ix] = await Promise.all([tx.select().from(s.users).where(eq(s.users.isSystem, false)), buildAccessIndex(tx, { pending: false, docs: [d] })]);
   const perms = new Map<string, Set<Perm>>();
   for (const role of new Set(users.map((u) => u.role))) perms.set(role, await defaultPerms(tx, role));
   return users.filter((u) => draftsFor(u, perms.get(u.role) ?? new Set(), d, ix)).map((u) => u.id);
@@ -284,8 +378,8 @@ async function implementChange(tx: Tx, req: ChangeRow, doc: DocRow, actorId: str
     if (swap) {
       const names = new Map((await tx.select({ id: s.users.id, name: s.users.name }).from(s.users).where(inArray(s.users.id, [swap.setAside, swap.modifierId]))).map((u) => [u.id, u.name]));
       // Also written when the default author is the one set aside or cannot draft either: the substitution is never silent.
-      const denied = swap.mayDraft ? '' : ` (${DICT.fr.not_allowed} : ${DICT.fr.perm_upload})`;
-      await audit(tx, 'codex', 'ecr', req.docId, `${ref} · ${names.get(swap.setAside) ?? swap.setAside} → ${names.get(swap.modifierId) ?? swap.modifierId}${denied}`, rev.id);
+      const [fromName, toName] = [names.get(swap.setAside) ?? swap.setAside, names.get(swap.modifierId) ?? swap.modifierId];
+      await audit(tx, 'codex', 'ecr', req.docId, `${ref} · ${fromName} → ${toName}`, rev.id, { text: { code: 'modifier_swap', params: { ref, from: fromName, to: toName, denied: !swap.mayDraft } } });
     }
   } else {
     const running = await tx.select().from(s.workflows).where(and(eq(s.workflows.docId, doc.id), isNull(s.workflows.outcome)));
@@ -314,6 +408,13 @@ async function implementChange(tx: Tx, req: ChangeRow, doc: DocRow, actorId: str
  * nothing is written otherwise.
  */
 export async function applyChangeDecision(tx: Tx, id: string, decision: { accepted: boolean; ecoRef?: string | null; modifierId?: string | null; note?: string | null }, actorId: string): Promise<ChangeDecisionResult> {
+  const [asked] = await tx.select({ docId: s.changeRequests.docId }).from(s.changeRequests).where(eq(s.changeRequests.id, id));
+  if (!asked) return { error: 'not_found' };
+  // Row locked: what the acceptance waits for (lock, open revision) is read on the document that putInForce,
+  // cancelOpenRevisions, releaseHold and restoring an archive update before looking at the pending decisions. Either
+  // they see the acceptance once recorded, or it sees the document they left and applies at once: never left waiting.
+  // The request is read again once the document is locked: two decisions on it (a retried call) never both apply.
+  const doc = await lockDoc(tx, asked.docId);
   const [req] = await tx.select().from(s.changeRequests).where(eq(s.changeRequests.id, id));
   if (!req || req.status !== 'submitted') return { error: 'not_found' };
   const at = nowStamp();
@@ -322,10 +423,6 @@ export async function applyChangeDecision(tx: Tx, id: string, decision: { accept
     await audit(tx, actorId, req.kind === 'modification' ? 'ecr' : 'obsolete', req.docId, `${id} · ✕`);
     return { status: 'rejected' };
   }
-  // Row locked: what the acceptance waits for (lock, open revision) is read on the document that putInForce,
-  // cancelOpenRevisions, releaseHold and restoring an archive update before looking at the pending decisions. Either
-  // they see the acceptance once recorded, or it sees the document they left and applies at once: never left waiting.
-  const [doc] = await tx.select().from(s.documents).where(eq(s.documents.id, req.docId)).for('update');
   if (!doc) return { error: 'not_found' };
   if (req.kind === 'modification' && decision.modifierId && !(await mayDraft(tx, decision.modifierId, doc))) return { error: 'modifier_not_allowed' };
   const accepted = { ecoRef: decision.ecoRef ?? null, modifierId: req.kind === 'modification' ? decision.modifierId ?? null : null, decisionNote: decision.note ?? null };

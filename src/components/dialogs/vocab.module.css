@@ -1,0 +1,14 @@
+/* Controlled vocabularies in the document forms (keywords, source organisation, sub-type; src/components/dialogs/Dialogs.tsx):
+   Nocturne tokens and its .tag and .input classes only. */
+.chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 34px; padding: 4px 6px; }
+.chip { gap: 4px; padding-right: 4px; }
+.chipNew { border: 1px dashed var(--color-accent); }
+.chipNew small { font-size: 10px; color: var(--color-accent-300); text-transform: uppercase; letter-spacing: .04em; }
+.chipRemove { border: 0; background: transparent; color: inherit; cursor: pointer; padding: 1px; display: inline-flex; border-radius: var(--radius-sm); opacity: 0.6; }
+.chipRemove:hover, .chipRemove:focus-visible { opacity: 1; color: var(--color-accent); }
+.entry { flex: 1 1 140px; min-width: 120px; border: 0; background: transparent; color: inherit; font: inherit; font-size: 13px; padding: 4px 2px; outline: none; }
+.confirm { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; font-size: 12px; }
+.confirm label { display: inline-flex; align-items: center; gap: 6px; }
+.similar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: var(--color-neutral-500); }
+.similarBtn { border: 1px solid var(--color-divider); background: transparent; color: var(--color-accent-200); border-radius: var(--radius-sm); padding: 1px 8px; font: inherit; font-size: 12px; cursor: pointer; }
+.similarBtn:hover, .similarBtn:focus-visible { border-color: var(--color-accent); }

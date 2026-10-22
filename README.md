@@ -3,7 +3,9 @@
 Gestion électronique des documents du groupe, construite d'après la maquette Claude Design
 (`design/GED Groupe.dc.html`, design system Nocturne dans `design/_ds/`).
 
-Même socle que Keystone : **Next.js 16 (App Router) · React 19 · PGlite (Postgres embarqué) + Drizzle**.
+Même socle que Keystone : **Next.js 16 (App Router) · React 19 · PGlite (Postgres embarqué) + Drizzle**. En
+ligne, Codex utilise le serveur PostgreSQL commun EPC2I (décision M-01 : base `epc2i`, schéma `codex`, rôle
+`codex_app`) ; PGlite reste la base locale et de repli (`DATABASE_URL`, `docs/postgres.md`).
 
 ## Démarrer
 
@@ -12,17 +14,126 @@ npm install
 npm run dev        # http://localhost:3100
 ```
 
-Au premier lancement, la base locale est créée dans `.data/` (migrations `drizzle/`) et remplie avec les
-données de démonstration (registre des types, organisation provisoire, projets Keystone, documents). Les fichiers
-déposés sont stockés dans `.data/files/` (ou dans SharePoint, voir `src/lib/storage.ts`).
+Au premier lancement, la base locale est créée dans `.data/` (migrations `drizzle/`) et remplie selon
+`CODEX_SEED` (lu seulement sur une base vide) :
+- `demo` (défaut, en développement comme dans l'app Mac) : le référentiel et les données de démonstration
+  (personnes fictives, titulaires des fonctions, projets Keystone, programmes, recherches enregistrées, documents,
+  circuits, demandes Vigie, journal) ;
+- `minimal` : le référentiel seul (registre des types et des familles, fonctions de validation, matrice des droits,
+  organisation provisoire, acteurs système Codex, Keystone, Vigie) et un administrateur initial, « Administrateur
+  Codex » (gestionnaire documentaire, droit Administrer), pour se connecter. C'est le mode d'une vraie installation :
+  personnes, titulaires et projets viendront de l'administration, de l'organigramme (O-04) et de l'authentification
+  (O-02). Exemple : `npm run db:reset && CODEX_SEED=minimal npm run dev`.
 
-- Repartir de zéro : arrêter le serveur, `npm run db:reset`, relancer. **Obligatoire après le passage au modèle v2** :
-  une base créée avec l'ancien modèle ne peut pas recevoir la nouvelle migration. `db:reset` n'efface pas les
-  sauvegardes (`.data-backups/`, voir « Sauvegarde et restauration ») ni les exports complets (`.data-exports/`).
-- Après une modification de `src/db/schema.ts` : tant qu'il n'y a pas de base de production, régénérer la migration
-  unique (`rm -rf drizzle && npx drizzle-kit generate --name init`) puis `npm run db:reset`.
-- Contrôles : `npm test`, `npm run typecheck`, `npm run lint`, `npm run build`.
-- Intégration continue GitHub Actions (`.github/workflows/ci.yml`) : `npm ci` puis ces contrôles, sous Node 22, à chaque push et PR.
+Les fichiers déposés sont stockés dans `.data/files/` (ou dans SharePoint, voir `src/lib/storage.ts`).
+
+- Repartir de zéro : arrêter le serveur, `npm run db:reset`, relancer. `db:reset` n'efface pas les sauvegardes
+  (`.data-backups/`, voir « Sauvegarde et restauration ») ni les exports complets (`.data-exports/`).
+- **Schéma `codex`** (lot 11, décision M-01) : toutes les tables, fonctions et déclencheurs de Codex et le journal de
+  ses migrations (`codex.__drizzle_migrations`) sont dans le schéma `codex`, sur le serveur commun comme dans PGlite.
+  Les tables se déclarent avec `codex.table(…)` (`pgSchema` de `src/db/schema.ts`, jamais exporté : drizzle-kit
+  écrirait un `CREATE SCHEMA` que `codex_app` ne peut pas exécuter).
+  - Une base PGlite de cette branche d'avant le 22 octobre (tables dans `public`, migrations `0000_init` à
+    `0005_index_acces_validations`) est **reprise au démarrage**, après la sauvegarde automatique : `public` devient
+    `codex` avec ses données, puis `0001_partage` s'applique. Toute autre base dont les tables sont dans `public` (démo
+    de `main` d'avant le 17 octobre, chaîne plus ancienne) est refusée avant toute écriture, avec le remède :
+    `npm run db:reset` pour `.data`, ou suppression du dossier `pglite` quand `CODEX_DATA_DIR` est posé (app Mac :
+    quitter l'app, supprimer `~/Library/Application Support/Codex/data/pglite` ; image : `rm -rf /data/pglite`). Les
+    fichiers déposés restent.
+- **Schéma : migrations incrémentales** (base figée le 22 octobre 2026). `drizzle/0000_init.sql` (tout le schéma) et
+  `drizzle/0001_partage.sql` (prérequis du partage générés par drizzle-kit, puis 7 vues `pub_` lues par Keystone,
+  Vigie et Matrix, écrites à la main d'après `infra/postgres/partage/40-codex.sql` du dépôt Matrix) sont figées ;
+  chaque changement de `src/db/schema.ts` ajoute une migration, jamais n'en réécrit une. Une vue `pub_` ne perd ni ne
+  renomme de colonne (sinon nouvelle vue `_v2`) :
+  1. `npm run db:generate -- --name <sujet>` écrit `drizzle/NNNN_<sujet>.sql` ; la relire (un renommage de colonne
+     est demandé par drizzle-kit ; une reprise de données se complète à la main dans le SQL avant le commit) ;
+  2. `npm run db:check` (dossier `drizzle/` cohérent) et `npm test` (`tests/integration/migrations.test.ts` : le schéma
+     a sa migration, et la chaîne de migrations donne exactement la structure du schéma) ;
+  3. au démarrage suivant, Codex sauvegarde la base et ses fichiers (archive de « Sauvegarde et restauration », entrée
+     « Sauvegarde créée » au journal), puis applique les migrations manquantes en une seule transaction : un échec
+     laisse la base intacte. Une base faite par un autre schéma (migration inconnue, modifiée ou sautée) est refusée
+     avant toute écriture (`src/db/migrations.ts`). Pas de `db:reset`. `CODEX_MIGRATION_BACKUP=off` migre sans
+     sauvegarde (déconseillé).
+  - Au déploiement, `npm run db:migrate` les applique avant de démarrer (`-- --check` dit lesquelles sont en
+    attente ; même sauvegarde, journalisée ; serveur arrêté ; `docs/exploitation.md` §7) ; sans elle, le démarrage
+    le fait.
+  - Retour arrière : arrêter le serveur, revenir à la version précédente de Codex (git), `npm run restore --
+    <archive> --replace` avec l'archive écrite avant la migration.
+  - Les fonctions et déclencheurs de la base (journal en ajout seul, version des documents, termes de recherche)
+    ne passent pas par les migrations : `openDb()` (`src/db/index.ts`) les repose à chaque démarrage.
+- **Registre : appliquer une évolution de `src/db/registry.ts` à une base existante** (serveur arrêté) :
+  ```bash
+  npm run registry:apply                # simulation : écarts entre le registre du code et la base, rien n'est écrit
+  npm run registry:apply -- --apply     # sauvegarde, puis applique et journalise chaque changement (acteur Codex)
+  ```
+  Familles et types de `src/db/registry.ts`, fonctions de validation de `src/db/seed-org.ts`. Ce que
+  l'Administration a réglé, d'après le journal, l'emporte : un champ modifié y garde sa valeur ; une entrée créée,
+  renommée ou supprimée y reste telle quelle. Mêmes règles que l'administration du registre : aucun code n'est
+  renommé ni réutilisé, un type absent du registre est désactivé (jamais supprimé), un nouveau code qui serait déjà un
+  département, un projet, un programme ou `QMS` est refusé, les documents suivent la famille de leur type, un réglage
+  qui exclurait des documents existants (origine, rattachement, confidentialité) est laissé à confirmer dans
+  l'administration, une fonction qui a des titulaires garde sa portée, les documents gardent leur durée de
+  conservation. Refusée tant que la base n'a pas les migrations du code (démarrer Codex une fois). Avec
+  `DATABASE_URL`, elle travaille sur le serveur PostgreSQL ; Codex ne sachant pas le sauvegarder, `--apply` y demande
+  `--no-backup`, à donner une fois la sauvegarde du serveur faite (`pg_dump`). App Mac :
+  `CODEX_DATA_DIR="$HOME/Library/Application Support/Codex/data" npm run registry:apply`, app quittée.
+- **Cahiers de validation du registre et de l'organigramme** (O-04 à O-08 ; mode d'emploi :
+  `docs/registre-points-ouverts.md`, « Valider le registre avec le cahier ») : sans base ni serveur, rien n'est écrit
+  ailleurs que dans le dossier donné à `--out`.
+  ```bash
+  npm run registry:review -- --out <dossier>          # types.csv (69 types) et fonctions.csv, réponses vides
+  npm run registry:review -- --check <cahier.csv>     # contrôle un cahier rempli, écart avec le code (--org <csv> en plus)
+  npm run org:check -- <organigramme.csv>             # modèle docs/modeles/organigramme.csv : règles, doublons, collisions
+  ```
+- **Serveur PostgreSQL commun** (`docs/postgres.md`) : `DATABASE_URL=postgres://codex_app:…@hôte:5432/epc2i` fait
+  travailler Codex sur ce serveur (PostgreSQL 18 au moins, ICU, `pg_trgm` installé par son superutilisateur) au lieu
+  de PGlite, avec les mêmes migrations, fonctions et déclencheurs, dans le schéma `codex`. Sans cette variable, rien ne
+  change (développement, démonstration, app Mac).
+
+  | `DATABASE_URL` | Base | Remplissage d'une base vide |
+  | --- | --- | --- |
+  | absente ou vide | PGlite dans `$CODEX_DATA_DIR/pglite` (développement, app Mac) | `CODEX_SEED`, `demo` par défaut |
+  | `postgres://codex_app:…@hôte:5432/epc2i` | serveur commun EPC2I, schéma `codex` | seulement sur demande : `CODEX_SEED=minimal`, `CODEX_SEED=demo` ou `CODEX_SEED_DEMO=1` ; sinon la base reste vide et chaque page mène à `/base-vide`, qui dit quoi poser |
+
+  Sur le serveur, le schéma, le rôle `codex_app` (aucun droit `CREATE` sur la base, aucun accès hors de `codex`) et les
+  droits des lecteurs des vues `pub_` (`partage/90-droits.sql`) sont posés par le socle (dépôt Matrix,
+  `infra/postgres/`) ; Codex ne crée jamais de schéma. Le pool fixe `search_path=codex` et `application_name=codex`
+  (`CODEX_DB_POOL` connexions, 10 par défaut). `next build` n'ouvre jamais le serveur. Les écritures concurrentes
+  passent par des verrous de ligne en READ COMMITTED (compteurs d'identifiants, `docs/postgres.md`), sans le verrou
+  d'écriture global `codex.ecritures` de la première bascule. La sauvegarde et la restauration de Codex, et les
+  commandes `npm run export` et `integrity`, ne travaillent que sur PGlite et refusent avec un message ; l'export
+  complet et le contrôle d'intégrité restent possibles depuis l'Administration ; le serveur se sauvegarde avec ses
+  outils (`pg_dump`, `infra/postgres/sauvegarde/` de Matrix). `npm run test:pg` rejoue toute la suite sur un serveur
+  (`CODEX_TEST_DATABASE_URL`), chaque fichier de test dans une base disposée comme le socle.
+- **Volume et mesures** (`docs/performances.md`) : `npm run seed:large -- --docs 10000` remplit une base de test à
+  part (`.data-large/` par défaut, ou `--data-dir`, ou `--database-url` ; jamais la base de démo, et une base qui a
+  déjà des documents est refusée sans `--append`) ; `npm run perf` mesure les écrans et routes principaux d'un serveur
+  lancé (`npm run start` avec `CODEX_DATA_DIR=.data-large` ou `DATABASE_URL`, et `CODEX_RATE_LIMIT=off`).
+- Contrôles : `npm test`, `npm run typecheck`, `npm run lint`, `npm run build` (sans accès réseau : la police Inter
+  est dans `src/fonts/`, servie par `next/font/local`, licence OFL dans `src/fonts/inter/OFL.txt`), puis
+  `npm run a11y` (accessibilité : axe-core dans Chromium sur les écrans et dialogues principaux du build, base de démo
+  jetable ; `-- --narrow` les rend aussi à 320 px et à 1 280 px zoomé à 200 % et relève débordements, contenus
+  inatteignables, tronqués ou superposés, sans faire échouer ; `docs/accessibilite.md`) et `npm run e2e` (parcours de bout en bout dans Chromium, même build, base de démo
+  jetable, jeton d'import tiré pour ce serveur seul ; cinq parcours indépendants : **approbation** (document créé avec
+  son PDF, aperçu paginé téléchargé une fois, chaque étape approuvée par son titulaire, document en vigueur),
+  **rejet** (étape rejetée avec son motif, nouvelle version de travail, nouvelle demande), **rappel** (demande rappelée
+  par son demandeur), **vigie** (demande de modification acceptée par la simulation Vigie : révision suivante ouverte ;
+  une deuxième, acceptée pendant sa rédaction, greffée ; une troisième, pendant sa validation, en attente, D-26) et
+  **import** (`POST /api/import?dryRun=1` puis import réel, même identifiant, document vu dans l'app, brouillon importé
+  vu de son seul propriétaire) ; chacun vérifie qu'une personne hors du cercle de rédaction ne voit pas le brouillon
+  (D-14) ; 75 s environ ; `-- --only rejet,rappel` pour certains parcours, `CODEX_E2E_SHOTS=<dossier>` garde une
+  capture de l'aperçu et de l'écran d'un parcours en échec).
+- Intégration continue GitHub Actions (`.github/workflows/ci.yml`) : `npm ci`, `npm run deps:audit`, `npm run db:check`
+  puis ces contrôles, `npm run a11y` et `npm run e2e` compris (après `npx playwright-core install --with-deps
+  chromium`), sous la version de référence de Node (`.nvmrc` : 22), à chaque push et PR ; `npm run test:pg` sur un
+  service PostgreSQL 18 ; et `npm test` sous Node 20.19, la plus basse que `engines` admet (`@types/node` suit la
+  version de référence).
+- Version de Node : `engines` de package.json (`^20.19.0 || >=22.12.0`), version de référence dans `.nvmrc` (22),
+  `@types/node` en `^22.12.0` ; `node scripts/codex-node-check.mjs` dit si le Node lancé convient (l'app Mac le vérifie).
+- Vulnérabilités connues : `npm run deps:audit` (`scripts/codex-audit.mjs`, deux passages de `npm audit`) échoue sur un
+  avis de gravité élevée ou critique dans les dépendances de l'application, et dans les outils de développement sauf
+  avis accepté dans le script, avec sa raison (aujourd'hui `braces`, outil de lint sans version corrigée publiée) ; les
+  avis modérés sont listés sans échec.
 - Tests : `npm test` lance Vitest une fois (`npm run test:watch` en continu), en une à deux minutes selon la machine,
   sans serveur ni réseau et sans toucher à `.data/`.
   - `tests/unit/` : règles pures (identifiants, révisions, visibilité, conservation, recherche, filtres mis en avant
@@ -41,7 +152,9 @@ déposés sont stockés dans `.data/files/` (ou dans SharePoint, voir `src/lib/s
     en flux (206, 416, 304, HEAD), nettoyage des fichiers orphelins, sauvegarde et restauration (archive écrite,
     relue, altérée, restaurée sur disque puis rouverte, retour arrière, commandes npm lancées comme par l'exploitant),
     export complet (archive relue, empreintes et comptes comparés à la base, instantané, droits, interruption, réimport
-    d'un document par l'import, commande npm), route de santé et journal technique des routes et des actions. La visibilité en SQL, la recherche et l'explorateur lus par la base
+    d'un document par l'import, commande npm), route de santé et journal technique des routes et des actions, rendu
+    de la page d'aide et de la coquille des écrans (lien d'évitement, titre de niveau 1, navigation) en français et en
+    anglais. La visibilité en SQL, la recherche et l'explorateur lus par la base
     sont comparés à leur version en mémoire, qui reste la référence (`access-sql`, `search-sql`, `tests/support/`).
     `tests/integration/dates.test.ts` et `seed-sql.test.ts` chargent aussi les données de démo (`src/db/seed.ts`), en
     mémoire, pour en vérifier toutes les dates et y refaire ces comparaisons.
@@ -49,9 +162,11 @@ déposés sont stockés dans `.data/files/` (ou dans SharePoint, voir `src/lib/s
     l'horloge est figée au 10 octobre 2026. Les compteurs de débit sont vidés avant chaque test
     (`tests/support/setup.ts`).
   - Limite : PGlite n'a qu'une connexion et exécute les transactions l'une après l'autre. Les tests d'attributions
-    « simultanées » (`Promise.all`) vérifient l'absence de doublon sous cet entrelacement, pas l'atomicité des
-    compteurs entre connexions d'un vrai serveur Postgres (étape 5, O-03) : il faudra un Postgres serveur pour la
-    vérifier.
+    « simultanées » (`Promise.all`) y vérifient l'absence de doublon sous cet entrelacement. `npm run test:pg`
+    (`CODEX_TEST_DATABASE_URL`, une base neuve par fichier de test sur un serveur PostgreSQL 18) rejoue toute la suite
+    sur un serveur, où ces tests deviennent de vraies courses entre connexions, et `postgres-server.test.ts` y tient
+    des transactions ouvertes en même temps : compteur attendu, numéro rendu par une transaction annulée, max + 1
+    pris en défaut, imports un par un. Sur PGlite, ce fichier est sauté.
   - Version de Node : la recherche en base replie les textes (accents, casse) et trie les titres avec les tables
     Unicode et ICU de PGlite (Unicode 16.0, ICU 76), la version en mémoire qui lui sert de référence avec celles de
     Node (Node 22 : Unicode 16.0, ICU 77 ; Node 26 : Unicode 17.0, ICU 78). La base replie la requête comme les
@@ -60,7 +175,7 @@ déposés sont stockés dans `.data/files/` (ou dans SharePoint, voir `src/lib/s
     passe sous Node 22 et sous Node 26 (vérifié avec Node 26.11.1). Un caractère ajouté par Unicode 17.0 peut être
     replié autrement par la référence en mémoire que par la base.
 
-Variables : voir `.env.example` (Keystone, Vigie, dossier de données et de sauvegardes, jetons de l'API
+Variables : voir `.env.example` (Keystone, Vigie, dossier de données et de sauvegardes, base, Matrix, jetons de l'API
 d'intégration, HTTPS, proxy de confiance, limites de débit, journal technique, contrôle de la configuration). Aucune
 n'est nécessaire en local : sans elles, les limites de débit gardent des valeurs généreuses, HSTS reste coupé,
 `X-Forwarded-For` n'est pas tenu pour fiable et le contrôle de la configuration ne trouve aucune erreur. Elles sont
@@ -83,36 +198,46 @@ Construit `Codex.app` (fenêtre native macOS, sans Electron), l'installe dans `~
   par ligne comme tout serveur de production (`CODEX_LOG_FORMAT=pretty` dans `.env.local` du projet pour des lignes lisibles) ; un refus de la
   configuration au démarrage (« Le serveur s'est arrêté au démarrage. ») y est expliqué (voir « Exploitation ») ;
 - ouvre les liens Keystone / Vigie dans le navigateur, enregistre les téléchargements dans `~/Téléchargements`.
+- n'embarque pas d'outil de conversion : pour l'aperçu des fichiers Office, installer LibreOffice sur le Mac et écrire
+  `CODEX_PREVIEW_SOFFICE=/Applications/LibreOffice.app/Contents/MacOS/soffice` dans `.env.local` (`docs/exploitation.md`
+  §6).
 
 L'app pointe vers ce dossier de projet et vers le Node.js présents au moment de la construction : relancer
 `npm run app` après un déplacement du projet ou un changement de Node. Pour repartir d'une base de démo neuve :
-quitter l'app et supprimer `~/Library/Application Support/Codex/data`.
+quitter l'app et supprimer `~/Library/Application Support/Codex/data`. Une mise à jour du code qui apporte une
+migration n'en demande pas : l'app sauvegarde sa base puis la migre au démarrage suivant (voir « Démarrer »).
 
 ## Écrans
 
 | Route | Écran |
 | --- | --- |
 | `/` | Tableau de bord : « À traiter » (étapes à décider, révisions à rédiger ou à reprendre, greffes possibles, revues et expirations des documents dont on est propriétaire ou propriétaire de processus), documents récents, échéances (conservation, expiration, revue), activité. La pastille d'Accueil et la cloche reprennent la même liste |
-| `/explorateur` | Classement par famille, département, projet / programme, type ou origine ; filtres de statut et d'échéance dépassée (« Expirés », « Revues en retard ») ; 50 documents par page ; aperçu rapide |
-| `/documents/[id]` | Fiche document : aperçu, onglets Projet · Fiche · Révisions · Validation · Demandes · Historique ; indicateurs « Expiré » (raccourcis vers les demandes de modification et de retrait) et « Revue en retard », « Revue effectuée » ; documents liés (« Remplace », « Remplacé par », « Voir aussi »), remplacement proposé avec une demande de retrait et rappelé dans le bandeau d'un document obsolète ; fiche de visa (PDF) de chaque révision approuvée, dans l'onglet Révisions |
-| `/recherche` | Recherche plein texte classée par pertinence + facettes (projet, famille, type, sous-type, origine, rattachement, département, site, propriétaire, auteur, statut, échéance dépassée, confidentialité, langue, mots-clés, organisme source, phase, lot, discipline, thème), période sur une date (modification, émission, effet, révision, expiration), tri au choix, 50 résultats par page, export CSV de tous les résultats dans le même ordre ; recherches enregistrées (critères, période et tri) personnelles, ou partagées avec un département ou le groupe par un gestionnaire documentaire |
+| `/explorateur` | Classement par famille, département, projet / programme, type ou origine ; filtres de statut et d'échéance dépassée (« Expirés », « Revues en retard ») ; 50 documents par page ; aperçu rapide ; « Déposer un fichier » et « Nouveau » préremplis avec le département, la famille ou le type choisis dans l'arbre |
+| `/documents/[id]` | Fiche document : aperçu, onglets Projet · Fiche · Révisions · Validation · Demandes · Historique (onglet Projet : phases Keystone en frise compacte, la phase courante nommée ; sans projet, « Rattacher à un projet » pour le propriétaire ou un gestionnaire) ; « Restaurer » une version de travail antérieure du brouillon (onglet Révisions) ; indicateurs « Expiré » (raccourcis vers les demandes de modification et de retrait) et « Revue en retard », « Revue effectuée » ; documents liés (« Remplace », « Remplacé par », « Voir aussi »), remplacement proposé avec une demande de retrait et rappelé dans le bandeau d'un document obsolète ; fiche de visa (PDF) de chaque révision approuvée, dans l'onglet Révisions |
+| `/recherche` | Recherche dans les métadonnées (identifiant et anciens identifiants, titre, mots-clés, référence externe, ID d'étude, type, sous-type, organisme source, propriétaire, auteur ; pas dans le contenu des fichiers), sans accents ni casse, classée par pertinence + facettes (projet, famille, type, sous-type, origine, rattachement, département, site, propriétaire, auteur, statut, échéance dépassée, confidentialité, langue, mots-clés, organisme source, phase, lot, discipline, thème), période sur une date (modification, émission, effet, révision, expiration), tri au choix, 50 résultats par page, export CSV de tous les résultats dans le même ordre ; recherches enregistrées (critères, période et tri) personnelles, ou partagées avec un département ou le groupe par un gestionnaire documentaire |
 | `/departements/[code]` | Page d'un département (`/departements` ouvre celui de l'utilisateur, un sélecteur passe aux autres) : documents en vigueur, échéances, circuits en cours qu'il suit, recherches partagées avec le département et le groupe, filtres mis en avant (valeurs les plus fréquentes, chacune un lien vers la recherche filtrée), le tout limité à ce que l'utilisateur peut lire. Départements provisoires (organigramme attendu) ; filtres par défaut (type, statut, projet), réglables par département dans Administration › Organisation, en attendant le recueil des besoins de chaque métier |
-| `/validations` | Circuits de validation : à valider, mes demandes, en cours, terminées ; approuver / rejeter (motif obligatoire) / déléguer, rappeler sa demande avant la dernière approbation, commentaires. Vue « Mes demandes Vigie » : demandes de modification et de retrait envoyées par l'utilisateur, avec leur statut |
+| `/validations` | Circuits de validation : à valider, mes demandes, en cours, terminées (comptés et listés par la base, par pages de 50) ; approuver / rejeter (motif obligatoire) / déléguer, rappeler sa demande avant la dernière approbation, commentaires ; un gestionnaire documentaire réassigne l'étape en cours détenue par une autre personne (mêmes règles qu'une délégation). Vue « Mes demandes Vigie » : demandes de modification et de retrait envoyées par l'utilisateur, avec leur statut |
 | `/archivage` | Échéances (archivage, gel juridique, revue effectuée ; filtres « Expirés » et « Revues en retard »), règles de conservation du registre, archives |
-| `/administration` | Registre des types (création et modification complète des types et des familles, dont la périodicité de revue), fonctions & circuits (fonctions, titulaires, programmes de recherche), rôles & droits, organisation (départements et sites : ajout, renommage FR/EN, désactivation ou suppression d'une valeur inutilisée ; filtres mis en avant des départements), modèles (QMS), journal d'audit (filtres par document ou cible, personne, action et période ; 100 entrées par page ; export CSV complet), sauvegardes, export complet de toutes les données et de tous les fichiers (archive ZIP, gestionnaires documentaires) |
+| `/administration` | Registre des types (création et modification complète des types et des familles, dont la périodicité de revue), fonctions & circuits (fonctions, titulaires, programmes de recherche), rôles & droits, organisation (départements et sites : ajout, renommage FR/EN, désactivation ou suppression d'une valeur inutilisée ; filtres mis en avant des départements), vocabulaires (organismes sources et mots-clés : ajout, renommage, fusion de doublons, valeurs sans terme ; sous-types hors de la liste de leur type, à ajouter au registre), reprise des responsabilités d'une personne qui part (simulation puis transfert journalisé à un remplaçant choisi : propriété de documents et de processus, auteur désigné, étapes en attente, titulariats, lecteurs désignés ; gestionnaires documentaires), modèles (QMS), leurs types cibles et leurs utilisations (documents créés depuis chacun, parmi ceux que le lecteur peut lire), journal d'audit (filtres par document ou cible, personne, action et période ; 100 entrées par page ; export CSV complet), sauvegardes, planificateur (tâches, dernière et prochaine exécution), export complet de toutes les données et de tous les fichiers (archive ZIP, gestionnaires documentaires) |
+| `/aide` | Aide, en français et en anglais, ouverte à tous les rôles (lien « Aide » au-dessus de « Notes de conception » dans la barre latérale) : les parcours courants pas à pas (créer un document, déposer et restaurer une version de travail, demander une validation, valider, rejeter ou déléguer, demander une modification ou un retrait à Vigie, comparer, confidentialité, recherche), avec ce qui est simulé ; un lien vers l'écran où chaque parcours commence, si le rôle y a accès |
 
-API : `/api/registry` (lu par Keystone), `/api/import` (outil de migration), `/api/integrations/vigie` (décisions
-Vigie), `/api/documents/[id]/file` (fichier d'une version de travail), `/api/documents/[id]/approval?rev=B` (fiche de
-visa d'une révision approuvée, PDF tiré du journal), `/api/export/search` et `/api/export/audit` (CSV),
-`/api/export/full` (export complet, archive ZIP : `docs/export.md`).
+API : `/api/registry` (lu par Keystone), `/api/import` (outil de migration ; `?dryRun=1` simule sans rien
+enregistrer), `/api/integrations/vigie` (décisions Vigie), `/api/documents/[id]/file` (fichier d'une version de
+travail), `/api/documents/[id]/approval?rev=B` (fiche de visa d'une révision approuvée, PDF tiré du journal),
+`/api/export/search` et `/api/export/audit` (CSV), `/api/export/full` (export complet, archive ZIP :
+`docs/export.md`). Entre serveurs : jeton et/ou signature HMAC
+(horodatage, anti-rejeu, rotation par `…_NEXT`) pour l'import et le webhook Vigie, registre ouvert sauf
+`CODEX_REGISTRY_TOKEN` (`docs/api.md`, « Authentification »).
 
-Tout l'état d'écran est dans l'URL (onglets, filtres, sélection) : les liens sont partageables.
+Tout l'état d'écran est dans l'URL (onglets, filtres, sélection) : les liens sont partageables. Chaque écran a son
+titre d'onglet dans la langue choisie (« Recherche — Codex », « {ID} · {titre} — Codex » pour une fiche lisible, « Fiche
+document — Codex » sinon).
 
 ## Ce qui est réel / simulé
 
 - **Persisté** : création codifiée (`TYPE-CONTEXTE-SEQ`, depuis un modèle, un fichier ou sans fichier), versions de
-  travail (A.1, A.2…), métadonnées (dates contrôlées : format, et émission ≤ effet < expiration) et reclassement
-  (nouvel identifiant tant qu'aucune révision n'a été approuvée),
+  travail (A.1, A.2…), métadonnées (auteur : une personne ou un texte libre ; dates contrôlées : format, et
+  émission ≤ effet < expiration) et reclassement (nouvel identifiant tant qu'aucune révision n'a été approuvée),
   lecteurs désignés, demandes de validation et décisions (mise en vigueur à l'approbation ou à la date d'effet),
   délégation, commentaires, demandes de modification et de retrait, revue périodique (« Revue effectuée », qui fixe la
   prochaine date de revue sans créer de révision), archivage, gel juridique, matrice des droits, registre des types
@@ -129,8 +254,14 @@ Tout l'état d'écran est dans l'URL (onglets, filtres, sélection) : les liens 
   Chacune de ces actions alimente le journal d'audit, de même que les téléchargements et les deux exports CSV. Le
   journal est en ajout seul : la base refuse toute modification ou suppression (déclencheur posé au démarrage,
   `src/db/index.ts`), et un reclassement ne réécrit pas les entrées, qui gardent l'identifiant de leur époque.
-  L'horodatage est stocké en UTC et affiché à l'heure de Paris. Ne sont pas journalisés : les consultations (aperçu
-  sans téléchargement) et le changement d'utilisateur ou de langue simulé.
+  L'horodatage est stocké en UTC et affiché à l'heure de Paris. Les consultations le sont aussi : ouverture de la fiche
+  (« Consultation de la fiche ») et fichier affiché dans l'aperçu (« Consultation du fichier »), une entrée par
+  personne, document et version toutes les 30 minutes au plus ; une plage d'octets au-delà du début du fichier et une
+  requête HEAD n'en écrivent pas. Elles suivent la révision qu'elles concernent (D-14), restent hors des flux
+  d'activité et se lisent à part : onglet Historique de la fiche (« Activité », « Métadonnées » avec l'avant et
+  l'après, « Consultations ») et filtre par action de l'onglet Journal. Ne sont pas journalisés : le changement
+  d'utilisateur ou de langue simulé, la création et la suppression d'une recherche enregistrée (des critères, jamais
+  des documents).
 - **Utilisateur et rôle simulés** (pas d'authentification pour l'instant) : cliquer sur le profil en bas de la
   barre latérale. La navigation suit les règles de la maquette (validations masquées pour l'auditeur, archivage
   masqué pour le collaborateur, administration réservée au gestionnaire), les actions vérifient la matrice des
@@ -142,7 +273,20 @@ Tout l'état d'écran est dans l'URL (onglets, filtres, sélection) : les liens 
   Le webhook `/api/integrations/vigie` applique les décisions réelles.
 - **Aperçu** : un PDF, une image PNG, JPEG, GIF ou WebP, ou un fichier texte déposés s'affichent dans la fiche ; les
   autres formats se téléchargent. Les documents de démonstration (sans fichier) gardent la page maquette et se
-  téléchargent sous forme d'un PDF généré.
+  téléchargent sous forme d'un PDF généré. Les fichiers Word, Excel, PowerPoint et OpenDocument s'affichent en PDF
+  quand un service de conversion est configuré (voir « Aperçu des fichiers Office et comparaison des versions ») ;
+  sans lui, « Aperçu indisponible » et le téléchargement, comme avant.
+- **Restaurer** (onglet Révisions) : une version de travail antérieure de la révision en brouillon (A.1) devient la
+  suivante (A.4, commentée « Restaurée depuis A.1 »), son fichier recopié et contrôlé comme un dépôt ; mêmes droits et
+  refus que « Nouvelle version de travail ». Revenir à une révision en vigueur reste une demande de modification à
+  Vigie (D-16).
+- **Bilingue** : libellés FR/EN des départements, des sites, des types et du fondement de conservation (anglais saisi
+  dans Administration › Registre des types ; vide, le français s'affiche suivi de « (FR) ») ; phases Keystone en
+  anglais (libellés provisoires, à aligner sur Keystone) ; détail du journal enregistré en code et paramètres et
+  rendu dans la langue du lecteur, à l'écran et dans l'export CSV, pour les entrées écrites depuis le 18 octobre 2026
+  (les plus anciennes gardent leur texte : le journal n'est jamais réécrit).
+- **Comparer** (onglet Révisions) : attributs des deux versions, puis leur texte comparé ligne à ligne (PDF, Word,
+  Excel, PowerPoint, OpenDocument, texte), sans service externe.
 
 ## Sécurité HTTP et limites de débit
 
@@ -181,6 +325,7 @@ secondes), sans rien exécuter (ni import, ni lecture de fichier, ni export jour
 | `GET /api/registry` | `CODEX_RATE_REGISTRY` | 300 par minute | adresse du client, derrière un proxy de confiance seulement |
 | Fichiers et fiches de visa (`/api/documents/[id]/file`, `/approval`) | `CODEX_RATE_FILES` | 600 par minute | utilisateur résolu ; et adresse derrière un proxy de confiance |
 | Exports CSV et export complet (`/api/export/*`, GET et HEAD) | `CODEX_RATE_EXPORTS` | 30 par minute | utilisateur résolu ; et adresse derrière un proxy de confiance |
+| Comparaison du contenu de deux versions (`/api/documents/[id]/compare`) | `CODEX_RATE_COMPARE` | 30 par minute | utilisateur résolu ; et adresse derrière un proxy de confiance |
 | Server Actions qui écrivent (`src/lib/actions.ts`) | `CODEX_RATE_WRITES` | 120 par minute | utilisateur résolu |
 
 - Valeur `N` (par minute) ou `N/<durée>` (`30s`, `1m`, `15m`, `1h`) ; `0` ou `off` lève une limite,
@@ -206,7 +351,8 @@ secondes), sans rien exécuter (ni import, ni lecture de fichier, ni export jour
     plusieurs comptes. Tant qu'il n'y a pas d'authentification (O-02), un client peut toujours se faire passer pour un
     autre utilisateur, et donc dépenser son budget.
 - **Une seule instance** : les compteurs sont en mémoire, dans le processus du serveur ; PGlite impose déjà un seul
-  processus. Un redémarrage les remet à zéro. Avec plusieurs instances, chacune compterait de son côté (jusqu'à n fois
+  processus (avec un serveur PostgreSQL, plusieurs processus pourraient partager la base, mais chacun aurait ses
+  compteurs ; le verrou `codex.lock` du dossier de données en refuse un second sur le même dossier). Un redémarrage les remet à zéro. Avec plusieurs instances, chacune compterait de son côté (jusqu'à n fois
   la limite) : il faudrait alors un magasin partagé (Redis, ou une table de la base Postgres serveur, point 51) ou
   limiter au proxy inverse (`limit_req` de nginx, par exemple). Chaque famille garde au plus 10 000 clés, dans sa propre
   table : seuls les seaux redevenus pleins sont oubliés, et tant qu'aucun ne l'est, une clé nouvelle attend (429) plutôt
@@ -296,9 +442,10 @@ Points 46 et 36 de `docs/reste-a-faire.md`.
   (`Cache-Control: private, no-cache`, revalidée à chaque usage, donc droits contrôlés à chaque fois) que du fichier
   final de la révision en vigueur, sous le niveau Confidentiel : changer de page dans l'aperçu ne retélécharge plus
   le PDF (304). Brouillons, fichiers confidentiels et très confidentiels et téléchargements explicites
-  (`?download=1`) restent en `no-store`, envoyés en entier à chaque fois : pour eux, l'aperçu paginé, qui recrée son
-  iframe à chaque page (`key={page}`, `src/app/documents/[id]/DocClient.tsx`), retélécharge encore tout le fichier à
-  chaque page (reste du point 46). `no-transform` empêche la compression, qui
+  (`?download=1`) restent en `no-store`, envoyés en entier à chaque fois. L'aperçu paginé télécharge le fichier une
+  fois, en garde une copie en mémoire (adresse `blob:`, ni cache ni historique, libérée quand la fiche se ferme) et
+  change de page sur elle (`useLocalCopy`, `src/app/documents/[id]/DocClient.tsx`) : un brouillon de P pages n'est
+  plus téléchargé P fois (point 46 ; `frame-src 'self' blob:`). `no-transform` empêche la compression, qui
   fausserait les plages.
 - **Téléchargements journalisés** : un téléchargement (`?download=1`) est inscrit au journal quand la réponse part du
   premier octet (200, ou 206 à partir de 0) ; une reprise (plage plus loin), un 416 ou un HEAD ne le sont pas.
@@ -319,7 +466,17 @@ Points 46 et 36 de `docs/reste-a-faire.md`.
   - SharePoint (dossier `_staging`) : listé seulement quand il est actif ou que des versions y pointent, jamais
     supprimé tant que le pilote n'a pas été essayé sur un vrai tenant (O-01).
   - Pas de commande npm : PGlite n'ouvre la base que dans un seul processus, celui du serveur. Le planificateur
-    (point 38) appellera `purgeOrphans` quand il existera.
+    lance la même suppression quand `CODEX_SCHEDULE_ORPHANS` en donne la fréquence (désactivée par défaut ;
+    `docs/exploitation.md` §4).
+- **Fichiers restés sous un nom provisoire** (même écran, gestionnaire documentaire avec l'accès Administration) : un
+  fichier est stocké sous un nom provisoire avant la transaction qui l'enregistre, puis renommé `{ID}_{version}.{ext}`
+  (`nameStoredFile`) ; un arrêt entre les deux, ou un stockage injoignable, laisse un enregistrement qui pointe vers le
+  nom provisoire (le fichier reste servi). « Fichiers sous un nom provisoire › Rechercher » les liste sans rien changer
+  (`src/lib/provisional.ts` : clés `<uuid>-upload.<ext>` en local, éléments de `_staging` sur SharePoint, touchés
+  depuis plus de `CODEX_ORPHAN_GRACE_HOURS`), puis « Renommer ces fichiers » donne leur nom aux seuls fichiers listés,
+  chacun revérifié juste avant, 200 au plus, journalisé (« Fichiers renommés », noms montrés aux seuls gestionnaires).
+  Le planificateur le fait quand `CODEX_SCHEDULE_RENAMES` en donne la fréquence (désactivé par défaut). Sur
+  SharePoint, le renommage passe par la même interface que le dépôt, jamais essayée sur un vrai tenant (O-01).
 
 ## Sauvegarde et restauration
 
@@ -392,9 +549,33 @@ npm run export:check -- <archive>       # relit une archive : CRC-32 et SHA-256 
 - Ce n'est pas une sauvegarde : pour revenir à un état de Codex, on restaure une sauvegarde. Le réimport passe par
   `POST /api/import`, une révision par document.
 
+## Empreintes des fichiers : intégrité et doublons
+
+Point 31 de `docs/reste-a-faire.md`.
+
+```bash
+npm run integrity                       # serveur arrêté : relit chaque fichier et le compare à son empreinte (code 1 si écart)
+```
+
+- **Empreinte** : chaque fichier qui entre dans Codex (nouveau document, copie d'un modèle, version de travail,
+  import) reçoit son SHA-256, calculé dans `stageFile` (`src/lib/storage.ts`) et gardé sur la version de travail
+  (`working_versions.sha256`). Il est affiché dans l'onglet Révisions (et la comparaison des versions), repris dans la
+  fiche de visa (fichier approuvé), dans le journal des dépôts (cercle de rédaction seulement, D-14) et dans l'export
+  complet, dont le manifeste signale les fichiers qui ne correspondent plus (`files.altered`).
+- **Vérification** (`src/lib/integrity-core.mjs`) : Administration › Journal d'audit › Intégrité des fichiers
+  (gestionnaires documentaires ayant l'accès Administration) ou `npm run integrity` relisent tous les fichiers stockés,
+  signalent les altérés et les absents, enregistrent l'empreinte des fichiers déposés avant son calcul, et inscrivent
+  le résultat au journal (« Vérification d'intégrité »). Rien n'est réparé ni supprimé. Un téléchargement complet est
+  vérifié au passage : un fichier altéré est interrompu avant ses derniers octets et journalisé (« Fichier altéré
+  détecté ») ; une plage d'octets (aperçu) ne l'est pas. Une copie de modèle altéré est refusée.
+- **Doublons** : un dépôt dont le fichier est identique à un fichier déjà classé reste accepté, avec un avertissement
+  qui nomme le document, seulement si l'utilisateur peut avoir ce fichier-là (hors du cercle de rédaction : le fichier
+  en vigueur, jamais un brouillon ni une version de travail, D-14). L'import le signale dans `warnings`
+  (`duplicate_file`) pour un fichier en vigueur de niveau Public, Restreint ou Interne seulement.
+
 ## Exploitation : journal technique, santé, configuration
 
-Points 37 et 49 de `docs/reste-a-faire.md` ; procédure complète dans **`docs/exploitation.md`** (champs du journal,
+Points 37, 38 et 49 de `docs/reste-a-faire.md` ; procédure complète dans **`docs/exploitation.md`** (champs du journal,
 supervision, codes du contrôle de configuration et leur correction).
 
 - **Journal technique** (`src/lib/log.ts`), distinct du journal d'audit : une entrée par ligne sur la sortie du
@@ -420,10 +601,59 @@ supervision, codes du contrôle de configuration et leur correction).
   illisible, dossier de données non inscriptible) **arrête le serveur en production** (code de sortie 1) ; en
   développement, elle est seulement écrite. `CODEX_CONFIG_CHECK=warn` ou `strict` change ce comportement. Sans
   aucune variable, il n'y a aucune erreur : `npm run dev`, `npm run start` et l'app Mac démarrent comme avant.
+- **Image générique** (`Dockerfile`, `.dockerignore` ; `docs/exploitation.md` §10) : `docker build -t codex .` puis
+  `docker run -p 3100:3100 -v codex:/var/lib/codex codex`. Serveur autonome de Next.js (`output: 'standalone'`
+  seulement quand `CODEX_STANDALONE=1` : `npm run build` et l'app Mac sont inchangés), utilisateur non root, volume des
+  données, `HEALTHCHECK` sur `/api/health`, variables au lancement seulement, aucun secret ni donnée dans l'image ; ni
+  hébergeur, ni proxy, ni TLS choisis (M22). Commandes de sauvegarde, d'export et d'intégrité dans l'image, conteneur du
+  serveur arrêté ; lancées à côté d'un serveur en marche, elles refusent (le verrou du dossier de données reconnaît un
+  autre conteneur).
+- **Planificateur** (`src/lib/scheduler.ts`, démarré par `register`) : toutes les 5 minutes par défaut, met en vigueur
+  les révisions approuvées dont la date d'effet est venue (les pages ne le font plus elles-mêmes) et applique une
+  acceptation de Vigie que plus rien ne retient. Nettoyage des orphelins, vérification d'intégrité, sauvegarde et
+  export complet sont désactivés tant que leur variable `CODEX_SCHEDULE_*` n'en donne pas la fréquence. Une seule
+  exécution à la fois par tâche, même à plusieurs processus sur une base (bail en base). État dans Administration ›
+  Journal d'audit › Planificateur ; détail dans `docs/exploitation.md` §4.
+
+## Aperçu des fichiers Office et comparaison des versions
+
+Points 14 et 15 de `docs/reste-a-faire.md` (G05, M12). Installation de l'outil de conversion : `docs/exploitation.md`
+§6.
+
+- **Comparer** (`src/lib/compare.ts`, `GET /api/documents/[id]/compare?a=&b=`) : le texte des deux fichiers est extrait
+  sur le serveur (`src/lib/text-extract.ts`) : PDF par pdf.js (bibliothèque `unpdf`, couche texte seulement : un scan
+  sans texte ne donne rien), Word, Excel, PowerPoint et OpenDocument lus dans leur ZIP, formats texte ; les fichiers
+  Office 97-2003, images et plans ne sont pas lus, et le dialogue le dit. Les écarts sont calculés ligne à ligne
+  (`src/lib/line-diff.ts`, algorithme de Myers), blancs et lignes vides ignorés, et affichés sous les attributs, avec
+  deux lignes de contexte. Bornes : fichier de `CODEX_COMPARE_MAX_MB` (20 Mo par défaut), 15 s d'extraction, 20 000
+  lignes et 2 millions de caractères par texte, 3 000 lignes ajoutées ou supprimées au plus (au-delà : « Les textes
+  diffèrent trop »), 2 000 lignes affichées. Mêmes droits que la route fichier (D-14) : hors du cercle de rédaction,
+  seule la révision en vigueur se lit, donc rien d'autre ne se compare ; une version refusée répond 404. Chaque
+  version comparée est journalisée comme une consultation (« B.2 · Comparaison »). Un fichier dont l'empreinte ne
+  correspond plus à celle du dépôt n'est pas comparé.
+- **Aperçu des fichiers Office** (`src/lib/office-preview.ts`, `src/lib/preview-config.ts`) : désactivé tant que ni
+  `CODEX_PREVIEW_SOFFICE` (chemin de LibreOffice, lancé sans interface) ni `CODEX_PREVIEW_GOTENBERG_URL` (service
+  Gotenberg) n'est défini. Sinon, le fichier est converti en PDF la première fois que quelqu'un qui a le droit de le
+  voir ouvre la fiche (`/api/documents/[id]/file?v=…&preview=pdf`, mêmes droits que le fichier), hors transaction ;
+  le rendu est gardé dans le stockage local (table `version_previews` : clé, nombre de pages, empreinte) et resservi
+  sans nouvelle conversion. La fiche l'affiche avec sa pagination et la mention « Aperçu PDF généré par le service de
+  conversion » de la maquette. Un échec (délai `CODEX_PREVIEW_TIMEOUT_S`, 60 s par défaut ; fichier au-delà de
+  `CODEX_PREVIEW_MAX_MB`, 20 Mo ; résultat qui n'est pas un PDF) donne « Aperçu indisponible » et le téléchargement,
+  et n'est retenté qu'une heure plus tard. Deux conversions au plus en même temps par processus. LibreOffice reçoit un
+  environnement à lui (aucune variable de Codex) et un profil temporaire.
+- **Cohérence** : les rendus sont des données dérivées. Le nettoyage des orphelins compte leurs clés comme référencées
+  (un rendu dont la ligne a disparu devient un orphelin ordinaire), la sauvegarde les archive avec les fichiers,
+  l'export complet les laisse de côté (table et fichiers, refaits à partir des fichiers d'origine), et le contrôle
+  d'intégrité ne porte que sur les fichiers d'origine ; un rendu est vérifié contre son empreinte à chaque envoi
+  entier, et un rendu altéré ou manquant est oublié puis refait.
+- **Tests** : `tests/integration/office-preview.test.ts` remplace LibreOffice par un faux `soffice` (script shell) et
+  Gotenberg par un faux serveur HTTP ; avec `CODEX_TEST_SOFFICE=/usr/bin/soffice`, un dernier test convertit un vrai
+  fichier Word.
 
 ## Organisation du code
 
 ```
+Dockerfile             image générique (docs/exploitation.md §10) ; .dockerignore : contexte limité au build
 src/
   proxy.ts             politique de sécurité du contenu des pages (nonce par requête), HSTS si CODEX_HTTPS
   instrumentation.ts   au démarrage, contrôle de la configuration ; erreurs serveur au journal technique
@@ -431,11 +661,15 @@ src/
     nocturne.css       design system Nocturne (copie de design/_ds/…/styles.css)
     globals.css        règles d'application communes
     api/               fichiers, fiches de visa, exports CSV et complet, registre, import, webhook Vigie, santé (health)
+    aide/              page d'aide (/aide), textes dans lib/i18n.ts
   components/
     shell/             barre latérale, en-tête, contexte client (dialogues, toasts)
     dialogs/           toutes les boîtes de dialogue
     ui/                icônes de la maquette, contrôle segmenté, steppers, boutons d'action, pages d'une liste
-  db/                  schéma Drizzle, connexion PGlite (déclencheurs, termes de recherche repliés), données de démonstration
+  db/                  schéma Drizzle (schéma PostgreSQL codex), connexion PGlite ou serveur commun (sql-client.ts),
+                       déclencheurs, termes de recherche repliés, migrations versionnées et reprise d'une base
+                       ancienne (migrations.ts), registre, amorçage (référentiel, démonstration)
+  fonts/               police Inter (woff2, sous-ensembles de Google Fonts, licence OFL), next/font/local
   lib/
     actions.ts         Server Actions (toutes les mutations + contrôles de droits)
     queries.ts         lectures et modèles de vue ; recherche, explorateur et journal filtrés, comptés et paginés par la base
@@ -448,7 +682,25 @@ src/
     codes.ts           identifiants TYPE-CONTEXTE-SEQ et lettres de révision
     registry-rules.ts  administration du registre : formats des codes, collisions entre segments d'un identifiant,
                        lecture des formulaires de type, famille, fonction et programme
+    registry-apply.ts  application du registre du code à une base existante (npm run registry:apply)
+    registry-review.ts cahiers de validation du registre (types, fonctions) : écriture, contrôle d'un cahier rempli,
+                       écart avec le code (npm run registry:review)
+    journal-values.ts  valeurs des changements journalisés (avant → après) du registre et des métadonnées
+    seed-mode.ts       CODEX_SEED : démonstration ou référentiel minimal
+    codification.ts    attribution des identifiants, numéros de circuit et références ECR (compteurs en base)
+    dates.ts           cohérence des dates d'un document (émission ≤ effet < expiration)
+    format.ts, csv.ts  dates, tailles et textes bilingues affichés ; lignes CSV des exports, relecture d'un CSV
+    errors.ts          référence d'une erreur montrée à l'utilisateur, jamais son message (i18n-errors.ts : ses textes)
+    titles.ts          titre de chaque page dans la langue choisie
+    integrity-core.mjs contrôle d'intégrité des fichiers stockés (SHA-256), lancé par Administration (integrity.ts) et
+                       par scripts/codex-integrity.mjs
     org-rules.ts       administration de l'organisation : libellés, valeurs proposées (actives), un département actif
+    org-review.ts      contrôle d'un organigramme en CSV : règles, doublons, références, collisions (npm run org:check)
+    transfer.ts        reprise des responsabilités d'une personne qui part : simulation (transaction annulée), empreinte,
+                       transfert journalisé objet par objet
+    vocab-rules.ts     vocabulaires contrôlés (règles pures) : graphies d'un terme, termes proches, sous-types, langue
+    vocab.ts           vocabulaires contrôlés en base : lecture des valeurs d'un formulaire ou d'un import, ajout
+                       journalisé, valeurs des documents
     retention.ts       fin de conservation
     review.ts          expiration et revue périodique : indicateurs, prochaine date de revue
     concurrency.ts     modifications simultanées : version vue par un dialogue, version de travail de base
@@ -463,26 +715,50 @@ src/
     backup.ts          sauvegarde depuis Administration (serveur en marche), journalisée
     export-core.mjs    export complet : archive ZIP en flux (écriture, relecture), instantané des tables, manifeste,
                        vue d'import (JavaScript, lancé aussi par scripts/codex-export.mjs sans compilation)
-    full-export.ts     export complet depuis Administration (serveur en marche), journalisé
+    full-export.ts     export complet depuis Administration (serveur en marche), journalisé ; écrit en fichier par le
+                       planificateur
     filetypes.ts       formats, contenu (signatures, ZIP, OLE2, macros) et taille admis au dépôt ; types servis en
                        ligne et affichés en aperçu
     antivirus.ts       analyse antivirus des fichiers déposés (clamd, commande INSTREAM)
+    compare.ts         comparaison du contenu de deux versions (droits, extraction, écarts, journal)
+    text-extract.ts    texte d'un fichier : PDF (unpdf), Word, Excel, PowerPoint, OpenDocument, texte ; bornes
+    zip-read.ts        lecture bornée des entrées d'un ZIP (Office Open XML, OpenDocument)
+    line-diff.ts       écarts ligne à ligne (Myers), regroupés avec leur contexte
+    office-preview.ts  aperçu PDF des fichiers Office : conversion (LibreOffice ou Gotenberg), rendu gardé
+    preview-config.ts  réglages de la conversion (variables, formats convertis)
     keystone.ts, vigie.ts  frontières d'intégration
     importer.ts        API d'import (outil de migration)
+    server-auth.ts     authentification entre serveurs : jetons, signature HMAC, anti-rejeu, rotation
+                       (variables : integration-credentials.ts)
     ratelimit.ts       limites de débit des routes sensibles et des Server Actions (en mémoire)
     security-headers.ts  en-têtes de sécurité HTTP et politique de sécurité du contenu
     log.ts             journal technique : entrées JSON ou lisibles, identifiant de requête, routes et actions
     config-check.ts    contrôle de la configuration au démarrage
+    scheduler.ts       planificateur : mise en vigueur différée, tâches d'exploitation, bail en base
+                       (réglages et état du processus : scheduler-state.ts)
     version.ts         version de Codex (package.json), pour la santé et les sauvegardes
-    i18n.ts            textes FR / EN
+    i18n.ts            textes FR / EN, dont ceux de l'aide (HELP)
 scripts/
   codex-backup.mjs     commandes npm run backup, backup:list, backup:check, restore (docs/sauvegarde.md)
   codex-export.mjs     commandes npm run export, export:check (docs/export.md)
+  codex-integrity.mjs  commande npm run integrity (empreintes SHA-256 des fichiers)
+  codex-registry.mts   commande npm run registry:apply (TypeScript, lancé par tsx)
+  codex-registry-review.mts  commande npm run registry:review (cahiers de validation, tsx)
+  codex-org-check.mts  commande npm run org:check (organigramme en CSV, tsx)
+  codex-seed-large.mts commande npm run seed:large : volume synthétique pour les mesures (docs/performances.md)
+  codex-perf.mjs       commande npm run perf : temps des écrans et routes principaux d'un serveur lancé
+  codex-a11y.mts       commande npm run a11y : contrôle d'accessibilité (axe-core, Chromium), docs/accessibilite.md
+  codex-e2e.mts        commande npm run e2e : parcours de bout en bout (approbation, rejet, rappel, Vigie, import)
+  codex-narrow.mts     relevés de npm run a11y -- --narrow : 320 px, zoom 200 %, débordements (WCAG 1.4.10, 1.4.4)
+  codex-browser.mts    serveur jetable et Chromium, communs à a11y et e2e
+  codex-migrate.mts    commande npm run db:migrate : migrations au déploiement (docs/exploitation.md §7)
+  codex-audit.mjs      commande npm run deps:audit : vulnérabilités connues des dépendances (CI)
+  codex-node-check.mjs la version de Node satisfait-elle engines (app Mac)
 tests/
   unit/                tests unitaires des règles pures de src/lib (Vitest, vitest.config.ts)
-  integration/         tests d'intégration sur PGlite en mémoire (règles métier de src/lib, Server Actions, webhook)
+  integration/         tests d'intégration sur PGlite en mémoire, ou sur un serveur PostgreSQL (npm run test:pg)
   support/             base de test et données minimales, session simulée, remplacement de server-only, lecture des PDF,
-                       faux clamd, ZIP et fichiers composés (OLE2) minimaux
+                       faux clamd, ZIP et fichiers composés (OLE2) minimaux, fichiers Office minimaux (office.ts)
 ```
 
 ## Décisions et points ouverts
@@ -490,3 +766,43 @@ tests/
 Les décisions prises avec l'utilisateur et les questions encore ouvertes sont dans `docs/decisions.md` ; le deck
 d'origine et son audit dans `docs/sources/` et `docs/audit-deck-epc2i.md`. Voir aussi `docs/registre-points-ouverts.md`
 (registre des types) et les points *provisoires* de `docs/modele-cible.md` (organisation, stockage SharePoint).
+
+## Mise en ligne (Docker, Coolify)
+
+Le `Dockerfile` à la racine compile l'application (sortie autonome de Next.js) et lance son serveur sous
+l'utilisateur `node`, jamais root (`docs/exploitation.md` §10). Le contrat avec l'hébergeur (Coolify depuis le
+10 octobre) est inchangé :
+
+| Réglage | Valeur |
+| --- | --- |
+| Port interne | `3000` |
+| Volume persistant | `/data` (fichiers dans `/data/files`, base PGlite de repli dans `/data/pglite`, sauvegardes dans `/data/backups`) ; un volume créé par l'ancienne image (root) est rendu à `node` au démarrage |
+| Variables d'exécution | `DATABASE_URL` (serveur commun, rôle `codex_app`), `CODEX_DB_POOL`, `CODEX_SEED` ou `CODEX_SEED_DEMO`, `MATRIX_URL`, `MATRIX_TOKEN`, `NEXT_PUBLIC_KEYSTONE_URL`, `NEXT_PUBLIC_VIGIE_URL` (voir `.env.example`) |
+| Santé | `HEALTHCHECK` de l'image sur `GET /api/health` |
+
+- `NEXT_PUBLIC_KEYSTONE_URL` et `NEXT_PUBLIC_VIGIE_URL` sont lues par le serveur au lancement, plus au build : la
+  case « disponible au build » de Coolify n'est plus nécessaire, et un changement d'adresse demande un redémarrage,
+  pas un nouveau build.
+- `DATABASE_URL` ne doit jamais être disponible au build ni écrite dans l'image. Dans Coolify, Codex et le serveur
+  PostgreSQL doivent partager un réseau (dépôt Matrix, `infra/postgres/README.md`).
+- Sur le serveur commun, une base vide n'est remplie que sur demande (`CODEX_SEED=minimal` pour une mise en service,
+  `CODEX_SEED_DEMO=1` pour la démonstration) ; sinon chaque page dit quoi poser (`/base-vide`).
+- Une base PGlite d'avant le schéma `codex` dans `/data/pglite` (démo de `main` d'avant le 17 octobre) est refusée au
+  démarrage : arrêter l'application, `rm -rf /data/pglite` dans le volume, redémarrer (`docs/exploitation.md` §10).
+- Le build ne demande plus d'accès réseau pour la police (Inter est dans `src/fonts/`) ; `npm ci` en a besoin.
+- Tant que l'authentification n'est pas branchée, protéger l'accès au niveau de l'hébergeur (authentification HTTP de
+  Coolify, par exemple).
+
+### Déclaration du schéma à Matrix
+
+Au démarrage, juste après les migrations, Codex lit le schéma réel de sa base (tables, colonnes, clés primaires,
+étrangères et uniques) et l'envoie à Matrix, le catalogue des bases de Keystone, Codex, Cursus et Vigie
+(`POST /api/declarations`, contrat `matrix.schema/1`, code dans `src/lib/matrix.ts`). L'envoi ne retarde jamais le
+démarrage : en cas d'échec, un avertissement `[matrix]` est écrit dans le journal et Codex continue.
+
+| Variable (Coolify) | Rôle |
+| --- | --- |
+| `MATRIX_URL` | Adresse de Matrix, par exemple `https://matrix.votre-domaine` ; derrière l'authentification HTTP de Coolify : `https://identifiant:mot-de-passe@matrix.votre-domaine`. Sans elle, rien n'est envoyé. |
+| `MATRIX_TOKEN` | Jeton partagé avec Matrix (même valeur que `MATRIX_TOKEN` du serveur Matrix), envoyé dans l'en-tête `X-Matrix-Token`. |
+
+`MATRIX_DECLARATIONS_DIR` (facultatif) écrit aussi la déclaration dans ce dossier.

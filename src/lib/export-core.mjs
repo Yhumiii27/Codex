@@ -16,10 +16,14 @@
 // (lib/access.ts mayExportAll) and journals it (actions 'export_full' and 'export_full_end').
 //
 // Consistency: every table but the journal is copied into temporary tables in one transaction (seconds; writes wait
-// meanwhile, as for a backup), and read from them afterwards in batches. The journal, append-only and written one
-// transaction at a time (PGlite has one connection), is read up to the last entry of that transaction. Files are read
-// as the export goes: a stored file is never written again, and one renamed meanwhile (a reclassification) is looked up
-// again under the key its working version now records.
+// meanwhile on PGlite, as for a backup), and read from them afterwards in batches. The journal, append-only, is read up
+// to the last entry of that transaction. On a PostgreSQL server (DATABASE_URL) the transaction is REPEATABLE READ, so
+// that every table is copied from the same snapshot while writes go on, and the whole export runs on one connection
+// (`session()` of src/db/sql-client.ts), the only one that sees its temporary tables (unlogged tables of the schema
+// codex where the role may not create temporary ones: the shared server). There, a journal entry written by
+// a transaction still running at the snapshot, with a lower number than its last entry, may be in the export or not.
+// Files are read as the export goes: a stored file is never written again, and one renamed meanwhile (a
+// reclassification) is looked up again under the key its working version now records.
 
 import { createHash, randomBytes } from 'node:crypto';
 import { crc32 } from 'node:zlib';
@@ -31,8 +35,12 @@ export const SUMS_ENTRY = 'SHA256SUMS';
 export const README_ENTRY = 'LISEZMOI.txt';
 export const DOCUMENTS_CSV = 'data/documents.csv';
 export const IMPORT_ENTRY = 'import/documents.json';
-/** The search index, which the database writes from the documents (src/db/index.ts, documents_terms). */
-export const DERIVED_TABLES = ['document_terms'];
+/**
+ * Derived tables, left out: the search index, which the database writes from the documents (src/db/index.ts,
+ * documents_terms), and the PDF renderings of the preview (version_previews, lib/office-preview.ts), whose files the
+ * archive does not carry either: both are made again from what the export holds.
+ */
+export const DERIVED_TABLES = ['document_terms', 'version_previews'];
 const JOURNAL = 'audit_log';
 const BATCH = 1000;
 const FILE_BATCH = 200;
@@ -395,7 +403,10 @@ export async function verifyExport(fh) {
 // ── Reading the database ────────────────────────────────────────────────
 
 /** @typedef {{ query: (sql: string, params?: any[]) => Promise<{ rows: any[] }>, exec: (sql: string) => Promise<unknown> }} Queryable */
-/** @typedef {Queryable & { transaction: <T>(fn: (tx: Queryable) => Promise<T>) => Promise<T> }} Database */
+/**
+ * @typedef {Queryable & { transaction: <T>(fn: (tx: Queryable) => Promise<T>) => Promise<T>,
+ *   session?: () => Promise<Queryable & { transaction: <T>(fn: (tx: Queryable) => Promise<T>) => Promise<T>, release: () => void }> }} Database
+ */
 /** @typedef {{ name: string, columns: string[], order: string[] }} TableInfo */
 /** @typedef {{ tag: string, hash: string, createdAt: number }} Migration */
 
@@ -411,7 +422,7 @@ export function fieldName(column) {
 }
 
 /**
- * The tables of the application (schema public), each with its columns in order and the columns that order its rows
+ * The tables of the application (schema codex, but the journal of the migrations), each with its columns in order and the columns that order its rows
  * (its primary key, else every column).
  * @param {Queryable} q
  * @returns {Promise<TableInfo[]>}
@@ -425,7 +436,7 @@ async function listTables(q) {
         join pg_attribute a on a.attrelid = i.indrelid and a.attnum = k.attnum
         where i.indrelid = c.oid and i.indisprimary) as pk
     from pg_class c join pg_namespace n on n.oid = c.relnamespace
-    where n.nspname = 'public' and c.relkind in ('r', 'p') order by c.relname`);
+    where n.nspname = current_schema() and c.relkind in ('r', 'p') and c.relname not like 'codex\\_export\\_%' and c.relname <> '__drizzle_migrations' order by c.relname`);
   return rows.map((r) => ({ name: r.name, columns: r.columns, order: r.pk?.length ? r.pk : r.columns }));
 }
 
@@ -460,7 +471,14 @@ function aliased(columns, alias) {
 async function takeSnapshot(pg, onStart) {
   const tag = `codex_export_${randomBytes(6).toString('hex')}`;
   return pg.transaction(async (tx) => {
+    // First statement of the transaction: one snapshot for every table (a no-op for PGlite's one connection).
+    await tx.exec('set transaction isolation level repeatable read');
     const all = await listTables(tx);
+    // The shared EPC2I server gives Codex's role no TEMPORARY on the database (Matrix, infra/postgres/init/01): the copies
+    // are then unlogged tables of the schema codex, under the same names, dropped as temporary ones are (dropSnapshot).
+    // An export cut short by a crash leaves them behind (codex_export_*, never read by another export: listTables).
+    const [{ temp }] = (await tx.query(`select has_database_privilege(current_database(), 'TEMPORARY') as temp`)).rows;
+    const kind = temp ? 'temp' : 'unlogged';
     const journal = all.find((t) => t.name === JOURNAL);
     if (!journal) throw new ExportError('format', 'no audit_log table');
     const tables = all.filter((t) => t.name !== JOURNAL && !DERIVED_TABLES.includes(t.name));
@@ -469,13 +487,13 @@ async function takeSnapshot(pg, onStart) {
     for (const t of tables) {
       const snap = ident(`${tag}_${t.name}`);
       // __n numbers the rows in the table's order, so that they are read back in batches without sorting again.
-      await tx.exec(`create temp table ${snap} as select row_number() over (order by ${t.order.map((c) => `t.${ident(c)}`).join(', ')}) as __n, t.* from ${ident(t.name)} t;
+      await tx.exec(`create ${kind} table ${snap} as select row_number() over (order by ${t.order.map((c) => `t.${ident(c)}`).join(', ')}) as __n, t.* from ${ident(t.name)} t;
         create index on ${snap} (__n);`);
       rows[t.name] = (await tx.query(`select count(*)::int as n from ${snap}`)).rows[0].n;
     }
     // A failed query would abort the transaction: the migrations' table is looked up first.
-    const [{ migrations }] = (await tx.query(`select to_regclass('drizzle.__drizzle_migrations') is not null as migrations`)).rows;
-    const [m] = migrations ? (await tx.query('select hash, created_at::text as created_at from drizzle.__drizzle_migrations order by created_at desc limit 1')).rows : [];
+    const [{ migrations }] = (await tx.query(`select to_regclass('codex.__drizzle_migrations')::text as migrations`)).rows;
+    const [m] = migrations ? (await tx.query(`select hash, created_at::text as created_at from ${migrations} order by created_at desc limit 1`)).rows : [];
     const [v] = (await tx.query('select version() as v')).rows;
     const wv = tables.some((t) => t.name === 'working_versions')
       ? (await tx.query(`select count(*)::int as n, coalesce(sum(size), 0)::float8 as bytes from ${ident(`${tag}_working_versions`)} where file_key is not null`)).rows[0]
@@ -608,7 +626,8 @@ export function filePath(docId, letter, n, ext) {
 
 /**
  * @typedef {{ workingVersion: number, docId: string, letter: string, n: number, storage: string, fileKey: string,
- *   fileName: string | null, mime: string | null, size: number | null }} StoredRef
+ *   fileName: string | null, mime: string | null, size: number | null, sha256?: string | null }} StoredRef `sha256`: the one recorded
+ *   when the file entered Codex, null when none was
  * @typedef {(f: StoredRef) => Promise<AsyncIterable<Uint8Array> | null | 'skipped'>} FileOpener the file's bytes; null when
  *   the store has no such file; 'skipped' when this process cannot reach its store (SharePoint from the command line)
  */
@@ -623,13 +642,14 @@ async function* storedFiles(q, snap) {
   const w = ident(`${snap.tag}_working_versions`);
   const r = ident(`${snap.tag}_revisions`);
   for (let after = { doc: '', id: 0 }; ;) {
-    const { rows } = await q.query(`select w.id, w.doc_id, r.letter, w.n, coalesce(w.storage, 'local') as storage, w.file_key, w.file_name, w.mime, w.size
+    const { rows } = await q.query(`select w.id, w.doc_id, r.letter, w.n, coalesce(w.storage, 'local') as storage, w.file_key, w.file_name, w.mime, w.size, w.sha256
       from ${w} w join ${r} r on r.id = w.revision_id
       where w.file_key is not null and (w.doc_id, w.id) > ($1, $2) order by w.doc_id, w.id limit ${FILE_BATCH}`, [after.doc, after.id]);
     if (!rows.length) return;
     after = { doc: rows[rows.length - 1].doc_id, id: rows[rows.length - 1].id };
     yield rows.map((x) => ({
       workingVersion: x.id, docId: x.doc_id, letter: x.letter, n: x.n, storage: x.storage, fileKey: x.file_key, fileName: x.file_name, mime: x.mime, size: x.size,
+      sha256: x.sha256 ?? null,
     }));
   }
 }
@@ -726,15 +746,17 @@ async function* importView(q, snap, docs, archived) {
  * @property {Record<string, number>} counts rows of every table exported, `files` the files in the archive
  * @property {Record<string, string>} tables entry of every table
  * @property {{ count: number, bytes: number, missing: { workingVersion: number, path: string }[],
- *   skipped: { workingVersion: number, path: string, storage: string }[] }} files the files archived and their size;
- *   those the store did not have; those kept by a store this process cannot reach, not archived
+ *   skipped: { workingVersion: number, path: string, storage: string }[],
+ *   altered?: { workingVersion: number, path: string, recorded: string }[] }} files the files archived and their size;
+ *   those the store did not have; those kept by a store this process cannot reach, not archived; those archived whose
+ *   bytes differ from the SHA-256 recorded when they entered Codex (`recorded`; the entry's own is in `entries`)
  * @property {{ name: string, size: number, sha256: string, workingVersion?: number }[]} entries every entry but the manifest
  */
 
 /**
  * What the journal keeps of an export (actions 'export_full', 'export_full_end'): counts and sizes, no document named.
  * @typedef {{ documents?: number, files?: number, bytes?: number, size?: number, sha256?: string, missing?: number,
- *   skipped?: number, interrupted?: boolean, failed?: boolean }} ArchiveJournal
+ *   skipped?: number, altered?: number, interrupted?: boolean, failed?: boolean }} ArchiveJournal
  */
 
 /**
@@ -806,9 +828,13 @@ export async function* exportArchive(o) {
   /** @type {ArchiveJournal | null} */
   let outcome = null;
   /** @type {Manifest['files']} */
-  const files = { count: 0, bytes: 0, missing: [], skipped: [] };
+  const files = { count: 0, bytes: 0, missing: [], skipped: [], altered: [] };
+  // A server's pool hands each query any connection: the export keeps one, which alone sees its temporary tables.
+  const pinned = o.pg.session ? await o.pg.session() : null;
+  /** @type {Database} */
+  const pg = pinned ?? o.pg;
   try {
-    snap = await takeSnapshot(o.pg, async (tx, s) => {
+    snap = await takeSnapshot(pg, async (tx, s) => {
       if (o.actor) await journalExport(tx, o.actor, 'export_full', { documents: s.rows.documents ?? 0, files: s.files.count, bytes: s.files.bytes });
     });
     const s = snap;
@@ -819,18 +845,18 @@ export async function* exportArchive(o) {
     const tables = {};
     for (const t of s.tables) {
       tables[t.name] = `data/${t.name}.json`;
-      entries.push(yield* zip.entry(tables[t.name], jsonArray(snapshotRows(o.pg, s, t))));
+      entries.push(yield* zip.entry(tables[t.name], jsonArray(snapshotRows(pg, s, t))));
     }
     const tally = { count: 0 };
     tables[JOURNAL] = `data/${JOURNAL}.json`;
-    entries.push(yield* zip.entry(tables[JOURNAL], jsonArray(journalRows(o.pg, s), tally)));
+    entries.push(yield* zip.entry(tables[JOURNAL], jsonArray(journalRows(pg, s), tally)));
     s.rows[JOURNAL] = tally.count;
     const docs = s.tables.find((t) => t.name === 'documents');
-    if (docs) entries.push(yield* zip.entry(DOCUMENTS_CSV, documentsCsv(o.pg, s, docs)));
+    if (docs) entries.push(yield* zip.entry(DOCUMENTS_CSV, documentsCsv(pg, s, docs)));
 
     /** @type {Map<number, string>} */
     const archived = new Map();
-    for await (const batch of storedFiles(o.pg, s)) {
+    for await (const batch of storedFiles(pg, s)) {
       for (const f of batch) {
         let where = filePath(f.docId, f.letter, f.n, fileExt(f.fileName, f.fileKey));
         // Two IDs that read the same once made safe for a path (none of Codex's format do): the second is told apart.
@@ -838,7 +864,7 @@ export async function* exportArchive(o) {
         let data = await o.openFile(f);
         if (data === null) {
           // Renamed since the snapshot (a reclassification): the working version records its new key.
-          const [cur] = (await o.pg.query(`select coalesce(storage, 'local') as storage, file_key from working_versions where id = $1`, [f.workingVersion])).rows;
+          const [cur] = (await pg.query(`select coalesce(storage, 'local') as storage, file_key from working_versions where id = $1`, [f.workingVersion])).rows;
           if (cur?.file_key && cur.file_key !== f.fileKey) data = await o.openFile({ ...f, storage: cur.storage, fileKey: cur.file_key });
         }
         if (data === null) {
@@ -854,9 +880,11 @@ export async function* exportArchive(o) {
         archived.set(f.workingVersion, where);
         files.count++;
         files.bytes += e.size;
+        // Archived as stored, and said: the archive keeps what Codex holds, the manifest tells it differs.
+        if (f.sha256 && f.sha256 !== e.sha256) files.altered?.push({ workingVersion: f.workingVersion, path: where, recorded: f.sha256 });
       }
     }
-    if (docs) entries.push(yield* zip.entry(IMPORT_ENTRY, jsonArray(importView(o.pg, s, docs, archived))));
+    if (docs) entries.push(yield* zip.entry(IMPORT_ENTRY, jsonArray(importView(pg, s, docs, archived))));
 
     entries.push(yield* zip.entry(SUMS_ENTRY, [entries.map((x) => `${x.sha256}  ${x.name}\n`).join('')]));
     const tag = s.migration ? o.migrations.find((x) => x.hash === s.migration?.hash && x.createdAt === s.migration?.createdAt)?.tag ?? null : null;
@@ -871,19 +899,23 @@ export async function* exportArchive(o) {
     };
     yield* zip.entry(MANIFEST_ENTRY, [`${JSON.stringify(manifest, null, 2)}\n`]);
     const { size, sha256 } = yield* zip.end();
-    outcome = { size, sha256, files: files.count, bytes: files.bytes, ...(files.missing.length ? { missing: files.missing.length } : {}), ...(files.skipped.length ? { skipped: files.skipped.length } : {}) };
+    outcome = {
+      size, sha256, files: files.count, bytes: files.bytes, ...(files.missing.length ? { missing: files.missing.length } : {}), ...(files.skipped.length ? { skipped: files.skipped.length } : {}),
+      ...(files.altered?.length ? { altered: files.altered.length } : {}),
+    };
     return { manifest, size, sha256 };
   } catch (err) {
     outcome = { failed: true, size: zip.offset };
     throw err;
   } finally {
     if (snap) {
-      await dropSnapshot(o.pg, snap).catch((err) => warn('temporary tables not dropped', err));
+      await dropSnapshot(pg, snap).catch((err) => warn('temporary tables not dropped', err));
       // Neither done nor failed: the reader stopped before the end.
       if (o.actor) {
-        await journalExport(o.pg, o.actor, 'export_full_end', outcome ?? { interrupted: true, size: zip.offset })
+        await journalExport(pg, o.actor, 'export_full_end', outcome ?? { interrupted: true, size: zip.offset })
           .catch((err) => warn('end of the export not journaled', err));
       }
     }
+    pinned?.release();
   }
 }

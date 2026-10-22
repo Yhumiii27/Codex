@@ -76,7 +76,7 @@ export type CodeSpace = { types: readonly string[]; departments: readonly string
 /**
  * A code that would read as another segment of an ID: TYPE-CONTEXTE with the same letters (« FIN-FIN-0001 », point 1 of
  * docs/registre-points-ouverts.md, not settled, O-05), or two contexts sharing a counter. The types and departments that
- * already share a code (FIN, HSE, COM) keep it: only a new code, or a code that changes, is checked.
+ * already share a code (FIN, HSE, COM, JUR) keep it: only a new code, or a code that changes, is checked.
  */
 function clash(code: string, space: CodeSpace, own: keyof CodeSpace): TKey | null {
   if (code === TEMPLATE_CONTEXT) return 'reg_code_qms';
@@ -130,7 +130,7 @@ export type TypeValues = {
   code: string; labelFr: string; labelEn: string; family: string; origins: Origin[]; attachments: Attachment[];
   subtypes: { fr: string; en: string }[]; circuit: string[]; confAllowed: Conf[]; confDefault: Conf;
   retentionYears: number | null; retentionTrigger: RetentionTrigger; retentionDisposition: Disposition; retentionBasis: string;
-  reviewMonths: number | null; iso: string | null; clientDeliverable: boolean; active: boolean;
+  retentionBasisEn: string; reviewMonths: number | null; iso: string | null; clientDeliverable: boolean; active: boolean;
 };
 
 /** Rows of sub-types read at most: twice as many as a type may keep, so a few empty rows pass and a flood is refused unread. */
@@ -156,6 +156,21 @@ export function parseSubtypes(frs: string[], ens: string[]): { fr: string; en: s
     if (out.length > SUBTYPES_MAX) return null;
   }
   return out;
+}
+
+export type RetentionRuleValues = { retentionYears: number | null; retentionTrigger: RetentionTrigger; retentionDisposition: Disposition };
+
+/**
+ * A retention rule as the type dialog and the record's retention dialog send it: a duration in whole years (empty: none,
+ * awaiting O-07), a trigger, a final disposition.
+ */
+export function parseRetentionRule(fd: FormData): Parsed<RetentionRuleValues> {
+  const yearsRaw = text(fd, 'retentionYears');
+  if (yearsRaw && !(/^\d{1,3}$/.test(yearsRaw) && Number(yearsRaw) <= RETENTION_YEARS_MAX)) return issue('reg_years_invalid', 'retentionYears');
+  const retentionTrigger = RETENTION_TRIGGERS.find((x) => x === text(fd, 'retentionTrigger'));
+  const retentionDisposition = DISPOSITIONS.find((x) => x === text(fd, 'retentionDisposition'));
+  if (!retentionTrigger || !retentionDisposition) return issue('error');
+  return { ok: true, value: { retentionYears: yearsRaw ? Number(yearsRaw) : null, retentionTrigger, retentionDisposition } };
 }
 
 /**
@@ -184,20 +199,19 @@ export function parseTypeForm(fd: FormData, refs: { families: readonly string[];
   // Empty: no periodicity. Otherwise a whole number of months, refused rather than corrected.
   const reviewMonths = parseReviewMonths(text(fd, 'reviewMonths'));
   if (reviewMonths === undefined) return issue('review_months_invalid', 'reviewMonths');
-  const yearsRaw = text(fd, 'retentionYears');
-  if (yearsRaw && !(/^\d{1,3}$/.test(yearsRaw) && Number(yearsRaw) <= RETENTION_YEARS_MAX)) return issue('reg_years_invalid', 'retentionYears');
-  const retentionTrigger = RETENTION_TRIGGERS.find((x) => x === text(fd, 'retentionTrigger'));
-  const retentionDisposition = DISPOSITIONS.find((x) => x === text(fd, 'retentionDisposition'));
-  if (!retentionTrigger || !retentionDisposition) return issue('error');
+  const rule = parseRetentionRule(fd);
+  if (!rule.ok) return rule;
   const retentionBasis = text(fd, 'retentionBasis');
   if (retentionBasis.length > BASIS_MAX) return issue('reg_text_too_long', 'retentionBasis');
+  const retentionBasisEn = text(fd, 'retentionBasisEn');
+  if (retentionBasisEn.length > BASIS_MAX) return issue('reg_text_too_long', 'retentionBasisEn');
   const iso = text(fd, 'iso');
   if (iso.length > ISO_MAX) return issue('reg_text_too_long', 'iso');
   return {
     ok: true,
     value: {
       code, ...names.value, family, origins, attachments, subtypes, circuit, confAllowed, confDefault,
-      retentionYears: yearsRaw ? Number(yearsRaw) : null, retentionTrigger, retentionDisposition, retentionBasis, reviewMonths,
+      ...rule.value, retentionBasis, retentionBasisEn, reviewMonths,
       iso: iso || null, clientDeliverable: fd.get('clientDeliverable') === 'on', active: fd.get('active') !== 'off',
     },
   };

@@ -15,9 +15,9 @@ import { createReadStream } from 'node:fs';
 import { mkdir, open, readFile, rename, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
-import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
 import nextEnv from '@next/env';
-import { BackupError, LOCK_FILE, lockForCommand, readMigrations, unlock } from '../src/lib/backup-core.mjs';
+import { pgliteOptions } from '../src/lib/pglite-options.mjs';
+import { BackupError, LOCK_FILE, lockForCommand, lockPid, readMigrations, serverDatabaseRefusal, unlock } from '../src/lib/backup-core.mjs';
 import { ExportError, exportArchive, exportName, verifyExport } from '../src/lib/export-core.mjs';
 
 const DEV = process.argv.includes('--dev') || process.env.NODE_ENV === 'development';
@@ -53,8 +53,8 @@ function explain(err) {
   if (err instanceof BackupError && err.code === 'busy') {
     const lock = /** @type {{ lock?: { kind: string, pid: number } }} */ (/** @type {unknown} */ (err)).lock;
     return lock?.kind === 'server'
-      ? `Le serveur Codex tourne (processus ${lock.pid}) et tient la base de ${DATA_DIR}.\nArrêtez-le (npm run dev, npm run start ou l'app Mac), ou téléchargez l'export depuis Administration › Journal d'audit › Export complet.\nSi aucun serveur ne tourne plus, supprimez ${path.join(DATA_DIR, LOCK_FILE)}.`
-      : `Une autre commande (${lock?.kind ?? err.detail}) travaille sur ${DATA_DIR} (processus ${lock?.pid ?? '?'}).\nSi aucune commande ne tourne plus, supprimez ${path.join(DATA_DIR, LOCK_FILE)} (sinon il est ignoré 10 minutes après son dernier rafraîchissement).`;
+      ? `Le serveur Codex tourne (processus ${lockPid(lock)}) et tient la base de ${DATA_DIR}.\nArrêtez-le (npm run dev, npm run start ou l'app Mac), ou téléchargez l'export depuis Administration › Journal d'audit › Export complet.\nSi aucun serveur ne tourne plus, supprimez ${path.join(DATA_DIR, LOCK_FILE)}.`
+      : `Une autre commande (${lock?.kind ?? err.detail}) travaille sur ${DATA_DIR} (processus ${lockPid(lock)}).\nSi aucune commande ne tourne plus, supprimez ${path.join(DATA_DIR, LOCK_FILE)} (sinon il est ignoré 10 minutes après son dernier rafraîchissement).`;
   }
   if (err instanceof ExportError) {
     const d = err.detail;
@@ -81,6 +81,7 @@ function describe(m) {
     `  ${m.files.count} fichiers (${size(m.files.bytes)}), migration ${m.schema.migration ?? m.schema.hash?.slice(0, 12) ?? '?'}, ${m.schema.postgres}`,
   ];
   if (m.files.missing.length) lines.push(`  Attention : ${m.files.missing.length} fichier(s) référencé(s) par la base manquaient au stockage : ${m.files.missing.map((x) => x.path).join(', ')}`);
+  if (m.files.altered?.length) lines.push(`  Attention : ${m.files.altered.length} fichier(s) ne correspondent plus à l'empreinte SHA-256 enregistrée à leur dépôt (archivés tels quels) : ${m.files.altered.map((x) => x.path).join(', ')}`);
   if (m.files.skipped.length) lines.push(`  Attention : ${m.files.skipped.length} fichier(s) stocké(s) sur SharePoint ne sont pas dans l'archive (exportez depuis l'application pour les inclure).`);
   return lines.join('\n');
 }
@@ -115,6 +116,8 @@ async function target(out, name) {
 
 /** @param {string | undefined} out */
 async function create(out) {
+  const refusal = serverDatabaseRefusal(process.env, 'npm run export', "L'export complet se fait serveur en marche : Administration › Journal d'audit › Export complet.");
+  if (refusal) throw new Error(refusal);
   const dbDir = path.join(DATA_DIR, 'pglite');
   if (!(await stat(path.join(dbDir, 'PG_VERSION')).then(() => true, () => false))) throw new Error(`aucune base Codex dans ${DATA_DIR} : rien à exporter.`);
   const now = new Date();
@@ -125,7 +128,7 @@ async function create(out) {
   await lockForCommand(DATA_DIR, 'export');
   const partial = `${file}.partial`;
   try {
-    const pg = new PGlite({ dataDir: dbDir, extensions: { pg_trgm } });
+    const pg = new PGlite(pgliteOptions(dbDir));
     try {
       await pg.waitReady;
       const actor = (await pg.query(`select 1 from users where id = 'codex'`)).rows.length ? 'codex' : null;

@@ -1,9 +1,8 @@
 import 'server-only';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { constants as fsc } from 'node:fs';
-import { access, link, lstat, open as openFile, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { access, link, lstat, open as openFile, readdir, readFile, rm, stat, writeFile, type FileHandle } from 'node:fs/promises';
 import path from 'node:path';
-import { Readable } from 'node:stream';
 import { inflateSync } from 'node:zlib';
 import { eq } from 'drizzle-orm';
 import { FILES_DIR, getDb, schema as s } from '@/db';
@@ -25,7 +24,8 @@ import { sliceStream, type ByteRange } from './ranges';
 
 const log = logger('storage');
 
-export type StoredFile = { storage: string; fileKey: string; fileName: string; mime: string; size: number; pages: number | null };
+/** `sha256`: of the bytes as they entered Codex (64 lowercase hex), the reference of the integrity checks. */
+export type StoredFile = { storage: string; fileKey: string; fileName: string; mime: string; size: number; pages: number | null; sha256: string };
 /** A file in the store that no record may point to yet; `ext` is kept for its final name. */
 export type StagedFile = StoredFile & { ext: string };
 
@@ -49,13 +49,14 @@ export type FileSource = {
  */
 export type ListedFile = { key: string; size: number; touched: number };
 
-interface FileStore {
+export interface FileStore {
   readonly name: string;
   /** Uploads under a provisional name, never replacing an existing file; returns the key. */
   put(buf: Buffer, name: string): Promise<string>;
   /**
-   * Gives the file its name `storedName` ({ID}_{révision}.{ext}) in the document's folder and returns its key. A new key
-   * leaves the old one readable until it is removed, so a record never points to a missing file.
+   * Gives the file its name `storedName` ({ID}_{révision}.{ext}) and returns its key: in the document's folder on
+   * SharePoint; flat on the local disk, after the key's unique prefix (`folder` unused). A new key leaves the old one
+   * readable until it is removed, so a record never points to a missing file.
    */
   rename(key: string, storedName: string, folder: string): Promise<string>;
   get(key: string): Promise<Buffer>;
@@ -71,6 +72,51 @@ interface FileStore {
 const safeName = (x: string) => x.replace(/[^\w.\-]+/g, '_');
 const UUID_LEN = 36;
 
+/**
+ * Bytes [from, to) of an open file as a web stream, read on demand (64 KiB at a time), the file closed at its end, on
+ * an error or when the reader cancels. Rather than Readable.toWeb of a read stream, whose adapter could still push a
+ * chunk into a stream cancelled meanwhile (« Controller is already closed », an uncaught exception, seen when a response
+ * was cancelled while a database write held the route, as on a PostgreSQL server).
+ */
+function fileStream(fh: FileHandle, from: number, to: number): ReadableStream<Uint8Array> {
+  let pos = from;
+  let closed = false;
+  const close = async () => {
+    if (closed) return;
+    closed = true;
+    await fh.close().catch(() => {});
+  };
+  return new ReadableStream<Uint8Array>({
+    async pull(c) {
+      try {
+        const want = Math.min(64 * 1024, to - pos);
+        if (want <= 0) {
+          await close();
+          c.close();
+          return;
+        }
+        // A buffer of its own (never Node's shared pool): the reader keeps the chunk.
+        const buf = new Uint8Array(want);
+        const { bytesRead } = await fh.read(buf, 0, want, pos);
+        if (closed) return;
+        if (bytesRead === 0) {
+          await close();
+          c.close();
+          return;
+        }
+        pos += bytesRead;
+        c.enqueue(bytesRead === want ? buf : buf.subarray(0, bytesRead));
+      } catch (err) {
+        // A read cut short by a cancel (the file closed under it) is no error for anyone.
+        if (closed) return;
+        await close();
+        c.error(err);
+      }
+    },
+    cancel: close,
+  });
+}
+
 const local: FileStore = {
   name: 'local',
   async put(buf, name) {
@@ -80,7 +126,16 @@ const local: FileStore = {
   },
   async rename(key, storedName) {
     const next = `${path.basename(key).slice(0, UUID_LEN)}-${safeName(storedName)}`;
-    await link(path.join(FILES_DIR, path.basename(key)), path.join(FILES_DIR, next));
+    const from = path.join(FILES_DIR, path.basename(key)), to = path.join(FILES_DIR, next);
+    try {
+      await link(from, to);
+    } catch (err) {
+      // The final name is already there: a rename that linked it and stopped before the record changed (point 36), or
+      // one running at the same time. The same file (same inode) is that rename's link; any other is never replaced.
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+      const [a, b] = await Promise.all([stat(from), stat(to)]);
+      if (a.ino !== b.ino || a.dev !== b.dev) throw err;
+    }
     return next;
   },
   async get(key) {
@@ -104,8 +159,7 @@ const local: FileStore = {
         const fh = await openFile(file, 'r').catch((err: NodeJS.ErrnoException) => {
           throw err.code === 'ENOENT' ? new FileNotFoundError(key) : err;
         });
-        const stream = fh.createReadStream(range ? { start: range.start, end: range.end } : {});
-        return Readable.toWeb(stream) as unknown as ReadableStream<Uint8Array>;
+        return fileStream(fh, range ? range.start : 0, range ? range.end + 1 : Infinity);
       },
     };
   },
@@ -126,7 +180,21 @@ const local: FileStore = {
   },
 };
 
-// Not exercised against a real tenant yet: enable only once the app registration and the library exist.
+/**
+ * Seconds a Retry-After header asks to wait: a whole number of seconds (0 included), or an HTTP date (RFC 9110 §10.2.3);
+ * null when absent or unreadable.
+ */
+export function retryAfterSeconds(header: string | null, now = Date.now()): number | null {
+  const v = header?.trim();
+  if (!v) return null;
+  if (/^\d+$/.test(v)) return Number(v);
+  // An HTTP date names its day and month ("Sun, 18 Oct 2026 08:00:05 GMT"); Date.parse would take "-3" for a year.
+  const at = /^[A-Za-z]{3}, /.test(v) ? Date.parse(v) : NaN;
+  return Number.isNaN(at) ? null : Math.max(0, Math.ceil((at - now) / 1000));
+}
+
+// Tried against a fake Microsoft Graph only (tests/integration/sharepoint-store.test.ts), never against a real tenant
+// yet: enable only once the app registration and the library exist (docs/exploitation.md, npm run storage:check).
 function sharepoint(): FileStore {
   const env = (k: string) => {
     const v = process.env[k];
@@ -154,13 +222,30 @@ function sharepoint(): FileStore {
     token = { value: j.access_token, exp: Date.now() + j.expires_in * 1000 };
     return token.value;
   }
-  /** Graph call with a timeout, retried (a few times, bounded) when Graph throttles: 429 / 503 with Retry-After. */
+  /**
+   * A Graph call with the app's token; a token Graph refuses (401: revoked, or the secret rotated before it expired) is
+   * dropped and the call made once more with a new one, rather than failing until the token would have expired.
+   */
+  async function authorized(call: (bearer: string) => Promise<Response>): Promise<Response> {
+    const used = await bearer();
+    const res = await call(used);
+    if (res.status !== 401) return res;
+    await res.body?.cancel().catch(() => {});
+    if (token?.value === used) token = null;
+    return call(await bearer());
+  }
+  /**
+   * Graph call with a timeout, retried when Graph throttles (429 / 503): at most 3 attempts, after what Retry-After asks
+   * (seconds, 0 included, or a date), else 2 then 4 s, never more than 10 s each. The body of an answer not used is
+   * released (an unread body holds its connection).
+   */
   async function graph(url: string, init: RequestInit = {}, timeoutMs = 30_000): Promise<Response> {
     for (let attempt = 1; ; attempt++) {
-      const res = await fetch(url, { ...init, headers: { Authorization: `Bearer ${await bearer()}`, ...init.headers }, signal: init.signal ?? AbortSignal.timeout(timeoutMs) });
+      const res = await authorized((b) => fetch(url, { ...init, headers: { Authorization: `Bearer ${b}`, ...init.headers }, signal: init.signal ?? AbortSignal.timeout(timeoutMs) }));
       if ((res.status !== 429 && res.status !== 503) || attempt >= 3) return res;
-      const wait = Math.min(Number(res.headers.get('retry-after')) || 2 ** attempt, 10);
-      await new Promise((r) => setTimeout(r, wait * 1000));
+      const wait = retryAfterSeconds(res.headers.get('retry-after')) ?? 2 ** attempt;
+      await res.body?.cancel().catch(() => {});
+      await new Promise((r) => setTimeout(r, Math.min(wait, 10) * 1000));
     }
   }
   const drive = () => `https://graph.microsoft.com/v1.0/drives/${env('CODEX_SP_DRIVE_ID')}`;
@@ -170,7 +255,7 @@ function sharepoint(): FileStore {
     async put(buf, name) {
       // Simple upload (≤ 250 MB, the cap of lib/filetypes.ts maxFileBytes); `fail` never silently replaces another file.
       const target = `_staging/${encodeURIComponent(`${randomUUID()}-${name}`)}`;
-      const res = await graph(`${drive()}/root:/${target}:/content?@microsoft.graph.conflictBehavior=fail`, { method: 'PUT', body: new Uint8Array(buf) }, 60_000 + buf.length / 1000);
+      const res = await graph(`${drive()}/root:/${target}:/content?@microsoft.graph.conflictBehavior=fail`, { method: 'PUT', body: new Uint8Array(buf) }, 60_000 + Math.ceil(buf.length / 1000));
       if (!res.ok) throw new Error(`SharePoint upload failed: ${res.status}`);
       return ((await res.json()) as { id: string }).id;
     },
@@ -231,9 +316,9 @@ function sharepoint(): FileStore {
       return out;
     },
     async probe() {
-      // The library's drive, its id only: the app registration can still sign in and reach it. Not retried: a health
-      // check answers at once.
-      const res = await fetch(`${drive()}?$select=id`, { headers: { Authorization: `Bearer ${await bearer()}` }, signal: AbortSignal.timeout(5_000) });
+      // The library's drive, its id only: the app registration can still sign in and reach it. Not retried when Graph
+      // throttles: a health check answers at once (a refused token is asked again once, as for any call).
+      const res = await authorized((b) => fetch(`${drive()}?$select=id`, { headers: { Authorization: `Bearer ${b}` }, signal: AbortSignal.timeout(5_000) }));
       if (!res.ok) throw new Error(`SharePoint drive: ${res.status}`);
     },
   };
@@ -351,19 +436,23 @@ async function journalInfected(origin: UploadOrigin, name: string, size: number,
   }
 }
 
+/** A file that passed the checks of stageFile, described as it would be stored, but not stored (yet). */
+export type CheckedFile = Omit<StagedFile, 'storage' | 'fileKey'>;
+
 /**
- * Uploads a file to the active store under a provisional name. Call before the transaction that records it.
- * Throws FileRejectedError, with nothing stored, for a file of a format or size not admitted (lib/filetypes.ts), one the
- * virus scan finds infected (journaled), or one it could not scan while CODEX_CLAMD_ON_ERROR refuses (lib/antivirus.ts).
+ * The checks of stageFile without the upload: format and size (lib/filetypes.ts), then the virus scan (lib/antivirus.ts).
+ * Throws FileRejectedError as stageFile does. `journal: false` (a simulated import, docs/api.md « Simulation ») leaves an
+ * infected file out of the audit trail: it goes to the technical log only.
  */
-export async function stageFile(buf: Buffer, originalName: string, rawMime: string, origin: UploadOrigin): Promise<StagedFile> {
+export async function checkFile(buf: Buffer, originalName: string, rawMime: string, origin: UploadOrigin, o: { journal?: boolean } = {}): Promise<CheckedFile> {
   // One name for the check, the record and the stored file: the extension checked is the one the file is served with.
   const name = cleanFileName(originalName);
   const issue = fileIssue(name, buf.length, buf, fileRules(process.env));
   if (issue) throw new FileRejectedError(issue);
   const scan = await scanFile(buf, name);
   if (scan.kind === 'infected') {
-    await journalInfected(origin, name, buf.length, scan.threat);
+    if (o.journal === false) log.warn('infected file refused, not journaled (dry run)', { entry: origin.entry, ref: origin.ref, file: name, size: buf.length, threat: scan.threat });
+    else await journalInfected(origin, name, buf.length, scan.threat);
     throw new FileRejectedError({ code: 'infected', threat: scan.threat });
   }
   if (scan.kind === 'failed') throw new FileRejectedError({ code: 'scan_failed' });
@@ -372,9 +461,25 @@ export async function stageFile(buf: Buffer, originalName: string, rawMime: stri
   // not give it one.
   const mime = normalizeMime(extensionOf(name) ? rawMime : '', name, buf);
   const ext = storedExt(name, mime);
+  // Fingerprint of the bytes as received, before they reach the store: what is stored is compared with it afterwards.
+  return { fileName: name, mime, size: buf.length, pages: countPdfPages(buf, mime), sha256: sha256Of(buf), ext };
+}
+
+/**
+ * Uploads a file to the active store under a provisional name. Call before the transaction that records it.
+ * Throws FileRejectedError, with nothing stored, for a file of a format or size not admitted (lib/filetypes.ts), one the
+ * virus scan finds infected (journaled), or one it could not scan while CODEX_CLAMD_ON_ERROR refuses (lib/antivirus.ts).
+ */
+export async function stageFile(buf: Buffer, originalName: string, rawMime: string, origin: UploadOrigin): Promise<StagedFile> {
+  const checked = await checkFile(buf, originalName, rawMime, origin);
   const st = store();
-  const fileKey = await st.put(buf, `upload${ext}`);
-  return { storage: st.name, fileKey, fileName: name, mime, size: buf.length, pages: countPdfPages(buf, mime), ext };
+  const fileKey = await st.put(buf, `upload${checked.ext}`);
+  return { ...checked, storage: st.name, fileKey };
+}
+
+/** SHA-256 of bytes, 64 lowercase hex: the form working_versions.sha256 keeps. */
+export function sha256Of(buf: Buffer | Uint8Array): string {
+  return createHash('sha256').update(buf).digest('hex');
 }
 
 export async function stageUpload(file: File, origin: UploadOrigin): Promise<StagedFile> {
@@ -386,7 +491,7 @@ export async function stageUpload(file: File, origin: UploadOrigin): Promise<Sta
 
 /** Columns of a working version that describe its file. */
 export function fileColumns(f: StagedFile): StoredFile {
-  return { storage: f.storage, fileKey: f.fileKey, fileName: f.fileName, mime: f.mime, size: f.size, pages: f.pages };
+  return { storage: f.storage, fileKey: f.fileKey, fileName: f.fileName, mime: f.mime, size: f.size, pages: f.pages, sha256: f.sha256 };
 }
 
 /**
@@ -395,16 +500,32 @@ export function fileColumns(f: StagedFile): StoredFile {
  */
 export async function nameStoredFile(f: StagedFile, docId: string, label: string): Promise<void> {
   try {
-    const key = await stores(f.storage).rename(f.fileKey, `${docId}_${label}${f.ext}`, docId);
-    if (key !== f.fileKey) {
-      const db = await getDb();
-      await db.update(s.workingVersions).set({ fileKey: key }).where(eq(s.workingVersions.fileKey, f.fileKey));
-      await stores(f.storage).remove(f.fileKey);
-    }
+    await renameStoredFile(f, docId, label);
   } catch (err) {
     log.error('file left under its provisional name', { store: f.storage, key: f.fileKey, err });
   }
 }
+
+/**
+ * nameStoredFile, its failure thrown: the file named {ID}_{label}.{ext}, the records that point to its old key moved to
+ * the new one, then the old key removed. Returns the key the records now point to. Safe to run again on a file left
+ * half-way (the final name already linked to it: lib/provisional.ts).
+ */
+export async function renameStoredFile(f: Pick<StagedFile, 'storage' | 'fileKey' | 'ext'>, docId: string, label: string): Promise<string> {
+  const key = await stores(f.storage).rename(f.fileKey, `${docId}_${label}${f.ext}`, docId);
+  if (key !== f.fileKey) {
+    const db = await getDb();
+    await db.update(s.workingVersions).set({ fileKey: key }).where(eq(s.workingVersions.fileKey, f.fileKey));
+    await stores(f.storage).remove(f.fileKey);
+  }
+  return key;
+}
+
+/**
+ * A local key Codex gave at upload and never replaced by the final name (lib/storage.ts stageFile: `{uuid}-upload.ext`).
+ * A SharePoint file under its provisional name is in `_staging`: only its listing tells (FileStore.list).
+ */
+export const PROVISIONAL_LOCAL_KEY = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-upload(\.[\w.-]+)?$/;
 
 /**
  * After a reclassification (new ID), gives every stored file of the document its name under the new ID:
@@ -422,7 +543,7 @@ export async function renameDocFiles(docId: string): Promise<void> {
     // Same extension as at upload (stageFile): a SharePoint key is a driveItem id and carries none.
     const name = r.fileName ?? '';
     const ext = storedExt(name, normalizeMime(r.mime, name));
-    await nameStoredFile({ storage: r.storage ?? 'local', fileKey: r.fileKey, fileName: name, mime: r.mime ?? '', size: 0, pages: null, ext }, docId, `${r.letter}.${r.n}`);
+    await nameStoredFile({ storage: r.storage ?? 'local', fileKey: r.fileKey, fileName: name, mime: r.mime ?? '', size: 0, pages: null, sha256: '', ext }, docId, `${r.letter}.${r.n}`);
   }
 }
 
@@ -447,6 +568,25 @@ export async function readStored(storage: string | null, fileKey: string): Promi
  */
 export async function openStored(storage: string | null, fileKey: string, size: number | null): Promise<FileSource> {
   return stores(storage).open(fileKey, size);
+}
+
+/**
+ * Stores the PDF rendering of a working version's file (lib/office-preview.ts) in the local store, whatever the active
+ * store: it is derived data, made again at will, which SharePoint (O-01) is not given. Returns its key
+ * (`<uuid>-<ID>_<version>.apercu.pdf`), which the orphan check and the backup count as named once a row of
+ * version_previews holds it.
+ */
+export async function storeRendering(buf: Buffer, docId: string, label: string): Promise<string> {
+  return local.put(buf, `${docId}_${label}.apercu.pdf`);
+}
+
+/** Removes a rendering from the local store. Best effort: one left behind is an orphan, which the orphan check removes. */
+export async function removeRendering(fileKey: string): Promise<void> {
+  try {
+    await local.remove(fileKey);
+  } catch (err) {
+    log.error('rendering not removed', { key: fileKey, err });
+  }
 }
 
 /** Store whose files the orphan check lists (lib/orphans.ts). */
@@ -494,8 +634,17 @@ export async function probeStore(now = Date.now()): Promise<{ store: StoreName; 
   return { store: name, cached: joined };
 }
 
-/** Forgets the SharePoint store's token and last check (tests). */
+/**
+ * The store of that name, the one stageFile, readStored… use (the active one: storeFor(activeStore())): for the storage
+ * check (lib/storage-check.ts). The SharePoint store is made on first use and kept, with its token.
+ */
+export function storeFor(name: StoreName): FileStore {
+  return stores(name);
+}
+
+/** Forgets the stores made (the SharePoint store and its token, the active store) and the last check (tests). */
 export function resetStores(): void {
+  current = null;
   sp = null;
   probed = null;
   probing = null;

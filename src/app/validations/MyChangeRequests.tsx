@@ -61,7 +61,7 @@ export function MyChangeRequests({ t, views, requests, selected, href }: { t: T;
           <div style={{ maxWidth: 880, display: 'flex', flexDirection: 'column', gap: 24 }}>
             <div>
               <div className="text-muted" style={{ fontSize: 11 }}>{c.id} · {c.docId}</div>
-              <h3 style={{ fontSize: 20, margin: '2px 0 8px', lineHeight: 1.25 }}>{c.docTitle}</h3>
+              <h2 style={{ fontSize: 20, margin: '2px 0 8px', lineHeight: 1.25 }}>{c.docTitle}</h2>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                 <span className={ECR_TAGCLS[c.status] ?? 'tag tag-neutral'}>{c.statusL}</span>
                 <span className="tag tag-neutral">{c.kindL}</span>
@@ -81,7 +81,7 @@ export function MyChangeRequests({ t, views, requests, selected, href }: { t: T;
               {facts.map(([k, v]) => <Fragment key={k}><dt className="text-muted">{k}</dt><dd>{v}</dd></Fragment>)}
             </dl>
             <section>
-              <h6 className="sec-title" style={{ marginBottom: 12 }}>{t.ecr_reason}</h6>
+              <h2 className="sec-title" style={{ marginBottom: 12 }}>{t.ecr_reason}</h2>
               <div style={{ fontSize: 13 }}>{c.reason}</div>
               {c.description && <div className="text-muted" style={{ fontSize: 12.5, marginTop: 6, whiteSpace: 'pre-wrap' }}>{c.description}</div>}
             </section>

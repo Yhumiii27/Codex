@@ -127,9 +127,11 @@ describe('SharePoint store check', () => {
     expect(driveCalls()).toBe(1);
     drive.status = 401;
     await expect(probeStore(t0 + 61_000)).rejects.toThrow('SharePoint drive: 401');
+    // The token refused: asked again once, refused again (tests/integration/sharepoint-store.test.ts).
+    expect(driveCalls()).toBe(3);
     // Failed: said again within the minute without asking Graph.
     await expect(probeStore(t0 + 62_000)).rejects.toThrow();
-    expect(driveCalls()).toBe(2);
+    expect(driveCalls()).toBe(3);
   });
 
   it('makes one call to Entra ID and one to Graph for checks asked at once, success or failure', async () => {
@@ -263,7 +265,7 @@ describe('the technical log of the Server Actions', () => {
     const reason = await decideStep('W-1', false, 1, 'Motif confidentiel : licenciement de Dupont\u0000').catch((e: unknown) => e);
     const failed = lines.filter((l) => l.entry.msg === 'action failed');
     expect(failed.map((l) => [l.level, l.entry.action])).toEqual([['error', 'addComment'], ['error', 'decideStep']]);
-    expect(failed[0].entry.err).toMatchObject({ message: expect.stringMatching(/^Failed query: insert into "workflow_comments"/), cause: { code: '22P05' } });
+    expect(failed[0].entry.err).toMatchObject({ message: expect.stringMatching(/^Failed query: insert into "codex"\."workflow_comments"/), cause: { code: '22P05' } });
     expect(JSON.stringify(lines)).not.toMatch(/Rachat|ACME|licenciement|Dupont|params/);
     // What Next.js prints of the error thrown (util.inspect: own properties and causes).
     for (const thrown of [comment, reason]) {

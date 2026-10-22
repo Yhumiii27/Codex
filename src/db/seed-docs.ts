@@ -14,6 +14,10 @@ export type DemoDoc = {
   modified: string; expires?: string; reviewDue?: string;
   phase?: string; wp?: string; discipline?: string; theme?: string; study?: string; ip?: string;
   state?: 'obsolete' | 'archived'; stateAt?: string; hold?: boolean; readers?: string[];
+  /** For a template (FRM): the types it is meant for. */
+  templateFor?: string[];
+  /** Created from this template (its `key`): documents.template_id, and the comment of A.1 (lib/actions.ts createDocument). */
+  fromTemplate?: string;
 };
 
 const HLT = 'HLT-026';
@@ -46,11 +50,11 @@ export const DEMO_DOCS: DemoDoc[] = [
   { key: 'per-hlt', type: 'PER', title: 'Permis de levage — quai 4', dept: 'CHA', owner: 'lfabre', project: HLT, modified: '2026-09-26', working: { status: 'in_review', n: 1, done: 1 }, expires: '2026-10-31', phase: 'Chantier' },
   { type: 'PER', title: 'Permis de travaux haute tension', dept: 'CHA', owner: 'lfabre', project: HLT, modified: '2026-09-27', working: { status: 'draft', n: 1 }, phase: 'Chantier' },
   { key: 'hse-hlt', type: 'HSE', title: 'Plan de prévention — port du Havre', dept: 'CHA', owner: 'lfabre', project: HLT, inForce: 'B', issued: '2026-04-02', modified: '2026-10-02', conf: 'restreint', reviewDue: '2026-12-15', working: { status: 'draft', n: 1, modifier: 'lfabre', changeRef: 'ECO-2026-002' } },
-  { key: 'pv-hlt', type: 'PV', title: 'PV de réception des fondations', dept: 'CHA', owner: 'lfabre', project: HLT, inForce: 'A', issued: '2026-09-12', modified: '2026-09-12', conf: 'restreint' },
+  { key: 'pv-hlt', type: 'PV', title: 'PV de réception des fondations', dept: 'CHA', owner: 'lfabre', project: HLT, inForce: 'A', issued: '2026-09-12', modified: '2026-09-12', conf: 'restreint', fromTemplate: 'frm-pv' },
   { key: 'ctr-hlt', type: 'CTR', title: 'Contrat principal — Harbor Line Terminal', dept: 'PRJ', owner: 'raubert', project: HLT, inForce: 'A', issued: '2026-01-14', modified: '2026-01-14', conf: 'confidentiel', expires: '2027-06-30', subtype: 'Contrat client' },
   { type: 'CTR', title: 'Avenant n°1 — lidar anticollision', dept: 'PRJ', owner: 'raubert', project: HLT, inForce: 'A', issued: '2026-07-08', modified: '2026-07-08', conf: 'confidentiel', hold: true },
   { type: 'LET', title: 'Courrier — accès restreint au quai 4', dept: 'PRJ', owner: 'raubert', project: HLT, inForce: 'A', issued: '2026-09-22', modified: '2026-09-22', conf: 'restreint' },
-  { type: 'MIN', title: 'Compte rendu de réunion hebdomadaire n°23', dept: 'PRJ', owner: 'raubert', project: HLT, inForce: 'A', issued: '2026-09-25', modified: '2026-09-25', conf: 'restreint' },
+  { type: 'MIN', title: 'Compte rendu de réunion hebdomadaire n°23', dept: 'PRJ', owner: 'raubert', project: HLT, inForce: 'A', issued: '2026-09-25', modified: '2026-09-25', conf: 'restreint', fromTemplate: 'frm-min' },
   { type: 'PHO', title: 'Photos de chantier — fondations du poteau 7', dept: 'CHA', owner: 'lfabre', project: HLT, inForce: 'A', issued: '2026-09-18', modified: '2026-09-18' },
   { type: 'VIS', title: 'Rapport de visite — usine Nordvolt', dept: 'ACH', owner: 'fbertrand', project: HLT, inForce: 'A', issued: '2026-09-10', modified: '2026-09-10' },
 
@@ -62,12 +66,12 @@ export const DEMO_DOCS: DemoDoc[] = [
   { key: 'pro-doc', type: 'PRO', title: 'Procédure de maîtrise documentaire', dept: 'QUA', owner: 'gcomte', inForce: 'E', issued: '2022-02-03', modified: '2026-02-03', reviewDue: '2026-11-30', kw: ['GED', 'codification', 'révision'] },
   { type: 'PRO', title: 'Traitement des non-conformités', dept: 'QUA', owner: 'gcomte', inForce: 'C', issued: '2023-03-11', modified: '2026-03-11', reviewDue: '2026-09-30', kw: ['NC', 'CAPA'] },
   { key: 'pro-levage', type: 'PRO', title: 'Levage et manutention sur chantier', dept: 'HSE', owner: 'cbardet', inForce: 'B', issued: '2024-05-06', modified: '2026-10-01', working: { status: 'draft', n: 2 }, kw: ['levage', 'grue', 'élingage'] },
-  { type: 'RSQ', title: 'Analyse de risques — atelier de Lyon', dept: 'HSE', owner: 'oblanc', site: 'lyon', modified: '2026-10-05', working: { status: 'in_review', n: 1, done: 1 }, kw: ['DUERP', 'atelier'] },
+  { type: 'RSQ', title: 'Analyse de risques — atelier de Lyon', dept: 'HSE', owner: 'oblanc', site: 'lyon', modified: '2026-10-05', working: { status: 'in_review', n: 1, done: 1 }, kw: ['DUERP', 'atelier'], fromTemplate: 'frm-rsq' },
   { type: 'PRO', title: 'Procédure de stockage — magasin du Havre (ancienne)', dept: 'HSE', owner: 'cbardet', site: 'le_havre', inForce: 'C', issued: '2019-04-11', modified: '2026-03-01', state: 'obsolete', stateAt: '2026-03-01' },
-  { key: 'frm-pv', type: 'FRM', title: 'Modèle — procès-verbal de réception de site', dept: 'QUA', owner: 'gcomte', inForce: 'B', issued: '2025-06-02', modified: '2026-06-02' },
-  { type: 'FRM', title: 'Modèle — procédure', dept: 'QUA', owner: 'gcomte', inForce: 'A', issued: '2025-01-10', modified: '2025-01-10' },
-  { type: 'FRM', title: 'Modèle — rapport d’incident', dept: 'HSE', owner: 'cbardet', inForce: 'C', issued: '2024-01-15', modified: '2026-01-15' },
-  { key: 'frm-min', type: 'FRM', title: 'Modèle — compte rendu de réunion', dept: 'QUA', owner: 'gcomte', inForce: 'A', issued: '2025-02-10', modified: '2025-02-10' },
+  { key: 'frm-pv', type: 'FRM', title: 'Modèle — procès-verbal de réception de site', dept: 'QUA', owner: 'gcomte', inForce: 'B', issued: '2025-06-02', modified: '2026-06-02', templateFor: ['PV'] },
+  { type: 'FRM', title: 'Modèle — procédure', dept: 'QUA', owner: 'gcomte', inForce: 'A', issued: '2025-01-10', modified: '2025-01-10', templateFor: ['PRO', 'MOP'] },
+  { key: 'frm-rsq', type: 'FRM', title: 'Modèle — rapport d’incident', dept: 'HSE', owner: 'cbardet', inForce: 'C', issued: '2024-01-15', modified: '2026-01-15', templateFor: ['RSQ'] },
+  { key: 'frm-min', type: 'FRM', title: 'Modèle — compte rendu de réunion', dept: 'QUA', owner: 'gcomte', inForce: 'A', issued: '2025-02-10', modified: '2025-02-10', templateFor: ['MIN'] },
   { type: 'AUD', title: 'Audit interne — processus ingénierie', dept: 'QUA', owner: 'gcomte', inForce: 'A', issued: '2026-05-20', modified: '2026-05-20' },
   { type: 'AUD', title: 'Audit interne — atelier de Lyon (2015)', dept: 'QUA', owner: 'gcomte', site: 'lyon', inForce: 'A', issued: '2015-11-12', modified: '2015-11-12', state: 'archived', stateAt: '2018-01-10' },
   { type: 'POL', title: 'Politique qualité, sécurité et environnement', dept: 'DIR', owner: 'hcosta', inForce: 'C', issued: '2021-01-15', modified: '2026-01-15', kw: ['QSE', 'politique'] },

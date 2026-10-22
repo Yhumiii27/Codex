@@ -4,6 +4,7 @@ import { Fragment, useEffect, useId, useRef, useState, useTransition, type CSSPr
 import { useRouter } from 'next/navigation';
 import type { ActionResult } from '@/lib/actions';
 import { acceptAttr, fileIssue, fileIssueText, fmtMax } from '@/lib/filetypes';
+import { failureText } from '@/lib/errors';
 import { fmtSize } from '@/lib/format';
 import { useApp } from '@/components/shell/AppProvider';
 
@@ -92,8 +93,10 @@ export function useSubmit() {
         if (!opts.keepOpen) close();
         if (r.href) router.push(r.href);
         if (r.message) toast(r.message);
-      } catch {
-        setError(t.error);
+        if (r.warning) toast(r.warning, 'warn');
+      } catch (err) {
+        // Never the error's message: a reference the technical log carries (lib/errors.ts).
+        setError(failureText(t, err));
       }
     });
   /** After a refusal from an outdated view (ActionResult `stale`): closes the dialog and reloads the record; else undefined. */

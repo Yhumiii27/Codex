@@ -6,7 +6,7 @@ import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { openDb, schema as s } from '@/db';
 import { createBackup, LOCK_FILE, readLock, readMigrations } from '@/lib/backup-core.mjs';
-import { addDoc, setupDb } from '../support/db';
+import { addDoc, pgliteOf, setupDb } from '../support/db';
 
 // The npm commands (scripts/codex-backup.mjs, point 48 of docs/reste-a-faire.md) as an operator runs them: Node in a
 // child process, on a data directory of their own. They refuse to run while the server holds the database, and to
@@ -14,7 +14,7 @@ import { addDoc, setupDb } from '../support/db';
 // opens the database (src/db/index.ts, getDb), which keeps a command and the server off the same directory.
 
 const SCRIPT = path.join(process.cwd(), 'scripts', 'codex-backup.mjs');
-const db = setupDb();
+const db = setupDb({ engine: 'pglite' });
 const scratch = mkdtempSync(path.join(tmpdir(), 'codex-backup-cmd-'));
 const DATA = path.join(scratch, 'data');
 const BACKUPS = path.join(scratch, 'backups');
@@ -64,7 +64,7 @@ async function prepare() {
   await addDoc(db(), { id: 'PRO-QUA-0001' });
   await db().update(s.workingVersions).set({ storage: 'local', fileKey: KEY, fileName: 'f.pdf', mime: 'application/pdf', size: 8 }).where(eq(s.workingVersions.docId, 'PRO-QUA-0001'));
   const res = await createBackup({
-    pg: db().$client, filesDir: files, dbDir: null, backupDir: BACKUPS, keep: 7, mode: 'offline', by: 'cli',
+    pg: pgliteOf(db()), filesDir: files, dbDir: null, backupDir: BACKUPS, keep: 7, mode: 'offline', by: 'cli',
     migrations: await readMigrations(path.join(process.cwd(), 'drizzle')),
   });
   // A data directory already in use: a database (a stand-in) and a file of its own.

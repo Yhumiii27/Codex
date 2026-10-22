@@ -30,6 +30,8 @@ const ID = 'PRO-QUA-0001'; // addDoc: revision A in force, issued and in force o
 function form(fields: Record<string, string>): FormData {
   const fd = new FormData();
   for (const [k, v] of Object.entries(fields)) fd.set(k, v);
+  // The organisation is a new term of its vocabulary: the form confirms its addition (lib/actions.ts readVocab).
+  if (fields.sourceOrg) fd.set('confirmTerm', fields.sourceOrg);
   return fd;
 }
 

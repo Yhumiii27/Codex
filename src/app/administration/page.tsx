@@ -4,30 +4,40 @@ import { Forbidden } from '@/components/ui/Forbidden';
 import { Icon } from '@/components/ui/Icon';
 import { Seg } from '@/components/ui/Seg';
 import { ActionButton, DialogButton } from '@/components/ui/client';
-import { mayBackUp, mayCleanStorage, mayExportAll } from '@/lib/access';
-import { backUpData, purgeOrphanFiles, removeFunctionHolder, togglePermission } from '@/lib/actions';
+import { mayBackUp, mayCheckIntegrity, mayCleanStorage, mayExportAll, mayLinkTemplate, mayTransferHoldings } from '@/lib/access';
+import { backUpData, checkFileIntegrity, purgeOrphanFiles, removeFunctionHolder, renameProvisionalFiles, togglePermission } from '@/lib/actions';
 import { antivirusStatus } from '@/lib/antivirus';
 import { backupList, backupSettings } from '@/lib/backup';
 import { getCtx, type Ctx } from '@/lib/context';
 import { featuredOf } from '@/lib/departments';
 import { fileRules, fmtMax } from '@/lib/filetypes';
+import { lockOf } from '@/lib/lifecycle';
 import { ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLE_LABEL, MATRIX_ROLES, PERMS, SIMULATED_MATRIX_ROLES, type TKey } from '@/lib/i18n';
-import { AUDIT_ID_MAX, auditPage, getMatrix, listFunctionHolders, listTemplates, orgUsage, registryUsage, typeView, type AuditFilter, type RegistryUsage } from '@/lib/queries';
+import { AUDIT_ID_MAX, auditPage, getMatrix, integrityL, latestIntegrityCheck, listFunctionHolders, listTemplates, orgUsage, registryUsage, retentionByType, typeView, type AuditFilter, type RegistryUsage } from '@/lib/queries';
 import { fmtDateTime, fmtSize, parisStamp, parseIsoDay } from '@/lib/format';
 import { MAX_PER_RUN, orphanReport, type OrphanScan } from '@/lib/orphans';
+import { provisionalReport, type ProvisionalScan } from '@/lib/provisional';
+import { schedulerOverview, type TaskView } from '@/lib/scheduler';
 import { inUse } from '@/lib/org-rules';
 import { DEPARTMENT_HEAD_FUNCTION } from '@/lib/registry-rules';
 import { FACET_LABEL, oneEach } from '@/lib/search';
 import { AddValue } from './AddValue';
+import { Transfer } from './Transfer';
+import { Vocabularies } from './Vocabularies';
 import { FamilyFilter } from './FamilyFilter';
 import { countBy, typeSpec } from './shared';
 import styles from './admin.module.css';
+import { screenTitle } from '@/lib/titles';
 
-const TABS = ['registry', 'functions', 'roles', 'org', 'templates', 'audit'] as const;
+const TABS = ['registry', 'functions', 'roles', 'org', 'vocab', 'transfer', 'templates', 'audit'] as const;
 type Tab = (typeof TABS)[number];
-const TAB_LABEL: Record<Tab, TKey> = { registry: 'registry', functions: 'functions_tab', roles: 'ad_roles', org: 'organisation', templates: 'templates_qms', audit: 'ad_audit' };
+const TAB_LABEL: Record<Tab, TKey> = { registry: 'registry', functions: 'functions_tab', roles: 'ad_roles', org: 'organisation', vocab: 'tab_vocab', transfer: 'tab_transfer', templates: 'templates_qms', audit: 'ad_audit' };
 
 const sub = { fontSize: 11 } as const;
+
+export function generateMetadata() {
+  return screenTitle('nav_admin');
+}
 
 export default async function AdminPage({ searchParams }: PageProps<'/administration'>) {
   // One value per parameter: a repeated one (?doc=a&doc=b) keeps its first.
@@ -45,9 +55,11 @@ export default async function AdminPage({ searchParams }: PageProps<'/administra
         <Seg
           name="adminTab"
           value={tab}
+          wrap
           style={{ flex: 'none' }}
           optStyle={{ padding: '6px 12px', fontSize: 12.5 }}
-          options={TABS.map((k) => ({ key: k, label: t[TAB_LABEL[k]], href: `/administration${k === 'registry' ? '' : `?tab=${k}`}` }))}
+          // The handover is for records managers only (access.ts mayTransferHoldings): the tab is not shown to others.
+          options={TABS.filter((k) => k !== 'transfer' || mayTransferHoldings(ctx)).map((k) => ({ key: k, label: t[TAB_LABEL[k]], href: `/administration${k === 'registry' ? '' : `?tab=${k}`}` }))}
         />
         <span style={{ flex: 1 }} />
         {tab === 'registry' && (
@@ -79,6 +91,8 @@ export default async function AdminPage({ searchParams }: PageProps<'/administra
         {tab === 'functions' && <Functions ctx={ctx} />}
         {tab === 'roles' && <Roles ctx={ctx} />}
         {tab === 'org' && <Organisation ctx={ctx} />}
+        {tab === 'vocab' && <Vocabularies ctx={ctx} />}
+        {tab === 'transfer' && <Transfer ctx={ctx} person={sp.person ?? ''} replacement={sp.replacement ?? ''} />}
         {tab === 'templates' && <Templates ctx={ctx} />}
         {tab === 'audit' && <Audit ctx={ctx} sp={sp} />}
       </div>
@@ -93,7 +107,7 @@ export default async function AdminPage({ searchParams }: PageProps<'/administra
 async function Registry({ ctx, family }: { ctx: Ctx; family: string }) {
   const { t, lang } = ctx;
   // Counts cover every document, drafts and confidential ones included (administration only).
-  const usage = await registryUsage();
+  const [usage, retention] = await Promise.all([registryUsage(), retentionByType()]);
   const counts = usage.docs.types;
   const types = ctx.types.filter((x) => !family || x.family === family).map((x) => typeView(ctx, x));
   const typesByFamily = countBy(ctx.types, (x) => x.family);
@@ -106,7 +120,7 @@ async function Registry({ ctx, family }: { ctx: Ctx; family: string }) {
         <thead>
           <tr>
             <th>{t.rule_id}</th><th>{t.type}</th><th>{t.family}</th><th>{t.origin}</th><th>{t.attachment}</th><th>{t.circuit}</th>
-            <th>{t.conf}</th><th>{t.retention}</th><th title={t.review_months}>{t.review_short}</th><th>ISO</th><th style={{ textAlign: 'right' }}>{t.count}</th><th />
+            <th>{t.conf}</th><th>{t.retention}</th><th title={t.review_months}>{t.review_short}</th><th>ISO</th><th style={{ textAlign: 'right' }}>{t.count}</th><th><span className="sr-only">{t.col_actions}</span></th>
           </tr>
         </thead>
         <tbody>
@@ -123,12 +137,12 @@ async function Registry({ ctx, family }: { ctx: Ctx; family: string }) {
               <td className="text-muted">{x.attachments.map((a) => t[`att_${a}`]).join(', ')}</td>
               <td className="text-muted" style={{ minWidth: 160 }}>{x.circuitL}</td>
               <td><div>{x.confDefaultL}</div><div className="text-muted" style={sub}>{x.confL}</div></td>
-              <td className="text-muted" style={{ minWidth: 150 }} title={x.retentionBasis || undefined}>{x.retentionL}</td>
+              <td className="text-muted" style={{ minWidth: 150 }} title={x.basisL || undefined}>{x.retentionL}</td>
               <td className="text-muted nowrap">{x.reviewL}</td>
               <td className="text-muted">{x.iso ?? '—'}</td>
               <td className="tabnum" style={{ textAlign: 'right' }}>{counts.get(x.code) ?? 0}</td>
               <td style={{ textAlign: 'right', width: 44 }}>
-                <DialogButton spec={typeSpec(x, usage.types.has(x.code))} className="btn btn-ghost btn-icon" icon="pen" ariaLabel={`${t.perm_edit} · ${x.code}`} style={{ width: 30, height: 30 }} />
+                <DialogButton spec={typeSpec(x, usage.types.has(x.code), retention.get(x.code))} className="btn btn-ghost btn-icon" icon="pen" ariaLabel={`${t.perm_edit} · ${x.code}`} style={{ width: 30, height: 30 }} />
               </td>
             </tr>
           ))}
@@ -136,9 +150,9 @@ async function Registry({ ctx, family }: { ctx: Ctx; family: string }) {
         </tbody>
       </table>
       <section aria-label={t.families_title}>
-        <h6 className="sec-title" style={{ marginBottom: 10 }}>{t.families_title}</h6>
+        <h2 className="sec-title" style={{ marginBottom: 10 }}>{t.families_title}</h2>
         <table className="table" style={{ fontSize: 13 }}>
-          <thead><tr><th>{t.family}</th><th>{t.key_label}</th><th>{t.family_group}</th><th style={{ textAlign: 'right' }}>{t.types_count}</th><th style={{ textAlign: 'right' }}>{t.count}</th><th /></tr></thead>
+          <thead><tr><th>{t.family}</th><th>{t.key_label}</th><th>{t.family_group}</th><th style={{ textAlign: 'right' }}>{t.types_count}</th><th style={{ textAlign: 'right' }}>{t.count}</th><th><span className="sr-only">{t.col_actions}</span></th></tr></thead>
           <tbody>
             {families.map((f) => {
               const label = lang === 'fr' ? f.labelFr : f.labelEn;
@@ -180,7 +194,7 @@ async function Functions({ ctx }: { ctx: Ctx }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
       <table className="table" style={{ fontSize: 13 }}>
-        <thead><tr><th>{t.function_label}</th><th>{t.scope}</th><th>{t.holders}</th><th style={{ textAlign: 'right' }}>{t.types_covered}</th><th /></tr></thead>
+        <thead><tr><th>{t.function_label}</th><th>{t.scope}</th><th>{t.holders}</th><th style={{ textAlign: 'right' }}>{t.types_covered}</th><th><span className="sr-only">{t.col_actions}</span></th></tr></thead>
         <tbody>
           {fns.map((f) => (
             <tr key={f.key}>
@@ -192,7 +206,7 @@ async function Functions({ ctx }: { ctx: Ctx }) {
                   {f.holders.map((h) => (
                     <span key={h.id} className={`tag tag-neutral ${styles.holder}`} title={h.scopeValue ? scopeTitle(f.scope, h.scopeValue) : undefined}>
                       {h.user}
-                      {f.scope !== 'global' && <span style={{ opacity: 0.6 }}>· {h.scopeL}</span>}
+                      {f.scope !== 'global' && <span style={{ opacity: 0.7 }}>· {h.scopeL}</span>}
                       <ActionButton className={styles.remove} ariaLabel={`${t.remove} · ${h.user}`} title={t.remove} action={removeFunctionHolder.bind(null, h.id)}>
                         <Icon name="close" size={11} sw={2} />
                       </ActionButton>
@@ -218,7 +232,7 @@ async function Functions({ ctx }: { ctx: Ctx }) {
       </table>
       <Programs ctx={ctx} usage={usage} />
       <section>
-        <h6 className="sec-title" style={{ marginBottom: 10 }}>{t.circuit}</h6>
+        <h2 className="sec-title" style={{ marginBottom: 10 }}>{t.circuit}</h2>
         <table className="table" style={{ fontSize: 13 }}>
           <thead><tr><th>{t.circuit_steps}</th><th>{t.types_covered}</th><th style={{ textAlign: 'right' }}>{t.count}</th></tr></thead>
           <tbody>
@@ -245,12 +259,12 @@ function Programs({ ctx, usage }: { ctx: Ctx; usage: RegistryUsage }) {
   return (
     <section aria-label={t.programs_title}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-        <h6 className="sec-title" style={{ margin: 0 }}>{t.programs_title}</h6>
+        <h2 className="sec-title" style={{ margin: 0 }}>{t.programs_title}</h2>
         <span style={{ flex: 1 }} />
         <DialogButton spec={{ kind: 'program' }} className="btn btn-secondary" icon="plus" iconSw={1.8} style={{ fontSize: 12 }}>{t.new_program}</DialogButton>
       </div>
       <table className="table" style={{ fontSize: 13 }}>
-        <thead><tr><th>{t.rule_id}</th><th>{t.program_name}</th><th>{t.manager}</th><th style={{ textAlign: 'right' }}>{t.count}</th><th /></tr></thead>
+        <thead><tr><th>{t.rule_id}</th><th>{t.program_name}</th><th>{t.manager}</th><th style={{ textAlign: 'right' }}>{t.count}</th><th><span className="sr-only">{t.col_actions}</span></th></tr></thead>
         <tbody>
           {ctx.programs.map((p) => (
             <tr key={p.code} style={p.active ? undefined : { opacity: 0.55 }}>
@@ -331,11 +345,11 @@ async function Organisation({ ctx }: { ctx: Ctx }) {
       </p>
       <div className={styles.split}>
         <section>
-          <h6 className="sec-title" style={{ marginBottom: 10 }}>{t.department}</h6>
+          <h2 className="sec-title" style={{ marginBottom: 10 }}>{t.department}</h2>
           {/* The table scrolls within its column rather than spilling over the sites beside it. */}
           <div className={styles.tableScroll}>
             <table className="table" style={{ fontSize: 13 }}>
-              <thead><tr><th>{t.rule_id}</th><th>{t.label_fr}</th><th>{t.label_en}</th><th>{t.manager}</th><th style={{ textAlign: 'right' }}>{t.people}</th><th style={{ textAlign: 'right' }}>{t.count}</th><th>{t.featured_filters}</th><th /></tr></thead>
+              <thead><tr><th>{t.rule_id}</th><th>{t.label_fr}</th><th>{t.label_en}</th><th>{t.manager}</th><th style={{ textAlign: 'right' }}>{t.people}</th><th style={{ textAlign: 'right' }}>{t.count}</th><th>{t.featured_filters}</th><th><span className="sr-only">{t.col_actions}</span></th></tr></thead>
               <tbody>
                 {ctx.departments.map((d) => {
                   const featured = featuredOf(d);
@@ -375,9 +389,9 @@ async function Organisation({ ctx }: { ctx: Ctx }) {
           </div>
         </section>
         <section>
-          <h6 className="sec-title" style={{ marginBottom: 10 }}>{t.site_label}</h6>
+          <h2 className="sec-title" style={{ marginBottom: 10 }}>{t.site_label}</h2>
           <table className="table" style={{ fontSize: 13 }}>
-            <thead><tr><th>{t.site_label}</th><th style={{ textAlign: 'right' }}>{t.people}</th><th style={{ textAlign: 'right' }}>{t.count}</th><th /></tr></thead>
+            <thead><tr><th>{t.site_label}</th><th style={{ textAlign: 'right' }}>{t.people}</th><th style={{ textAlign: 'right' }}>{t.count}</th><th><span className="sr-only">{t.col_actions}</span></th></tr></thead>
             <tbody>
               {ctx.sites.map((x) => {
                 const label = ctx.label('site', x.key);
@@ -408,16 +422,20 @@ async function Organisation({ ctx }: { ctx: Ctx }) {
   );
 }
 
-/** Templates (FRM-QMS-…) in force: the source of "Nouveau depuis un modèle". */
+/**
+ * Templates (FRM-QMS-…) in force: the source of "Nouveau depuis un modèle", with the types each is meant for, which
+ * its owner or a records manager sets here or on its record (lib/actions.ts setTemplateTypes).
+ */
 async function Templates({ ctx }: { ctx: Ctx }) {
   const { t } = ctx;
   const tpls = await listTemplates(ctx);
   return (
     <table className="table" style={{ fontSize: 13 }}>
-      <thead><tr><th>{t.ref}</th><th>{t.title_label}</th><th>{t.revision}</th><th>{t.owner}</th><th>{t.department}</th><th /></tr></thead>
+      <thead><tr><th>{t.ref}</th><th>{t.title_label}</th><th>{t.revision}</th><th>{t.owner}</th><th>{t.department}</th><th>{t.template_types}</th><th style={{ textAlign: 'right' }} title={t.tpl_uses_hint}>{t.uses}</th><th><span className="sr-only">{t.col_actions}</span></th></tr></thead>
       <tbody>
         {tpls.map((x) => {
           const href = `/documents/${encodeURIComponent(x.id)}`;
+          const lock = lockOf(x);
           return (
             <tr key={x.id}>
               <td className="nowrap"><Link href={href} className="link-plain">{x.id}</Link></td>
@@ -425,11 +443,18 @@ async function Templates({ ctx }: { ctx: Ctx }) {
               <td className="text-muted">{x.rev}</td>
               <td>{x.owner}</td>
               <td className="text-muted">{ctx.label('department', x.department)}</td>
-              <td style={{ textAlign: 'right' }}><Link href={href} className="btn btn-ghost" style={{ fontSize: 12 }}>{t.open_record}</Link></td>
+              <td>{x.types.length ? <span title={x.types.map((c) => `${c} · ${ctx.label('type', c)}`).join('\n')}>{x.types.join(', ')}</span> : <span className="text-muted">—</span>}</td>
+              <td className="tabnum" style={{ textAlign: 'right' }}>{x.uses}</td>
+              <td className="nowrap" style={{ textAlign: 'right' }}>
+                {mayLinkTemplate(ctx, x) && (
+                  <DialogButton spec={{ kind: 'templateTypes', docId: x.id, title: x.label, types: x.types, version: x.version }} className="btn btn-ghost" style={{ fontSize: 12 }} deniedTitle={lock ? t[lock] : undefined}>{t.template_types}</DialogButton>
+                )}
+                <Link href={href} className="btn btn-ghost" style={{ fontSize: 12 }}>{t.open_record}</Link>
+              </td>
             </tr>
           );
         })}
-        {tpls.length === 0 && <tr><td colSpan={6} className="text-muted" style={{ padding: '16px 8px' }}>{t.no_results}</td></tr>}
+        {tpls.length === 0 && <tr><td colSpan={8} className="text-muted" style={{ padding: '16px 8px' }}>{t.no_results}</td></tr>}
       </tbody>
     </table>
   );
@@ -524,6 +549,76 @@ async function Orphans({ ctx, open }: { ctx: Ctx; open: boolean }) {
 }
 
 /**
+ * Files left under their provisional name (lib/provisional.ts), for a records manager: a link that runs the dry run
+ * (?provisional=1, nothing changes), then the list and the button that renames those listed.
+ */
+async function Provisional({ ctx, open }: { ctx: Ctx; open: boolean }) {
+  const { t, lang } = ctx;
+  if (!open) {
+    return (
+      <p className={`${styles.filesPolicy} text-muted`}>
+        <strong>{t.prov_title}</strong>
+        <Link href="/administration?tab=audit&provisional=1" className="link-plain" scroll={false}>{t.prov_find}</Link>
+      </p>
+    );
+  }
+  const report = await provisionalReport();
+  const h = String(report.graceHours);
+  const counts = (x: ProvisionalScan) => [
+    t.prov_found.replace('{n}', String(x.due.length)),
+    ...(x.recent ? [t.prov_recent.replace('{n}', String(x.recent))] : []),
+    ...(x.missing ? [t.prov_missing.replace('{n}', String(x.missing))] : []),
+  ].join(' · ');
+  const list = (x: ProvisionalScan) => x.due.length > 0 && (
+    <table className={`table ${styles.orphanTable}`}>
+      <thead><tr><th>{t.file}</th><th>{t.prov_new_name}</th><th>{t.orphans_touched}</th></tr></thead>
+      <tbody>
+        {x.due.slice(0, MAX_PER_RUN).map((f) => (
+          <tr key={`${f.versionId}`}>
+            <td className={styles.orphanKey}>{f.key}</td>
+            <td className={styles.orphanKey}>{f.name}</td>
+            <td className="nowrap tabnum text-muted">{f.touched == null ? '—' : fmtDateTime(parisStamp(new Date(f.touched).toISOString()), lang)}</td>
+          </tr>
+        ))}
+        {x.due.length > MAX_PER_RUN && <tr><td colSpan={3} className="text-muted">{t.orphans_more.replace('{n}', String(x.due.length - MAX_PER_RUN))}</td></tr>}
+      </tbody>
+    </table>
+  );
+  const sp = report.sharepoint && !('error' in report.sharepoint) ? report.sharepoint : null;
+  // The rename is given the keys shown here (both stores, at most MAX_PER_RUN): nothing found since is renamed with them.
+  const shown = [...report.local.due, ...(sp?.due ?? [])].slice(0, MAX_PER_RUN).map((f) => f.key);
+  const n = shown.length;
+  const any = (x: ProvisionalScan) => x.due.length || x.recent || x.missing;
+  return (
+    <section className={styles.orphans} aria-label={t.prov_title}>
+      <div className={styles.orphansHead}>
+        <strong>{t.prov_title}</strong>
+        <span style={{ flex: 1 }} />
+        {n > 0 && (
+          <ActionButton action={renameProvisionalFiles.bind(null, shown)} className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} confirm={t.prov_confirm.replace('{n}', String(n))} after="/administration?tab=audit&provisional=1">
+            {t.prov_rename.replace('{n}', String(n))}
+          </ActionButton>
+        )}
+        <Link href="/administration?tab=audit" className="btn btn-ghost" style={{ fontSize: 12 }} scroll={false}>{t.close}</Link>
+      </div>
+      <p className="text-muted">{t.prov_hint.replace('{h}', h)}</p>
+      <p><span className={styles.orphanStore}>{t.orphans_store_local}</span>{any(report.local) ? counts(report.local) : t.prov_none}</p>
+      {list(report.local)}
+      {report.sharepoint && (
+        'error' in report.sharepoint
+          ? <p><span className={styles.orphanStore}>{t.orphans_store_sharepoint}</span><span className={styles.filesOff}>{t.orphans_sp_error}</span></p>
+          : (
+            <>
+              <p><span className={styles.orphanStore}>{t.orphans_store_sharepoint}</span>{any(report.sharepoint) ? counts(report.sharepoint) : t.prov_none} · <span className="text-muted">{t.prov_sp_untested}</span></p>
+              {list(report.sharepoint)}
+            </>
+          )
+      )}
+    </section>
+  );
+}
+
+/**
  * Backups (lib/backup.ts), for a records manager: the date of the latest archive and a link that lists them
  * (?backups=1), with what each holds and the button that backs up now. Restoring is a command (npm run restore).
  */
@@ -586,6 +681,46 @@ async function Backups({ ctx, open }: { ctx: Ctx; open: boolean }) {
 }
 
 /**
+ * Integrity of the stored files (lib/integrity.ts), for a records manager: what the latest check found, the documents
+ * whose files it found altered or missing (links to their record), and the button that checks every file again.
+ */
+async function Integrity({ ctx }: { ctx: Ctx }) {
+  const { t, lang } = ctx;
+  const last = await latestIntegrityCheck();
+  const x = last?.integrity;
+  const items = x ? [...x.altered.map((v) => ({ ...v, kind: t.integrity_altered })), ...x.missing.map((v) => ({ ...v, kind: t.integrity_missing }))] : [];
+  return (
+    <section className={styles.orphans} aria-label={t.integrity_title}>
+      <div className={styles.orphansHead}>
+        <strong>{t.integrity_title}</strong>
+        <span className={x && (x.alteredCount || x.missingCount || x.failed) ? styles.filesOff : 'text-muted'}>
+          {last && x ? `${t.integrity_last.replace('{date}', fmtDateTime(parisStamp(last.at), lang))} · ${integrityL(ctx, x)}` : t.integrity_never}
+        </span>
+        <span style={{ flex: 1 }} />
+        <ActionButton action={checkFileIntegrity} className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} confirm={t.integrity_confirm} after="/administration?tab=audit">
+          {t.integrity_check}
+        </ActionButton>
+      </div>
+      <p className="text-muted">{t.integrity_hint}</p>
+      {items.length > 0 && (
+        <table className={`table ${styles.orphanTable}`}>
+          <thead><tr><th>{t.document}</th><th>{t.working_version}</th><th>{t.integrity_finding}</th></tr></thead>
+          <tbody>
+            {items.map((v) => (
+              <tr key={`${v.kind}-${v.v}`}>
+                <td className="nowrap"><Link href={`/documents/${encodeURIComponent(v.doc)}?tab=versions`} className="link-plain">{v.doc}</Link></td>
+                <td className="nowrap tabnum">{v.label}</td>
+                <td className={styles.filesOff}>{v.kind}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
+  );
+}
+
+/**
  * Full export (lib/full-export.ts), for a records manager: a plain link, so that the browser downloads the archive as it
  * is written (GET /api/export/full, journaled at its start and end).
  */
@@ -597,6 +732,65 @@ function FullExport({ ctx }: { ctx: Ctx }) {
       <a href="/api/export/full" className="link-plain" download>{t.export_all_download}</a>
       <span>{t.export_all_hint}</span>
     </p>
+  );
+}
+
+/** An interval as the scheduler table shows it: 30 s, 5 min, 6 h, 1 j. */
+function fmtInterval(ms: number, lang: 'fr' | 'en'): string {
+  const units: [number, string][] = [[86_400_000, lang === 'fr' ? 'j' : 'd'], [3_600_000, 'h'], [60_000, 'min'], [1000, 's']];
+  const [size, unit] = units.find(([u]) => ms % u === 0) ?? [1000, 's'];
+  return `${ms / size} ${unit}`;
+}
+
+/** The figures of a task's last run, in the reader's language (lib/scheduler.ts TASKS). */
+function runSummary(ctx: Ctx, x: TaskView): string {
+  const { t, lang } = ctx;
+  if (x.error === 'interrupted') return t.sched_interrupted;
+  if (x.status === 'error') return x.error ?? '';
+  const sum = x.summary ?? {};
+  const n = (key: TKey, v: unknown) => (typeof v === 'number' ? t[key].replace('{n}', String(v)) : null);
+  const parts = [
+    n('sched_sum_promoted', sum.promoted), n('sched_sum_decisions', sum.decisions),
+    n('sched_sum_renamed', sum.renamed), n('sched_sum_provisional', sum.provisional),
+    n('sched_sum_removed', sum.removed), sum.bytes ? fmtSize(Number(sum.bytes), lang) : null, sum.failed ? n('sched_sum_failed', sum.failed) : null, n('sched_sum_left', sum.left),
+    n('sched_sum_checked', sum.checked), sum.altered ? n('sched_sum_altered', sum.altered) : null, sum.missing ? n('sched_sum_missing', sum.missing) : null,
+    typeof sum.archive === 'string' ? t.sched_sum_archive.replace('{v}', sum.archive) : null, sum.size ? fmtSize(Number(sum.size), lang) : null, n('sched_sum_files', sum.files),
+    typeof sum.reason === 'string' && `sched_reason_${sum.reason}` in t ? t[`sched_reason_${sum.reason}` as TKey] : null,
+  ];
+  return parts.filter(Boolean).join(' · ');
+}
+
+/**
+ * The scheduler (lib/scheduler.ts), for whoever reaches Administration: each task with its setting, its last run and the
+ * next. The settings are this process's variables; the runs, those any process on the database made.
+ */
+async function Scheduler({ ctx }: { ctx: Ctx }) {
+  const { t, lang } = ctx;
+  // The figures of each run to records managers only (summaryShown, D-14).
+  const view = await schedulerOverview(ctx);
+  const when = (ts: string | null) => (ts ? fmtDateTime(parisStamp(ts), lang) : null);
+  return (
+    <section className={styles.orphans} aria-label={t.sched_title}>
+      <div className={styles.orphansHead}><strong>{t.sched_title}</strong></div>
+      <p className="text-muted">{t.sched_hint}</p>
+      {!view.enabled ? <p className={styles.filesOff}>{t.sched_off}</p> : !view.started && <p className={styles.filesOff}>{t.sched_not_started}</p>}
+      <table className={`table ${styles.orphanTable}`}>
+        <thead><tr><th>{t.sched_col_task}</th><th>{t.sched_col_every}</th><th>{t.sched_col_last}</th><th>{t.sched_col_result}</th><th>{t.sched_col_next}</th></tr></thead>
+        <tbody>
+          {view.tasks.map((x) => (
+            <tr key={x.task}>
+              <td>{t[`sched_task_${x.task}` as TKey]}<div className="text-muted" style={sub}>{x.env}</div></td>
+              <td className="nowrap">{x.interval == null ? <span className="text-muted">{t.sched_disabled}</span> : t.sched_every.replace('{d}', fmtInterval(x.interval, lang))}</td>
+              <td className="nowrap tabnum">{when(x.lastStart) ?? <span className="text-muted">{t.sched_never}</span>}</td>
+              <td className={x.status === 'error' ? styles.filesOff : undefined}>
+                {x.status && <>{t[`sched_st_${x.status}` as TKey]}{runSummary(ctx, x) && ` · ${runSummary(ctx, x)}`}</>}
+              </td>
+              <td className="nowrap tabnum">{x.interval == null ? '—' : when(x.next) ?? <span className="text-muted">{t.sched_next_first}</span>}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
   );
 }
 
@@ -624,8 +818,11 @@ async function Audit({ ctx, sp }: { ctx: Ctx; sp: Record<string, string | undefi
     <>
       <FilesPolicy ctx={ctx} />
       {mayCleanStorage(ctx) && <Orphans ctx={ctx} open={sp.orphans === '1'} />}
+      {mayCleanStorage(ctx) && <Provisional ctx={ctx} open={sp.provisional === '1'} />}
       {mayBackUp(ctx) && <Backups ctx={ctx} open={sp.backups === '1'} />}
+      {mayCheckIntegrity(ctx) && <Integrity ctx={ctx} />}
       {mayExportAll(ctx) && <FullExport ctx={ctx} />}
+      <Scheduler ctx={ctx} />
       {/* Mounted again when the URL changes its filters (Effacer, a link), so that the fields show them. */}
       <div key={JSON.stringify(f)}>
         <Form action="/administration" scroll={false} className={styles.auditFilters}>

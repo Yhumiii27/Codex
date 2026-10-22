@@ -8,6 +8,11 @@ Une sauvegarde sert à remettre Codex dans l'état d'une date. Pour quitter Code
 l'export complet ([export.md](export.md)) : mêmes données, en JSON, CSV et fichiers sous un nom lisible, sans Codex
 pour les lire.
 
+**Base intégrée seulement.** Tout ce qui suit vaut pour PGlite, la base par défaut. Avec un serveur PostgreSQL
+(`DATABASE_URL`, [postgres.md](postgres.md)), `npm run backup` et `npm run restore` refusent avec un message, comme
+« Sauvegarder maintenant » dans l'Administration : le serveur se sauvegarde avec ses propres outils (`pg_dump`,
+instantanés de l'hébergeur), et le dossier des fichiers à part.
+
 **Non décidé** (à fixer par l'utilisateur, voir [decisions.md](decisions.md), « Choix de l'assistant non validés ») :
 la fréquence des sauvegardes, le lieu où les archives sont conservées (hébergement), leur chiffrement, la perte de
 données et le délai de reprise tolérés (M22 de l'audit). Rien n'est programmé : une sauvegarde se lance à la main.
@@ -37,6 +42,14 @@ octets) et rangé sous la clé que la base enregistre.
 efface pas. Dossier en `0700`, archives en `0600` (lisibles par le seul compte qui fait tourner Codex), **non
 chiffrées**. Sur le même disque que la base par défaut : cela protège d'une erreur ou d'une base abîmée, pas de la
 perte du disque. Copier les archives ailleurs (autre disque, autre machine) relève de l'hébergement.
+
+**Chiffrement.** Une archive contient toute la base et tous les fichiers, brouillons et documents confidentiels
+compris, et Codex ne la chiffre pas. Placer `CODEX_BACKUP_DIR`, comme le dossier de données, sur un **volume chiffré**
+(chiffrement de disque de l'hôte ou de l'hébergeur), et chiffrer chaque archive avant de la copier hors de la machine
+(par exemple `age` ou `gpg` vers une clé publique). Les **clés restent hors du serveur** (coffre de clés, module
+matériel ou phrase saisie au démarrage ; jamais dans le dépôt, dans `.env*` ni sur le volume chiffré) et sont
+elles-mêmes sauvegardées : une restauration d'essai (« Tester une restauration ») se fait aussi avec la clé de secours.
+Détail et contexte : `docs/exploitation.md` §9 ; l'outil et le lieu dépendent de l'hébergement (M22, non décidé).
 
 **Rotation.** Après chaque sauvegarde réussie et relue, sont gardées les `CODEX_BACKUP_KEEP` archives les plus
 récentes (7 par défaut) **et** la plus récente de chacun des `CODEX_BACKUP_KEEP` derniers jours (jour UTC) où une
@@ -73,6 +86,15 @@ La commande refuse de tourner tant que le serveur qui tient la base vit (fichier
 Administration. Si le serveur s'est arrêté brutalement, son verrou est ignoré dès que son processus n'existe plus ; en
 cas de doute (numéro de processus réutilisé), vérifier qu'aucun serveur ne tourne puis supprimer `codex.lock`.
 
+Le verrou enregistre le numéro du processus, un identifiant tiré au hasard par processus et l'espace de processus
+(machine ou conteneur) où il tourne. Le serveur le rafraîchit toutes les 30 secondes, comme les commandes. Un verrou
+posé dans un autre conteneur ou sur une autre machine qui partage le dossier n'est jamais jugé par son numéro : il
+tient tant qu'il est rafraîchi, et cesse 10 minutes après. Une commande lancée dans un conteneur à côté du serveur
+refuse donc (« processus 1, dans un autre conteneur ou sur une autre machine »), même si elle a le même numéro que
+lui ([exploitation.md](exploitation.md) §10). Arrêter le serveur d'abord reste la règle : le verrou protège la base
+si on l'oublie. Un verrou de l'ancien format (sans identifiant) est jugé par son numéro, mais jamais pris pour celui
+du processus qui le lit.
+
 **Variables.** Les commandes lisent `CODEX_DATA_DIR`, `CODEX_BACKUP_DIR` et `CODEX_BACKUP_KEEP` comme Next les lit
 (`@next/env`) : l'environnement d'abord, puis les fichiers de `next start` (et de l'app Mac), dans cet ordre :
 `.env.production.local`, `.env.local`, `.env.production`, `.env`. Avec `--dev` (ou `NODE_ENV=development`), ceux de
@@ -84,6 +106,21 @@ avant de continuer. L'app Mac fixe son dossier de données elle-même, sans fich
 CODEX_DATA_DIR="$HOME/Library/Application Support/Codex/data" npm run backup
 npm run backup -- --dev        # serveur lancé par npm run dev, avec un .env.development
 ```
+
+### Automatiquement : avant une migration, avant `npm run registry:apply -- --apply`
+
+Depuis le 17 octobre 2026, le schéma évolue par migrations incrémentales (`drizzle/`, README « Démarrer »). Quand le
+serveur démarre sur une base qui a des données et à laquelle il manque des migrations du code, il écrit d'abord une
+archive (même format, même dossier, même rotation ; origine « application », par Codex), puis applique les migrations
+en une seule transaction ; l'entrée « Sauvegarde créée » du journal porte « migration » et les migrations appliquées.
+Si l'archive ne peut pas être écrite (dossier des sauvegardes inaccessible, disque plein), le serveur ne démarre pas
+et la base reste telle quelle ; `CODEX_MIGRATION_BACKUP=off` migre sans sauvegarde. `npm run registry:apply -- --apply`
+sauvegarde de même avant d'écrire (`--no-backup` pour s'en passer).
+
+**Retour arrière d'une migration** qui est passée mais se révèle fausse : arrêter le serveur, revenir à la version
+précédente de Codex (git), puis `npm run restore -- <archive> --replace` avec l'archive écrite avant la migration.
+Restaurée avec la nouvelle version, la même archive recevrait de nouveau la migration au démarrage suivant. Une
+migration qui échoue n'a pas besoin de retour arrière : sa transaction est annulée.
 
 ## Vérifier une archive
 
@@ -136,7 +173,8 @@ Pendant la restauration, le serveur refuse d'ouvrir la base : il répond par une
 command (pid N) holds …/codex.lock; if no backup, restore or export command is running, delete that file ». Relancé
 trop tôt, il suffit de recharger la page une fois la commande terminée. Une commande rafraîchit son verrou toutes les 30
 secondes ; tuée sans avoir pu le retirer (arrêt brutal, coupure), son verrou est ignoré dès que son processus n'existe
-plus, ou 10 minutes après son dernier rafraîchissement si son numéro de processus a été repris par un autre.
+plus, ou 10 minutes après son dernier rafraîchissement si son numéro de processus a été repris par un autre, ou si
+elle tournait dans un autre conteneur ou sur une autre machine.
 
 ## Tester une restauration
 
@@ -168,6 +206,7 @@ la sauvegarde. Un échec forcé du déplacement des fichiers (`chattr +i`) a lai
 | Message | Cause, action |
 |---|---|
 | « Le serveur Codex tourne (processus N)… » | Le serveur tient la base : l'arrêter, ou sauvegarder depuis Administration. |
+| « Le serveur Codex tourne (processus N, dans un autre conteneur ou sur une autre machine)… » | Un serveur d'un autre conteneur ou d'une autre machine tient le dossier : l'arrêter (`docker stop`), ou sauvegarder depuis Administration. S'il a été tué (`docker kill`, coupure), le verrou cesse 10 minutes après son dernier rafraîchissement ; ou, après avoir vérifié qu'aucun conteneur ne tourne sur le volume, supprimer `codex.lock`. |
 | « Une autre commande (backup ou restore) travaille sur … » | Attendre la fin de l'autre commande. Si aucune ne tourne plus, le verrou est ignoré 10 minutes après son dernier rafraîchissement, ou se supprime (`codex.lock` du dossier de données). |
 | Serveur en erreur, journal « busy: a backup/restore command (pid N) holds …/codex.lock… » | Une commande travaille sur le dossier de données : attendre sa fin et recharger la page. Si aucune commande ne tourne (`ps -p N`), supprimer le fichier `codex.lock` nommé, puis recharger. |
 | « La dernière sauvegarde date du …, il y a moins de 15 minutes » | Depuis l'application, une sauvegarde par quart d'heure au plus : la dernière archive sert de point de restauration ; attendre l'heure indiquée, ou sauvegarder en ligne de commande, serveur arrêté. |
@@ -189,6 +228,7 @@ la sauvegarde. Un échec forcé du déplacement des fichiers (`chattr +i`) a lai
   fichiers sont copiés par morceaux.
 - La mise en place d'une restauration n'est pas atomique : elle déplace des entrées une à une, et un arrêt brutal à ce
   moment (coupure, `kill -9`) laisse un état intermédiaire, sans retour arrière (voir « Dépannage », `.restore-…`).
-- Pas de sauvegarde programmée (fréquence non décidée ; le planificateur du point 38 pourra appeler la même fonction),
-  pas de chiffrement ni de copie hors site (hébergement non décidé), pas de téléchargement de l'archive depuis
-  l'application, pas de restauration depuis l'application (elle demande le serveur arrêté).
+- Pas de sauvegarde programmée par défaut (fréquence non décidée) : le planificateur la lance quand
+  `CODEX_SCHEDULE_BACKUP` en donne la fréquence (`docs/exploitation.md` §4) ; toujours pas de chiffrement par Codex
+  (volume à chiffrer, voir « Chiffrement ») ni de copie hors site (hébergement non décidé), pas de téléchargement de
+  l'archive depuis l'application, pas de restauration depuis l'application (elle demande le serveur arrêté).

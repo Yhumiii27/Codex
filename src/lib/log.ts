@@ -236,7 +236,7 @@ function tagged(res: Response, requestId: string): Response {
 
 /**
  * Marks a 5xx answer the code means to give, not a failure: an integration endpoint left disabled (503 "disabled",
- * lib/importer.ts checkBearer), the default state, which any client can ask for. withRequestLog writes it at info level,
+ * lib/server-auth.ts checkBearer), the default state, which any client can ask for. withRequestLog writes it at info level,
  * keeping error for what calls for someone (500, a store out of reach, a health check failed).
  */
 export function expectedAnswer(res: Response): Response {
@@ -306,9 +306,25 @@ export function withoutQueryValues(err: unknown): unknown {
 }
 
 /**
+ * Gives a failed Server Action's error the request identifier as digest, when it has none yet. Next.js keeps the digest
+ * an error already carries (node_modules/next/dist/server/app-render/create-error-handler.js) and hands it to the
+ * browser, never the message in production: the reference the user is shown (lib/errors.ts) is then the requestId of
+ * the "action failed" entry. A value that is not an object, or cannot take the property, is returned as is.
+ */
+export function withDigest(err: unknown, requestId: string | undefined): unknown {
+  if (!requestId || !err || typeof err !== 'object' || typeof (err as { digest?: unknown }).digest === 'string') return err;
+  try {
+    (err as { digest?: string }).digest = requestId;
+  } catch {
+    // A frozen object keeps the digest Next.js will compute; that one is not in this log.
+  }
+  return err;
+}
+
+/**
  * Runs a Server Action and logs it: its name, outcome (ok, refused, stale), duration and a new request identifier, which
  * every entry written meanwhile carries. An error it throws is logged with its stack, then thrown again for Next.js,
- * without the values of a failed query (withoutQueryValues).
+ * without the values of a failed query (withoutQueryValues), with that identifier as digest (withDigest).
  */
 export async function traceAction<R>(name: string, fn: () => Promise<R>): Promise<R> {
   const start = performance.now();
@@ -326,7 +342,7 @@ export async function traceAction<R>(name: string, fn: () => Promise<R>): Promis
       markLogged(err);
       markLogged(thrown);
       write('error', 'action', 'action failed', { action: name, durationMs: ms(start), err });
-      throw thrown;
+      throw withDigest(thrown, currentRequest()?.requestId);
     }
   });
 }
