@@ -15,8 +15,8 @@ import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
-import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
 import nextEnv from '@next/env';
+import { pgliteOptions } from '../src/lib/pglite-options.mjs';
 import { BackupError, LOCK_FILE, lockForCommand, lockPid, serverDatabaseRefusal, unlock } from '../src/lib/backup-core.mjs';
 import { checkIntegrity, INTEGRITY_LIST_MAX } from '../src/lib/integrity-core.mjs';
 
@@ -85,7 +85,7 @@ async function check() {
   if (!(await stat(path.join(dbDir, 'PG_VERSION')).then(() => true, () => false))) throw new Error(`aucune base Codex dans ${DATA_DIR} : rien à vérifier.`);
   await lockForCommand(DATA_DIR, 'integrity');
   try {
-    const pg = new PGlite({ dataDir: dbDir, extensions: { pg_trgm } });
+    const pg = new PGlite(pgliteOptions(dbDir));
     try {
       await pg.waitReady;
       const actor = (await pg.query(`select 1 from users where id = 'codex'`)).rows.length ? 'codex' : null;

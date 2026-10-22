@@ -2,18 +2,18 @@ import 'server-only';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
-import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
 import { drizzle as drizzleServer } from 'drizzle-orm/node-postgres';
-import { migrate as migrateServer } from 'drizzle-orm/node-postgres/migrator';
 import { drizzle, type PgliteDatabase } from 'drizzle-orm/pglite';
-import { migrate } from 'drizzle-orm/pglite/migrator';
 import pg from 'pg';
 import { backupDirOf, createBackup, journal, journalData, keepOf, lockForServer, readMigrations } from '../lib/backup-core.mjs';
 import { logger } from '../lib/log';
+import { pgliteOptions } from '../lib/pglite-options.mjs';
+import { declarerSchemaCodex } from '../lib/matrix';
 import { seedModeOf } from '../lib/seed-mode';
 import { appVersion } from '../lib/version';
-import { appliedMigrations, migrationPlan, type MigrationPlan } from './migrations';
+import { applyMigrations, planFor, readLayout, SERVER_PLAN, type MigrationPlan } from './migrations';
 import * as schema from './schema';
+import { DB_SCHEMA } from './schema';
 import { seed } from './seed';
 import { databaseUrlOf, embedded, PgServerClient, poolMaxOf, redactUrl, serverPool, type SqlClient, type SqlQueryable } from './sql-client';
 
@@ -32,6 +32,9 @@ export const FILES_DIR = path.join(DATA_DIR, 'files');
 export const MIGRATIONS_DIR = path.join(/*turbopackIgnore: true*/ process.cwd(), 'drizzle');
 
 const log = logger('db');
+
+/** Set by Next.js while `next build` runs (node_modules/next/dist/docs: NEXT_PHASE). */
+const BUILDING = process.env.NEXT_PHASE === 'phase-production-build';
 
 /**
  * The audit log is append-only: the database itself refuses UPDATE, DELETE and TRUNCATE on audit_log (statement-level
@@ -95,7 +98,7 @@ $$;
 create or replace function codex_fold(t text) returns text language sql immutable strict parallel safe as $$
   select lower(regexp_replace(normalize(t, nfd), '[\\u0300-\\u036f]', '', 'g') collate pg_unicode_fast)
 $$;
-create or replace function documents_terms() returns trigger language plpgsql as $$
+create or replace function documents_terms() returns trigger language plpgsql set search_path = codex as $$
 begin
   if tg_op = 'UPDATE' then
     if (new.id, new.aliases, new.title, new.keywords, new.external_ref, new.study_id, new.subtype, new.source_org, new.author_text)
@@ -147,21 +150,35 @@ export async function openDb(target?: DbTarget, opts: OpenOptions = {}): Promise
       throw err;
     });
   }
-  const client = new PGlite({ dataDir: target, extensions: { pg_trgm } });
+  const client = new PGlite(pgliteOptions(target));
   const db = drizzle(client, { schema }) as unknown as Db;
   try {
-    await client.exec('create extension if not exists pg_trgm');
-    // Refuses a database made by another schema before drizzle replays anything on it (src/db/migrations.ts).
-    const plan = migrationPlan(await appliedMigrations(client), await readMigrations(MIGRATIONS_DIR));
+    // Refuses a database made by another schema, or by the former layout when it cannot be taken up, before anything
+    // is changed in it (src/db/migrations.ts).
+    const plan = planFor(await readLayout(client), await readMigrations(MIGRATIONS_DIR), { embedded: true, remedy: pgliteRemedy(target) });
     if (plan.pending.length && opts.beforeMigrate) await opts.beforeMigrate(client, plan);
-    // All pending migrations in one transaction: a failure leaves the database as it was.
-    await migrate(db as unknown as PgliteDatabase<typeof schema>, { migrationsFolder: MIGRATIONS_DIR });
+    // The take-up, the schema codex and pg_trgm (in it: gin_trgm_ops resolves through search_path), then all pending
+    // migrations, in one transaction: a failure leaves the database as it was.
+    await client.transaction(async (tx) => {
+      if (!plan.takeUp) await tx.exec(`create schema if not exists ${DB_SCHEMA}`);
+      await applyMigrations(tx, MIGRATIONS_DIR, plan, () => tx.exec(`create extension if not exists pg_trgm schema ${DB_SCHEMA}`));
+    });
+    if (plan.takeUp) log.info('database taken up into the schema codex (tables formerly in public)', { pending: plan.pending });
   } catch (err) {
     await client.close().catch(() => {});
     throw err;
   }
   await installCompanions(client);
   return db;
+}
+
+/** What to do with a PGlite database that cannot be opened by this code (start over: the data is lost, the files kept). */
+function pgliteRemedy(target: string | undefined): string {
+  if (!target || target.startsWith('memory://')) return 'start over with an empty database';
+  // Application Mac and images: CODEX_DATA_DIR names the data directory (~/Library/Application Support/Codex/data, /data).
+  return process.env.CODEX_DATA_DIR
+    ? `stop Codex, delete ${target} (the uploaded files beside it are kept; the data of that database is lost unless exported first with the version that made it), then start it again`
+    : `npm run db:reset (deletes ${target}), or restore a backup made with this version (npm run restore)`;
 }
 
 /** The functions, triggers and collation every start lays (statements above), in that order. */
@@ -177,15 +194,20 @@ async function installCompanions(q: SqlQueryable): Promise<void> {
  */
 const SERVER_MIN_VERSION = 180000;
 
-/** Key of the session lock under which one Codex process at a time migrates a server and lays its functions. */
-const MIGRATION_LOCK = `select pg_advisory_lock(hashtext('codex:migrate'))`;
+/**
+ * Key of the session lock under which one Codex process at a time migrates a server and lays its functions. Derived from
+ * the schema's name, as every tool of the shared server derives its own (Matrix, docs/architecture-postgres.md § 4.3).
+ */
+const MIGRATION_LOCK_KEY = `${DB_SCHEMA}.migrations`;
 
 /**
- * A PostgreSQL server (DATABASE_URL): a pool of connections, the same migrations and the same functions and triggers as
- * PGlite. Several Codex processes may start on the same database at once: the first takes a session lock (advisory),
- * checks and migrates the database and lays the functions, the others wait for it, then find nothing left to do.
- * Needs PostgreSQL 18 or later, ICU (the codex_fr collation) and the pg_trgm extension (contrib), which the user must be
- * allowed to create (trusted extension: the owner of the database may) unless it is already there.
+ * A PostgreSQL server (DATABASE_URL): a pool of connections whose search_path is codex, the same migrations and the
+ * same functions and triggers as PGlite. Several Codex processes may start on the same database at once: the first
+ * takes a session lock (advisory), checks and migrates the database and lays the functions, the others wait for it,
+ * then find nothing left to do. Needs PostgreSQL 18 or later, ICU (the codex_fr collation), the schema codex, which
+ * Codex may create objects in but never creates (the shared server: Matrix, infra/postgres/init/02-schemas.sql), and
+ * the pg_trgm extension (contrib): already installed (on the shared server, by its superuser), or created here in the
+ * schema codex when the role may (the owner of a database of one's own).
  */
 async function openServer(url: string, opts: OpenOptions, onClose?: () => Promise<void>): Promise<Db> {
   const pool = serverPool(url, poolMaxOf(process.env));
@@ -202,14 +224,29 @@ async function openServer(url: string, opts: OpenOptions, onClose?: () => Promis
   try {
     const [{ v }] = (await conn.query<{ v: number }>(`select current_setting('server_version_num')::int as v`)).rows;
     if (Number(v) < SERVER_MIN_VERSION) throw new Error(`Codex needs PostgreSQL 18 or later (the server of DATABASE_URL is ${Math.floor(Number(v) / 10000)}): codex_fold uses the pg_unicode_fast collation`);
-    await conn.query(MIGRATION_LOCK);
-    const locked = { query: async <T,>(text: string, params?: unknown[]) => ({ rows: (await conn.query(text, params)).rows as T[] }), exec: (text: string) => conn.query(text) };
-    await locked.exec('create extension if not exists pg_trgm');
-    const plan = migrationPlan(await appliedMigrations(locked), await readMigrations(MIGRATIONS_DIR));
+    const [own] = (await conn.query<{ found: boolean; usable: boolean }>(`select exists (select from pg_namespace where nspname = $1) as found,
+      coalesce(has_schema_privilege($1, 'USAGE') and has_schema_privilege($1, 'CREATE'), false) as usable`, [DB_SCHEMA])).rows;
+    if (!own.found || !own.usable) {
+      throw new Error(own.found
+        ? `the role of DATABASE_URL (${redactUrl(url)}) may not create objects in the schema ${DB_SCHEMA}: it must own it (shared server: role codex_app, Matrix infra/postgres/init/02-schemas.sql)`
+        : `the database of DATABASE_URL (${redactUrl(url)}) has no schema ${DB_SCHEMA}. Codex never creates it: on the shared EPC2I server it is laid by Matrix (infra/postgres/init/02-schemas.sql); on a server of one's own, run CREATE SCHEMA ${DB_SCHEMA} AUTHORIZATION <Codex's role> once`);
+    }
+    await conn.query(`select pg_advisory_lock(hashtext($1))`, [MIGRATION_LOCK_KEY]);
+    const locked: SqlQueryable = { query: async <T,>(text: string, params?: unknown[]) => ({ rows: (await conn.query(text, params)).rows as T[] }), exec: (text: string) => conn.query(text) };
+    const plan = planFor(await readLayout(locked), await readMigrations(MIGRATIONS_DIR), SERVER_PLAN);
     if (plan.pending.length && opts.beforeMigrate) await opts.beforeMigrate(client, plan);
-    await migrateServer(db, { migrationsFolder: MIGRATIONS_DIR });
+    if (plan.pending.length) {
+      await locked.exec('begin');
+      try {
+        await applyMigrations(locked, MIGRATIONS_DIR, plan, () => trigramsReady(locked));
+        await locked.exec('commit');
+      } catch (err) {
+        await locked.exec('rollback').catch(() => {});
+        throw err;
+      }
+    }
     await installCompanions(locked);
-    await conn.query(`select pg_advisory_unlock(hashtext('codex:migrate'))`);
+    await conn.query(`select pg_advisory_unlock(hashtext($1))`, [MIGRATION_LOCK_KEY]);
   } catch (err) {
     broken = true;
     throw err;
@@ -222,16 +259,51 @@ async function openServer(url: string, opts: OpenOptions, onClose?: () => Promis
 }
 
 /**
- * A new, empty database on the server of `adminUrl` (CODEX_TEST_DATABASE_URL), for one test file: its address, and
- * drop() which removes it (WITH (FORCE): connections a failed test left open are closed).
+ * pg_trgm for the migrations (gin_trgm_ops of document_terms), in the migration's transaction. Installed already: its
+ * schema is added to this transaction's search_path when it is not codex (the shared server: a schema `extensions` of
+ * its superuser, which Codex's role may use; in codex, its functions would be open to every tool, which
+ * droits.verifier() refuses). Missing: created in the schema codex when the role may (a database of one's own); the
+ * shared server's codex_app may not (no CREATE on the database): its superuser installs it once.
+ */
+async function trigramsReady(tx: SqlQueryable): Promise<void> {
+  const [ext] = (await tx.query<{ schema: string; usable: boolean }>(`select n.nspname as schema, has_schema_privilege(n.oid, 'USAGE') as usable
+    from pg_extension e join pg_namespace n on n.oid = e.extnamespace where e.extname = 'pg_trgm'`)).rows;
+  if (ext) {
+    if (ext.schema === DB_SCHEMA) return;
+    if (!ext.usable) throw new Error(`the pg_trgm extension is installed in the schema ${ext.schema}, which Codex's role may not use: as superuser, ALTER EXTENSION pg_trgm SET SCHEMA ${DB_SCHEMA}, or GRANT USAGE ON SCHEMA ${ext.schema} to Codex's role`);
+    await tx.exec(`set local search_path to ${DB_SCHEMA}, ${ext.schema}`);
+    return;
+  }
+  await tx.exec('savepoint codex_trgm');
+  try {
+    await tx.exec(`create extension pg_trgm schema ${DB_SCHEMA}`);
+  } catch (err) {
+    await tx.exec('rollback to savepoint codex_trgm');
+    throw new Error(`the pg_trgm extension is missing from the database of DATABASE_URL and Codex's role may not create it (${err instanceof Error ? err.message : String(err)}). As superuser, once: CREATE SCHEMA IF NOT EXISTS extensions; REVOKE ALL ON SCHEMA extensions FROM PUBLIC; GRANT USAGE ON SCHEMA extensions TO <Codex's role>; CREATE EXTENSION pg_trgm SCHEMA extensions; (docs/postgres.md, « Serveur commun »)`, { cause: err });
+  }
+}
+
+/**
+ * A new, empty database on the server of `adminUrl` (CODEX_TEST_DATABASE_URL), for one test file, laid out as the
+ * shared EPC2I server lays Codex's (Matrix, infra/postgres/init): a role of its own that owns the schema codex and
+ * nothing else, without CREATE on the database nor TEMPORARY, public closed, search_path codex, pg_trgm in a schema
+ * `extensions` of the superuser that the role may use (docs/postgres.md). Its
+ * address (that role's), and drop() which removes database and role (WITH (FORCE): connections a failed test left open
+ * are closed). The admin user must be a superuser (role, extension); otherwise the test connects as that user, to a
+ * schema codex it owns.
  */
 async function throwawayDatabase(adminUrl: string): Promise<{ url: string; drop: () => Promise<void> }> {
-  const name = `codex_test_${process.pid}_${Math.random().toString(36).slice(2, 10)}`;
-  const admin = async (statement: string) => {
-    const c = new pg.Client({ connectionString: adminUrl });
+  const tag = `${process.pid}_${Math.random().toString(36).slice(2, 10)}`;
+  const name = `codex_test_${tag}`;
+  const role = `codex_app_${tag}`;
+  const password = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+  const admin = async (statements: string, database?: string) => {
+    const u = new URL(adminUrl);
+    if (database) u.pathname = `/${database}`;
+    const c = new pg.Client({ connectionString: u.toString() });
     await c.connect();
     try {
-      await c.query(statement);
+      await c.query(statements);
     } finally {
       await c.end();
     }
@@ -239,7 +311,28 @@ async function throwawayDatabase(adminUrl: string): Promise<{ url: string; drop:
   await admin(`create database ${name}`);
   const u = new URL(adminUrl);
   u.pathname = `/${name}`;
-  return { url: u.toString(), drop: () => admin(`drop database if exists ${name} with (force)`) };
+  let roleMade = false;
+  try {
+    await admin(`create role ${role} login password '${password}' nosuperuser nocreatedb nocreaterole`);
+    roleMade = true;
+    await admin(`revoke all on database ${name} from public; grant connect on database ${name} to ${role};
+      alter role ${role} in database ${name} set search_path to ${DB_SCHEMA}`);
+    await admin(`revoke all on schema public from public; create schema ${DB_SCHEMA} authorization ${role};
+      create schema extensions; revoke all on schema extensions from public; grant usage on schema extensions to ${role};
+      create extension pg_trgm schema extensions`, name);
+    u.username = role;
+    u.password = password;
+  } catch {
+    // Not a superuser: the schema codex, owned by the admin user, in the new database.
+    await admin(`create schema if not exists ${DB_SCHEMA}`, name);
+  }
+  return {
+    url: u.toString(),
+    drop: async () => {
+      await admin(`drop database if exists ${name} with (force)`);
+      if (roleMade) await admin(`drop role if exists ${role}`);
+    },
+  };
 }
 
 /**
@@ -278,7 +371,8 @@ async function init(): Promise<Db> {
   await lockForServer(DATA_DIR);
   // The archive written before migrating, journaled once the migrations are applied (the journal's own table may change).
   const before: { archive: { name: string; data: Record<string, unknown> } | null; pending: string[] } = { archive: null, pending: [] };
-  const url = databaseUrlOf(process.env);
+  // `next build` never opens the shared server (nor declares anything to Matrix): DATABASE_URL is a run-time variable.
+  const url = BUILDING ? null : databaseUrlOf(process.env);
   if (url) log.info('database: PostgreSQL server', { url: redactUrl(url) });
   const db = await openDb(url ? { url } : path.join(DATA_DIR, 'pglite'), {
     beforeMigrate: async (client, plan) => {
@@ -287,20 +381,30 @@ async function init(): Promise<Db> {
     },
   });
   if (before.archive) await journal(db.$client, 'backup_created', before.archive.name, before.archive.data, `migration ${before.pending.join(', ')}`);
+  // Declares the schema to Matrix (src/lib/matrix.ts, contract matrix.schema/1) right after the migrations, without
+  // holding the start back: never awaited, never failing (a warning at most); without MATRIX_URL nor
+  // MATRIX_DECLARATIONS_DIR, nothing is read nor sent. It reads current_schema(): codex, in both modes. The first
+  // request, or the scheduler's first look (lib/scheduler.ts), opens the database, and so declares it, once per process.
+  if (!BUILDING) void declarerSchemaCodex(<T,>(q: string) => db.$client.query<T>(q).then((r) => r.rows)).catch(() => {});
   await seedIfEmpty(db);
   return db;
 }
 
 /**
- * Seeded once, when nothing is there yet: neither a person nor a type (CODEX_SEED, lib/seed-mode.ts). On a server,
- * under a session lock, so that two processes starting on a new database do not both seed it.
+ * Seeded once, when nothing is there yet: neither a person nor a type (CODEX_SEED, CODEX_SEED_DEMO: lib/seed-mode.ts).
+ * Mode none (a server without either): left empty, said in the log; every page then says how to fill it (EmptyDatabase).
+ * On a server, under a session lock, so that two processes starting on a new database do not both seed it.
  */
-async function seedIfEmpty(db: Db): Promise<void> {
+export async function seedIfEmpty(db: Db): Promise<void> {
   const run = async () => {
     const [{ n }] = (await db.$client.query<{ n: number }>('select ((select count(*) from users) + (select count(*) from doc_types))::int as n')).rows;
     if (Number(n) !== 0) return;
     const mode = seedModeOf(process.env);
-    if (!mode) throw new Error(`CODEX_SEED="${process.env.CODEX_SEED}" is neither demo nor minimal: the new database was left empty`);
+    if (!mode) throw new Error(`CODEX_SEED="${process.env.CODEX_SEED}" is neither demo nor minimal, or contradicts CODEX_SEED_DEMO=1: the new database was left empty`);
+    if (mode === 'none') {
+      log.warn('new database left empty: set CODEX_SEED=minimal (reference data and an initial administrator) or CODEX_SEED=demo (CODEX_SEED_DEMO=1), then restart');
+      return;
+    }
     await seed(db, mode);
     log.info('new database seeded', { mode });
   };
@@ -308,9 +412,9 @@ async function seedIfEmpty(db: Db): Promise<void> {
   const s = await db.$client.session();
   let failed = true;
   try {
-    await s.exec(`select pg_advisory_lock(hashtext('codex:seed'))`);
+    await s.exec(`select pg_advisory_lock(hashtext('${DB_SCHEMA}.seed'))`);
     await run();
-    await s.exec(`select pg_advisory_unlock(hashtext('codex:seed'))`);
+    await s.exec(`select pg_advisory_unlock(hashtext('${DB_SCHEMA}.seed'))`);
     failed = false;
   } finally {
     // After an error the connection may still hold the lock: closed rather than handed back to the pool.

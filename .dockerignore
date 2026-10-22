@@ -1,5 +1,6 @@
-# Contexte de l'image (Dockerfile) : tout est exclu, sauf ce que le build lit. Ni .env*, ni clés, ni données locales
-# (.data, sauvegardes, exports), ni node_modules ou .next de la machine, ni documentation, tests, maquette ou app Mac.
+# Contexte de l'image (Dockerfile) : tout est exclu, sauf ce que le build lit. Ni .git, ni .env*, ni clés, ni données
+# locales (.data, sauvegardes, exports), ni node_modules ou .next de la machine, ni documentation, tests, maquette ou
+# app Mac (desktop/).
 *
 !package.json
 !package-lock.json
@@ -10,6 +11,7 @@
 !scripts/codex-backup.mjs
 !scripts/codex-export.mjs
 !scripts/codex-integrity.mjs
+!scripts/docker-entrypoint.sh
 # Même sous src/ : jamais de fichier d'environnement ni de clé.
 **/.env*
 **/*.pem

@@ -1544,6 +1544,33 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     cookie de session comme le menu du profil ; ajouté à la CI parce qu'il est rapide (une vingtaine de secondes) et
     a donné le même résultat à chaque passage ; Chromium seul ;
 - **Git** (D-23) : premier commit sur une branche `codex-ged-v2` plutôt que sur `main`.
+- **Réunion de la branche et de `main` (lot 11, 22 octobre ; décision M-01, qui ne se rediscute pas)** :
+  - **base de migrations refaite et figée** : `drizzle/0000_init.sql` régénérée (tout le schéma de la branche, dans
+    `codex`) puis `0001_partage.sql` (colonnes D01, D10, D18 et 7 vues `pub_` de `main`), plutôt que reprendre
+    `0000`/`0001` de `main` suivies des migrations de la branche régénérées : aucune base de production n'existe (la
+    seule en ligne, la démo Coolify, est déjà refusée) et une base faite par `main` après le 17 octobre n'a vécu qu'en
+    développement ; deux fichiers relus valent mieux qu'une longue migration de rattrapage. Les deux portent les noms
+    de `main` mais pas son contenu : une base faite par `main` est refusée, avec son remède ;
+  - **reprise automatique** d'une base PGlite de la branche d'avant le lot 11 (tables dans `public`, chaîne exacte
+    `0000` à `0005`, empreintes gardées dans `src/lib/backup-core.mjs`), après la sauvegarde automatique : `public`
+    renommé `codex`, journal remplacé par la nouvelle `0000_init`, puis `0001_partage`. Jugée sûre parce que la
+    structure obtenue est comparée à celle d'une base neuve par un test (`migrations.test.ts`) ; jamais sur un
+    serveur (Codex n'y renomme aucun schéma). Toute autre base dans `public` est refusée ;
+  - **remplissage** : `CODEX_SEED_DEMO=1` (variable de `main` et du socle Matrix) vaut `CODEX_SEED=demo` ; posée avec
+    un autre `CODEX_SEED`, le serveur refuse de démarrer. Sans l'une ni l'autre, `demo` en PGlite comme avant ; **rien
+    sur un serveur** (au lieu de `minimal` : rien n'est écrit sans qu'on l'ait demandé). La base reste vide et toutes
+    les pages mènent à `/base-vide`, qui nomme les variables à poser, plutôt qu'un démarrage automatique en `minimal` ;
+    `/api/health` répond 200 avec `empty: true` ;
+  - **verrous** : ceux de la branche (lignes verrouillées en `READ COMMITTED`, compteurs d'identifiants), pas le
+    verrou d'écriture global `codex.ecritures` de `main` ; clés des verrous de migration et de remplissage dérivées
+    du schéma (`codex.migrations`, `codex.seed`), comme le plan du dépôt Matrix le demande ;
+  - **`pg_trgm` sur le serveur commun** : installé une fois par son superutilisateur dans un schéma `extensions`, avec
+    `USAGE` pour `codex_app`, plutôt que dans `codex` (ses fonctions y seraient ouvertes à tous les outils, ce que
+    `droits.verifier()` refuse) ; correctif à porter dans le dépôt Matrix (`docs/postgres.md`) ;
+  - **export complet sur le serveur commun** : sans droit `TEMPORARY` (socle), l'instantané passe par des tables
+    `unlogged` du schéma `codex`, supprimées à la fin ;
+  - **image** : contrat Coolify gardé (port 3000, `/data`), serveur sous `node` (le point d'entrée rend à `node` un
+    volume créé par l'ancienne image root), sortie autonome, `HEALTHCHECK` ; `NEXT_PUBLIC_*` lues au lancement.
 
 ## Ce qui est explicitement hors périmètre
 
@@ -1635,6 +1662,11 @@ Les valeurs de la maquette n'existent plus dans le modèle v2 :
   - La spec Keystone décrit un index synchronisé depuis Codex (« Real time (webhooks) »). Elle laisse elle aussi
     ouvert le contrat de dépôt (« deep link? API create? »).
   - Question ouverte O-03.
+- **Réponse partielle du 15 octobre 2026** (décision M-01, consignée dans le dépôt Matrix) : « Oui, je valide le
+  format postgreSQL commun avec un schema par outil ».
+  - Codex rejoint la base commune `epc2i`, dans son schéma `codex`, avec son rôle `codex_app`.
+  - Aucun outil ne lit le schéma d'un autre : la liaison avec Keystone reste une API.
+  - Le contrat de dépôt et de synchronisation des documents projet reste ouvert (O-03).
 
 ### Premier commit
 **Fait** (D-23, D-24).
@@ -1653,7 +1685,7 @@ Fiches d'aide à la décision (état du code, options, effort, ce qui deviendrai
 |---|---|---|---|
 | O-01 | **SharePoint** : faut-il l'activer ? Si oui, faut-il un fichier par version, sans accès direct des utilisateurs à la bibliothèque ? Sans cette restriction, les utilisateurs pourraient contourner les droits de Codex. Avec elle, on modifie un fichier en le téléchargeant puis en le redéposant, sans édition Office en ligne. Posée 4 fois (7 oct. à 17:33, 18:07 et 23:18 ; 8 oct. à 06:18), jamais répondue. | utilisateur | `docs/modele-cible.md` §1 (provisoire : un fichier par version de travail, aucun accès direct) ; `src/lib/storage.ts` |
 | O-02 | **Fournisseur d'authentification** pour remplacer la simulation. Entra ID est proposé, non confirmé. | utilisateur | ce fichier ; `docs/avancement-v2.md` (Reste à faire) |
-| O-03 | **Liaison avec Keystone** : API ou base partagée ? Il faut aussi définir le contrat de dépôt et de synchronisation des documents projet. | utilisateur | ce fichier ; spec Keystone (dépôt Keystone) |
+| O-03 | **Liaison avec Keystone** : API ou base partagée ? Il faut aussi définir le contrat de dépôt et de synchronisation des documents projet. En partie répondue le 15 octobre 2026 (M-01) : base commune, un schéma par outil, sans accès croisé ; la liaison reste une API. Reste ouvert : le contrat de dépôt et de synchronisation. | utilisateur | ce fichier ; spec Keystone (dépôt Keystone) ; dépôt Matrix, `docs/architecture-postgres.md` |
 | O-04 | **Organigramme** : sociétés, sites, départements. | utilisateur | `src/db/seed-org.ts` (valeurs provisoires) |
 | O-05 | **Registre des types** : les 9 questions ouvertes et les choix de fusion à valider. | utilisateur | `docs/registre-points-ouverts.md` (seule liste qui fait foi) |
 | O-06 | **Matrice type → circuit et titulaires des fonctions** : ce sont des valeurs de démonstration. | utilisateur | `src/db/registry.ts` (`circuit`), `src/db/seed-org.ts` (`FUNCTIONS`, `HOLDERS`) |

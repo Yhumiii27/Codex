@@ -1,7 +1,17 @@
 import { sql } from 'drizzle-orm';
-import { boolean, check, date, index, integer, jsonb, pgTable, primaryKey, serial, text, timestamp, uniqueIndex, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { boolean, check, date, index, integer, jsonb, pgSchema, primaryKey, serial, text, timestamp, uniqueIndex, type AnyPgColumn } from 'drizzle-orm/pg-core';
 
 // Data model of the GED — see docs/modele-cible.md.
+
+/**
+ * PostgreSQL schema of Codex (decision M-01: one shared EPC2I database, one schema per tool): its tables, functions,
+ * triggers, collation and the journal of its migrations (codex.__drizzle_migrations), on the shared server and in PGlite
+ * alike. The pgSchema object is deliberately not exported: exported, drizzle-kit would start a migration with
+ * CREATE SCHEMA, which the codex_app role may not run (the schema is created by the server's setup, in the Matrix
+ * repository: infra/postgres/init/02-schemas.sql). Tables are declared with codex.table(…), never pgTable(…).
+ */
+export const DB_SCHEMA = 'codex';
+const codex = pgSchema(DB_SCHEMA);
 
 /** Text that is either written once (user content) or carried in both interface languages (system labels, seed data). */
 export type Localized = string | { fr: string; en: string };
@@ -30,7 +40,7 @@ export type SearchOrder = 'relevance' | 'modified' | 'issued' | 'due' | 'id' | '
  * inactive rather than deleted: no longer offered to a new document or a shared search, still shown wherever it is
  * already set; an inactive department still takes function holders, for the circuits of its documents.
  */
-export const departments = pgTable('departments', {
+export const departments = codex.table('departments', {
   code: text('code').primaryKey(), // 3 letters, used in document IDs without attachment
   labelFr: text('label_fr').notNull(),
   labelEn: text('label_en').notNull(),
@@ -43,7 +53,7 @@ export const departments = pgTable('departments', {
   active: boolean('active').notNull().default(true),
 });
 
-export const sites = pgTable('sites', {
+export const sites = codex.table('sites', {
   /** Made from the French label when the site is added; stored on documents and people, never shown, never changed. */
   key: text('key').primaryKey(),
   labelFr: text('label_fr').notNull(),
@@ -53,7 +63,7 @@ export const sites = pgTable('sites', {
 });
 
 /** People of the group. `role` is the default simulated application role; system actors (Codex, Keystone, Vigie) are flagged. */
-export const users = pgTable('users', {
+export const users = codex.table('users', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   initials: text('initials').notNull(),
@@ -62,11 +72,15 @@ export const users = pgTable('users', {
   department: text('department').references(() => departments.code),
   site: text('site').references(() => sites.key),
   isSystem: boolean('is_system').notNull().default(false),
-});
+  /** Shared data D01 (Matrix): Cursus personnel number (EMP-nnnn); null for system actors. Not edited by Codex yet. */
+  matricule: text('matricule').unique('users_matricule_unique'),
+}, (t) => [
+  check('users_matricule_check', sql`${t.matricule} IS NULL OR (${t.matricule} ~ '^EMP-[0-9]{4,}$' AND NOT ${t.isSystem})`),
+]);
 
 // ── Registry of document types (owned by Codex, read by Keystone) ─────────
 
-export const families = pgTable('families', {
+export const families = codex.table('families', {
   key: text('key').primaryKey(),
   labelFr: text('label_fr').notNull(),
   labelEn: text('label_en').notNull(),
@@ -75,7 +89,7 @@ export const families = pgTable('families', {
   sort: integer('sort').notNull().default(0),
 });
 
-export const docTypes = pgTable('doc_types', {
+export const docTypes = codex.table('doc_types', {
   code: text('code').primaryKey(),
   labelFr: text('label_fr').notNull(),
   labelEn: text('label_en').notNull(),
@@ -107,7 +121,7 @@ export const docTypes = pgTable('doc_types', {
 }, (t) => [check('doc_types_review_months', sql`${t.reviewMonths} is null or ${t.reviewMonths} between 1 and 240`)]);
 
 /** Functions that approval circuits are made of (Responsable qualité, Chef de projet…). */
-export const functions = pgTable('functions', {
+export const functions = codex.table('functions', {
   key: text('key').primaryKey(),
   labelFr: text('label_fr').notNull(),
   labelEn: text('label_en').notNull(),
@@ -116,7 +130,7 @@ export const functions = pgTable('functions', {
   sort: integer('sort').notNull().default(0),
 });
 
-export const functionHolders = pgTable('function_holders', {
+export const functionHolders = codex.table('function_holders', {
   id: serial('id').primaryKey(),
   functionKey: text('function_key').notNull().references(() => functions.key),
   /** Department code, project code or programme code for scoped functions; null for global ones. */
@@ -127,7 +141,7 @@ export const functionHolders = pgTable('function_holders', {
 // ── Projects (Keystone) and research programmes ─────────────────────────
 
 /** Projects mirrored from Keystone (simulated until the Keystone integration exists). */
-export const projects = pgTable('projects', {
+export const projects = codex.table('projects', {
   code: text('code').primaryKey(),
   name: text('name').notNull(),
   client: text('client').notNull(),
@@ -143,7 +157,7 @@ export const projects = pgTable('projects', {
  * circuits; a closed programme is made inactive rather than removed once used: it is no longer offered to a new
  * document, and the documents that have it keep it.
  */
-export const researchPrograms = pgTable('research_programs', {
+export const researchPrograms = codex.table('research_programs', {
   code: text('code').primaryKey(),
   name: text('name').notNull(),
   /** Answers for the programme's research-scoped steps when no holder is named for it (lib/actions.ts resolveFunction). */
@@ -171,12 +185,12 @@ const vocabColumns = () => ({
   createdAt: date('created_at', { mode: 'string' }).notNull(),
 });
 
-export const sourceOrgs = pgTable('source_orgs', vocabColumns(), (t) => [uniqueIndex('source_orgs_key').on(t.key)]);
-export const keywordTerms = pgTable('keyword_terms', vocabColumns(), (t) => [uniqueIndex('keyword_terms_key').on(t.key)]);
+export const sourceOrgs = codex.table('source_orgs', vocabColumns(), (t) => [uniqueIndex('source_orgs_key').on(t.key)]);
+export const keywordTerms = codex.table('keyword_terms', vocabColumns(), (t) => [uniqueIndex('keyword_terms_key').on(t.key)]);
 
 // ── Documents ───────────────────────────────────────────────────────────
 
-export const documents = pgTable(
+export const documents = codex.table(
   'documents',
   {
     /** TYPE-CONTEXTE-SEQ, frozen once a revision has been approved. */
@@ -259,12 +273,19 @@ export const documents = pgTable(
      * 0004_modele_source). Counted by lib/queries.ts listTemplates, over the documents the reader may read (D-14).
      */
     templateId: text('template_id').references((): AnyPgColumn => documents.id, { onUpdate: 'cascade' }),
+    // Shared data D10 (Matrix, infra/postgres/partage/40-codex.sql): fields of Vigie's controlled documents, now carried
+    // by Codex and published by codex.pub_documents (migration 0001_partage). Not edited by Codex yet: the periodic review
+    // of Codex follows its type (doc_types.review_months, lib/review.ts).
+    distribution: text('distribution').notNull().default(''),
+    reviewMonths: integer('review_months'),
+    processCode: text('process_code'),
   },
   // A former ID (reclassification, migration) resolves with `aliases @> '["…"]'` (lib/queries.ts getDoc, lib/importer.ts).
   // The uses of a template are counted by template_id (listTemplates).
   (t) => [
     index('documents_aliases').using('gin', t.aliases.op('jsonb_path_ops')),
     index('documents_template').on(t.templateId).where(sql`${t.templateId} is not null`),
+    check('documents_review_months_check', sql`${t.reviewMonths} > 0`),
   ],
 );
 
@@ -272,7 +293,7 @@ const docRef = () => documents.id;
 const cascade = { onUpdate: 'cascade' as const };
 
 /** Documents Keystone expects on a project (checklist of the project tab). */
-export const projectExpected = pgTable(
+export const projectExpected = codex.table(
   'project_expected',
   {
     id: serial('id').primaryKey(),
@@ -287,7 +308,7 @@ export const projectExpected = pgTable(
   (t) => [index('project_expected_project').on(t.projectCode), index('project_expected_doc').on(t.docId)],
 );
 
-export const projectEvents = pgTable('project_events', {
+export const projectEvents = codex.table('project_events', {
   id: serial('id').primaryKey(),
   projectCode: text('project_code').notNull().references(() => projects.code),
   at: timestamp('at', { mode: 'string' }).notNull(),
@@ -295,7 +316,7 @@ export const projectEvents = pgTable('project_events', {
 });
 
 /** Named readers of a confidential or "très confidentiel" document (lib/access.ts). */
-export const documentReaders = pgTable(
+export const documentReaders = codex.table(
   'document_readers',
   {
     docId: text('doc_id').notNull().references(docRef, cascade),
@@ -309,7 +330,7 @@ export const documentReaders = pgTable(
  * Types a template (type FRM, context QMS) is meant for: « Nouveau depuis un modèle » offers it first to a document of
  * one of these types (lib/actions.ts setTemplateTypes). A type a template is linked to counts as in use in the register.
  */
-export const templateTypes = pgTable(
+export const templateTypes = codex.table(
   'template_types',
   {
     docId: text('doc_id').notNull().references(docRef, { onUpdate: 'cascade', onDelete: 'cascade' }),
@@ -328,7 +349,7 @@ export type TermField = 'id' | 'title' | 'keyword' | 'ref' | 'other';
  * documents_terms, src/db/index.ts), never by the application. Values from elsewhere (type label in the reader's
  * language, names of the owner and of the author) are matched when the search runs (lib/queries.ts searchDocs).
  */
-export const documentTerms = pgTable(
+export const documentTerms = codex.table(
   'document_terms',
   {
     docId: text('doc_id').notNull().references(docRef, { onUpdate: 'cascade', onDelete: 'cascade' }),
@@ -354,7 +375,7 @@ export type LinkSkip = 'inactive' | 'hold' | 'linked';
  * to the other (`see_also`). One record per pair of documents, whatever its direction: no link to itself, no duplicate,
  * never both « remplace » and « remplacé par ». Both ends follow a reclassification (cascade on documents.id).
  */
-export const documentLinks = pgTable(
+export const documentLinks = codex.table(
   'document_links',
   {
     id: serial('id').primaryKey(),
@@ -374,7 +395,7 @@ export const documentLinks = pgTable(
   ],
 );
 
-export const revisions = pgTable(
+export const revisions = codex.table(
   'revisions',
   {
     id: serial('id').primaryKey(),
@@ -401,7 +422,7 @@ export const revisions = pgTable(
 );
 
 /** Working versions A.1, A.2… of a revision; the last one becomes the revision when approved. */
-export const workingVersions = pgTable(
+export const workingVersions = codex.table(
   'working_versions',
   {
     id: serial('id').primaryKey(),
@@ -445,7 +466,7 @@ export type PreviewStatus = 'ready' | 'failed';
  * document_terms); a backup keeps its file; the orphan check counts its key as named. `failed`: the last attempt failed
  * (`error`: timeout, failed, invalid), tried again an hour later at the earliest.
  */
-export const versionPreviews = pgTable(
+export const versionPreviews = codex.table(
   'version_previews',
   {
     workingVersionId: integer('working_version_id').primaryKey().references(() => workingVersions.id, { onDelete: 'cascade' }),
@@ -470,7 +491,7 @@ export const versionPreviews = pgTable(
 
 // ── Approval workflows ──────────────────────────────────────────────────
 
-export const workflows = pgTable(
+export const workflows = codex.table(
   'workflows',
   {
     id: text('id').primaryKey(),
@@ -503,7 +524,7 @@ export const workflows = pgTable(
   ],
 );
 
-export const workflowSteps = pgTable(
+export const workflowSteps = codex.table(
   'workflow_steps',
   {
     workflowId: text('workflow_id').notNull().references(() => workflows.id),
@@ -519,7 +540,7 @@ export const workflowSteps = pgTable(
   (t) => [primaryKey({ columns: [t.workflowId, t.idx] }), index('workflow_steps_assignee').on(t.assigneeId)],
 );
 
-export const workflowComments = pgTable(
+export const workflowComments = codex.table(
   'workflow_comments',
   {
     id: serial('id').primaryKey(),
@@ -535,7 +556,7 @@ export const workflowComments = pgTable(
 
 export type ChangeStatus = 'submitted' | 'accepted' | 'rejected' | 'implemented';
 
-export const changeRequests = pgTable(
+export const changeRequests = codex.table(
   'change_requests',
   {
     /** Vigie reference (ECR-…). */
@@ -580,7 +601,7 @@ export const changeRequests = pgTable(
 // ── Identifier counters ─────────────────────────────────────────────────
 
 /** Last number handed out per sequence (lib/codification.ts): document IDs per type and context, W-n circuits, ECR references per year. */
-export const idCounters = pgTable('id_counters', {
+export const idCounters = codex.table('id_counters', {
   scope: text('scope').primaryKey(),
   last: integer('last').notNull(),
 });
@@ -713,7 +734,7 @@ export type AuditData = {
 export type IntegrityItem = { v: number; doc: string; label: string };
 
 /** Append-only: the database refuses UPDATE, DELETE and TRUNCATE on it (src/db/index.ts). */
-export const auditLog = pgTable(
+export const auditLog = codex.table(
   'audit_log',
   {
     id: serial('id').primaryKey(),
@@ -738,6 +759,9 @@ export const auditLog = pgTable(
   (t) => [
     check('audit_log_subject', sql`${t.docId} is not null or (${t.targetKind} is not null and ${t.targetId} is not null)`),
     index('audit_log_at').on(t.at, t.id),
+    // Index of codex.pub_journal laid by the shared data (Matrix, partage/40-codex.sql, D18): kept here so that replaying
+    // that file changes nothing; audit_log_at above serves Codex's own reads.
+    index('audit_log_at_idx').on(t.at),
     index('audit_log_doc').on(t.docId, t.userId, t.action, t.at),
     index('audit_log_user').on(t.userId, t.at, t.id),
     index('audit_log_action').on(t.action, t.at, t.id),
@@ -745,7 +769,7 @@ export const auditLog = pgTable(
   ],
 );
 
-export const rolePermissions = pgTable(
+export const rolePermissions = codex.table(
   'role_permissions',
   {
     role: text('role').notNull(),
@@ -760,7 +784,7 @@ export const rolePermissions = pgTable(
  * they may read (lib/access.ts). Personal: seen by its owner only; department: by the members of `department`; group: by
  * everyone. Only records managers and administrators share (lib/access.ts mayShareSearches). `sort`: display order.
  */
-export const savedSearches = pgTable(
+export const savedSearches = codex.table(
   'saved_searches',
   {
     id: serial('id').primaryKey(),
@@ -796,7 +820,7 @@ export type SchedulerStatus = 'running' | 'ok' | 'skipped' | 'error';
  * what its last run did. A process runs a task only once its last start is at least one interval old, so that several
  * processes on one database do not each run it on their own schedule.
  */
-export const schedulerRuns = pgTable('scheduler_runs', {
+export const schedulerRuns = codex.table('scheduler_runs', {
   task: text('task').primaryKey(),
   leaseOwner: text('lease_owner'),
   leaseUntil: timestamp('lease_until', { mode: 'string', withTimezone: true }),
@@ -816,7 +840,7 @@ export const schedulerRuns = pgTable('scheduler_runs', {
  * same signature sent again within it is refused as a replay, whichever Codex process receives it. `digest`: SHA-256 of
  * the endpoint, timestamp and signature, never the secret or the body.
  */
-export const integrationSignatures = pgTable(
+export const integrationSignatures = codex.table(
   'integration_signatures',
   {
     digest: text('digest').primaryKey(),

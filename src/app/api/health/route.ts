@@ -1,10 +1,12 @@
 import { getDb } from '@/db';
+import { databaseIsEmpty } from '@/lib/empty-database';
 import { logger, withRequestLog } from '@/lib/log';
 import { probeStore } from '@/lib/storage';
 import { appVersion } from '@/lib/version';
 
 // Health of the server, for the supervision (point 49 of docs/reste-a-faire.md, docs/exploitation.md): GET or HEAD
-// /api/health answers 200 when the database answers a query and the active file store can be used, 503 otherwise.
+// /api/health answers 200 when the database answers a query and the active file store can be used, 503 otherwise
+// (`empty: true` while a server database is left unseeded).
 // No session, no token: it says only which check failed, never why (the reason goes to the technical log, under the
 // request's identifier), nor anything of the documents. A SharePoint store is checked at most once a minute.
 
@@ -46,7 +48,10 @@ async function health() {
   const database = await run('database', async () => (await getDb()).$client.query('select 1'));
   const storage = await run('storage', () => probeStore());
   const ok = database.ok && storage.ok;
-  const body = { status: ok ? 'ok' : 'fail', version: await appVersion(), checks: { database, storage }, time: new Date().toISOString() };
+  // A server database left empty (no CODEX_SEED, src/db/index.ts) still answers 200: the server works and its pages say
+  // how to fill it; `empty` tells the supervision so.
+  const empty = database.ok && (await databaseIsEmpty().catch(() => false));
+  const body = { status: ok ? 'ok' : 'fail', version: await appVersion(), checks: { database, storage }, ...(empty ? { empty: true } : {}), time: new Date().toISOString() };
   return { ok, body };
 }
 

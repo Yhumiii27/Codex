@@ -265,7 +265,7 @@ describe('the technical log of the Server Actions', () => {
     const reason = await decideStep('W-1', false, 1, 'Motif confidentiel : licenciement de Dupont\u0000').catch((e: unknown) => e);
     const failed = lines.filter((l) => l.entry.msg === 'action failed');
     expect(failed.map((l) => [l.level, l.entry.action])).toEqual([['error', 'addComment'], ['error', 'decideStep']]);
-    expect(failed[0].entry.err).toMatchObject({ message: expect.stringMatching(/^Failed query: insert into "workflow_comments"/), cause: { code: '22P05' } });
+    expect(failed[0].entry.err).toMatchObject({ message: expect.stringMatching(/^Failed query: insert into "codex"\."workflow_comments"/), cause: { code: '22P05' } });
     expect(JSON.stringify(lines)).not.toMatch(/Rachat|ACME|licenciement|Dupont|params/);
     // What Next.js prints of the error thrown (util.inspect: own properties and causes).
     for (const thrown of [comment, reason]) {

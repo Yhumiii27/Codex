@@ -13,7 +13,7 @@ const REV_STATUSES = ['draft', 'in_review', 'approved', 'in_force', 'superseded'
 function viewer(id: string, { department = 'COM', perms = ['read'], seesAll = false }: { department?: string; perms?: Perm[]; seesAll?: boolean } = {}): Viewer {
   const granted = new Set<Perm>(perms);
   return {
-    user: { id, name: id, initials: id.slice(0, 2).toUpperCase(), role: 'collaborateur', title: null, department, site: null, isSystem: false },
+    user: { id, name: id, initials: id.slice(0, 2).toUpperCase(), role: 'collaborateur', title: null, department, site: null, isSystem: false, matricule: null },
     seesAll,
     can: (p) => granted.has(p),
   };

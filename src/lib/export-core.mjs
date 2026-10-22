@@ -19,7 +19,8 @@
 // meanwhile on PGlite, as for a backup), and read from them afterwards in batches. The journal, append-only, is read up
 // to the last entry of that transaction. On a PostgreSQL server (DATABASE_URL) the transaction is REPEATABLE READ, so
 // that every table is copied from the same snapshot while writes go on, and the whole export runs on one connection
-// (`session()` of src/db/sql-client.ts), the only one that sees its temporary tables. There, a journal entry written by
+// (`session()` of src/db/sql-client.ts), the only one that sees its temporary tables (unlogged tables of the schema
+// codex where the role may not create temporary ones: the shared server). There, a journal entry written by
 // a transaction still running at the snapshot, with a lower number than its last entry, may be in the export or not.
 // Files are read as the export goes: a stored file is never written again, and one renamed meanwhile (a
 // reclassification) is looked up again under the key its working version now records.
@@ -421,7 +422,7 @@ export function fieldName(column) {
 }
 
 /**
- * The tables of the application (schema public), each with its columns in order and the columns that order its rows
+ * The tables of the application (schema codex, but the journal of the migrations), each with its columns in order and the columns that order its rows
  * (its primary key, else every column).
  * @param {Queryable} q
  * @returns {Promise<TableInfo[]>}
@@ -435,7 +436,7 @@ async function listTables(q) {
         join pg_attribute a on a.attrelid = i.indrelid and a.attnum = k.attnum
         where i.indrelid = c.oid and i.indisprimary) as pk
     from pg_class c join pg_namespace n on n.oid = c.relnamespace
-    where n.nspname = 'public' and c.relkind in ('r', 'p') order by c.relname`);
+    where n.nspname = current_schema() and c.relkind in ('r', 'p') and c.relname not like 'codex\\_export\\_%' and c.relname <> '__drizzle_migrations' order by c.relname`);
   return rows.map((r) => ({ name: r.name, columns: r.columns, order: r.pk?.length ? r.pk : r.columns }));
 }
 
@@ -473,6 +474,11 @@ async function takeSnapshot(pg, onStart) {
     // First statement of the transaction: one snapshot for every table (a no-op for PGlite's one connection).
     await tx.exec('set transaction isolation level repeatable read');
     const all = await listTables(tx);
+    // The shared EPC2I server gives Codex's role no TEMPORARY on the database (Matrix, infra/postgres/init/01): the copies
+    // are then unlogged tables of the schema codex, under the same names, dropped as temporary ones are (dropSnapshot).
+    // An export cut short by a crash leaves them behind (codex_export_*, never read by another export: listTables).
+    const [{ temp }] = (await tx.query(`select has_database_privilege(current_database(), 'TEMPORARY') as temp`)).rows;
+    const kind = temp ? 'temp' : 'unlogged';
     const journal = all.find((t) => t.name === JOURNAL);
     if (!journal) throw new ExportError('format', 'no audit_log table');
     const tables = all.filter((t) => t.name !== JOURNAL && !DERIVED_TABLES.includes(t.name));
@@ -481,13 +487,13 @@ async function takeSnapshot(pg, onStart) {
     for (const t of tables) {
       const snap = ident(`${tag}_${t.name}`);
       // __n numbers the rows in the table's order, so that they are read back in batches without sorting again.
-      await tx.exec(`create temp table ${snap} as select row_number() over (order by ${t.order.map((c) => `t.${ident(c)}`).join(', ')}) as __n, t.* from ${ident(t.name)} t;
+      await tx.exec(`create ${kind} table ${snap} as select row_number() over (order by ${t.order.map((c) => `t.${ident(c)}`).join(', ')}) as __n, t.* from ${ident(t.name)} t;
         create index on ${snap} (__n);`);
       rows[t.name] = (await tx.query(`select count(*)::int as n from ${snap}`)).rows[0].n;
     }
     // A failed query would abort the transaction: the migrations' table is looked up first.
-    const [{ migrations }] = (await tx.query(`select to_regclass('drizzle.__drizzle_migrations') is not null as migrations`)).rows;
-    const [m] = migrations ? (await tx.query('select hash, created_at::text as created_at from drizzle.__drizzle_migrations order by created_at desc limit 1')).rows : [];
+    const [{ migrations }] = (await tx.query(`select to_regclass('codex.__drizzle_migrations')::text as migrations`)).rows;
+    const [m] = migrations ? (await tx.query(`select hash, created_at::text as created_at from ${migrations} order by created_at desc limit 1`)).rows : [];
     const [v] = (await tx.query('select version() as v')).rows;
     const wv = tables.some((t) => t.name === 'working_versions')
       ? (await tx.query(`select count(*)::int as n, coalesce(sum(size), 0)::float8 as bytes from ${ident(`${tag}_working_versions`)} where file_key is not null`)).rows[0]

@@ -3130,3 +3130,52 @@ l'être sans elles.
   questions de l'audit listées en tête de [reste-a-faire.md](reste-a-faire.md).
 - **Suites possibles sans décision** : `--narrow --lang en`.
 
+
+## 20. Lot 11 (22 oct.)
+
+**Réunir la branche et `main` : PostgreSQL commun (schéma `codex`) et déclaration à Matrix.** `main` avait reçu, le
+17 octobre, deux commits absents de la branche v2 : `944d80e` (déclaration du schéma à Matrix, `src/lib/matrix.ts`) et
+`5f692f3` (bascule vers le serveur commun, décision M-01 du 15 octobre : « Oui, je valide le format postgreSQL commun
+avec un schema par outil »). Le site Coolify, construit depuis `main`, était en panne : son volume `/data/pglite`
+contenait une base d'avant le schéma `codex`, refusée exprès. Le lot réunit les deux par un **commit de fusion**
+(`git merge origin/main`, ni rebase ni réécriture), sans rediscuter M-01 et sans trancher aucune question O-01 à O-11.
+
+| Sujet | Ce qui est retenu | Pourquoi |
+| --- | --- | --- |
+| Schéma | `pgSchema('codex')` (non exporté) de `main`, appliqué aux 31 tables de la branche ; fonctions, déclencheurs, collation et journal des migrations dans `codex`, sur le serveur et en PGlite (`src/lib/pglite-options.mjs` : `search_path` « codex, public » au démarrage de PGlite, qui ne lit pas `ALTER DATABASE … SET`) | M-01 ; un seul code pour les deux moteurs |
+| Migrateur | celui de la branche (`src/db/migrations.ts` : empreintes, refus d'une autre chaîne, une transaction, sauvegarde avant, `npm run db:migrate`), sans `migrate()` de Drizzle (`CREATE SCHEMA`) ; `src/db/migrate.ts` et `src/db/types.ts` de `main` retirés | `codex_app` n'a pas `CREATE` sur la base ; garder les garanties de la branche |
+| Base de migrations | `0000_init` régénérée (tout le schéma) et `0001_partage` (colonnes D01, D10, D18, 7 vues `pub_` de `main`), figées | aucune base de production ; deux fichiers relus plutôt qu'une migration de rattrapage (`decisions.md`, choix non validés) |
+| Bases anciennes | base PGlite de la branche (chaîne `0000` à `0005`, dans `public`) reprise automatiquement après sauvegarde ; toute autre refusée, intacte, avec le remède | données locales de la branche (app Mac) gardées ; structure reprise comparée à une base neuve par test |
+| Serveur | pool `search_path=codex`, `application_name=codex`, `CODEX_DB_POOL` (ancien `CODEX_DB_POOL_MAX` lu) ; schéma exigé, jamais créé ; `pg_trgm` installé par le superutilisateur hors de `codex` ; verrous de la branche (`READ COMMITTED`), pas le verrou global `codex.ecritures` | socle Matrix ; `droits.verifier()` |
+| Remplissage | `CODEX_SEED=demo|minimal` et `CODEX_SEED_DEMO=1` (= `demo`, refusé avec un autre `CODEX_SEED`) ; sur un serveur, rien sans l'un d'eux : page `/base-vide` au lieu de l'erreur `user.role` de `getCtx`, `/api/health` 200 avec `empty: true` | le plus prudent : rien n'est écrit sans demande |
+| Matrix | déclaration gardée, jamais attendue ni bloquante, jamais pendant `next build` (`NEXT_PHASE`), juste après les migrations, au premier accès à la base (requête ou premier passage du planificateur) | comme `main` |
+| Export complet | sans `TEMPORARY` (socle), instantané dans des tables `unlogged` `codex_export_*` du schéma, supprimées à la fin ; journal des migrations exclu | export sur le serveur commun |
+| Image | contrat Coolify gardé (port 3000, `CODEX_DATA_DIR=/data`, volume `/data`, sauvegardes `/data/backups`) avec les apports du lot 10 (sortie autonome, non root, `HEALTHCHECK`, aucun secret) ; point d'entrée qui rend à `node` un volume créé en root par l'ancienne image ; `NEXT_PUBLIC_*` lues au lancement | ne rien casser côté serveur |
+| Build | `databaseIsEmpty` appelle `connection()` : le prérendu de `/_not-found` n'ouvre plus la base au build | trouvé par le build : la mise en page interrogeait la base avant `cookies()` |
+
+**Écarts avec le dépôt Matrix** (non modifié ; correctifs décrits dans [postgres.md](postgres.md)) : `pub_journal.quand`
+(instant UTC dans la branche : `40-codex.sql` rejoué tel quel échoue sur le changement de type ; corrigé, il laisse les
+7 vues identiques) ; `pg_trgm` à installer par le socle dans un schéma `extensions` (dans `codex`, `90-droits.sql`
+échoue : fonctions de l'extension exécutables par tous) ; socle en PostgreSQL 16 alors que Codex exige 18 ; commentaire
+de `pub_journal.objet` ; plan § 4.5 et § 6 (verrou d'écriture, `migrate.ts`).
+
+**Vérifications** (conteneur Linux, Node 22, PostgreSQL 18.3 de `/opt/codex-pg18` dans `/var/tmp`, port 55433) :
+
+- Socle Matrix rejoué (`init/01` à `03`, faute de psql par un petit lecteur de ses commandes `\getenv`, `\gset`,
+  `\gexec`, `\if`, `\connect`) : `verifier-droits.sql` conforme, 109 cas, avant et après Codex.
+- Codex en `codex_app` : sans `pg_trgm`, refus clair et schéma intact ; avec, `npm run db:migrate` applique `0000_init`
+  et `0001_partage` (32 tables dont le journal, 7 vues, tout à `codex_app`, rien dans `public`) ; partage 10, 40
+  corrigé, 90, 95 rejoués, `droits.verifier()` sans erreur ; Keystone lit 62 documents publiés sur 63 (un « très
+  confidentiel »), pas la table ; `matrix.journal_unifie` reçoit les 168 entrées de Codex.
+- `npm run build && npm start` avec `DATABASE_URL` : sans remplissage, `/api/health` 200 `empty: true`, chaque page
+  rend « La base de Codex est vide », aucune erreur ; déclaration à Matrix écrite (31 tables, ni journal ni vues) ;
+  avec `CODEX_SEED_DEMO=1`, base remplie une fois, 9 écrans en 200 ou redirection attendue.
+- Image Docker : voir [exploitation.md](exploitation.md) §10 (refus de la vieille base, `rm -rf /data/pglite`, démarrage
+  sous `node`, `HEALTHCHECK` sain ; même image sur le serveur).
+- `npm test` (PGlite, `.data` déplacé) et `npm run test:pg` (bases disposées comme le socle : rôle sans `CREATE` ni
+  `TEMPORARY`, `pg_trgm` dans `extensions`) : voir le rapport du lot ; nouveaux tests `partage.test.ts` (contrat des
+  vues), `empty-database.test.ts`, reprise et refus dans `migrations.test.ts`, règles des migrations dans
+  `tests/unit/migrations.test.ts`. `npm run a11y` (0 violation) et `npm run e2e` (5 parcours) passent.
+- **Coolify, à faire** : rien sur le port ni le volume ; supprimer `/data/pglite` (procédure §10) ; la case « disponible
+  au build » des `NEXT_PUBLIC_*` n'est plus utile ; au raccordement au serveur commun, `DATABASE_URL` et
+  `CODEX_SEED_DEMO=1` ou `CODEX_SEED=minimal`.

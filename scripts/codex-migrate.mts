@@ -20,8 +20,8 @@
 import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
-import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
 import nextEnv from '@next/env';
+import { pgliteOptions } from '../src/lib/pglite-options.mjs';
 
 const args = process.argv.slice(2);
 const DEV = args.includes('--dev') || process.env.NODE_ENV === 'development';
@@ -31,7 +31,7 @@ nextEnv.loadEnvConfig(process.cwd(), DEV, { info: () => {}, error: (...a: unknow
 
 // Imported once the variables are loaded: src/db reads CODEX_DATA_DIR when it is loaded.
 const { DATA_DIR, FILES_DIR, MIGRATIONS_DIR, openDb } = await import('../src/db/index');
-const { appliedMigrations, migrationPlan } = await import('../src/db/migrations');
+const { planFor, readLayout, SERVER_PLAN } = await import('../src/db/migrations');
 const { databaseUrlOf, PgServerClient, redactUrl, serverPool } = await import('../src/db/sql-client');
 const { BackupError, backupDirOf, createBackup, journal, journalData, keepOf, LOCK_FILE, lockForCommand, lockPid, readMigrations, unlock } = await import('../src/lib/backup-core.mjs');
 
@@ -47,8 +47,9 @@ function explain(err: unknown): string {
   return `Erreur : ${err instanceof Error ? err.message : String(err)}`;
 }
 
-const say = (pending: string[], fresh: boolean) =>
-  fresh ? `Base neuve : ${pending.length} migration(s) à appliquer (${pending.join(', ')}).`
+const say = (pending: string[], fresh: boolean, takeUp?: boolean) =>
+  takeUp ? `Base d'avant le schéma codex (tables dans public) : reprise dans le schéma codex, puis ${pending.length} migration(s) (${pending.join(', ')}).`
+    : fresh ? `Base neuve : ${pending.length} migration(s) à appliquer (${pending.join(', ')}).`
     : pending.length ? `Migration(s) en attente : ${pending.join(', ')}.` : 'Aucune migration en attente : la base suit le schéma du code.';
 
 async function runServer(url: string) {
@@ -57,11 +58,11 @@ async function runServer(url: string) {
   const client = new PgServerClient(pool);
   let plan;
   try {
-    plan = migrationPlan(await appliedMigrations(client), await readMigrations(MIGRATIONS_DIR));
+    plan = planFor(await readLayout(client), await readMigrations(MIGRATIONS_DIR), SERVER_PLAN);
   } finally {
     await client.close();
   }
-  console.log(say(plan.pending, plan.fresh));
+  console.log(say(plan.pending, plan.fresh, plan.takeUp));
   if (CHECK) {
     if (plan.pending.length) process.exitCode = 1;
     return;
@@ -83,18 +84,18 @@ async function runPglite() {
   await lockForCommand(DATA_DIR, 'migrate');
   try {
     const code = await readMigrations(MIGRATIONS_DIR);
-    let plan = { fresh: true, pending: code.map((m: { tag: string }) => m.tag) };
+    let plan: { fresh: boolean; pending: string[]; takeUp?: boolean } = { fresh: true, pending: code.map((m: { tag: string }) => m.tag) };
     if (exists) {
-      const pg = new PGlite({ dataDir: DB_DIR, extensions: { pg_trgm } });
+      const pg = new PGlite(pgliteOptions(DB_DIR));
       try {
         await pg.waitReady;
-        plan = migrationPlan(await appliedMigrations(pg), code);
-        console.log(say(plan.pending, plan.fresh));
+        plan = planFor(await readLayout(pg), code, { embedded: true, remedy: `remplacez ${DB_DIR} (npm run db:reset pour .data), ou restaurez une sauvegarde faite par cette version` });
+        console.log(say(plan.pending, plan.fresh, plan.takeUp));
         if (CHECK) {
           if (plan.pending.length) process.exitCode = 1;
           return;
         }
-        if (plan.pending.length && !plan.fresh && !NO_BACKUP) {
+        if ((plan.pending.length || plan.takeUp) && !plan.fresh && !NO_BACKUP) {
           const res = await createBackup({
             pg, filesDir: FILES_DIR, dbDir: DB_DIR, backupDir: backupDirOf(DATA_DIR, process.env), keep: keepOf(process.env),
             mode: 'offline', by: 'cli', migrations: code, app: null,

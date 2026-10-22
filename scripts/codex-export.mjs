@@ -15,8 +15,8 @@ import { createReadStream } from 'node:fs';
 import { mkdir, open, readFile, rename, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
-import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
 import nextEnv from '@next/env';
+import { pgliteOptions } from '../src/lib/pglite-options.mjs';
 import { BackupError, LOCK_FILE, lockForCommand, lockPid, readMigrations, serverDatabaseRefusal, unlock } from '../src/lib/backup-core.mjs';
 import { ExportError, exportArchive, exportName, verifyExport } from '../src/lib/export-core.mjs';
 
@@ -128,7 +128,7 @@ async function create(out) {
   await lockForCommand(DATA_DIR, 'export');
   const partial = `${file}.partial`;
   try {
-    const pg = new PGlite({ dataDir: dbDir, extensions: { pg_trgm } });
+    const pg = new PGlite(pgliteOptions(dbDir));
     try {
       await pg.waitReady;
       const actor = (await pg.query(`select 1 from users where id = 'codex'`)).rows.length ? 'codex' : null;

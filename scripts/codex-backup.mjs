@@ -17,8 +17,8 @@
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
-import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
 import nextEnv from '@next/env';
+import { pgliteOptions } from '../src/lib/pglite-options.mjs';
 import {
   BackupError, LOCK_FILE, backupDirOf, createBackup, journal, journalData, keepOf, listBackups, lockForCommand, lockPid, pendingMigrations,
   readMigrations, restoreBackup, serverDatabaseRefusal, unlock, verifyArchive,
@@ -150,7 +150,7 @@ async function create() {
   if (!(await stat(path.join(dbDir, 'PG_VERSION')).then(() => true, () => false))) throw new BackupError('no_database');
   await lockForCommand(DATA_DIR, 'backup');
   try {
-    const pg = new PGlite({ dataDir: dbDir, extensions: { pg_trgm } });
+    const pg = new PGlite(pgliteOptions(dbDir));
     try {
       await pg.waitReady;
       const res = await createBackup({
@@ -187,7 +187,7 @@ async function restore(arg, replace) {
   const file = await archivePath(arg);
   await lockForCommand(DATA_DIR, 'restore');
   try {
-    const res = await restoreBackup({ archive: file, dataDir: DATA_DIR, replace, PGlite, extensions: { pg_trgm }, migrations: await readMigrations(MIGRATIONS) });
+    const res = await restoreBackup({ archive: file, dataDir: DATA_DIR, replace, PGlite, options: pgliteOptions(undefined), migrations: await readMigrations(MIGRATIONS) });
     console.log(`Base et fichiers restaurés dans ${DATA_DIR} depuis ${file}\n${describe(res.manifest)}`);
     if (res.aside) console.log(`  Base et fichiers remplacés mis de côté dans ${res.aside} (à supprimer une fois la restauration vérifiée).`);
     if (res.pending.length) console.log(`  Migrations appliquées au prochain démarrage : ${res.pending.join(', ')}`);

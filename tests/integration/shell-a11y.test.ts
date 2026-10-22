@@ -15,6 +15,7 @@ import { actAs, setLangCookie } from '../support/session';
 vi.mock('@/db', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/db')>()), getDb: async () => (await import('../support/db')).currentDb() }));
 vi.mock('next/headers', () => ({ cookies: async () => (await import('../support/session')).cookieStore() }));
 vi.mock('next/cache', () => ({ refresh: () => {} }));
+vi.mock('next/server', async (importOriginal) => ({ ...(await importOriginal<typeof import('next/server')>()), connection: async () => {} }));
 vi.mock('next/link', () => ({ default: ({ href, children, ...rest }: { href: string; children: ReactNode }) => createElement('a', { href, ...rest }, children) }));
 // The router of the browser: the shell is rendered as for /aide.
 vi.mock('next/navigation', () => ({ usePathname: () => '/aide', useSearchParams: () => new URLSearchParams(), useRouter: () => ({ push() {}, replace() {}, refresh() {} }) }));

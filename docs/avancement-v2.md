@@ -59,6 +59,19 @@ entièrement et 14 en partie.
 - Vérification dans un navigateur à chaque étape (Chromium, copie de la base de démonstration), décrite dans
   `docs/historique.md`.
 
+- Bascule PostgreSQL (17 octobre, décision M-01, plan `docs/architecture-postgres.md` § 6 du dépôt Matrix) : tables
+  dans le schéma `codex` (`pgSchema`), migrateur propre (`src/db/migrate.ts`), deux modes (`DATABASE_URL` : serveur
+  commun en `codex_app` ; sinon PGlite), verrou d'écriture, garde-fou contre une base PGlite antérieure, migration
+  `partage` (colonnes D01, D10, D15, index D18, 7 vues `pub_`). Essayé dans les deux modes : écrans, registre, deux
+  instances simultanées, 20 imports simultanés (20 identifiants distincts), déclaration à Matrix (22 tables).
+  **Une base `.data/` antérieure est refusée** : `npm run db:reset`.
+- Lot 11 (22 octobre) : réunion de la branche v2 et de cette bascule, par un commit de fusion. Le mécanisme de la
+  branche est gardé (migrations incrémentales, refus d'une base d'un autre schéma, sauvegarde avant migration,
+  `npm run db:migrate`, verrous en `READ COMMITTED`), adapté au schéma `codex` : `src/db/migrate.ts` et le verrou
+  d'écriture global de la bascule sont remplacés par `src/db/migrations.ts`. Base de migrations refaite
+  (`0000_init` complète, `0001_partage`) ; une base PGlite de la branche d'avant le lot 11 est reprise
+  automatiquement, une autre est refusée avec son remède. Détail : `docs/historique.md` § 20, `docs/postgres.md`.
+
 ## Reste à faire
 
 Classé selon ce qui le bloque : le détail est en tête de `docs/reste-a-faire.md`.

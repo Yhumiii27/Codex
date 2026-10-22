@@ -3,7 +3,7 @@ import { closeSync, existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, ope
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
-import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
+import { pgliteOptions } from '@/lib/pglite-options.mjs';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DATA_DIR, FILES_DIR, openDb, schema as s } from '@/db';
@@ -94,7 +94,7 @@ function backup(opts: Partial<Parameters<typeof createBackup>[0]> = {}) {
 }
 
 const restore = (archive: string, dataDir: string, extra: Partial<Parameters<typeof restoreBackup>[0]> = {}) =>
-  restoreBackup({ archive, dataDir, PGlite, extensions: { pg_trgm }, migrations, ...extra });
+  restoreBackup({ archive, dataDir, PGlite, options: pgliteOptions(undefined), migrations, ...extra });
 
 /** Overwrites one byte of a file. */
 function flip(file: string, at: number) {

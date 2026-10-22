@@ -3,8 +3,9 @@
 Gestion électronique des documents du groupe, construite d'après la maquette Claude Design
 (`design/GED Groupe.dc.html`, design system Nocturne dans `design/_ds/`).
 
-Même socle que Keystone : **Next.js 16 (App Router) · React 19 · PGlite (Postgres embarqué) + Drizzle**. Un serveur
-PostgreSQL 18 peut remplacer PGlite, en option (`DATABASE_URL`, `docs/postgres.md`).
+Même socle que Keystone : **Next.js 16 (App Router) · React 19 · PGlite (Postgres embarqué) + Drizzle**. En
+ligne, Codex utilise le serveur PostgreSQL commun EPC2I (décision M-01 : base `epc2i`, schéma `codex`, rôle
+`codex_app`) ; PGlite reste la base locale et de repli (`DATABASE_URL`, `docs/postgres.md`).
 
 ## Démarrer
 
@@ -27,11 +28,23 @@ Au premier lancement, la base locale est créée dans `.data/` (migrations `driz
 Les fichiers déposés sont stockés dans `.data/files/` (ou dans SharePoint, voir `src/lib/storage.ts`).
 
 - Repartir de zéro : arrêter le serveur, `npm run db:reset`, relancer. `db:reset` n'efface pas les sauvegardes
-  (`.data-backups/`, voir « Sauvegarde et restauration ») ni les exports complets (`.data-exports/`). Une base créée
-  par une version de `drizzle/0000_init.sql` antérieure à la version figée (commit `c80d6ae`, lot 8, étape 5) est
-  refusée au démarrage avec un message clair : la réinitialiser une dernière fois.
-- **Schéma : migrations incrémentales** (depuis le 17 octobre 2026). `drizzle/0000_init.sql` est figée ; chaque
-  changement de `src/db/schema.ts` ajoute une migration, jamais n'en réécrit une :
+  (`.data-backups/`, voir « Sauvegarde et restauration ») ni les exports complets (`.data-exports/`).
+- **Schéma `codex`** (lot 11, décision M-01) : toutes les tables, fonctions et déclencheurs de Codex et le journal de
+  ses migrations (`codex.__drizzle_migrations`) sont dans le schéma `codex`, sur le serveur commun comme dans PGlite.
+  Les tables se déclarent avec `codex.table(…)` (`pgSchema` de `src/db/schema.ts`, jamais exporté : drizzle-kit
+  écrirait un `CREATE SCHEMA` que `codex_app` ne peut pas exécuter).
+  - Une base PGlite de cette branche d'avant le 22 octobre (tables dans `public`, migrations `0000_init` à
+    `0005_index_acces_validations`) est **reprise au démarrage**, après la sauvegarde automatique : `public` devient
+    `codex` avec ses données, puis `0001_partage` s'applique. Toute autre base dont les tables sont dans `public` (démo
+    de `main` d'avant le 17 octobre, chaîne plus ancienne) est refusée avant toute écriture, avec le remède :
+    `npm run db:reset` pour `.data`, ou suppression du dossier `pglite` quand `CODEX_DATA_DIR` est posé (app Mac :
+    quitter l'app, supprimer `~/Library/Application Support/Codex/data/pglite` ; image : `rm -rf /data/pglite`). Les
+    fichiers déposés restent.
+- **Schéma : migrations incrémentales** (base figée le 22 octobre 2026). `drizzle/0000_init.sql` (tout le schéma) et
+  `drizzle/0001_partage.sql` (prérequis du partage générés par drizzle-kit, puis 7 vues `pub_` lues par Keystone,
+  Vigie et Matrix, écrites à la main d'après `infra/postgres/partage/40-codex.sql` du dépôt Matrix) sont figées ;
+  chaque changement de `src/db/schema.ts` ajoute une migration, jamais n'en réécrit une. Une vue `pub_` ne perd ni ne
+  renomme de colonne (sinon nouvelle vue `_v2`) :
   1. `npm run db:generate -- --name <sujet>` écrit `drizzle/NNNN_<sujet>.sql` ; la relire (un renommage de colonne
      est demandé par drizzle-kit ; une reprise de données se complète à la main dans le SQL avant le commit) ;
   2. `npm run db:check` (dossier `drizzle/` cohérent) et `npm test` (`tests/integration/migrations.test.ts` : le schéma
@@ -72,13 +85,26 @@ Les fichiers déposés sont stockés dans `.data/files/` (ou dans SharePoint, vo
   npm run registry:review -- --check <cahier.csv>     # contrôle un cahier rempli, écart avec le code (--org <csv> en plus)
   npm run org:check -- <organigramme.csv>             # modèle docs/modeles/organigramme.csv : règles, doublons, collisions
   ```
-- **Serveur PostgreSQL en option** (`docs/postgres.md`) : `DATABASE_URL=postgres://…` fait travailler Codex sur ce
-  serveur (PostgreSQL 18 au moins, ICU, `pg_trgm`) au lieu de PGlite, avec les mêmes migrations, fonctions et
-  déclencheurs. Sans cette variable, rien ne change (développement, démonstration, app Mac). Une base serveur neuve
-  reçoit le référentiel minimal (`CODEX_SEED=demo` pour la démonstration). La sauvegarde et la restauration de Codex,
-  et les commandes `npm run export` et `integrity`, ne travaillent que sur PGlite et refusent avec un message ; l'export
+- **Serveur PostgreSQL commun** (`docs/postgres.md`) : `DATABASE_URL=postgres://codex_app:…@hôte:5432/epc2i` fait
+  travailler Codex sur ce serveur (PostgreSQL 18 au moins, ICU, `pg_trgm` installé par son superutilisateur) au lieu
+  de PGlite, avec les mêmes migrations, fonctions et déclencheurs, dans le schéma `codex`. Sans cette variable, rien ne
+  change (développement, démonstration, app Mac).
+
+  | `DATABASE_URL` | Base | Remplissage d'une base vide |
+  | --- | --- | --- |
+  | absente ou vide | PGlite dans `$CODEX_DATA_DIR/pglite` (développement, app Mac) | `CODEX_SEED`, `demo` par défaut |
+  | `postgres://codex_app:…@hôte:5432/epc2i` | serveur commun EPC2I, schéma `codex` | seulement sur demande : `CODEX_SEED=minimal`, `CODEX_SEED=demo` ou `CODEX_SEED_DEMO=1` ; sinon la base reste vide et chaque page mène à `/base-vide`, qui dit quoi poser |
+
+  Sur le serveur, le schéma, le rôle `codex_app` (aucun droit `CREATE` sur la base, aucun accès hors de `codex`) et les
+  droits des lecteurs des vues `pub_` (`partage/90-droits.sql`) sont posés par le socle (dépôt Matrix,
+  `infra/postgres/`) ; Codex ne crée jamais de schéma. Le pool fixe `search_path=codex` et `application_name=codex`
+  (`CODEX_DB_POOL` connexions, 10 par défaut). `next build` n'ouvre jamais le serveur. Les écritures concurrentes
+  passent par des verrous de ligne en READ COMMITTED (compteurs d'identifiants, `docs/postgres.md`), sans le verrou
+  d'écriture global `codex.ecritures` de la première bascule. La sauvegarde et la restauration de Codex, et les
+  commandes `npm run export` et `integrity`, ne travaillent que sur PGlite et refusent avec un message ; l'export
   complet et le contrôle d'intégrité restent possibles depuis l'Administration ; le serveur se sauvegarde avec ses
-  outils (`pg_dump`). `npm run test:pg` rejoue toute la suite sur un serveur (`CODEX_TEST_DATABASE_URL`).
+  outils (`pg_dump`, `infra/postgres/sauvegarde/` de Matrix). `npm run test:pg` rejoue toute la suite sur un serveur
+  (`CODEX_TEST_DATABASE_URL`), chaque fichier de test dans une base disposée comme le socle.
 - **Volume et mesures** (`docs/performances.md`) : `npm run seed:large -- --docs 10000` remplit une base de test à
   part (`.data-large/` par défaut, ou `--data-dir`, ou `--database-url` ; jamais la base de démo, et une base qui a
   déjà des documents est refusée sans `--append`) ; `npm run perf` mesure les écrans et routes principaux d'un serveur
@@ -149,7 +175,7 @@ Les fichiers déposés sont stockés dans `.data/files/` (ou dans SharePoint, vo
     passe sous Node 22 et sous Node 26 (vérifié avec Node 26.11.1). Un caractère ajouté par Unicode 17.0 peut être
     replié autrement par la référence en mémoire que par la base.
 
-Variables : voir `.env.example` (Keystone, Vigie, dossier de données et de sauvegardes, jetons de l'API
+Variables : voir `.env.example` (Keystone, Vigie, dossier de données et de sauvegardes, base, Matrix, jetons de l'API
 d'intégration, HTTPS, proxy de confiance, limites de débit, journal technique, contrôle de la configuration). Aucune
 n'est nécessaire en local : sans elles, les limites de débit gardent des valeurs généreuses, HSTS reste coupé,
 `X-Forwarded-For` n'est pas tenu pour fiable et le contrôle de la configuration ne trouve aucune erreur. Elles sont
@@ -640,9 +666,9 @@ src/
     shell/             barre latérale, en-tête, contexte client (dialogues, toasts)
     dialogs/           toutes les boîtes de dialogue
     ui/                icônes de la maquette, contrôle segmenté, steppers, boutons d'action, pages d'une liste
-  db/                  schéma Drizzle, connexion PGlite ou serveur PostgreSQL (sql-client.ts), déclencheurs, termes de
-                       recherche repliés, migrations versionnées (migrations.ts), registre, amorçage (référentiel,
-                       démonstration)
+  db/                  schéma Drizzle (schéma PostgreSQL codex), connexion PGlite ou serveur commun (sql-client.ts),
+                       déclencheurs, termes de recherche repliés, migrations versionnées et reprise d'une base
+                       ancienne (migrations.ts), registre, amorçage (référentiel, démonstration)
   fonts/               police Inter (woff2, sous-ensembles de Google Fonts, licence OFL), next/font/local
   lib/
     actions.ts         Server Actions (toutes les mutations + contrôles de droits)
@@ -740,3 +766,43 @@ tests/
 Les décisions prises avec l'utilisateur et les questions encore ouvertes sont dans `docs/decisions.md` ; le deck
 d'origine et son audit dans `docs/sources/` et `docs/audit-deck-epc2i.md`. Voir aussi `docs/registre-points-ouverts.md`
 (registre des types) et les points *provisoires* de `docs/modele-cible.md` (organisation, stockage SharePoint).
+
+## Mise en ligne (Docker, Coolify)
+
+Le `Dockerfile` à la racine compile l'application (sortie autonome de Next.js) et lance son serveur sous
+l'utilisateur `node`, jamais root (`docs/exploitation.md` §10). Le contrat avec l'hébergeur (Coolify depuis le
+10 octobre) est inchangé :
+
+| Réglage | Valeur |
+| --- | --- |
+| Port interne | `3000` |
+| Volume persistant | `/data` (fichiers dans `/data/files`, base PGlite de repli dans `/data/pglite`, sauvegardes dans `/data/backups`) ; un volume créé par l'ancienne image (root) est rendu à `node` au démarrage |
+| Variables d'exécution | `DATABASE_URL` (serveur commun, rôle `codex_app`), `CODEX_DB_POOL`, `CODEX_SEED` ou `CODEX_SEED_DEMO`, `MATRIX_URL`, `MATRIX_TOKEN`, `NEXT_PUBLIC_KEYSTONE_URL`, `NEXT_PUBLIC_VIGIE_URL` (voir `.env.example`) |
+| Santé | `HEALTHCHECK` de l'image sur `GET /api/health` |
+
+- `NEXT_PUBLIC_KEYSTONE_URL` et `NEXT_PUBLIC_VIGIE_URL` sont lues par le serveur au lancement, plus au build : la
+  case « disponible au build » de Coolify n'est plus nécessaire, et un changement d'adresse demande un redémarrage,
+  pas un nouveau build.
+- `DATABASE_URL` ne doit jamais être disponible au build ni écrite dans l'image. Dans Coolify, Codex et le serveur
+  PostgreSQL doivent partager un réseau (dépôt Matrix, `infra/postgres/README.md`).
+- Sur le serveur commun, une base vide n'est remplie que sur demande (`CODEX_SEED=minimal` pour une mise en service,
+  `CODEX_SEED_DEMO=1` pour la démonstration) ; sinon chaque page dit quoi poser (`/base-vide`).
+- Une base PGlite d'avant le schéma `codex` dans `/data/pglite` (démo de `main` d'avant le 17 octobre) est refusée au
+  démarrage : arrêter l'application, `rm -rf /data/pglite` dans le volume, redémarrer (`docs/exploitation.md` §10).
+- Le build ne demande plus d'accès réseau pour la police (Inter est dans `src/fonts/`) ; `npm ci` en a besoin.
+- Tant que l'authentification n'est pas branchée, protéger l'accès au niveau de l'hébergeur (authentification HTTP de
+  Coolify, par exemple).
+
+### Déclaration du schéma à Matrix
+
+Au démarrage, juste après les migrations, Codex lit le schéma réel de sa base (tables, colonnes, clés primaires,
+étrangères et uniques) et l'envoie à Matrix, le catalogue des bases de Keystone, Codex, Cursus et Vigie
+(`POST /api/declarations`, contrat `matrix.schema/1`, code dans `src/lib/matrix.ts`). L'envoi ne retarde jamais le
+démarrage : en cas d'échec, un avertissement `[matrix]` est écrit dans le journal et Codex continue.
+
+| Variable (Coolify) | Rôle |
+| --- | --- |
+| `MATRIX_URL` | Adresse de Matrix, par exemple `https://matrix.votre-domaine` ; derrière l'authentification HTTP de Coolify : `https://identifiant:mot-de-passe@matrix.votre-domaine`. Sans elle, rien n'est envoyé. |
+| `MATRIX_TOKEN` | Jeton partagé avec Matrix (même valeur que `MATRIX_TOKEN` du serveur Matrix), envoyé dans l'en-tête `X-Matrix-Token`. |
+
+`MATRIX_DECLARATIONS_DIR` (facultatif) écrit aussi la déclaration dans ce dossier.

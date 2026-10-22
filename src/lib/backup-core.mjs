@@ -750,13 +750,33 @@ export async function readMigrations(folder) {
 }
 
 /**
+ * The migrations of this branch before lot 11 (22 October 2026), when Codex's tables were in the schema public and the
+ * journal in drizzle.__drizzle_migrations (src/db/migrations.ts). A PGlite database (or an archive of one) that applied
+ * exactly these is taken up into the schema codex when the server next opens it; its files are kept in
+ * tests/fixtures/drizzle-public for the test of that take-up.
+ * @type {readonly Migration[]}
+ */
+export const LEGACY_PUBLIC_CHAIN = Object.freeze([
+  { tag: '0000_init', createdAt: 1792232472935, hash: '2ece15046c3b662eabc79aff6833050f215dc3e387a06c91e0506013e287f874' },
+  { tag: '0001_planificateur_signatures', createdAt: 1792287567764, hash: '96fb91a795987d415203090fd18ed9d93c3aa8d2f436787e433e20517e1609aa' },
+  { tag: '0002_apercu_office', createdAt: 1792289677284, hash: '99462e4c73a5312ba3bf97b2fefff14d3e7a35f6e377391f296b6aed176b0ae1' },
+  { tag: '0003_vocabulaires', createdAt: 1792292401336, hash: '99f774e553121428f8951a0d79188aba5f75d21cade6a58fa0bd41de8d9279f7' },
+  { tag: '0004_modele_source', createdAt: 1792295122437, hash: '61c8ea2d4723221551b3018f42e27e4eb811e7adb69d7739e74cac970c7fd760' },
+  { tag: '0005_index_acces_validations', createdAt: 1792302725551, hash: '228733435c1d397798a7efb1ba300a2ab1d8d9978e95abd760093502ddb74dd4' },
+]);
+
+/**
  * Migrations of the code the restored database still lacks (applied when the server next opens it). Refuses an archive
  * whose last migration the code does not have: drizzle would replay a regenerated schema on top of the restored one.
+ * An archive made at the end of the chain before lot 11 (LEGACY_PUBLIC_CHAIN) is taken up into the schema codex at the
+ * next start: what remains is that take-up, then every migration after 0000_init.
  * @param {Manifest} manifest
  * @param {Migration[]} migrations
  */
 export function pendingMigrations(manifest, migrations) {
   const m = manifest.database.migration;
+  const last = LEGACY_PUBLIC_CHAIN[LEGACY_PUBLIC_CHAIN.length - 1];
+  if (m.hash === last.hash && m.createdAt === last.createdAt) return ['public → codex', ...migrations.slice(1).map((x) => x.tag)];
   const i = migrations.findIndex((x) => x.hash === m.hash && x.createdAt === m.createdAt);
   if (i < 0) throw new BackupError('schema_mismatch', m.tag ?? m.hash);
   return migrations.slice(i + 1).map((x) => x.tag);
@@ -773,7 +793,10 @@ async function readDbMeta(q) {
     (select count(*) from documents)::int as documents, (select count(*) from revisions)::int as revisions,
     (select count(*) from working_versions)::int as working_versions, (select count(*) from audit_log)::int as audit_entries,
     (select count(*) from users where not is_system)::int as people, version() as postgres`)).rows;
-  const [m] = (await q.query('select hash, created_at::text as created_at from drizzle.__drizzle_migrations order by created_at desc limit 1')).rows;
+  // codex.__drizzle_migrations since lot 11; drizzle.__drizzle_migrations in a database of the former layout (tables in
+  // public), backed up before its take-up.
+  const [{ journal }] = (await q.query(`select coalesce(to_regclass('codex.__drizzle_migrations'), to_regclass('drizzle.__drizzle_migrations'))::text as journal`)).rows;
+  const [m] = journal ? (await q.query(`select hash, created_at::text as created_at from ${journal} order by created_at desc limit 1`)).rows : [];
   if (!m) throw new BackupError('no_database', 'no migration applied');
   const refs = (await q.query(`select coalesce(storage, 'local') as storage, file_key from working_versions where file_key is not null`)).rows;
   /** @type {Set<string>} */
@@ -785,7 +808,7 @@ async function readDbMeta(q) {
   }
   // PDF renderings of the preview (lib/office-preview.ts), always in the local store. Looked up only when the table
   // exists: the backup taken before a migration reads a database of an earlier schema.
-  const [{ renders }] = (await q.query(`select to_regclass('public.version_previews') is not null as renders`)).rows;
+  const [{ renders }] = (await q.query(`select to_regclass('version_previews') is not null as renders`)).rows;
   if (renders) {
     for (const r of (await q.query(`select file_key from version_previews where file_key is not null`)).rows) local.add(path.basename(String(r.file_key)));
   }
@@ -1113,7 +1136,8 @@ async function undoMoves(moves) {
  * @param {string} o.dataDir
  * @param {boolean} [o.replace]
  * @param {typeof import('@electric-sql/pglite').PGlite} o.PGlite
- * @param {Record<string, any>} [o.extensions]
+ * @param {Record<string, any>} [o.options] options of the PGlite opened on the archive (lib/pglite-options.mjs
+ *   pgliteOptions: extensions and search_path); its dataDir is the staging folder's
  * @param {Migration[]} o.migrations
  * @param {Date} [o.now]
  * @returns {Promise<RestoreResult>}
@@ -1156,7 +1180,7 @@ export async function restoreBackup(o) {
       await fh.close();
     }
     if (!dump) throw new BackupError('entry_missing', DB_ENTRY);
-    pg = new o.PGlite({ dataDir: path.join(staging, 'pglite'), loadDataDir: new File([new Uint8Array(dump)], 'pglite.tar.gz', { type: 'application/x-gzip' }), extensions: o.extensions });
+    pg = new o.PGlite({ ...o.options, dataDir: path.join(staging, 'pglite'), loadDataDir: new File([new Uint8Array(dump)], 'pglite.tar.gz', { type: 'application/x-gzip' }) });
     await pg.waitReady;
     const meta = await readDbMeta(pg);
     const counts = /** @type {(keyof Manifest['counts'])[]} */ (Object.keys(manifest.counts));

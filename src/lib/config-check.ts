@@ -226,11 +226,16 @@ export function checkConfig(env: Env, { production }: { production: boolean }): 
   const dbUrl = env.DATABASE_URL?.trim();
   if (env.DATABASE_URL !== undefined && !dbUrl) add('warn', 'database_url_empty', 'DATABASE_URL is empty: the embedded database (PGlite) is used');
   else if (dbUrl && !/^postgres(ql)?:\/\/[^\s]+$/i.test(dbUrl)) add('error', 'database_url_invalid', `DATABASE_URL="${withoutCredentials(dbUrl)}" is no postgres:// or postgresql:// address`);
-  const poolMax = env.CODEX_DB_POOL_MAX?.trim();
-  if (poolMax && (!/^\d{1,3}$/.test(poolMax) || Number(poolMax) < 2 || Number(poolMax) > 200)) add('warn', 'pool_max_invalid', `CODEX_DB_POOL_MAX="${poolMax}" is not a whole number from 2 to 200: 10 applies`);
+  const poolVar = env.CODEX_DB_POOL?.trim() ? 'CODEX_DB_POOL' : 'CODEX_DB_POOL_MAX';
+  const poolMax = env[poolVar]?.trim();
+  if (poolMax && (!/^\d{1,3}$/.test(poolMax) || Number(poolMax) < 2 || Number(poolMax) > 200)) add('warn', 'pool_max_invalid', `${poolVar}="${poolMax}" is not a whole number from 2 to 200: 10 applies`);
 
   // ── New database and migrations (lib/seed-mode.ts, src/db/index.ts) ──
-  if (!seedModeOf(env)) add('error', 'seed_unknown', `CODEX_SEED="${env.CODEX_SEED!.trim().slice(0, 40)}" is neither demo nor minimal: a new database would be left empty and the server would not start`);
+  if (!seedModeOf(env)) {
+    add('error', 'seed_unknown', env.CODEX_SEED_DEMO?.trim() === '1' && ['demo', 'minimal'].includes(env.CODEX_SEED!.trim().toLowerCase())
+      ? `CODEX_SEED="${env.CODEX_SEED!.trim()}" contradicts CODEX_SEED_DEMO=1 (demo): keep one of them`
+      : `CODEX_SEED="${env.CODEX_SEED!.trim().slice(0, 40)}" is neither demo nor minimal: a new database would be left empty and the server would not start`);
+  }
   const migBackup = env.CODEX_MIGRATION_BACKUP?.trim();
   if (migBackup && !ON.test(migBackup) && !OFF.test(migBackup)) add('warn', 'flag_invalid', `CODEX_MIGRATION_BACKUP="${migBackup}" is neither 1 nor 0: read as on (a backup before each migration)`);
   else if (migBackup && OFF.test(migBackup)) add('warn', 'migration_backup_off', 'CODEX_MIGRATION_BACKUP is off: the database is migrated without a backup first');

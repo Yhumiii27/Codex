@@ -25,7 +25,7 @@ const INDEXES = [
 
 describe('indexes', () => {
   it('are created by the migration', async () => {
-    const { rows } = await db().$client.query<{ name: string }>(`select indexname as name from pg_indexes where schemaname = 'public'`);
+    const { rows } = await db().$client.query<{ name: string }>(`select indexname as name from pg_indexes where schemaname = 'codex'`);
     expect(rows.map((r) => r.name)).toEqual(expect.arrayContaining(INDEXES));
   });
 

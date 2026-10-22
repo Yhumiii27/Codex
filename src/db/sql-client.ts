@@ -4,8 +4,8 @@ import pg from 'pg';
 // The raw SQL connection behind Codex's drizzle database (db.$client), whichever engine holds the data (point 51 of
 // docs/reste-a-faire.md):
 // - PGlite, embedded, one connection, in DATA_DIR/pglite: the default, local use, demonstration, Mac app;
-// - a PostgreSQL server, through a pool of node-postgres connections, when DATABASE_URL is set (option, the hosting is
-//   not decided: M22).
+// - a PostgreSQL server, through a pool of node-postgres connections, when DATABASE_URL is set: the shared EPC2I server
+//   (decision M-01: base epc2i, schema codex, role codex_app), or a server of one's own laid out the same way.
 // What the code asks of either is the subset PGlite offers and the pool is made to offer here: query (with $n
 // parameters), exec (several statements, no parameter), transaction (one connection for the callback, committed or
 // rolled back) and close. What only PGlite can do (copy its data directory: the backup) is reached through embedded().
@@ -161,10 +161,13 @@ export function redactUrl(url: string): string {
   }
 }
 
-/** Largest number of server connections of one Codex process (CODEX_DB_POOL_MAX, default 10, at least 2: opening the
- * database migrates on one connection while another holds the migration lock). */
+/**
+ * Largest number of server connections of one Codex process: CODEX_DB_POOL (the shared server's name, Matrix
+ * infra/postgres/README.md), or CODEX_DB_POOL_MAX (its former name here); default 10, at least 2: opening the database
+ * migrates on one connection while another holds the migration lock.
+ */
 export function poolMaxOf(env: Readonly<Record<string, string | undefined>>): number {
-  const n = Number(env.CODEX_DB_POOL_MAX?.trim());
+  const n = Number((env.CODEX_DB_POOL?.trim() || env.CODEX_DB_POOL_MAX?.trim()));
   return Number.isInteger(n) && n >= 2 && n <= 200 ? n : 10;
 }
 
@@ -185,9 +188,12 @@ function chainQueries(client: pg.PoolClient): void {
   };
 }
 
-/** A pool of connections to `url`. */
+/**
+ * A pool of connections to `url`, named codex in pg_stat_activity, whose search_path is the schema codex (src/db/schema.ts
+ * DB_SCHEMA; the shared server also sets it on the role codex_app): Codex's plain table names resolve there.
+ */
 export function serverPool(url: string, max = 10): pg.Pool {
-  const pool = new pg.Pool({ connectionString: url, max, application_name: 'codex' });
+  const pool = new pg.Pool({ connectionString: url, max, application_name: 'codex', options: '-c search_path=codex' });
   pool.on('connect', chainQueries);
   return pool;
 }

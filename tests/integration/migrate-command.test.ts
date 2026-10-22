@@ -38,7 +38,7 @@ async function state() {
   const db = await openDb(path.join(DATA, 'pglite'));
   try {
     const q = <T,>(text: string) => db.$client.query<T>(text).then((r) => r.rows);
-    const [{ n }] = await q<{ n: number }>('select count(*)::int as n from drizzle.__drizzle_migrations');
+    const [{ n }] = await q<{ n: number }>('select count(*)::int as n from codex.__drizzle_migrations');
     const [{ users }] = await q<{ users: number }>('select count(*)::int as users from users');
     const backups = await q<{ detail: string }>(`select detail from audit_log where action = 'backup_created'`);
     return { migrations: n, users, backups: backups.map((b) => b.detail) };
@@ -71,7 +71,12 @@ describe('npm run db:migrate', () => {
     const last = code[code.length - 1];
     const db = await openDb(path.join(DATA, 'pglite'));
     await db.$client.exec(`insert into users (id, name, initials, role) values ('p1', 'P', 'P', 'collaborateur'), ('codex', 'Codex', 'CX', 'collaborateur')`);
-    await db.$client.exec(`delete from drizzle.__drizzle_migrations where created_at = ${last.createdAt}; drop index if exists revisions_open_modifier; drop index if exists workflows_requester;`);
+    // 0001_partage undone: its views, its index and its columns (their constraints go with them).
+    await db.$client.exec(`delete from codex.__drizzle_migrations where created_at = ${last.createdAt};
+      drop view pub_documents, pub_revisions_document, pub_validations, pub_types_document, pub_circuits_type, pub_titulaires_fonction, pub_journal;
+      drop index audit_log_at_idx;
+      alter table documents drop column distribution, drop column review_months, drop column process_code;
+      alter table users drop column matricule;`);
     await db.$client.close();
     const pending = await run(['--check']);
     expect([pending.code, pending.stdout]).toEqual([1, expect.stringContaining(`Migration(s) en attente : ${last.tag}.`)]);

@@ -12,12 +12,12 @@
 import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
-import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
 import nextEnv from '@next/env';
+import { pgliteOptions } from '../src/lib/pglite-options.mjs';
 import { drizzle as drizzleServer } from 'drizzle-orm/node-postgres';
 import { drizzle } from 'drizzle-orm/pglite';
 import type { Db } from '../src/db';
-import { appliedMigrations, migrationPlan } from '../src/db/migrations';
+import { planFor, readLayout, SERVER_PLAN } from '../src/db/migrations';
 import * as schema from '../src/db/schema';
 import { databaseUrlOf, PgServerClient, redactUrl, serverPool } from '../src/db/sql-client';
 import { BackupError, backupDirOf, createBackup, journal, journalData, keepOf, LOCK_FILE, lockForCommand, lockPid, readMigrations, unlock } from '../src/lib/backup-core.mjs';
@@ -98,7 +98,7 @@ async function runServer(url: string) {
   const pool = serverPool(url, 2);
   const client = new PgServerClient(pool);
   try {
-    const plan = migrationPlan(await appliedMigrations(client), await readMigrations(MIGRATIONS));
+    const plan = planFor(await readLayout(client), await readMigrations(MIGRATIONS), SERVER_PLAN);
     if (plan.fresh) throw new Error('la base du serveur est vide : démarrez Codex une fois pour la créer.');
     if (plan.pending.length) throw new Error(`la base n'a pas encore les migrations ${plan.pending.join(', ')} : appliquez-les (npm run db:migrate -- --no-backup, une fois le pg_dump fait), puis relancez la commande.`);
     const db = drizzleServer(pool, { schema }) as unknown as Db;
@@ -114,11 +114,11 @@ async function run() {
   if (!(await stat(path.join(DB_DIR, 'PG_VERSION')).then(() => true, () => false))) throw new Error(`aucune base Codex dans ${DATA_DIR} : démarrez Codex une fois pour la créer (elle reçoit alors le registre du code).`);
   await lockForCommand(DATA_DIR, 'registry');
   try {
-    const pg = new PGlite({ dataDir: DB_DIR, extensions: { pg_trgm } });
+    const pg = new PGlite(pgliteOptions(DB_DIR));
     try {
       await pg.waitReady;
       const code = await readMigrations(MIGRATIONS);
-      const plan = migrationPlan(await appliedMigrations(pg), code);
+      const plan = planFor(await readLayout(pg), code, { embedded: true, remedy: `remplacez ${DB_DIR} (npm run db:reset pour .data), ou restaurez une sauvegarde faite par cette version` });
       if (plan.fresh) throw new Error(`la base de ${DATA_DIR} est vide : démarrez Codex une fois pour la créer.`);
       if (plan.pending.length) throw new Error(`la base n'a pas encore les migrations ${plan.pending.join(', ')} : appliquez-les (npm run db:migrate, après une sauvegarde), puis relancez la commande.`);
       const db = drizzle(pg, { schema }) as unknown as Db;

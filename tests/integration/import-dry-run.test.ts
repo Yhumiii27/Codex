@@ -94,7 +94,7 @@ const real = (body: Body, headers?: Record<string, string>, sign?: string) => se
 
 /** Every row of every table of the database, table by table: what a simulation must leave as it found it. */
 async function snapshot(): Promise<Record<string, string>> {
-  const tables = await db().execute<{ table_name: string }>(sql`select table_name from information_schema.tables where table_schema = 'public' and table_type = 'BASE TABLE' order by table_name`);
+  const tables = await db().execute<{ table_name: string }>(sql`select table_name from information_schema.tables where table_schema = 'codex' and table_type = 'BASE TABLE' and table_name <> '__drizzle_migrations' order by table_name`);
   const out: Record<string, string> = {};
   for (const { table_name: t } of tables.rows) {
     const [row] = (await db().execute<{ n: string; digest: string | null }>(sql`select count(*)::text as n, md5(string_agg(x::text, '|' order by x::text)) as digest from ${sql.identifier(t)} x`)).rows;

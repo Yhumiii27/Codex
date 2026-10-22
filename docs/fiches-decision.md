@@ -28,7 +28,7 @@ Lot 10, étape 1, 18 octobre 2026, sur la branche `codex-ged-v2-vkmf4l` (fin du 
 |---|---|---|
 | O-01 | SharePoint | A pas de SharePoint · B un fichier par version de travail, sans accès direct (codé) · C un fichier par révision · D accès direct et coédition |
 | O-02 | Authentification | A Entra ID (OIDC) · B autre fournisseur OIDC · C SAML · D comptes locaux ; rôles par groupes ou dans Codex |
-| O-03 | Keystone | A API et tables miroir · B base partagée · C hybride |
+| O-03 | Keystone (en partie répondue par M-01 : base commune, un schéma par outil) | A API et tables miroir · B base partagée · C hybride |
 | O-04 | Organigramme | A garder les codes provisoires · B nouveaux codes · C axe « société » |
 | O-05 | Registre des types | 9 questions et 5 choix de fusion, dont les collisions de codes (avec JUR) |
 | O-06 | Circuits et titulaires | A matrice saisie · B nouvelles fonctions ou portées · C étapes parallèles, délais, suppléance |
@@ -181,6 +181,14 @@ fiche ne dépend pas de ce choix : décider tôt l'identifiant de personne évit
 Contexte : en D-04, l'utilisateur a choisi « Affaires simulées (Recommandé) » plutôt que « Base partagée avec
 Keystone ». Le « oui fusionne les deux bases » de D-07 porte sur les listes de types, pas sur les bases de données.
 
+**En partie répondue le 15 octobre 2026 (décision M-01, dépôt Matrix)** : « Oui, je valide le format postgreSQL
+commun avec un schema par outil » ([decisions.md](decisions.md)). Codex et Keystone partagent donc un serveur
+(base `epc2i`), chacun dans son schéma, sans accès croisé hors des vues `pub_` (convention de partage du dépôt
+Matrix) ; aucun outil ne lit les tables d'un autre, et les écritures d'un outil chez un autre passent par une API.
+L'option B ci-dessous, au sens « Codex lit les tables de Keystone », n'est donc plus ouverte telle quelle ; la
+lecture des projets par la vue `keystone.pub_projets` (convention de partage) relève du reste de la question. Reste
+ouvert : le contrat de dépôt et de synchronisation des documents projet (sous-questions plus bas).
+
 ### 2. Ce que Codex fait aujourd'hui
 
 - **Tables miroir** `projects`, `project_expected`, `project_events` (`src/db/schema.ts`), remplies seulement par
@@ -195,7 +203,10 @@ Keystone ». Le « oui fusionne les deux bases » de D-07 porte sur les listes d
   (`src/lib/integration-credentials.ts`), et Codex n'appelle jamais Keystone.
 - **Lien « Ouvrir dans Keystone »** : `NEXT_PUBLIC_KEYSTONE_URL` + `/projects/{code}`, chemin non vérifié côté Keystone.
 - **PostgreSQL serveur** possible depuis le 18 octobre (`DATABASE_URL`, PostgreSQL 18 au moins, `docs/postgres.md`) ;
-  PGlite reste la base par défaut et n'ouvre la base que dans un seul processus.
+  PGlite reste la base par défaut et n'ouvre la base que dans un seul processus. Depuis le lot 11 (22 octobre, M-01),
+  les tables de Codex sont dans le schéma `codex`, aussi en PGlite, et Codex publie 7 vues `pub_` (documents,
+  révisions, circuits, registre, circuits par type, titulaires, journal) que Keystone peut lire sur le serveur commun ;
+  il ne lit encore aucune vue de Keystone (`keystone.pub_projets` n'est pas branchée : les tables miroir restent).
 
 ### 3. Options
 

@@ -6,7 +6,7 @@ import { INITIAL_ADMIN, seed } from '@/db/seed';
 import { FUNCTIONS } from '@/db/seed-org';
 import { getCtx } from '@/lib/context';
 import { applyRegistry, REGISTRY_APPLY_DETAIL } from '@/lib/registry-apply';
-import { useDb } from '../support/db';
+import { emptyTables, useDb } from '../support/db';
 
 // The minimal seed (CODEX_SEED=minimal, point 45 of docs/reste-a-faire.md) and the command that applies the register
 // of the code to an existing database (npm run registry:apply, src/lib/registry-apply.ts, point 60): what the
@@ -25,10 +25,7 @@ afterAll(async () => {
   await db.$client.close();
 });
 beforeEach(async () => {
-  const { rows } = await db.$client.query<{ name: string }>(`select quote_ident(tablename) as name from pg_tables where schemaname = 'public'`);
-  await db.$client.transaction(async (tx) => {
-    await tx.exec(`set local session_replication_role = replica; truncate ${rows.map((r) => r.name).join(', ')} restart identity cascade;`);
-  });
+  await emptyTables(db);
   await seed(db, 'minimal');
   useDb(db);
 });

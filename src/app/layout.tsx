@@ -3,10 +3,13 @@ import './nocturne.css';
 import './globals.css';
 import { AppProvider } from '@/components/shell/AppProvider';
 import { Header } from '@/components/shell/Header';
+import { EmptyDatabase } from '@/components/shell/EmptyDatabase';
 import { Sidebar } from '@/components/shell/Sidebar';
+import { databaseIsEmpty } from '@/lib/empty-database';
 import type { DialogData } from '@/components/dialogs/types';
 import { interClassName } from '@/fonts/inter';
 import { getCtx } from '@/lib/context';
+import { ERROR_EN, ERROR_FR } from '@/lib/i18n-errors';
 import { fileRules } from '@/lib/filetypes';
 import { CONF_LEVELS, MATRIX_ROLE, type SimRole, type TKey } from '@/lib/i18n';
 import { keystoneUrl } from '@/lib/keystone';
@@ -14,11 +17,21 @@ import { getMatrix, listTemplates, myTodo, recentActivity, typeView, vocabSugges
 
 /** Title and description in the user's language; each screen names itself (lib/titles.ts screenTitle, WCAG 2.4.2). */
 export async function generateMetadata(): Promise<Metadata> {
+  if (await databaseIsEmpty()) return { title: `${ERROR_FR.empty_title} · ${ERROR_EN.empty_title} — Codex` };
   const { t } = await getCtx();
   return { title: `${t.title_suffix} — ${t.brand_sub}`, description: t.app_description };
 }
 
 export default async function RootLayout({ children }: LayoutProps<'/'>) {
+  // A server database left empty (no CODEX_SEED): one page that says how to fill it, in place of the shell and of every
+  // screen, which need a person to act as (getCtx leads them to /base-vide).
+  if (await databaseIsEmpty()) {
+    return (
+      <html lang="fr" className={interClassName}>
+        <body><EmptyDatabase /></body>
+      </html>
+    );
+  }
   const ctx = await getCtx();
   const fr = ctx.lang === 'fr';
   // What waits for me (approval steps, revisions to draft, grafts, review and expiry dates): the badge and the bell list

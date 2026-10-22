@@ -137,7 +137,7 @@ describe('GET /api/export/full', () => {
 
     // Every table of the application but the derived ones (search index, preview renderings), each with as many rows as
     // the database holds.
-    const { rows: tables } = await db().$client.query<{ name: string }>(`select tablename as name from pg_tables where schemaname = 'public' order by 1`);
+    const { rows: tables } = await db().$client.query<{ name: string }>(`select tablename as name from pg_tables where schemaname = 'codex' and tablename <> '__drizzle_migrations' order by 1`);
     const exported = tables.map((t) => t.name).filter((t) => t !== 'document_terms' && t !== 'version_previews');
     expect(Object.keys(manifest.tables).sort()).toEqual(exported);
     for (const t of exported) {
