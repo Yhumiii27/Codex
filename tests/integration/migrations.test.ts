@@ -33,11 +33,12 @@ async function lastSnapshot() {
 async function structure(pg: Pick<SqlQueryable, 'query'>, nsp = 'codex') {
   // Sorted here, not by the server: its collation (C, en_US…) orders "document_terms" and "documents" differently.
   // pg_trgm's operator class is written with its schema when it is not on the search_path: `extensions` on a server laid
-  // out as the shared one (docs/postgres.md), codex in PGlite. The same index either way.
+  // out as the shared one (docs/postgres.md), codex in PGlite. The same index either way. NOT NULL constraints are left to
+  // is_nullable of the columns: PostgreSQL 18 (PGlite) lists them in pg_constraint too, 16 (the shared server) does not.
   const q = async (sql: string) => (await pg.query<Record<string, unknown>>(sql)).rows.map((r) => Object.values(r).join(' | ').replace(/\b\w+\.gin_trgm_ops\b/g, 'gin_trgm_ops')).sort();
   return {
     columns: await q(`select table_name, column_name, data_type, udt_name, is_nullable, coalesce(column_default, '') from information_schema.columns where table_schema = '${nsp}' and table_name not like 'pub\\_%' and table_name <> '__drizzle_migrations' order by 1, 2`),
-    constraints: await q(`select conrelid::regclass::text, conname, pg_get_constraintdef(oid) from pg_constraint where connamespace = '${nsp}'::regnamespace and conrelid::regclass::text not like '%\\_\\_drizzle\\_migrations' order by 1, 2`),
+    constraints: await q(`select conrelid::regclass::text, conname, pg_get_constraintdef(oid) from pg_constraint where connamespace = '${nsp}'::regnamespace and contype <> 'n' and conrelid::regclass::text not like '%\\_\\_drizzle\\_migrations' order by 1, 2`),
     indexes: await q(`select tablename, indexname, indexdef from pg_indexes where schemaname = '${nsp}' and tablename <> '__drizzle_migrations' order by 1, 2`),
   };
 }

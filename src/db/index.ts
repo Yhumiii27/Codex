@@ -76,10 +76,12 @@ create or replace trigger documents_version before update on documents for each 
 /**
  * Text search on the record (/recherche, lib/queries.ts searchDocs).
  * codex_fold folds a text as lib/search.ts fold does: canonical decomposition (NFD), combining accents U+0300–U+036F
- * removed, then lower case by the Unicode rules the database carries (pg_unicode_fast: full case mapping, a capital
- * sigma ending a word becomes a final sigma), as JavaScript's toLowerCase does. codex_unbom drops a leading byte order
- * mark from a text column: PGlite's decoder drops it from every text value it hands back, so the application never
- * sees it (the values inside a jsonb keep theirs). tests/integration/search-sql.test.ts compares codex_fold with fold
+ * removed, then lower case by full Unicode case mapping (a capital sigma ending a word becomes a final sigma, ẞ becomes
+ * ß), as JavaScript's toLowerCase does, under the collation foldCollation() picks: pg_unicode_fast (built-in provider,
+ * PostgreSQL 18 and PGlite 0.5), or the ICU root collation "und-x-icu" on PostgreSQL 16 and 17 (ICU's case mapping,
+ * the same rules; the shared EPC2I server stays on PostgreSQL 16, Matrix decision P-01). codex_unbom drops a leading
+ * byte order mark from a text column: PGlite's decoder drops it from every text value it hands back, so the
+ * application never sees it (the values inside a jsonb keep theirs). tests/integration/search-sql.test.ts compares codex_fold with fold
  * on every code point: it tells when another version of Node or PGlite parts them.
  * The trigger documents_terms writes the folded values of a document into document_terms, at its insertion and
  * whenever a searched column changes (an update documents_version skips fires nothing). Its fields are the groups of
@@ -91,12 +93,12 @@ create or replace trigger documents_version before update on documents for each 
  * Installed at every start, like the journal's triggers; the pg_trgm extension is created before the migrations,
  * which index document_terms with it.
  */
-const DOCUMENT_SEARCH = `
+const documentSearch = (foldCollation: string) => `
 create or replace function codex_unbom(t text) returns text language sql immutable strict parallel safe as $$
   select case when left(t, 1) = chr(65279) then substr(t, 2) else t end
 $$;
 create or replace function codex_fold(t text) returns text language sql immutable strict parallel safe as $$
-  select lower(regexp_replace(normalize(t, nfd), '[\\u0300-\\u036f]', '', 'g') collate pg_unicode_fast)
+  select lower(regexp_replace(normalize(t, nfd), '[\\u0300-\\u036f]', '', 'g') collate ${foldCollation})
 $$;
 create or replace function documents_terms() returns trigger language plpgsql set search_path = codex as $$
 begin
@@ -185,14 +187,32 @@ function pgliteRemedy(target: string | undefined): string {
 async function installCompanions(q: SqlQueryable): Promise<void> {
   await q.exec(AUDIT_APPEND_ONLY);
   await q.exec(DOCUMENT_VERSION);
-  await q.exec(DOCUMENT_SEARCH);
+  await q.exec(documentSearch(await foldCollation(q)));
 }
 
 /**
- * PostgreSQL 18 at least: codex_fold folds case with the pg_unicode_fast collation (built-in provider, PostgreSQL 18),
- * as PGlite 0.5 (PostgreSQL 18) does; an older server would fold differently from lib/search.ts, or not at all.
+ * The collation under which codex_fold lowers case, chosen at every start by what the database has: pg_unicode_fast
+ * (PostgreSQL 18, PGlite 0.5), else the ICU root collation "und-x-icu" (PostgreSQL 16 and 17 built with ICU, which
+ * codex_fr needs anyway). Both apply Unicode's full case mapping with the final sigma, as JavaScript's toLowerCase;
+ * pg_c_utf8 (PostgreSQL 17) and the libc collations map one code point to one and know no final sigma: never used.
+ * They part from lib/search.ts only on code points their version of Unicode does not assign yet (ICU 72 of Debian 12:
+ * Unicode 15.0, against 16.0 in Node 22 and PGlite 0.5), which the database folds alike in the query and the values
+ * (docs/postgres.md, « Repli de la recherche »).
  */
-const SERVER_MIN_VERSION = 180000;
+async function foldCollation(q: SqlQueryable): Promise<string> {
+  const { rows: [c] } = await q.query<{ fast: boolean; icu: boolean }>(`select
+    exists (select from pg_collation where collname = 'pg_unicode_fast' and collnamespace = 'pg_catalog'::regnamespace) as fast,
+    exists (select from pg_collation where collname = 'und-x-icu' and collnamespace = 'pg_catalog'::regnamespace) as icu`);
+  if (c.fast) return 'pg_catalog.pg_unicode_fast';
+  if (c.icu) return 'pg_catalog."und-x-icu"';
+  throw new Error('the database has neither the pg_unicode_fast collation (PostgreSQL 18) nor the ICU collation "und-x-icu": Codex needs a PostgreSQL server built with ICU');
+}
+
+/**
+ * PostgreSQL 16 at least (the shared EPC2I server, Matrix decision P-01): normalize() (13), the ICU collations
+ * codex_fr and "und-x-icu" whose lower() codex_fold uses below 18, and what the migrations and queries use.
+ */
+const SERVER_MIN_VERSION = 160000;
 
 /**
  * Key of the session lock under which one Codex process at a time migrates a server and lays its functions. Derived from
@@ -204,8 +224,8 @@ const MIGRATION_LOCK_KEY = `${DB_SCHEMA}.migrations`;
  * A PostgreSQL server (DATABASE_URL): a pool of connections whose search_path is codex, the same migrations and the
  * same functions and triggers as PGlite. Several Codex processes may start on the same database at once: the first
  * takes a session lock (advisory), checks and migrates the database and lays the functions, the others wait for it,
- * then find nothing left to do. Needs PostgreSQL 18 or later, ICU (the codex_fr collation), the schema codex, which
- * Codex may create objects in but never creates (the shared server: Matrix, infra/postgres/init/02-schemas.sql), and
+ * then find nothing left to do. Needs PostgreSQL 16 or later, ICU (the codex_fr collation, codex_fold below 18), the
+ * schema codex, which Codex may create objects in but never creates (the shared server: Matrix, infra/postgres/init/02-schemas.sql), and
  * the pg_trgm extension (contrib): already installed (on the shared server, by its superuser), or created here in the
  * schema codex when the role may (the owner of a database of one's own).
  */
@@ -223,7 +243,7 @@ async function openServer(url: string, opts: OpenOptions, onClose?: () => Promis
   let broken = false;
   try {
     const [{ v }] = (await conn.query<{ v: number }>(`select current_setting('server_version_num')::int as v`)).rows;
-    if (Number(v) < SERVER_MIN_VERSION) throw new Error(`Codex needs PostgreSQL 18 or later (the server of DATABASE_URL is ${Math.floor(Number(v) / 10000)}): codex_fold uses the pg_unicode_fast collation`);
+    if (Number(v) < SERVER_MIN_VERSION) throw new Error(`Codex needs PostgreSQL 16 or later (the server of DATABASE_URL is ${Math.floor(Number(v) / 10000)})`);
     const [own] = (await conn.query<{ found: boolean; usable: boolean }>(`select exists (select from pg_namespace where nspname = $1) as found,
       coalesce(has_schema_privilege($1, 'USAGE') and has_schema_privilege($1, 'CREATE'), false) as usable`, [DB_SCHEMA])).rows;
     if (!own.found || !own.usable) {
