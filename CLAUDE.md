@@ -101,6 +101,11 @@ npm run a11y         # après le build : axe-core dans Chromium sur une base de 
     `CREATE EXTENSION` ni `public` (`tests/unit/migrations.test.ts`).
   - Déclaration à Matrix (`src/lib/matrix.ts`) juste après les migrations, jamais attendue ni bloquante, jamais
     pendant `next build` ; sans `MATRIX_URL`, rien n'est envoyé.
+  - **Le serveur commun est en PostgreSQL 16** (décision D-27 du 22 octobre 2026), PGlite est un PostgreSQL 18 : Codex
+    accepte 16 ou plus récent (`SERVER_MIN_VERSION`, `src/db/index.ts`). Rien de propre à la 17 ou à la 18 dans le code
+    serveur ni dans les migrations ; `codex_fold` replie avec `pg_unicode_fast` quand la base l'a (PostgreSQL 18, PGlite),
+    sinon avec ICU (`"und-x-icu"`) (`foldCollation`). La CI lance `npm run test:pg` sur `postgres:16-bookworm` et
+    `postgres:18-bookworm`. Détail : `docs/postgres.md` (« Repli de la recherche selon la version »).
 - **Changement de `src/db/schema.ts` : migrations incrémentales.** Depuis le lot 11 (22 octobre 2026), la base figée
   est `drizzle/0000_init.sql` (tout le schéma de Codex dans `codex`, régénérée ce jour-là) suivie de
   `drizzle/0001_partage.sql` (prérequis du partage et 7 vues `pub_`, écrites à la main d'après

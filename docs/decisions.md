@@ -447,6 +447,21 @@ Règles de lecture :
     faite depuis Codex pendant qu'une révision est ouverte (elle était refusée jusque-là, `locked_working`).
 - **Mise en œuvre** : voir `docs/historique.md` (section du 11 octobre) et `docs/api.md` (webhook Vigie).
 
+### D-27 — Serveur commun en PostgreSQL 16, comme les autres outils
+- **Date** : 22 octobre 2026.
+- **Contexte** : Codex exigeait PostgreSQL 18 sur un serveur (repli de la recherche par la collation `pg_unicode_fast`,
+  propre à la 18). Le passage du socle Matrix en 18 (proposition P-01) a cassé la production des autres outils et a
+  été annulé (dépôt Matrix, PR #11) : le serveur commun EPC2I reste en PostgreSQL 16 (`postgres:16-bookworm`).
+- **Réponse de l'utilisateur** :
+  > fait le necessaire pour que codex soit en postgresql 16 comme le reste des outils
+- **Décision retenue** : Codex fonctionne sur le serveur commun en **PostgreSQL 16** ; il accepte PostgreSQL 16 ou
+  plus récent et refuse, avec un message, un serveur plus ancien. PGlite (PostgreSQL 18 embarqué) reste la base
+  intégrée, sans changement de comportement.
+- **Mise en œuvre** : `codex_fold` replie la casse avec ICU (racine `und`) avant PostgreSQL 18 et avec
+  `pg_unicode_fast` à partir de la 18 (`foldCollation`, `src/db/index.ts`) : même résultat sur tous les caractères
+  connus des deux ; la CI rejoue `npm run test:pg` sur `postgres:16-bookworm`. Détail et équivalence vérifiée :
+  `docs/postgres.md` (« Version ») et `docs/historique.md` § 20.1.
+
 ## Questions posées restées sans réponse directe
 
 | Date | Question de l'assistant | Suite |
@@ -1289,7 +1304,7 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     `CODEX_DB_POOL_MAX`), plutôt que postgres-js : ses résultats (`rows`) sont ceux de PGlite, ce qui garde le même
     code ; les entiers `int8` sont lus comme des nombres, les dates à minuit UTC, et une marque d'ordre d'octets en
     tête de texte est retirée, comme PGlite le fait ;
-  - **PostgreSQL 16 au moins** (22 octobre 2026 : le serveur commun reste en 16, décision P-01 de Matrix ; avant, 18
+  - **PostgreSQL 16 au moins** (D-27, 22 octobre 2026 : le serveur commun reste en 16, décision P-01 de Matrix ; avant, 18
     était exigé), refusé sinon ; le repli de la recherche prend la collation `pg_unicode_fast` de PostgreSQL 18 quand
     elle existe (PGlite 0.5), sinon la collation ICU `und-x-icu` (`docs/postgres.md`, « Repli de la recherche ») ; ICU
     et l'extension `pg_trgm` sont requis ;
