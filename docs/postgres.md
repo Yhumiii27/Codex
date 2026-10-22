@@ -47,8 +47,9 @@ d'une base ancienne). Mesures : [performances.md](performances.md).
 DATABASE_URL=postgres://codex_app:motdepasse@hote:5432/epc2i npm run start
 ```
 
-- **Serveur** : PostgreSQL **18** au moins (refusé sinon, avec un message : `codex_fold` replie la casse avec la
-  collation `pg_unicode_fast`, propre à PostgreSQL 18, comme PGlite 0.5), compilé avec ICU (collation `codex_fr`).
+- **Serveur** : PostgreSQL **16** au moins (refusé sinon, avec un message), compilé avec ICU (collations `codex_fr`
+  et `und-x-icu`). Le serveur commun EPC2I est en PostgreSQL 16 (décision P-01 de Matrix, 22 octobre 2026) ; 17 et 18
+  conviennent aussi. Voir « Repli de la recherche » pour ce qui change selon la version.
 - **Schéma et rôle** : sur le serveur commun, le socle Matrix crée le schéma `codex`, propriété de `codex_app`, avec
   `search_path=codex` et `idle_in_transaction_session_timeout=5min` pour ce rôle (`init/02-schemas.sql`). Sur un
   serveur à soi : `CREATE SCHEMA codex AUTHORIZATION <rôle de Codex>;` une fois. Sans schéma `codex`, ou sans droit
@@ -106,9 +107,8 @@ posés par le socle (`partage/90-droits.sql`). Codex ne lit ni n'écrit encore l
    schéma d'un outil » (l'extension est hors du schéma `codex`, donc hors de `codex.dump`). Installée dans `codex`
    plutôt, `90-droits.sql` échoue : `droits.verifier()` signale un « droit EXECUTE croisé » pour chaque fonction de
    `pg_trgm` (propriété du superutilisateur, exécutables par tous).
-3. **Version** : le socle utilise `postgres:16-bookworm` (`docker-compose.yml`, question P-01) ; Codex exige
-   PostgreSQL 18 (ci-dessus). Correctif : `postgres:18-bookworm` avant la mise en service, ou garder Codex en PGlite
-   jusque-là.
+3. **Version** : résolu le 22 octobre 2026. Le socle reste en `postgres:16-bookworm` (décision P-01 de Matrix) et
+   Codex admet PostgreSQL 16 (« Repli de la recherche » ci-dessous) ; rien à corriger dans Matrix.
 4. **`pub_journal.objet`** : nul pour une entrée sans document (droits, organisation, registre, sauvegardes : colonnes
    `target_kind`, `target_id`), et jamais réécrit lors d'un reclassement (le document garde son ancien identifiant en
    alias) ; les codes d'action sont plus de 16. Le commentaire de `40-codex.sql` (« réécrit lors d'un reclassement,
@@ -132,6 +132,40 @@ posés par le socle (`partage/90-droits.sql`). Codex ne lit ni n'écrit encore l
   les textes sans marque d'ordre d'octets en tête, comme PGlite.
 - Compteurs d'identifiants, verrous de ligne (`FOR UPDATE`), verrou consultatif de l'import : ils avaient été écrits
   pour un serveur (points 20 et 40) et sont maintenant vérifiés entre connexions (voir « Tests »).
+
+## Repli de la recherche selon la version (22 octobre 2026)
+
+Le serveur commun reste en PostgreSQL 16 (décision P-01 de Matrix) ; Codex exigeait 18 et refusait de démarrer dessus.
+`codex_fold` (décomposition NFD, accents U+0300–U+036F retirés, minuscules) est reposé à chaque démarrage par
+`openDb()` (jamais par une migration) avec la collation que la base possède (`foldCollation`, `src/db/index.ts`) :
+
+| Moteur | Collation de `lower()` | Tables Unicode de la casse |
+| --- | --- | --- |
+| PGlite 0.5, PostgreSQL 18 | `pg_unicode_fast` (fournisseur intégré) | celles de PostgreSQL (16.0) |
+| PostgreSQL 16 et 17 | `"und-x-icu"` (racine ICU) | celles de l'ICU du serveur (ICU 72, Unicode 15.0, sur `postgres:16-bookworm`) |
+
+Les deux appliquent la correspondance de casse complète d'Unicode avec le sigma final, comme `toLowerCase` de
+JavaScript (`fold`, `src/lib/search.ts`). `pg_c_utf8` (PostgreSQL 17) et les collations libc (`C.UTF-8` de la base
+`epc2i`) font une correspondance un pour un sans sigma final : jamais utilisées.
+
+Vérifié sur l'image du socle Matrix (PostgreSQL 16.15, ICU 72), par `tests/integration/search-sql.test.ts` et une
+comparaison de tous les points de code attribués par Node 22 (Unicode 16.0) : accents français, œ/Œ, æ/Æ, ß et ẞ (→ ß),
+İ (→ i), ǅ (→ ǆ), sigma final (ΑΣ → ας, mais 1Σ → 1σ), ligature ﬁ (inchangée), comme JavaScript. **Écarts restants** :
+
+- 47 points de code ajoutés par Unicode 16.0, inconnus d'ICU 72 et des tables de normalisation de PostgreSQL 16
+  (U+1C89, U+A7CB, U+A7CC, U+A7DA, U+A7DC, écritures Garay U+10D50–U+10D65, Todhri U+105C9 et U+105E4,
+  Tulu-Tigalari U+11383…U+113C8, Gurung Khema U+16121–U+16128, Kirat Rai U+16D68–U+16D6A) : la base les laisse tels
+  quels, `fold` les replie. La recherche reste cohérente (la requête et les valeurs sont repliées par la même
+  fonction de la base), seule la référence en mémoire diffère sur ces caractères. Le test compare donc, sur
+  PostgreSQL 16 qui n'a pas `unicode_assigned()`, les points de code que l'ICU du serveur attribue (classes
+  `graph`, `space`, `cntrl` : 286 548 sur 292 530 ; les caractères de format, Cf, sont couverts par les textes du test
+  suivant).
+- Tri par titre et ID (`codex_fr`, ICU 72) : l'apostrophe droite ' et l'apostrophe typographique ’ sont distinguées
+  (' avant ’), alors que l'ICU de PGlite et de Node les tient pour égales. Le test de tri est sauté sur
+  PostgreSQL 16 (pas de `icu_unicode_version()`), comme il l'était sur un ICU antérieur à Unicode 16.0.
+- Passage ultérieur du serveur en PostgreSQL 18 : `codex_fold` passera à `pg_unicode_fast` au démarrage suivant ; les
+  termes déjà enregistrés (`document_terms`) ne diffèrent que sur les points de code ci-dessus. Une mise à jour de
+  l'ICU du système (nouvelle image Debian) peut de même changer ces caractères, comme l'ordre de `codex_fr`.
 
 ## Ce qui change
 
@@ -214,7 +248,14 @@ CODEX_TEST_DATABASE_URL=postgres://postgres@127.0.0.1:5432/postgres npm run test
 - Mesure : 1 000 créations de documents (tirage du compteur et écriture, chacune dans sa transaction) : 2,7 s une à
   une sur PGlite comme sur le serveur ; envoyées toutes à la fois, 3,0 s sur PGlite (une connexion) et 1,15 s sur le
   serveur (pool de 10), sans doublon.
-- L'intégration continue lance `npm run test:pg` sur un service `postgres:18` (`.github/workflows/ci.yml`).
+- L'intégration continue lance `npm run test:pg` sur un service `postgres:16-bookworm` et sur un service
+  `postgres:18-bookworm` (`.github/workflows/ci.yml`).
+- Essai du 22 octobre 2026, passage en PostgreSQL 16 : image du socle Matrix (`docker build infra/postgres`,
+  PostgreSQL 16.15, ICU 72) : 109 fichiers, 1 464 tests réussis, 3 sautés (dont le tri `codex_fr`) ; quatre tests
+  PGlite de sauvegarde et d'intégrité ont dépassé leur délai de 15 s sur la machine chargée d'un premier passage et
+  passent seuls. `postgres:18-bookworm` (18, ICU 72) : 109 fichiers, 1 464 réussis, 3 sautés. Puis
+  `npm run db:migrate` en `codex_app` sur la base `epc2i` du socle : `0000_init` et `0001_partage` appliquées,
+  `codex_fold` posé avec `"und-x-icu"`, `partage/90-droits.sql` rejoué : `droits.verifier()` sans erreur.
 - Essai du 22 octobre 2026, lot 11 (PostgreSQL 18.3, rôles du socle) : 109 fichiers, 1 464 tests réussis, 3 sautés.
   Le socle Matrix lui-même (`init/01` à `03`, rejoués par un petit lecteur des commandes de psql, faute de psql),
   puis Codex en `codex_app` : voir [historique.md](historique.md) § 20.
