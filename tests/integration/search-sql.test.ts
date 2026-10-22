@@ -156,8 +156,17 @@ describe('what the database search rests on', () => {
     // point only the newer one assigns may fold differently (U+A7CE, lower case in 17.0 only): the database search
     // stays consistent, since it folds the query and the values alike (lib/queries.ts textSearch), but may part from
     // the in-memory reference on such a code point. Every code point both assign is compared.
-    const { rows: [pg] } = await db().$client.query<{ v: string }>('select unicode_version() as v');
-    const versions = `Unicode ${process.versions.unicode} in Node, ${pg.v} in PGlite`;
+    // PostgreSQL 16 (the shared EPC2I server, npm run test:pg) has neither unicode_assigned() nor unicode_version()
+    // (PostgreSQL 17), and folds with ICU (src/db/index.ts foldCollation): there, a code point is left out only when
+    // the server's ICU does not know it (no class of character: unassigned) and codex_fold leaves it as it is. With
+    // the ICU of Debian or Ubuntu (Unicode 15.0 or 15.1) and Node 22 (16.0), that leaves out 47 code points that
+    // fold() changes, all new in Unicode 16.0 (docs/postgres.md, « Version »).
+    const { rows: [pg] } = await db().$client.query<{ n: number }>(`select current_setting('server_version_num')::int as n`);
+    const { rows: [u] } = await db().$client.query<{ v: string }>(pg.n >= 170000 ? `select 'Unicode ' || unicode_version() || ' in the database' as v`
+      : `select 'ICU collation ' || collversion || ' on PostgreSQL ' || current_setting('server_version') as v from pg_collation where collname = 'und-x-icu'`);
+    const versions = `Unicode ${process.versions.unicode} in Node, ${u.v}`;
+    const known = pg.n >= 170000 ? 'unicode_assigned(x)'
+      : `(x collate "und-x-icu" ~ '[[:graph:][:space:][:cntrl:]]' or codex_fold(x) <> regexp_replace(normalize(x, nfd), '[\u0300-\u036f]', '', 'g'))`;
     const unassigned = /\p{Cn}/u;
     const cps: number[] = [];
     for (let c = 1; c <= 0x10ffff; c++) if ((c < 0xd800 || c > 0xdfff) && !unassigned.test(String.fromCodePoint(c))) cps.push(c);
@@ -168,13 +177,40 @@ describe('what the database search rests on', () => {
       // Compared in the database: PGlite would drop a byte order mark from a text it hands back.
       const { rows: [r] } = await db().$client.query<{ n: number; differ: string[] }>(
         `select count(*)::int as n, coalesce(array_agg(x) filter (where codex_fold(x) is distinct from want), '{}') as differ
-         from unnest($1::text[], $2::text[]) as u(x, want) where unicode_assigned(x)`, [xs, xs.map(fold)]);
+         from unnest($1::text[], $2::text[]) as u(x, want) where ${known}`, [xs, xs.map(fold)]);
       compared += r.n;
       differ.push(...r.differ.map((x) => `U+${x.codePointAt(0)!.toString(16)}`));
     }
     expect(differ, versions).toEqual([]);
     // Nearly every assigned code point: about 300 000 in Unicode 16.0, private use areas included.
     expect(compared, versions).toBeGreaterThan(280_000);
+  });
+
+  it('the two collations codex_fold lowers with fold alike: pg_unicode_fast (PostgreSQL 18, PGlite) and ICU (PostgreSQL 16)', async (ctx) => {
+    // src/db/index.ts foldCollation: a server before PostgreSQL 18 (the shared EPC2I server is a 16) has no
+    // pg_unicode_fast and folds with ICU's root locale. Where both are, with the same version of Unicode (PGlite 0.5:
+    // 16.0 for both), they must fold every code point and every context of a final sigma alike: the terms a server
+    // indexed under 16 stay right once it is upgraded to 18, and the 16 folds as PGlite does.
+    const { rows: [has] } = await db().$client.query<{ fast: boolean; n: number }>(`select exists (select from pg_collation where collname = 'pg_unicode_fast') as fast,
+      current_setting('server_version_num')::int as n`);
+    if (!has.fast) ctx.skip('no pg_unicode_fast before PostgreSQL 18: codex_fold folds with ICU there, compared with fold() above');
+    const { rows: [v] } = await db().$client.query<{ u: string; i: string }>('select unicode_version() as u, icu_unicode_version() as i');
+    if (v.u !== v.i) ctx.skip(`Unicode ${v.u} in the database, ${v.i} in its ICU: they may part on what only the newer one knows`);
+    const folded = (collation: string) => `(lower(regexp_replace(normalize(x, nfd), '[\\u0300-\\u036f]', '', 'g') collate ${collation}) collate "C")`;
+    const cps: number[] = [];
+    for (let c = 1; c <= 0x10ffff; c++) if (c < 0xd800 || c > 0xdfff) cps.push(c);
+    const texts = ['ΑΣ', 'ΑΣ Α', 'ΑΣ.', 'aΣ', '1Σ', 'ΑΣΑ', 'Σ', 'ΑΣ\u0301', 'ΑΣ\u0345Α', 'ΑΣ\u00ad', 'Α\u00adΣ', 'ΑΣ\u200b Α', "Α'Σ", 'Α.Σ', 'ΟΔΥΣΣΕΥΣ', 'İstanbul', 'Straße ẞ', 'ǅemal'];
+    const differ: string[] = [];
+    let compared = 0;
+    for (const xs of [texts, ...Array.from({ length: Math.ceil(cps.length / 100_000) }, (_, i) => cps.slice(i * 100_000, (i + 1) * 100_000).map((c) => String.fromCodePoint(c)))]) {
+      const { rows: [r] } = await db().$client.query<{ n: number; differ: string[] }>(
+        `select count(*)::int as n, coalesce(array_agg(x) filter (where ${folded('pg_unicode_fast')} is distinct from ${folded('"und-x-icu"')}), '{}') as differ
+         from unnest($1::text[]) as u(x) where unicode_assigned(x)`, [xs]);
+      compared += r.n;
+      differ.push(...r.differ);
+    }
+    expect(differ).toEqual([]);
+    expect(compared).toBeGreaterThan(280_000);
   });
 
   it('a query finds the text it copies, even with characters only the newer version of Unicode knows', async () => {
@@ -220,8 +256,18 @@ describe('what the database search rests on', () => {
     // The order is ICU's. A PostgreSQL server (npm run test:pg, docs/postgres.md) built with an ICU older than PGlite's
     // may order a few characters otherwise: ICU 60 (Unicode 10.0) tells ' from ’, which the ICU of PGlite 0.5 and of
     // Node 22 (Unicode 16.0) find equal. Skipped on such a server only, said in the report; PGlite is always checked.
-    const { rows: [icu] } = await db().$client.query<{ v: string }>('select icu_unicode_version() as v');
-    if (engineOf(db().$client) === 'postgres' && Number.parseFloat(icu.v) < 16) ctx.skip(`ICU of the server on Unicode ${icu.v}, older than PGlite's (16.0)`);
+    // PostgreSQL 16 has no icu_unicode_version() (PostgreSQL 17): there, the server is skipped only when it tells the
+    // two apostrophes apart, as ICU 60 does; the ICU of Debian bookworm (72) and Ubuntu 24.04 (74) find them equal.
+    const { rows: [pg] } = await db().$client.query<{ n: number }>(`select current_setting('server_version_num')::int as n`);
+    if (engineOf(db().$client) === 'postgres') {
+      if (pg.n >= 170000) {
+        const { rows: [icu] } = await db().$client.query<{ v: string }>('select icu_unicode_version() as v');
+        if (Number.parseFloat(icu.v) < 16) ctx.skip(`ICU of the server on Unicode ${icu.v}, older than PGlite's (16.0)`);
+      } else {
+        const { rows: [ap] } = await db().$client.query<{ same: boolean }>(`select '''' = '’' collate codex_fr as same`);
+        if (!ap.same) ctx.skip('ICU of the server older than PGlite\'s: it tells \' from ’');
+      }
+    }
     const collator = new Intl.Collator('fr', { numeric: true, sensitivity: 'base' });
     const r = random(3);
     const alphabet = [...'aAbBeEéÉèêzZœŒæÆçÇ0123456789 -_.,\'’()/«»:ñßøØ', '\ufeff'];

@@ -3181,3 +3181,42 @@ de `pub_journal.objet` ; plan § 4.5 et § 6 (verrou d'écriture, `migrate.ts`).
 - **Coolify, à faire** : rien sur le port ni le volume ; supprimer `/data/pglite` (procédure §10) ; la case « disponible
   au build » des `NEXT_PUBLIC_*` n'est plus utile ; au raccordement au serveur commun, `DATABASE_URL` et
   `CODEX_SEED_DEMO=1` ou `CODEX_SEED=minimal`.
+
+### 20.1 Codex sur PostgreSQL 16, la version du serveur commun (22 oct.)
+
+**Contexte.** Le passage du socle Matrix en PostgreSQL 18 (proposition P-01) a cassé la production des autres outils
+et a été annulé (PR Matrix #11, branche `claude/revert-socle-pg18`) : le serveur commun reste en `postgres:16-bookworm`.
+Codex exigeait la 18. Décision de l'utilisateur (D-27, [decisions.md](decisions.md)) : « fait le necessaire pour que
+codex soit en postgresql 16 comme le reste des outils ».
+
+**Ce qui dépendait de la 17 ou de la 18** (recherche dans `src/`, `drizzle/`, `scripts/`, `tests/`) :
+
+| Élément | Résolution |
+| --- | --- |
+| `codex_fold` : `collate pg_unicode_fast` (18) | collation choisie au démarrage selon `server_version_num` (`foldCollation`, `src/db/index.ts`) : `"und-x-icu"` avant la 18, `pg_unicode_fast` dès la 18 et en PGlite (inchangé) |
+| `SERVER_MIN_VERSION = 180000` | `160000` ; message pour une version plus ancienne (« Codex needs PostgreSQL 16 or later, the version of the shared EPC2I server… ») ; serveur sans ICU refusé avec un message |
+| Migrations `0000_init`, `0001_partage` | aucune syntaxe 17 ou 18 : inchangées, appliquées telles quelles sur 16.15 |
+| Tests : `unicode_assigned()`, `unicode_version()`, `icu_unicode_version()` (17) | sur 16 : caractères inconnus de l'ICU du serveur et laissés tels quels mis de côté ; tri `codex_fr` sauté seulement si le serveur distingue `'` de `’` |
+| Test de structure : contraintes `NOT NULL` de `pg_constraint` (18) | laissées de côté, `is_nullable` les compare |
+| CI : service `postgres:18` | `postgres:16-bookworm` (un second service en 18 est proposé, non ajouté : minutes Actions) |
+| `npm run test:pg` : message « serveur PostgreSQL 18 » | « PostgreSQL 16 ou plus récent » |
+
+Nouveau test (`search-sql.test.ts`) : en PGlite (et sur un serveur 18), `pg_unicode_fast` et `"und-x-icu"` replient à
+l'identique les 292 530 caractères assignés et les contextes du sigma final ; il garantit que la 16 replie comme PGlite
+et qu'un serveur passé plus tard en 18 garde des termes justes. Tableau des textes difficiles et écarts :
+[postgres.md](postgres.md), « Version ».
+
+**Vérifications** (conteneur Linux, Node 22.22, PostgreSQL 16.15 d'Ubuntu 24.04, ICU 74, dans `/var/tmp`, port 54316,
+supprimé à la fin) :
+
+- Repli contre `fold()` de Node (Unicode 16.0) : 287 175 caractères comparés, 0 écart ; 5 355 mis de côté (inconnus
+  de l'ICU du serveur, laissés tels quels), dont 47 que `fold()` change, tous nouveaux d'Unicode 16.0.
+- Socle Matrix (`claude/revert-socle-pg18`) rejoué avec psql (`init/01` à `03`, mots de passe d'essai en variables) ;
+  `npm run db:migrate` en `codex_app` : `0000_init` et `0001_partage` appliquées, `codex_fold` posé avec
+  `"und-x-icu"` ; `partage/40-codex.sql` de Matrix rejoué tel quel en `codex_app` : 7 vues identiques ;
+  `partage/90-droits.sql` : `droits.verifier()` sans erreur ; `verifier-droits.sql` : 114 cas conformes.
+- `npm run build` puis `next start` avec `DATABASE_URL` (`codex_app`) et `CODEX_SEED=demo` : 63 documents, 172 termes ;
+  `/api/health` 200 (`database ok`), accueil, `/recherche?q=PROCEDURE` (les 4 `PRO-…` attendus) et `/explorateur` en 200.
+- `npm run test:pg` sur 16.15 : 109 fichiers, 1 465 tests réussis, 3 sautés (les 2 d'avant, plus la comparaison des
+  deux collations, faute de `pg_unicode_fast` sur la 16), aucune base ni aucun rôle d'essai laissé. `npm test` (PGlite) : 1 455
+  réussis, 13 sautés, avec et sans `.data`. Typecheck, lint, `db:check`, build : sans erreur.

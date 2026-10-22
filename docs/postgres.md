@@ -41,14 +41,79 @@ d'une base ancienne). Mesures : [performances.md](performances.md).
     (app Mac, image Docker : [exploitation.md](exploitation.md) §10).
   - Sur un serveur, Codex ne reprend jamais une base dont les tables sont dans `public` : il la refuse.
 
+## Version (D-27, 22 octobre 2026)
+
+Le serveur commun EPC2I est en **PostgreSQL 16** (`postgres:16-bookworm`, `infra/postgres/Dockerfile` du dépôt
+Matrix) : le passage du socle en 18 (proposition P-01) a cassé la production des autres outils et a été annulé (PR
+Matrix #11). Décision de l'utilisateur, le 22 octobre : « fait le necessaire pour que codex soit en postgresql 16 comme
+le reste des outils » ([decisions.md](decisions.md), D-27). Du 18 au 22 octobre, Codex exigeait la 18 ; il accepte
+maintenant **PostgreSQL 16 ou plus récent**. PGlite 0.5 (PostgreSQL 18.3 embarqué) reste la base intégrée, inchangée.
+
+Ce qui dépendait de la 17 ou de la 18, recensé dans `src/`, `drizzle/`, `scripts/`, `tests/` :
+
+| Élément | Version | Sur PostgreSQL 16 |
+| --- | --- | --- |
+| `codex_fold` : `lower(… collate pg_unicode_fast)` | 18 (fournisseur intégré) | `lower(… collate "und-x-icu")` : la collation est choisie au démarrage selon `server_version_num` (`foldCollation`, `src/db/index.ts`) ; `pg_unicode_fast` dès la 18 et en PGlite |
+| Contrôle de version au démarrage (`SERVER_MIN_VERSION`) | exigeait 18 | 16 (`160000`) ; un serveur plus ancien, ou sans ICU, est refusé avec un message |
+| `drizzle/0000_init.sql`, `drizzle/0001_partage.sql` | aucune syntaxe 17 ou 18 | inchangées (rejouées sur 16.15) |
+| Test du repli sur chaque caractère : `unicode_assigned()`, `unicode_version()` | 17 | sur 16, sont laissés de côté les caractères que l'ICU du serveur ne connaît pas (aucune classe) et que `codex_fold` laisse tels quels |
+| Test de tri `codex_fr` : `icu_unicode_version()` | 17 | sur 16, sauté seulement si le serveur distingue `'` de `’` (ICU 60) |
+| Comparaison de structure (`migrations.test.ts`) : contraintes `NOT NULL` dans `pg_constraint` | 18 | laissées de côté : `is_nullable` des colonnes les compare sur les deux |
+| `tests/fixtures/drizzle-public/0003_vocabulaires.sql` (`pg_unicode_fast`) | 18 | ancienne chaîne PGlite, rejouée en PGlite seulement (jamais sur un serveur) ; inchangée |
+
+Aucune autre fonction ni syntaxe postérieure à la 16 (`MERGE … RETURNING`, `JSON_TABLE`, `uuidv7`, `casefold`,
+`transaction_timeout`, `pg_get_acl`, colonnes générées virtuelles…) n'est utilisée. `any_value` et `IS JSON` sont des
+apports de la 16 ; Codex ne s'en sert pas non plus.
+
+**Repli de la recherche.** `codex_fold` décompose (NFD), retire les accents U+0300–U+036F puis met en minuscules par
+les règles complètes d'Unicode, comme `fold()` (`src/lib/search.ts`, `toLowerCase` de JavaScript). Avant la 18,
+PostgreSQL n'a pas de collation intégrée qui le fasse (avec libc ou C, `lower()` laisse `ß`, `Σ` final et une partie
+des lettres non latines à la locale) ; ICU, racine `und`, applique les mêmes règles : minuscules complètes, sigma final
+selon le contexte, `İ` en `i` + point combinant (retiré ensuite avec les accents). Vérifications (22 octobre) :
+
+- PGlite 0.5 (PostgreSQL 18.3, Unicode 16.0 dans la base et dans son ICU) : `pg_unicode_fast` et `"und-x-icu"`
+  replient à l'identique les 292 530 caractères assignés et les contextes du sigma final (test « the two collations
+  codex_fold lowers with fold alike », `tests/integration/search-sql.test.ts`) : un serveur passé plus tard de la 16 à
+  la 18 garde des termes de recherche justes.
+- PostgreSQL 16.15 (ICU 74, Unicode 15.1) contre `fold()` de Node 22 (Unicode 16.0), sur tous les caractères assignés
+  pour Node : **47 écarts, tous des caractères nouveaux d'Unicode 16.0** que le serveur ne connaît pas et laisse tels
+  quels (majuscules `U+1C89`, `U+A7CB`, `U+A7CC`, `U+A7DA`, `U+A7DC`, todhri `U+105C9`, `U+105E4`, garay
+  `U+10D50`–`U+10D65` ; lettres et signes décomposables toulou-tigalari, gurung khema, kirat rai). Aucun écart ailleurs.
+  L'ICU de `postgres:16-bookworm` (72, Unicode 15.0) ne diffère de 15.1 que par des idéogrammes sans casse. La recherche
+  reste juste sur ces caractères : la base replie la requête comme les valeurs (`lib/queries.ts`, test « a query finds
+  the text it copies »).
+- Textes difficiles, même résultat en PGlite (`pg_unicode_fast`), sur PostgreSQL 16 (ICU) et en JavaScript :
+
+  | Texte | Repli |
+  | --- | --- |
+  | `Straße STRASSE ẞ` | `straße strasse ß` |
+  | `İstanbul ISTANBUL ı` | `istanbul istanbul ı` |
+  | `ﬁchier ﬂ ﬀ` | `ﬁchier ﬂ ﬀ` (ligatures sans majuscule : laissées) |
+  | `ΟΔΥΣΣΕΥΣ`, `ΑΣ.`, `ΣΑ` | `οδυσσευς`, `ας.`, `σα` (sigma final selon le contexte) |
+  | `Ὀδυσσεύς`, `ΆΈΉ ΰ ΐ` | `οδυσσευς`, `αεη υ ι` |
+  | `ǅemal Ǆ ǈ` | `ǆemal ǆ ǉ` |
+  | `Œuvre Æsir`, `L’Été d'Ève` | `œuvre æsir`, `l’ete d'eve` (apostrophes gardées) |
+  | `ÅNGSTRÖM`, `Å` (U+212B) | `angstrom`, `a` |
+  | `Ç ç̧ Ş ş Ğ` | `c c s s g` |
+  | `ꞵ Ꞵ ꟊ Ꟊ`, `Ⅻ`, `Ⓐ`, `𝐀` | `ꞵ ꞵ ꟊ ꟊ`, `ⅻ`, `ⓐ`, `𝐀` (lettre mathématique : laissée) |
+  | cherokee `Ꭰ`, arménien `Ա Ֆ`, cyrillique `Ѐ Ж Ѣ` | `ꭰ`, `ա ֆ`, `е ж ѣ` |
+  | `U+1C89`, garay `U+10D50` (Unicode 16.0) | minuscule en PGlite et en JavaScript ; laissé tel quel sur la 16 |
+
+- La collation `codex_fr` (ICU, `fr@colNumeric=yes;colStrength=primary`, non déterministe) se crée sur la 16 (forme
+  normalisée `fr-u-kn-ks-level1`) et classe comme `Intl.Collator('fr')` : le test de tri passe sur 16.15 (ICU 74).
+- **Passage ultérieur à la 18** : au démarrage suivant, `codex_fold` est reposé avec `pg_unicode_fast` ; les termes déjà
+  indexés restent justes (repli identique, ci-dessus), sauf pour les seuls caractères que l'ancienne version d'Unicode
+  ignorait.
+
 ## Activer
 
 ```bash
 DATABASE_URL=postgres://codex_app:motdepasse@hote:5432/epc2i npm run start
 ```
 
-- **Serveur** : PostgreSQL **18** au moins (refusé sinon, avec un message : `codex_fold` replie la casse avec la
-  collation `pg_unicode_fast`, propre à PostgreSQL 18, comme PGlite 0.5), compilé avec ICU (collation `codex_fr`).
+- **Serveur** : PostgreSQL **16** au moins, la version du serveur commun (D-27 ; refusé sinon, avec un message),
+  compilé avec ICU (collation `codex_fr`, et repli de la recherche avant la 18 : voir « Version » ; sans ICU, refusé
+  avec un message).
 - **Schéma et rôle** : sur le serveur commun, le socle Matrix crée le schéma `codex`, propriété de `codex_app`, avec
   `search_path=codex` et `idle_in_transaction_session_timeout=5min` pour ce rôle (`init/02-schemas.sql`). Sur un
   serveur à soi : `CREATE SCHEMA codex AUTHORIZATION <rôle de Codex>;` une fois. Sans schéma `codex`, ou sans droit
@@ -92,7 +157,10 @@ du dépôt Matrix ; `tests/integration/partage.test.ts` en fige les colonnes et 
 posés par le socle (`partage/90-droits.sql`). Codex ne lit ni n'écrit encore les colonnes reprises de Vigie
 (`distribution`, `review_months` du document, `process_code`) ni `matricule`.
 
-**Écarts avec le dépôt Matrix au 22 octobre 2026** (correctifs à y porter ; le dépôt Matrix n'est pas modifié ici) :
+**Écarts avec le dépôt Matrix au 22 octobre 2026** (correctifs à y porter ; le dépôt Matrix n'est pas modifié ici).
+Les écarts 1 et 2 sont corrigés dans `main` de Matrix depuis (PR #9 : `ee9809f`, `e845375`) : rejoué sur
+PostgreSQL 16 le 22 octobre, `40-codex.sql` laisse les 7 vues identiques et `init/02-schemas.sql` installe `pg_trgm`
+dans `extensions`. L'écart 3 est retiré (D-27).
 
 1. **`pub_journal.quand`** : `audit_log.at` est dans cette branche un instant UTC (`timestamptz`, journal en ajout
    seul), plus l'heure de Paris sans fuseau. `0001_partage` publie donc `a.at AS quand`, sans `AT TIME ZONE
@@ -106,9 +174,8 @@ posés par le socle (`partage/90-droits.sql`). Codex ne lit ni n'écrit encore l
    schéma d'un outil » (l'extension est hors du schéma `codex`, donc hors de `codex.dump`). Installée dans `codex`
    plutôt, `90-droits.sql` échoue : `droits.verifier()` signale un « droit EXECUTE croisé » pour chaque fonction de
    `pg_trgm` (propriété du superutilisateur, exécutables par tous).
-3. **Version** : le socle utilise `postgres:16-bookworm` (`docker-compose.yml`, question P-01) ; Codex exige
-   PostgreSQL 18 (ci-dessus). Correctif : `postgres:18-bookworm` avant la mise en service, ou garder Codex en PGlite
-   jusque-là.
+3. ~~**Version**~~ : retiré le 22 octobre (D-27). Le socle reste en `postgres:16-bookworm` (le passage en 18 est
+   annulé, PR Matrix #11) et Codex accepte PostgreSQL 16 (« Version » plus haut).
 4. **`pub_journal.objet`** : nul pour une entrée sans document (droits, organisation, registre, sauvegardes : colonnes
    `target_kind`, `target_id`), et jamais réécrit lors d'un reclassement (le document garde son ancien identifiant en
    alias) ; les codes d'action sont plus de 16. Le commentaire de `40-codex.sql` (« réécrit lors d'un reclassement,
@@ -214,7 +281,13 @@ CODEX_TEST_DATABASE_URL=postgres://postgres@127.0.0.1:5432/postgres npm run test
 - Mesure : 1 000 créations de documents (tirage du compteur et écriture, chacune dans sa transaction) : 2,7 s une à
   une sur PGlite comme sur le serveur ; envoyées toutes à la fois, 3,0 s sur PGlite (une connexion) et 1,15 s sur le
   serveur (pool de 10), sans doublon.
-- L'intégration continue lance `npm run test:pg` sur un service `postgres:18` (`.github/workflows/ci.yml`).
+- L'intégration continue lance `npm run test:pg` sur un service `postgres:16-bookworm`, la version du socle
+  (`.github/workflows/ci.yml`). PGlite (PostgreSQL 18) est testé par les autres tâches ; un second service en
+  `postgres:18` vérifierait aussi `pg_unicode_fast` sur un serveur, mais coûterait une tâche de plus à chaque
+  poussée (minutes Actions comptées) : non ajouté, à décider.
+- Essai du 22 octobre 2026, PostgreSQL 16 (D-27) : PostgreSQL 16.15 d'Ubuntu 24.04 (ICU 74) dans `/var/tmp`, socle
+  Matrix de la branche `claude/revert-socle-pg18` rejoué avec psql (`init/01` à `03`), puis Codex en `codex_app` : voir
+  [historique.md](historique.md) § 20.1.
 - Essai du 22 octobre 2026, lot 11 (PostgreSQL 18.3, rôles du socle) : 109 fichiers, 1 464 tests réussis, 3 sautés.
   Le socle Matrix lui-même (`init/01` à `03`, rejoués par un petit lecteur des commandes de psql, faute de psql),
   puis Codex en `codex_app` : voir [historique.md](historique.md) § 20.

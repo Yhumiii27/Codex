@@ -57,14 +57,16 @@ jobs:
 
   # The whole suite again on a PostgreSQL server (option DATABASE_URL, docs/postgres.md): each test file gets a database
   # of its own there (CODEX_TEST_DATABASE_URL), and tests/integration/postgres-server.test.ts races transactions between
-  # connections, which PGlite cannot. PostgreSQL 18, as PGlite 0.5 (codex_fold needs the pg_unicode_fast collation).
+  # connections, which PGlite cannot. PostgreSQL 16, the version of the shared EPC2I server (the image of Matrix's
+  # docker-compose.yml, decision of 22 October 2026): codex_fold lowers with ICU there, with pg_unicode_fast in PGlite
+  # 0.5 (PostgreSQL 18), which the other jobs test (docs/postgres.md, « Version »).
   postgres:
-    name: Tests on PostgreSQL 18
+    name: Tests on PostgreSQL 16
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
       postgres:
-        image: postgres:18
+        image: postgres:16-bookworm
         env:
           POSTGRES_PASSWORD: codex-ci
         ports: ['5432:5432']
