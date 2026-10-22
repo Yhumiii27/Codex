@@ -177,7 +177,9 @@ describe('the file route', () => {
     // attempts are scheduled later. Move the clock a second at a time, letting real I/O run, until the answer comes.
     let settled = false;
     void pending.finally(() => (settled = true));
-    for (let i = 0; i < 100 && !settled; i++) {
+    // Bounded by real time (Date is not faked here), not by a count of turns: a slow CI server needs many more turns.
+    const until = Date.now() + 12_000;
+    while (!settled && Date.now() < until) {
       await vi.advanceTimersByTimeAsync(1_000);
       await new Promise((r) => setImmediate(r));
     }
