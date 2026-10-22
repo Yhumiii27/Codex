@@ -33,9 +33,8 @@ async function lastSnapshot() {
 async function structure(pg: Pick<SqlQueryable, 'query'>, nsp = 'codex') {
   // Sorted here, not by the server: its collation (C, en_US…) orders "document_terms" and "documents" differently.
   // pg_trgm's operator class is written with its schema when it is not on the search_path: `extensions` on a server laid
-  // out as the shared one (docs/postgres.md), codex in PGlite. The same index either way.
-  // NOT NULL constraints (contype n) are rows of pg_constraint from PostgreSQL 18 only (PGlite 0.5), not on a
-  // PostgreSQL 16 server (npm run test:pg): left out, the columns' is_nullable compares them on both.
+  // out as the shared one (docs/postgres.md), codex in PGlite. The same index either way. NOT NULL constraints are left to
+  // is_nullable of the columns: PostgreSQL 18 (PGlite) lists them in pg_constraint too, 16 (the shared server) does not.
   const q = async (sql: string) => (await pg.query<Record<string, unknown>>(sql)).rows.map((r) => Object.values(r).join(' | ').replace(/\b\w+\.gin_trgm_ops\b/g, 'gin_trgm_ops')).sort();
   return {
     columns: await q(`select table_name, column_name, data_type, udt_name, is_nullable, coalesce(column_default, '') from information_schema.columns where table_schema = '${nsp}' and table_name not like 'pub\\_%' and table_name <> '__drizzle_migrations' order by 1, 2`),

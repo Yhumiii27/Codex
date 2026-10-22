@@ -2,7 +2,7 @@
 
 Le code suit le modèle de `docs/modele-cible.md`. `npm run typecheck`, `npm run lint`, `npm run db:check`, `npm test`
 (Vitest), `npm run build` et `npm run a11y` (accessibilité) passent ; la CI les rejoue à chaque push
-(`.github/workflows/ci.yml`), avec la suite de tests sur un serveur PostgreSQL 16 (version du serveur commun depuis le 22 octobre, D-27). Le détail de chaque étape est dans
+(`.github/workflows/ci.yml`), avec la suite de tests sur un serveur PostgreSQL 16 (version du serveur commun) et 18. Le détail de chaque étape est dans
 `docs/historique.md` (§11 à §18), l'état de chacun des 129 points de l'inventaire du 9 octobre dans
 `docs/reste-a-faire.md`.
 

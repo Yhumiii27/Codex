@@ -76,13 +76,12 @@ create or replace trigger documents_version before update on documents for each 
 /**
  * Text search on the record (/recherche, lib/queries.ts searchDocs).
  * codex_fold folds a text as lib/search.ts fold does: canonical decomposition (NFD), combining accents U+0300–U+036F
- * removed, then lower case by the Unicode rules the database carries (full case mapping, a capital sigma ending a word
- * becomes a final sigma), as JavaScript's toLowerCase does: with the collation of foldCollation(), pg_unicode_fast
- * (built-in provider) on PostgreSQL 18 and PGlite 0.5, ICU's root locale ("und-x-icu") on PostgreSQL 16 and 17, which
- * have no such built-in collation (the shared EPC2I server is a PostgreSQL 16, decision of 22 October 2026). Both fold
- * alike every character the database's Unicode knows (docs/postgres.md, « Version »); a character only a newer Unicode
- * knows is left as it is. codex_unbom drops a leading byte order mark from a text column: PGlite's decoder drops it
- * from every text value it hands back, so the application never sees it (the values inside a jsonb keep theirs). tests/integration/search-sql.test.ts compares codex_fold with fold
+ * removed, then lower case by full Unicode case mapping (a capital sigma ending a word becomes a final sigma, ẞ becomes
+ * ß), as JavaScript's toLowerCase does, under the collation foldCollation() picks: pg_unicode_fast (built-in provider,
+ * PostgreSQL 18 and PGlite 0.5), or the ICU root collation "und-x-icu" on PostgreSQL 16 and 17 (ICU's case mapping,
+ * the same rules; the shared EPC2I server stays on PostgreSQL 16, Matrix decision P-01). codex_unbom drops a leading
+ * byte order mark from a text column: PGlite's decoder drops it from every text value it hands back, so the
+ * application never sees it (the values inside a jsonb keep theirs). tests/integration/search-sql.test.ts compares codex_fold with fold
  * on every code point: it tells when another version of Node or PGlite parts them.
  * The trigger documents_terms writes the folded values of a document into document_terms, at its insertion and
  * whenever a searched column changes (an update documents_version skips fires nothing). Its fields are the groups of
@@ -171,8 +170,7 @@ export async function openDb(target?: DbTarget, opts: OpenOptions = {}): Promise
     await client.close().catch(() => {});
     throw err;
   }
-  const [{ v }] = (await client.query<{ v: number }>(`select current_setting('server_version_num')::int as v`)).rows;
-  await installCompanions(client, foldCollation(Number(v)));
+  await installCompanions(client);
   return db;
 }
 
@@ -185,27 +183,34 @@ function pgliteRemedy(target: string | undefined): string {
     : `npm run db:reset (deletes ${target}), or restore a backup made with this version (npm run restore)`;
 }
 
-/**
- * The collation codex_fold lowers with, by the version of the database (server_version_num): pg_unicode_fast from
- * PostgreSQL 18 (PGlite 0.5 included), whose built-in provider maps case as Unicode does; before 18, ICU's root locale,
- * which maps it the same way (full case mapping, final sigma, İ to i and a combining dot). Never the database's default
- * collation: with libc or C, lower() leaves ß, Σ and most non-ASCII letters to the locale, or as they are.
- */
-export function foldCollation(serverVersionNum: number): string {
-  return serverVersionNum >= 180000 ? 'pg_unicode_fast' : '"und-x-icu"';
-}
-
 /** The functions, triggers and collation every start lays (statements above), in that order. */
-async function installCompanions(q: SqlQueryable, collation: string): Promise<void> {
+async function installCompanions(q: SqlQueryable): Promise<void> {
   await q.exec(AUDIT_APPEND_ONLY);
   await q.exec(DOCUMENT_VERSION);
-  await q.exec(documentSearch(collation));
+  await q.exec(documentSearch(await foldCollation(q)));
 }
 
 /**
- * PostgreSQL 16 at least, the version of the shared EPC2I server (decision of 22 October 2026): codex_fold lowers with
- * ICU there (foldCollation), codex_fr is an ICU collation, and the migrations use nothing newer. PGlite 0.5 is a
- * PostgreSQL 18. An older server is refused with a message.
+ * The collation under which codex_fold lowers case, chosen at every start by what the database has: pg_unicode_fast
+ * (PostgreSQL 18, PGlite 0.5), else the ICU root collation "und-x-icu" (PostgreSQL 16 and 17 built with ICU, which
+ * codex_fr needs anyway). Both apply Unicode's full case mapping with the final sigma, as JavaScript's toLowerCase;
+ * pg_c_utf8 (PostgreSQL 17) and the libc collations map one code point to one and know no final sigma: never used.
+ * They part from lib/search.ts only on code points their version of Unicode does not assign yet (ICU 72 of Debian 12:
+ * Unicode 15.0, against 16.0 in Node 22 and PGlite 0.5), which the database folds alike in the query and the values
+ * (docs/postgres.md, « Repli de la recherche »).
+ */
+async function foldCollation(q: SqlQueryable): Promise<string> {
+  const { rows: [c] } = await q.query<{ fast: boolean; icu: boolean }>(`select
+    exists (select from pg_collation where collname = 'pg_unicode_fast' and collnamespace = 'pg_catalog'::regnamespace) as fast,
+    exists (select from pg_collation where collname = 'und-x-icu' and collnamespace = 'pg_catalog'::regnamespace) as icu`);
+  if (c.fast) return 'pg_catalog.pg_unicode_fast';
+  if (c.icu) return 'pg_catalog."und-x-icu"';
+  throw new Error('the database has neither the pg_unicode_fast collation (PostgreSQL 18) nor the ICU collation "und-x-icu": Codex needs a PostgreSQL server built with ICU');
+}
+
+/**
+ * PostgreSQL 16 at least (the shared EPC2I server, Matrix decision P-01): normalize() (13), the ICU collations
+ * codex_fr and "und-x-icu" whose lower() codex_fold uses below 18, and what the migrations and queries use.
  */
 const SERVER_MIN_VERSION = 160000;
 
@@ -219,10 +224,10 @@ const MIGRATION_LOCK_KEY = `${DB_SCHEMA}.migrations`;
  * A PostgreSQL server (DATABASE_URL): a pool of connections whose search_path is codex, the same migrations and the
  * same functions and triggers as PGlite. Several Codex processes may start on the same database at once: the first
  * takes a session lock (advisory), checks and migrates the database and lays the functions, the others wait for it,
- * then find nothing left to do. Needs PostgreSQL 16 or later, ICU (the codex_fr collation, and codex_fold before
- * PostgreSQL 18), the schema codex, which Codex may create objects in but never creates (the shared server: Matrix,
- * infra/postgres/init/02-schemas.sql), and the pg_trgm extension (contrib): already installed (on the shared server, by
- * its superuser), or created here in the schema codex when the role may (the owner of a database of one's own).
+ * then find nothing left to do. Needs PostgreSQL 16 or later, ICU (the codex_fr collation, codex_fold below 18), the
+ * schema codex, which Codex may create objects in but never creates (the shared server: Matrix, infra/postgres/init/02-schemas.sql), and
+ * the pg_trgm extension (contrib): already installed (on the shared server, by its superuser), or created here in the
+ * schema codex when the role may (the owner of a database of one's own).
  */
 async function openServer(url: string, opts: OpenOptions, onClose?: () => Promise<void>): Promise<Db> {
   const pool = serverPool(url, poolMaxOf(process.env));
@@ -237,13 +242,8 @@ async function openServer(url: string, opts: OpenOptions, onClose?: () => Promis
   });
   let broken = false;
   try {
-    const [{ v, icu }] = (await conn.query<{ v: number; icu: boolean }>(`select current_setting('server_version_num')::int as v,
-      exists (select from pg_catalog.pg_collation where collname = 'und-x-icu' and collprovider = 'i') as icu`)).rows;
-    const version = Number(v);
-    if (version < SERVER_MIN_VERSION) {
-      throw new Error(`Codex needs PostgreSQL 16 or later, the version of the shared EPC2I server (the server of DATABASE_URL is PostgreSQL ${Math.floor(version / 10000)}, server_version_num ${version}): upgrade it, or leave DATABASE_URL unset to keep the embedded database (PGlite)`);
-    }
-    if (!icu) throw new Error(`the PostgreSQL server of DATABASE_URL (${redactUrl(url)}) is built without ICU (no collation "und-x-icu"): Codex needs it to fold and order texts (codex_fold, codex_fr); the official images (postgres:16-bookworm) and the Debian and Ubuntu packages have it`);
+    const [{ v }] = (await conn.query<{ v: number }>(`select current_setting('server_version_num')::int as v`)).rows;
+    if (Number(v) < SERVER_MIN_VERSION) throw new Error(`Codex needs PostgreSQL 16 or later (the server of DATABASE_URL is ${Math.floor(Number(v) / 10000)})`);
     const [own] = (await conn.query<{ found: boolean; usable: boolean }>(`select exists (select from pg_namespace where nspname = $1) as found,
       coalesce(has_schema_privilege($1, 'USAGE') and has_schema_privilege($1, 'CREATE'), false) as usable`, [DB_SCHEMA])).rows;
     if (!own.found || !own.usable) {
@@ -265,7 +265,7 @@ async function openServer(url: string, opts: OpenOptions, onClose?: () => Promis
         throw err;
       }
     }
-    await installCompanions(locked, foldCollation(version));
+    await installCompanions(locked);
     await conn.query(`select pg_advisory_unlock(hashtext($1))`, [MIGRATION_LOCK_KEY]);
   } catch (err) {
     broken = true;

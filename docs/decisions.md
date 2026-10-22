@@ -1304,9 +1304,10 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     `CODEX_DB_POOL_MAX`), plutôt que postgres-js : ses résultats (`rows`) sont ceux de PGlite, ce qui garde le même
     code ; les entiers `int8` sont lus comme des nombres, les dates à minuit UTC, et une marque d'ordre d'octets en
     tête de texte est retirée, comme PGlite le fait ;
-  - **PostgreSQL 16 au moins** (D-27, 22 octobre ; 18 exigé du 18 au 22 octobre), refusé sinon ; le repli de la
-    recherche utilise ICU avant PostgreSQL 18, la collation `pg_unicode_fast` à partir de la 18 (comme PGlite 0.5) ;
-    ICU et l'extension `pg_trgm` sont requis ;
+  - **PostgreSQL 16 au moins** (D-27, 22 octobre 2026 : le serveur commun reste en 16, décision P-01 de Matrix ; avant, 18
+    était exigé), refusé sinon ; le repli de la recherche prend la collation `pg_unicode_fast` de PostgreSQL 18 quand
+    elle existe (PGlite 0.5), sinon la collation ICU `und-x-icu` (`docs/postgres.md`, « Repli de la recherche ») ; ICU
+    et l'extension `pg_trgm` sont requis ;
   - mêmes migrations, et mêmes fonctions et déclencheurs posés au démarrage, sous un **verrou consultatif** : plusieurs
     processus qui démarrent sur la même base ne migrent pas en même temps, et une base neuve n'est amorcée qu'une fois ;
   - une base serveur neuve reçoit le **référentiel minimal** par défaut (`CODEX_SEED=demo` pour la démonstration) :

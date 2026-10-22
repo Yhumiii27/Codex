@@ -3184,6 +3184,11 @@ de `pub_journal.objet` ; plan § 4.5 et § 6 (verrou d'écriture, `migrate.ts`).
 
 ### 20.1 Codex sur PostgreSQL 16, la version du serveur commun (22 oct.)
 
+> **Version retenue.** Le même jour, la PR #9 (autre session, commit `9116433`) a été fusionnée dans `main` avec la même
+> approche ; c'est sa version du code, des tests, de la CI (16 et 18) et de `docs/postgres.md` qui fait foi. La
+> collation y est choisie selon ce que la base contient (`pg_unicode_fast`, sinon `"und-x-icu"`), non selon
+> `server_version_num`. Le relevé et les vérifications ci-dessous restent valables pour le serveur 16.
+
 **Contexte.** Le passage du socle Matrix en PostgreSQL 18 (proposition P-01) a cassé la production des autres outils
 et a été annulé (PR Matrix #11, branche `claude/revert-socle-pg18`) : le serveur commun reste en `postgres:16-bookworm`.
 Codex exigeait la 18. Décision de l'utilisateur (D-27, [decisions.md](decisions.md)) : « fait le necessaire pour que

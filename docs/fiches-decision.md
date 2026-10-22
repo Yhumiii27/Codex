@@ -202,7 +202,7 @@ ouvert : le contrat de dépôt et de synchronisation des documents projet (sous-
   `signRequest` pour les envois). Aucun point d'entrée « keystone » n'existe encore dans `ENDPOINTS`
   (`src/lib/integration-credentials.ts`), et Codex n'appelle jamais Keystone.
 - **Lien « Ouvrir dans Keystone »** : `NEXT_PUBLIC_KEYSTONE_URL` + `/projects/{code}`, chemin non vérifié côté Keystone.
-- **PostgreSQL serveur** possible depuis le 18 octobre (`DATABASE_URL`, PostgreSQL 16 au moins depuis le 22 octobre, D-27 ; 18 jusque-là ; `docs/postgres.md`) ;
+- **PostgreSQL serveur** possible depuis le 18 octobre (`DATABASE_URL`, PostgreSQL 16 au moins depuis le 22 octobre, `docs/postgres.md`) ;
   PGlite reste la base par défaut et n'ouvre la base que dans un seul processus. Depuis le lot 11 (22 octobre, M-01),
   les tables de Codex sont dans le schéma `codex`, aussi en PGlite, et Codex publie 7 vues `pub_` (documents,
   révisions, circuits, registre, circuits par type, titulaires, journal) que Keystone peut lire sur le serveur commun ;

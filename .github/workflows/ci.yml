@@ -57,16 +57,19 @@ jobs:
 
   # The whole suite again on a PostgreSQL server (option DATABASE_URL, docs/postgres.md): each test file gets a database
   # of its own there (CODEX_TEST_DATABASE_URL), and tests/integration/postgres-server.test.ts races transactions between
-  # connections, which PGlite cannot. PostgreSQL 16, the version of the shared EPC2I server (the image of Matrix's
-  # docker-compose.yml, decision of 22 October 2026): codex_fold lowers with ICU there, with pg_unicode_fast in PGlite
-  # 0.5 (PostgreSQL 18), which the other jobs test (docs/postgres.md, « Version »).
+  # connections, which PGlite cannot. PostgreSQL 16, the version of the shared EPC2I server (Matrix decision P-01), where
+  # codex_fold lowers case with ICU, and 18, as PGlite 0.5, where it uses pg_unicode_fast (src/db/index.ts foldCollation).
   postgres:
-    name: Tests on PostgreSQL 16
+    name: Tests on PostgreSQL ${{ matrix.pg }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        pg: ['16', '18']
     services:
       postgres:
-        image: postgres:16-bookworm
+        image: postgres:${{ matrix.pg }}-bookworm
         env:
           POSTGRES_PASSWORD: codex-ci
         ports: ['5432:5432']
