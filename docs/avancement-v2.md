@@ -75,9 +75,12 @@ entièrement et 14 en partie.
 ## Reste à faire
 
 Classé selon ce qui le bloque : le détail est en tête de `docs/reste-a-faire.md`.
-- **Développable sans décision** : les restes de sept points faits en partie (36, 43, 46, 47 et 50, 51, 52, 57) :
-  noms provisoires à reprendre, `.nvmrc`, aperçu paginé, Validations paginé, revue des transactions sur PostgreSQL,
-  `npm audit`, tests de bout en bout.
+- **Développable sans décision** : plus rien (vérifié le 23 octobre 2026). Les restes des points faits en partie
+  (36, 46, 47, 50, 51) n'attendent plus qu'une décision ou une session sur macOS (`docs/reste-a-faire.md`). Les
+  demandes d'Arche sans décision sont faites (CX-03, CX-04, CX-08, `REQUESTS.md`) ; `npm audit` ne signale qu'un avis
+  modéré d'esbuild, outil de développement tiré par drizzle-kit, sans correctif compatible.
+- **Demandes des autres outils** (`REQUESTS.md`) : CX-01 et CX-02 (CAPEX dans Codex, O-03 et O-05), CX-06 (accès des
+  filiales, O-04 et O-02), CX-07 (dossier de jalon figé), toutes en attente d'une décision.
 - **Décisions de l'utilisateur** (O-01 à O-11 de `docs/decisions.md`, questions de l'audit) : 49 points, dont
   l'activation de SharePoint et son test sur un vrai tenant (O-01), l'authentification réelle (O-02 ; Entra ID est
   proposé, non confirmé), la liaison avec Keystone (O-03) et Vigie (`VIGIE_API_URL`, O-10), l'organigramme (O-04),

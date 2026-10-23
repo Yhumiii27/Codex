@@ -4,6 +4,14 @@ Inventaire du 9 octobre 2026, sur la branche `codex-ged-v2-vkmf4l`, tenu à jour
 étape 6 comprise). Chaque point fait porte sa ligne « Fait le … » ; le détail de chaque lot est dans
 `docs/historique.md` (§11 à §19).
 
+## Depuis le 18 octobre
+
+- **22 octobre** : lot 11 (schéma `codex`, migrations incrémentales, partage), serveur commun en PostgreSQL 16 (D-27),
+  Codex déployé sur le serveur commun (`DATABASE_URL`, rôle `codex_app`). Aucun point de l'inventaire ne change d'état.
+- **23 octobre** : demandes d'Arche (`REQUESTS.md`) : CX-03 (`POST /api/documents`), CX-04 (vues `pub_`) et CX-08
+  (lien profond) faites ; CX-01, CX-02, CX-06 et CX-07 attendent une décision. Revérifié le même jour : aucun point
+  n'est développable sans décision (`docs/historique.md` §20.3).
+
 ## État au 18 octobre 2026 (lot 10, étape 6)
 
 | Ce qui bloque (classement du 9 octobre) | Points | Faits | Faits en partie | Pas commencés |

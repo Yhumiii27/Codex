@@ -37,7 +37,8 @@ numéro, sans les trancher à la place de l'utilisateur.
 | `docs/performances.md` | Mesures sur gros volume (`npm run seed:large`, `npm run perf`). |
 | `docs/reste-a-faire.md` | Inventaire vérifié du 9 octobre 2026 : 129 points ouverts, classés selon ce qui les bloque (rien, décision, données, macOS). |
 | `docs/registre-points-ouverts.md` | Points à arbitrer sur le registre des types (69 types, 23 familles). |
-| `docs/api.md` | API d'intégration : registre, import de migration, webhook Vigie. |
+| `docs/api.md` | API d'intégration : registre, import de migration, dépôt par une application (`POST /api/documents`), webhook Vigie, lecture de l'état par les vues `pub_`. |
+| `REQUESTS.md` | Boîte aux lettres : demandes des autres outils à Codex, avec leur statut et la réponse de Codex. |
 | `docs/accessibilite.md` | Accessibilité : contrôle automatisé `npm run a11y`, contrastes mesurés, ce qui reste (lecteur d'écran). |
 | `README.md` | Démarrage, écrans, ce qui est réel ou simulé, organisation du code. |
 
@@ -165,6 +166,15 @@ npm run a11y         # après le build : axe-core dans Chromium sur une base de 
 - Les dépôts Keystone et Vigie ne sont pas accessibles sauf s'ils sont ajoutés à l'environnement. Le registre des
   types reprend déjà la spécification documentaire de Keystone (`docs/spec/10-site-docs-mywork-settings.md` dans
   Keystone).
+
+## Périmètre entre dépôts (règle de l'utilisateur, 22 octobre 2026)
+
+- Le dépôt de ce logiciel est `Yhumiii27/Codex` : c'est le seul où l'on écrit, commite et pousse. Les autres dépôts
+  (Keystone, Vigie, Cursus, Arche, Crucible, Matrix) se lisent seulement.
+- `REQUESTS.md` reçoit les demandes des autres outils. En début de session, signaler à l'utilisateur les entrées
+  OUVERTES ; ne les traiter qu'avec son accord.
+- Seule écriture permise ailleurs : ajouter une entrée au `REQUESTS.md` d'un autre dépôt, après avoir présenté à
+  l'utilisateur une note détaillée (dépôt cible, demande, raison, conséquence d'un refus) et reçu son « validé ».
 
 ## Conventions
 

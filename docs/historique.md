@@ -3240,3 +3240,15 @@ décision ».
 | CX-01, CX-02 | Ouvertes : rattachement CAPEX (choix entre deux options, O-03) et types du registre (O-05). |
 | CX-06 | Ouverte : organigramme des filiales (O-04) et authentification (O-02). |
 | CX-07 | Ouverte : « révision approuvée d'office » contredirait la validation par circuit ; gel juridique à choisir. |
+
+### 20.3 Ce qui reste sans décision (23 oct.)
+
+Demande de l'utilisateur : « fait ce qu'il reste sans décision de ma part ». Revérification :
+
+- `docs/reste-a-faire.md` : les 69 points développables sont faits ; les restes des points faits en partie attendent
+  une décision ou macOS. `docs/avancement-v2.md` les présentait encore comme développables : corrigé.
+- `REQUESTS.md` : les demandes d'Arche encore ouvertes attendent toutes une décision (§20.2).
+- `npm audit` : seul l'avis modéré d'esbuild, outil de développement tiré par drizzle-kit, sans correctif compatible
+  (déjà signalé, non bloquant, par `npm run deps:audit`).
+- `CLAUDE.md` : ajout de la boîte aux lettres `REQUESTS.md`, de `POST /api/documents` et de la règle de périmètre
+  entre dépôts de l'utilisateur (22 oct.), pour les sessions suivantes.
