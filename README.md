@@ -222,7 +222,8 @@ migration n'en demande pas : l'app sauvegarde sa base puis la migre au démarrag
 | `/aide` | Aide, en français et en anglais, ouverte à tous les rôles (lien « Aide » au-dessus de « Notes de conception » dans la barre latérale) : les parcours courants pas à pas (créer un document, déposer et restaurer une version de travail, demander une validation, valider, rejeter ou déléguer, demander une modification ou un retrait à Vigie, comparer, confidentialité, recherche), avec ce qui est simulé ; un lien vers l'écran où chaque parcours commence, si le rôle y a accès |
 
 API : `/api/registry` (lu par Keystone), `/api/import` (outil de migration ; `?dryRun=1` simule sans rien
-enregistrer), `/api/integrations/vigie` (décisions Vigie), `/api/documents/[id]/file` (fichier d'une version de
+enregistrer), `POST /api/documents` (dépôt d'un nouveau document, en brouillon A.1, par une application du groupe :
+Arche), `/api/integrations/vigie` (décisions Vigie), `/api/documents/[id]/file` (fichier d'une version de
 travail), `/api/documents/[id]/approval?rev=B` (fiche de visa d'une révision approuvée, PDF tiré du journal),
 `/api/export/search` et `/api/export/audit` (CSV), `/api/export/full` (export complet, archive ZIP :
 `docs/export.md`). Entre serveurs : jeton et/ou signature HMAC
@@ -320,8 +321,9 @@ secondes), sans rien exécuter (ni import, ni lecture de fichier, ni export jour
 | Famille | Variable | Par défaut | Clé |
 |---|---|---|---|
 | `POST /api/import` (jeton vérifié) | `CODEX_RATE_IMPORT` | 600 par minute | adresse du client |
+| `POST /api/documents` (jeton vérifié) | `CODEX_RATE_DOCUMENTS` | 600 par minute | adresse du client |
 | `POST /api/integrations/vigie` (jeton vérifié) | `CODEX_RATE_VIGIE` | 600 par minute | adresse du client |
-| Jetons refusés sur ces deux routes | `CODEX_RATE_TOKEN_FAILURES` | 20 par 15 minutes | adresse du client |
+| Jetons refusés sur ces trois routes | `CODEX_RATE_TOKEN_FAILURES` | 20 par 15 minutes | adresse du client |
 | `GET /api/registry` | `CODEX_RATE_REGISTRY` | 300 par minute | adresse du client, derrière un proxy de confiance seulement |
 | Fichiers et fiches de visa (`/api/documents/[id]/file`, `/approval`) | `CODEX_RATE_FILES` | 600 par minute | utilisateur résolu ; et adresse derrière un proxy de confiance |
 | Exports CSV et export complet (`/api/export/*`, GET et HEAD) | `CODEX_RATE_EXPORTS` | 30 par minute | utilisateur résolu ; et adresse derrière un proxy de confiance |

@@ -3225,3 +3225,18 @@ supprimé à la fin) :
 - `npm run test:pg` sur 16.15 : 109 fichiers, 1 465 tests réussis, 3 sautés (les 2 d'avant, plus la comparaison des
   deux collations, faute de `pg_unicode_fast` sur la 16), aucune base ni aucun rôle d'essai laissé. `npm test` (PGlite) : 1 455
   réussis, 13 sautés, avec et sans `.data`. Typecheck, lint, `db:check`, build : sans erreur.
+
+### 20.2 Demandes d'Arche sans décision (23 oct.)
+
+**Contexte.** La boîte aux lettres `REQUESTS.md` (règle de périmètre entre outils de l'utilisateur, 22 oct.) a reçu trois
+entrées d'Arche (CX-01 à CX-08). Demande de l'utilisateur : « traite les demandes d'Arche qui ne dépendent d'aucune
+décision ».
+
+| Demande | Suite |
+| --- | --- |
+| CX-03 API de dépôt | **Faite** : `POST /api/documents` (`src/app/api/documents/route.ts`), mode `deposit` de l'importeur (`src/lib/importer.ts`) : nouveau document en brouillon A.1 avec son fichier, passé ensuite par un circuit ; `sourceRef` `<application>:<référence>` gardée en `legacy_ref` (pas en alias), rejouable (200, rien créé ; autre fichier : 409) ; propriétaire par identifiant ou matricule ; `sha256` vérifiée (422). Jeton, secret et débit propres (`CODEX_DOCUMENTS_*`, `CODEX_RATE_DOCUMENTS`). Lecture du corps commune avec l'import (`src/lib/import-request.ts`). Pas de migration. Tests : `tests/integration/deposit.test.ts`. |
+| CX-04 état d'un document | **Déjà couverte** par `pub_documents`, `pub_revisions_document`, `pub_validations`, accordées à Arche (CX-05) : documentée (`docs/api.md`, « Lire l'état d'un document »). |
+| CX-08 lien profond | **Confirmée** : `/documents/{id}` résout les alias et redirige ; test de contrat `tests/integration/deep-link.test.ts`. |
+| CX-01, CX-02 | Ouvertes : rattachement CAPEX (choix entre deux options, O-03) et types du registre (O-05). |
+| CX-06 | Ouverte : organigramme des filiales (O-04) et authentification (O-02). |
+| CX-07 | Ouverte : « révision approuvée d'office » contredirait la validation par circuit ; gel juridique à choisir. |
