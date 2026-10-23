@@ -6,27 +6,33 @@ Points d'entrée prévus par `docs/modele-cible.md` §1 pour les applications vo
 |---|---|---|---|
 | `/api/registry` | `GET` | Keystone | aucune par défaut (lecture seule, réseau du groupe) ; jeton `CODEX_REGISTRY_TOKEN` s'il est défini |
 | `/api/import` | `POST` | outil de migration | jeton `CODEX_IMPORT_TOKEN` et/ou signature `CODEX_IMPORT_SECRET` |
+| `/api/documents` | `POST` | applications du groupe (Arche) | jeton `CODEX_DOCUMENTS_TOKEN` et/ou signature `CODEX_DOCUMENTS_SECRET` |
 | `/api/integrations/vigie` | `POST` | Vigie (webhook) | jeton `VIGIE_WEBHOOK_TOKEN` et/ou signature `VIGIE_WEBHOOK_SECRET` |
 | `/api/health` | `GET`, `HEAD` | supervision | aucune (200 ou 503, sans détail : `docs/exploitation.md`) |
 
-Code : `src/app/api/registry/route.ts`, `src/app/api/import/route.ts`, `src/app/api/integrations/vigie/route.ts`,
-`src/app/api/health/route.ts`, logique partagée dans `src/lib/importer.ts`, authentification dans
-`src/lib/server-auth.ts`.
+Code : `src/app/api/registry/route.ts`, `src/app/api/import/route.ts`, `src/app/api/documents/route.ts`,
+`src/app/api/integrations/vigie/route.ts`, `src/app/api/health/route.ts`, logique partagée dans `src/lib/importer.ts`
+et `src/lib/import-request.ts`, authentification dans `src/lib/server-auth.ts`.
+
+L'état d'un document (révision en vigueur, statut, circuit en cours) ne passe pas par une API : les autres outils le
+lisent dans les vues `pub_` du serveur commun (`pub_documents`, `pub_revisions_document`, `pub_validations`), voir
+« Lire l'état d'un document » plus bas.
 
 ## Variables d'environnement
 
 | Variable | Rôle |
 |---|---|
 | `CODEX_IMPORT_TOKEN`, `CODEX_IMPORT_SECRET` | Jeton et secret de signature de `/api/import` (voir « Authentification »). Ni l'un ni l'autre : l'import est **désactivé** (503). |
+| `CODEX_DOCUMENTS_TOKEN`, `CODEX_DOCUMENTS_SECRET` | Jeton et secret de signature de `POST /api/documents`, propres à ce point d'entrée (jamais ceux de l'import). Ni l'un ni l'autre : le dépôt est **désactivé** (503). |
 | `CODEX_MAX_FILE_MB` | Taille maximale d'un fichier, en Mo, la même pour l'import et pour les dépôts à l'écran (50 par défaut ; 250 au plus avec `CODEX_STORAGE=sharepoint`). Remplace `CODEX_IMPORT_MAX_MB`, qui n'est plus lue. |
 | `CODEX_FILE_EXTENSIONS` | Extensions admises (liste complète) ; par défaut, voir le README, « Fichiers déposés ». |
 | `CODEX_CLAMD`, `CODEX_CLAMD_TIMEOUT_MS`, `CODEX_CLAMD_ON_ERROR` | Analyse antivirus par clamd avant stockage ; absente : pas d'analyse. Voir le README, « Fichiers déposés ». |
 | `VIGIE_WEBHOOK_TOKEN`, `VIGIE_WEBHOOK_SECRET` | Jeton et secret de signature de `/api/integrations/vigie`. Ni l'un ni l'autre : le webhook est **désactivé** (503). |
 | `CODEX_REGISTRY_TOKEN` | Jeton de `GET /api/registry`. Absente (défaut) : le registre est **ouvert**, comme Keystone le lit aujourd'hui. |
-| `…_NEXT` | Seconde valeur de chacune des cinq variables ci-dessus, acceptée à côté de la première pendant une rotation. |
+| `…_NEXT` | Seconde valeur de chacune des sept variables ci-dessus, acceptée à côté de la première pendant une rotation. |
 | `CODEX_SIGNATURE_WINDOW_S` | Fenêtre de validité d'une requête signée, en secondes de part et d'autre de son horodatage (300 par défaut, de 30 à 3 600). |
-| `CODEX_RATE_IMPORT`, `CODEX_RATE_VIGIE`, `CODEX_RATE_REGISTRY` | Requêtes admises par adresse de client (600, 600 et 300 par minute par défaut ; voir « Limites de débit »). |
-| `CODEX_RATE_TOKEN_FAILURES` | Jetons refusés admis par adresse de client sur `/api/import` et `/api/integrations/vigie` (20 par 15 minutes par défaut). |
+| `CODEX_RATE_IMPORT`, `CODEX_RATE_DOCUMENTS`, `CODEX_RATE_VIGIE`, `CODEX_RATE_REGISTRY` | Requêtes admises par adresse de client (600, 600, 600 et 300 par minute par défaut ; voir « Limites de débit »). |
+| `CODEX_RATE_TOKEN_FAILURES` | Jetons refusés admis par adresse de client sur `/api/import`, `/api/documents` et `/api/integrations/vigie` (20 par 15 minutes par défaut). |
 | `CODEX_TRUST_PROXY` | `1` quand un proxy inverse placé devant Codex écrit `X-Forwarded-For` ; coupé par défaut (voir « Limites de débit »). |
 
 Les fichiers importés vont dans le stockage actif (`CODEX_STORAGE`, voir `src/lib/storage.ts`) : disque local par défaut,
@@ -69,6 +75,7 @@ Chaque point d'entrée accepte deux preuves, réglées séparément ; **celles q
 | Point d'entrée | Jeton (`Authorization: Bearer …`) | Signature HMAC | Rien de défini |
 |---|---|---|---|
 | `POST /api/import` | `CODEX_IMPORT_TOKEN` | `CODEX_IMPORT_SECRET` | 503 `disabled` |
+| `POST /api/documents` | `CODEX_DOCUMENTS_TOKEN` | `CODEX_DOCUMENTS_SECRET` | 503 `disabled` |
 | `POST /api/integrations/vigie` | `VIGIE_WEBHOOK_TOKEN` | `VIGIE_WEBHOOK_SECRET` | 503 `disabled` |
 | `GET /api/registry` | `CODEX_REGISTRY_TOKEN` | — (un `GET` n'a pas de corps) | ouvert |
 
@@ -134,8 +141,9 @@ d'un coup autant que sa limite, puis en regagne une à intervalle régulier (une
 | Point d'entrée | Variable | Par défaut | Compté par |
 |---|---|---|---|
 | `POST /api/import` | `CODEX_RATE_IMPORT` | 600 par minute | adresse du client, une fois le jeton vérifié |
+| `POST /api/documents` | `CODEX_RATE_DOCUMENTS` | 600 par minute | adresse du client, une fois le jeton vérifié |
 | `POST /api/integrations/vigie` | `CODEX_RATE_VIGIE` | 600 par minute | adresse du client, une fois le jeton vérifié |
-| jetons ou signatures refusés (401) sur `/api/import`, `/api/integrations/vigie` et le registre protégé | `CODEX_RATE_TOKEN_FAILURES` | 20 par 15 minutes, communs aux trois | adresse du client |
+| jetons ou signatures refusés (401) sur `/api/import`, `/api/documents`, `/api/integrations/vigie` et le registre protégé | `CODEX_RATE_TOKEN_FAILURES` | 20 par 15 minutes, communs aux trois | adresse du client |
 | `GET /api/registry` | `CODEX_RATE_REGISTRY` | 300 par minute (les réponses 304 comptent) | adresse du client, avec `CODEX_TRUST_PROXY=1` seulement |
 
 - Valeur `N` (par minute) ou `N/<durée>` (`30s`, `1m`, `15m`, `1h`) ; `0` ou `off` lève la limite,
@@ -515,6 +523,94 @@ curl -s -X POST "$CODEX/api/import" \
   -d '{"legacyRef":"OLD-1","title":"Note","typeCode":"PID","department":"ING","ownerId":"jwagner","conf":"public"}'
 # → 400 {"error":"validation","issues":[{"field":"conf","code":"conf_not_allowed",…},{"field":"projectCode","code":"project_required",…}],"warnings":[]}
 ```
+
+---
+
+## `POST /api/documents` — dépôt d'un document par une application du groupe
+
+Demande d'Arche CX-03 (`REQUESTS.md`). Une application du groupe crée **un** document par appel, avec son fichier, et
+reçoit son identifiant. Le document est **nouveau** : il naît en **brouillon A.1**, comme un document créé à l'écran, et
+passe ensuite par un circuit de validation comme tout brouillon (`docs/decisions.md` : les révisions sont validées par
+un circuit). Ce point d'entrée ne met jamais une révision en vigueur ni ne l'approuve : la reprise de l'existant reste
+`POST /api/import`.
+
+Mêmes conventions, même corps et même simulation (`?dryRun=1`) que l'import (voir plus haut « Format de la requête » et
+« Simulation ») : `multipart/form-data` avec une partie `meta` et une partie `file`, ou `application/json` sans fichier.
+Le fichier passe les mêmes contrôles (taille, format, antivirus) et les mêmes refus (413, 415, 422, 503). Authentification
+propre : `CODEX_DOCUMENTS_TOKEN` et/ou `CODEX_DOCUMENTS_SECRET`.
+
+### Métadonnées
+
+Les champs de l'import (`title`, `typeCode`, `department`, `origin`, `attachment`, `projectCode`, `programCode`, `conf`,
+`readers`, `keywords`, `lang`, `site`, `author`, `subtype`, `reviewDueAt`, `expiresAt`, champs selon le contexte,
+`comment`), avec les mêmes règles du registre, sauf :
+
+| Champ | Obligatoire | Description |
+|---|---|---|
+| `sourceRef` | oui | Référence du document dans l'application qui le dépose, `<application>:<référence>` : nom de l'application en minuscules (2 à 32 caractères : lettres, chiffres, `-`, `_`), deux-points, puis la référence (200 caractères au total au plus, sans caractère de contrôle). Ex. `arche:dossier/CPX-APM-2026-01/business_case/v2`. Unique : elle rend l'appel rejouable. |
+| `ownerId` ou `ownerMatricule` | l'un des deux | Propriétaire : identifiant Codex, ou matricule (`EMP-0042`), le numéro de la personne commun aux outils du groupe. Les deux donnés et différents : refus `owner_ambiguous`. |
+| `sha256` | non | Empreinte SHA-256 (hexadécimal) que l'application a calculée du fichier. Vérifiée avant tout enregistrement : différente, **422** `sha256_mismatch`. Donnée sans fichier : refus `file_required`. |
+
+Refusés (`not_allowed`), parce qu'ils n'appartiennent qu'à une reprise : `legacyRef`, `status`, `revision`, `inForceAt`,
+`issuedAt`, `createdAt`, `modifiedAt`. Le rattachement à un CAPEX (`attachment: "capex"`, demande CX-01) n'existe pas
+encore : il attend une décision (`REQUESTS.md`).
+
+### Ce que crée le dépôt
+
+- le document, avec l'identifiant suivant libre pour le couple (type, contexte) (`TYPE-CONTEXTE-SEQ`) et la classe de
+  conservation du type ; `sourceRef` est gardée comme référence d'origine (`documents.legacy_ref`, unique), **pas**
+  comme ancien identifiant : `/documents/<sourceRef>` ne mène à rien ;
+- la révision **A** en brouillon et, avec un fichier, sa version de travail **A.1** (`{ID}_A.1.{ext}`), commentée
+  « Déposé par <application> (<sourceRef>) » ;
+- une entrée au journal : « Dépôt » (`upload`), sous l'acteur système `codex`, détail `A.1 · <sourceRef>`.
+
+Le brouillon est visible de son propriétaire et des gestionnaires documentaires, comme tout brouillon (D-14) ; son
+propriétaire le soumet ensuite à validation dans Codex.
+
+### Réponses
+
+| Code | Corps |
+|---|---|
+| **201** | `{"id","revision":"A","version","status":"draft","file","href","warnings"}` (`version` : `"A.1"`, ou `null` sans fichier) + `Location: /documents/<id>` |
+| **200** | `{"id","href","replayed":true}` : la même `sourceRef` déjà déposée, avec le même fichier (ou sans fichier les deux fois) ; rien n'est créé. `id` est l'identifiant actuel du document. |
+| **200** | `{"dryRun":true,"id","warnings"}` : simulation |
+| **400** | `{"error":"validation","issues","warnings"}` ; codes en plus de ceux de l'import : `not_allowed`, `invalid_source_ref`, `owner_ambiguous`, `file_required` |
+| **409** | `{"error":"source_ref_reused","id"}` : la `sourceRef` a déjà servi pour un **autre** fichier ; rien n'est créé |
+| **422** | `{"error":"sha256_mismatch","expected","actual"}` : le fichier reçu n'a pas l'empreinte annoncée ; rien n'est stocké |
+| autres | comme l'import : 401, 503 `disabled`, 413, 415, 422 `file_infected`, 503 `scan_unavailable`, 429, 500 |
+
+### Exemple
+
+```bash
+export CODEX_DOCUMENTS_TOKEN=…
+SHA=$(sha256sum business-case-v2.pdf | cut -d' ' -f1)
+curl -s -X POST "$CODEX/api/documents" \
+  -H "Authorization: Bearer $CODEX_DOCUMENTS_TOKEN" \
+  -F "meta={\"sourceRef\":\"arche:dossier/CPX-APM-2026-01/business_case/v2\",\"title\":\"Business Case — Cadrage, v2\",\"typeCode\":\"PRO\",\"department\":\"DIR\",\"ownerMatricule\":\"EMP-0042\",\"conf\":\"interne\",\"sha256\":\"$SHA\"}" \
+  -F 'file=@./business-case-v2.pdf;type=application/pdf'
+# → 201 {"id":"PRO-DIR-0004","revision":"A","version":"A.1","status":"draft","file":true,"href":"/documents/PRO-DIR-0004","warnings":[]}
+```
+
+### Lire l'état d'un document
+
+Demande d'Arche CX-04. Une application lit l'état d'un document dans les vues `pub_` du serveur commun (droits accordés
+par Matrix, `infra/postgres/partage/90-droits.sql`), sans appel à Codex :
+
+| Ce qu'il faut | Où |
+|---|---|
+| statut du document, révision en vigueur, révision en cours | `codex.pub_documents` : `status`, `rev_in_force`, `rev_working`, `state` (obsolète, archivé) |
+| chaque révision, son statut et ses dates | `codex.pub_revisions_document` (jointure sur `doc_id`) |
+| circuit en cours : étape, valideur, issue | `codex.pub_validations` (une ligne par étape ; `outcome` nul tant que le circuit court) |
+
+Les documents « très confidentiel » n'y figurent pas ; les lecteurs appliquent `conf`. Ces vues sont des contrats : une
+colonne n'y est jamais retirée ni renommée.
+
+### Lien profond
+
+Demande d'Arche CX-08. Le lien d'un document est `/documents/{id}` ; c'est le contrat des liens profonds des autres
+outils. Il ouvre la fiche sous l'identifiant actuel et sous tout identifiant que le document a eu (reclassement, reprise :
+`aliases`), en redirigeant vers l'identifiant actuel (`tests/integration/deep-link.test.ts`). Un document que la
+personne ne peut pas lire reste masqué, quel que soit l'identifiant demandé.
 
 ---
 

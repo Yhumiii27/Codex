@@ -1,10 +1,11 @@
 // The variables that hold the credentials of the integration endpoints (lib/server-auth.ts), apart from it so that the
 // configuration check (lib/config-check.ts) reads them as the endpoints do, without loading the database.
 
-export type Endpoint = 'import' | 'vigie' | 'registry';
+export type Endpoint = 'import' | 'documents' | 'vigie' | 'registry';
 
 export const ENDPOINTS: Record<Endpoint, { token: string; secret: string | null; route: string }> = {
   import: { token: 'CODEX_IMPORT_TOKEN', secret: 'CODEX_IMPORT_SECRET', route: 'POST /api/import' },
+  documents: { token: 'CODEX_DOCUMENTS_TOKEN', secret: 'CODEX_DOCUMENTS_SECRET', route: 'POST /api/documents' },
   vigie: { token: 'VIGIE_WEBHOOK_TOKEN', secret: 'VIGIE_WEBHOOK_SECRET', route: 'POST /api/integrations/vigie' },
   registry: { token: 'CODEX_REGISTRY_TOKEN', secret: null, route: 'GET /api/registry' },
 };

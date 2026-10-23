@@ -1,69 +1,11 @@
-import { fileRules } from '@/lib/filetypes';
-import { importDocument, json, type ImportFile } from '@/lib/importer';
+import { importDocument, json } from '@/lib/importer';
+import { readDocumentRequest, refused } from '@/lib/import-request';
 import { currentRequest, logger, withRequestLog } from '@/lib/log';
 import { limitRequest } from '@/lib/ratelimit';
-import { checkBearer, checkSignature, credentialsOf } from '@/lib/server-auth';
-import type { FileRejection } from '@/lib/storage';
+import { checkBearer } from '@/lib/server-auth';
 
 // Import API for the migration tool (docs/api.md): one legacy document per call, bearer token CODEX_IMPORT_TOKEN and/or
-// HMAC signature with CODEX_IMPORT_SECRET (lib/server-auth.ts).
-//   multipart/form-data: part "meta" (JSON, text or file) + optional part "file"
-//   application/json:    the metadata alone, without a file
-//   ?dryRun=1            a simulation: the same checks and answers, nothing stored nor written (200 instead of 201)
-
-/** The largest file, the same for every entry (CODEX_MAX_FILE_MB, lib/filetypes.ts). */
-const maxBytes = () => fileRules(process.env).maxBytes;
-
-const tooLarge = () => json({ error: 'too_large', maxBytes: maxBytes() }, 413);
-
-/**
- * A file refused on its way in: 413 for its size, or for being beyond the virus scan's limits (sending it again changes
- * nothing), 415 for its format (with the extensions admitted), 422 when the virus scan finds it infected, 503 when the
- * scan could not be run (to be sent again later).
- */
-function refused(r: FileRejection): Response {
-  switch (r.code) {
-    case 'too_large': return tooLarge();
-    case 'scan_too_large': return json({ error: 'scan_too_large' }, 413);
-    case 'infected': return json({ error: 'file_infected', threat: r.threat }, 422);
-    case 'scan_failed': return json({ error: 'scan_unavailable' }, 503, { 'Retry-After': '60' });
-    default: return json({ error: 'file_format', reason: r.code, ...('ext' in r ? { ext: r.ext } : {}), allowed: fileRules(process.env).extensions }, 415);
-  }
-}
-
-/**
- * The request's body, cut off once it passes `cap` bytes: a body sent in chunks has no Content-Length to check
- * beforehand, and would otherwise be read whole into memory before the size of its file could be checked.
- */
-function capped(req: Request, cap: number): { body: Response; over: () => boolean } {
-  let size = 0;
-  let over = false;
-  const stream = req.body?.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
-    transform(chunk, c) {
-      size += chunk.byteLength;
-      if (size > cap) {
-        over = true;
-        c.error(new Error('too_large'));
-      } else c.enqueue(chunk);
-    },
-  }));
-  return { body: new Response(stream ?? null, { headers: { 'Content-Type': req.headers.get('content-type') ?? '' } }), over: () => over };
-}
-
-/**
- * The query string: `dryRun` alone, `1`/`true` for a simulation, `0`/`false` (or absent) for the import. Anything else is
- * refused before the body is read: a misspelt `dryrun=1` must not import for real what was meant to be simulated.
- */
-function dryRunOf(req: Request): boolean | Response {
-  const params = [...new URL(req.url).searchParams];
-  const other = params.find(([k]) => k !== 'dryRun');
-  if (other) return json({ error: 'invalid_query', param: other[0] }, 400);
-  if (params.length > 1) return json({ error: 'invalid_query', param: 'dryRun' }, 400);
-  const v = params[0]?.[1];
-  if (v == null || v === '0' || v === 'false') return false;
-  if (v === '1' || v === 'true') return true;
-  return json({ error: 'invalid_query', param: 'dryRun' }, 400);
-}
+// HMAC signature with CODEX_IMPORT_SECRET (lib/server-auth.ts). Body and simulation (?dryRun=1): lib/import-request.ts.
 
 async function handlePost(req: Request) {
   const denied = checkBearer(req, 'import');
@@ -71,62 +13,11 @@ async function handlePost(req: Request) {
   // Counted once the token is checked: a client without it cannot spend the budget of the one holding it.
   const limited = limitRequest(req, 'import');
   if (limited) return limited;
-  const dryRun = dryRunOf(req);
-  if (dryRun instanceof Response) return dryRun;
-  // The file plus room for the metadata and the multipart framing.
-  const cap = maxBytes() + 1024 * 1024;
-  if (Number(req.headers.get('content-length') ?? 0) > cap) return tooLarge();
-  let { body, over } = capped(req, cap);
-  if (credentialsOf('import').secrets.length) {
-    // Signed: the signature covers the raw bytes, read whole (within the cap) and checked before anything is parsed.
-    let raw: ArrayBuffer;
-    try {
-      raw = await body.arrayBuffer();
-    } catch {
-      return over() ? tooLarge() : json({ error: 'invalid_body' }, 400);
-    }
-    const unsigned = await checkSignature(req, 'import', new Uint8Array(raw));
-    if (unsigned) return unsigned;
-    body = new Response(raw, { headers: { 'Content-Type': req.headers.get('content-type') ?? '' } });
-    over = () => false;
-  }
-
-  const ctype = (req.headers.get('content-type') ?? '').toLowerCase();
-  let meta: unknown;
-  let file: ImportFile | null = null;
-  if (ctype.startsWith('multipart/form-data')) {
-    let fd: FormData;
-    try {
-      fd = await body.formData();
-    } catch {
-      return over() ? tooLarge() : json({ error: 'invalid_body' }, 400);
-    }
-    const m = fd.get('meta');
-    const text = typeof m === 'string' ? m : m instanceof Blob ? await m.text() : null;
-    if (text == null) return json({ error: 'meta_required' }, 400);
-    try {
-      meta = JSON.parse(text);
-    } catch {
-      return json({ error: 'invalid_json', part: 'meta' }, 400);
-    }
-    const f = fd.get('file');
-    if (typeof f === 'string') return json({ error: 'file_not_a_file' }, 400);
-    if (f && f.size > 0) {
-      if (f.size > maxBytes()) return tooLarge();
-      file = { buf: Buffer.from(await f.arrayBuffer()), name: f.name || 'document', mime: f.type };
-    }
-  } else if (ctype.startsWith('application/json')) {
-    try {
-      meta = await body.json();
-    } catch {
-      return over() ? tooLarge() : json({ error: 'invalid_json' }, 400);
-    }
-  } else {
-    return json({ error: 'unsupported_media_type' }, 415);
-  }
+  const read = await readDocumentRequest(req, 'import');
+  if (read instanceof Response) return read;
 
   try {
-    const res = await importDocument(meta, file, { dryRun });
+    const res = await importDocument(read.meta, read.file, { dryRun: read.dryRun });
     switch (res.kind) {
       case 'invalid':
         return json({ error: 'validation', issues: res.issues, warnings: res.warnings }, 400);
@@ -137,6 +28,9 @@ async function handlePost(req: Request) {
         return json({ error: 'ref_is_codex_id', id: res.id }, 409);
       case 'file_rejected':
         return refused(res.rejection);
+      case 'ref_reused':
+        // A deposit's answer (POST /api/documents): an import never gets it.
+        return json({ error: 'duplicate', id: res.id }, 409);
       case 'dry_run':
         return json({ dryRun: true, id: res.id, warnings: res.warnings }, 200);
       case 'created': {
