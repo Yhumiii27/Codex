@@ -93,6 +93,15 @@ du dépôt Matrix ; `tests/integration/partage.test.ts` en fige les colonnes et 
 posés par le socle (`partage/90-droits.sql`). Codex ne lit ni n'écrit encore les colonnes reprises de Vigie
 (`distribution`, `review_months` du document, `process_code`) ni `matricule`.
 
+`0002_pub_programmes_recherche` (24 octobre 2026, demande CX-2 de Crucible, accord de l'utilisateur) ajoute une 8e vue,
+`pub_programmes_recherche` : `code`, `libelle`, `responsable_matricule` (matricule du responsable, nul s'il n'en a pas),
+`actif` (un programme clos y reste, `actif = false`). Lecteurs prévus : `crucible_app`, `matrix_app`. Elle n'est pas
+encore dans le socle Matrix : il faut l'ajouter à `partage/40-codex.sql` et accorder sa lecture dans
+`partage/90-droits.sql` (demande à déposer dans le `REQUESTS.md` de Matrix). Sur le serveur commun, cette migration
+est la première depuis la mise en service : Codex refuse de migrer un serveur sans sauvegarde, donc faire d'abord un
+`pg_dump` du schéma `codex` (procédure de sauvegarde du socle), puis démarrer une fois avec
+`CODEX_MIGRATION_BACKUP=off`, et retirer la variable ensuite.
+
 **Écarts avec le dépôt Matrix au 22 octobre 2026** (correctifs à y porter ; le dépôt Matrix n'est pas modifié ici) :
 
 1. **`pub_journal.quand`** : `audit_log.at` est dans cette branche un instant UTC (`timestamptz`, journal en ajout

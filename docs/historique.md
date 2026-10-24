@@ -3252,3 +3252,13 @@ Demande de l'utilisateur : « fait ce qu'il reste sans décision de ma part ». 
   (déjà signalé, non bloquant, par `npm run deps:audit`).
 - `CLAUDE.md` : ajout de la boîte aux lettres `REQUESTS.md`, de `POST /api/documents` et de la règle de périmètre
   entre dépôts de l'utilisateur (22 oct.), pour les sessions suivantes.
+
+### 20.4 Vue `pub_programmes_recherche` pour Crucible (24 oct.)
+
+Demande CX-2 de Crucible (`docs/DEMANDES-CODEX.md` de son dépôt) ; accord de l'utilisateur : « oui ajoute la vue
+pub_programmes_recherche ». Migration `0002_pub_programmes_recherche` (SQL écrit à la main, `drizzle-kit generate
+--custom`) : `code`, `libelle`, `responsable_matricule`, `actif`, `security_barrier`, commentaire nommant les lecteurs
+(`crucible_app`, `matrix_app`). Tests : `partage.test.ts` (colonnes, contenu, programme clos, commentaire) ;
+`migrate-command.test.ts` défait désormais `0002` au lieu de `0001_partage`. Restent hors de Codex : la vue et le droit
+de lecture dans le socle Matrix (`40-codex.sql`, `90-droits.sql`). L'autre moitié de CX-2 (à quoi se rattachent les
+documents d'essai : programme de recherche ou projet Keystone) reste une décision de l'utilisateur.
