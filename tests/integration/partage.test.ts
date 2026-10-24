@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { addDoc, addWorkflow, fixClock, setupDb } from '../support/db';
 
 // Shared data of the EPC2I suite (decision M-01; Matrix, infra/postgres/partage/40-codex.sql, migration 0001_partage):
-// Codex publishes seven views pub_ in its schema, read by Keystone, Vigie and Matrix. Their contract: a column is never
+// Codex publishes views pub_ in its schema, read by Keystone, Vigie, Matrix and Crucible (pub_programmes_recherche,
+// migration 0002, Crucible's request CX-2). Their contract: a column is never
 // removed nor renamed (a new view _v2 instead), only added at the end; « très confidentiel » documents are never
 // published. The columns below are those of 40-codex.sql, in its order; pub_journal.quand is an instant (timestamptz),
 // as the four tools' pub_journal must be for matrix.journal_unifie.
@@ -28,12 +29,13 @@ const CONTRACT: Record<string, string[]> = {
   pub_circuits_type: ['type_code', 'position', 'function_key', 'label_fr', 'label_en', 'scope'],
   pub_titulaires_fonction: ['id', 'function_key', 'label_fr', 'label_en', 'scope', 'scope_value', 'user_id', 'user_name', 'user_matricule'],
   pub_journal: ['ref_source', 'nature', 'quand', 'qui', 'qui_ref', 'qui_role', 'action', 'objet', 'detail', 'projet', 'qui_matricule'],
+  pub_programmes_recherche: ['code', 'libelle', 'responsable_matricule', 'actif'],
 };
 
 const q = async <T,>(text: string, params?: unknown[]) => (await db().$client.query<T>(text, params)).rows;
 
-describe('views pub_ of the shared data (0001_partage)', () => {
-  it('are the seven views of the contract, in the schema codex, with their columns in order', async () => {
+describe('views pub_ of the shared data (0001_partage, 0002_pub_programmes_recherche)', () => {
+  it('are the views of the contract, in the schema codex, with their columns in order', async () => {
     const views = await q<{ name: string }>(`select table_name as name from information_schema.views where table_schema = 'codex' order by 1`);
     expect(views.map((v) => v.name)).toEqual(Object.keys(CONTRACT).sort());
     for (const [view, columns] of Object.entries(CONTRACT)) {
@@ -73,5 +75,15 @@ describe('views pub_ of the shared data (0001_partage)', () => {
     await expect(db().$client.exec(`update documents set review_months = 0 where id = 'PRO-QUA-0003'`)).rejects.toThrow(/documents_review_months_check/);
     expect(await q(`select distribution, review_months, process_code from documents where id = 'PRO-QUA-0003'`)).toEqual([{ distribution: '', review_months: null, process_code: null }]);
     expect(await q(`select owner_matricule from codex.pub_documents where id = 'PRO-QUA-0003'`)).toEqual([{ owner_matricule: 'EMP-0012' }]);
+  });
+
+  it('publish the research programmes with the matricule of their manager, closed ones included (actif)', async () => {
+    await db().$client.exec(`update users set matricule = 'EMP-0042' where id = 'researcher'`);
+    await db().$client.exec(`insert into research_programs (code, name, manager_id, active) values ('R2502', 'Programme clos', 'owner', false)`);
+    expect(await q(`select code, libelle, responsable_matricule, actif from codex.pub_programmes_recherche order by code`)).toEqual([
+      { code: 'R2502', libelle: 'Programme clos', responsable_matricule: null, actif: false },
+      { code: 'R2601', libelle: 'Capteurs', responsable_matricule: 'EMP-0042', actif: true },
+    ]);
+    expect(await q(`select obj_description('codex.pub_programmes_recherche'::regclass) as c`)).toEqual([{ c: expect.stringContaining('crucible_app') }]);
   });
 });

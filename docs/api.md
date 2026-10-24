@@ -602,6 +602,9 @@ par Matrix, `infra/postgres/partage/90-droits.sql`), sans appel à Codex :
 | chaque révision, son statut et ses dates | `codex.pub_revisions_document` (jointure sur `doc_id`) |
 | circuit en cours : étape, valideur, issue | `codex.pub_validations` (une ligne par étape ; `outcome` nul tant que le circuit court) |
 
+Les programmes de recherche (rattachement `research`, `program_code`) sont publiés dans `codex.pub_programmes_recherche`
+(`code`, `libelle`, `responsable_matricule`, `actif`), lue par Crucible (demande CX-2).
+
 Les documents « très confidentiel » n'y figurent pas ; les lecteurs appliquent `conf`. Ces vues sont des contrats : une
 colonne n'y est jamais retirée ni renommée.
 

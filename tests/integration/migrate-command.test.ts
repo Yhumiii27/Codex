@@ -71,12 +71,10 @@ describe('npm run db:migrate', () => {
     const last = code[code.length - 1];
     const db = await openDb(path.join(DATA, 'pglite'));
     await db.$client.exec(`insert into users (id, name, initials, role) values ('p1', 'P', 'P', 'collaborateur'), ('codex', 'Codex', 'CX', 'collaborateur')`);
-    // 0001_partage undone: its views, its index and its columns (their constraints go with them).
+    // The last migration, 0002_pub_programmes_recherche, undone: its view.
+    expect(last.tag).toBe('0002_pub_programmes_recherche');
     await db.$client.exec(`delete from codex.__drizzle_migrations where created_at = ${last.createdAt};
-      drop view pub_documents, pub_revisions_document, pub_validations, pub_types_document, pub_circuits_type, pub_titulaires_fonction, pub_journal;
-      drop index audit_log_at_idx;
-      alter table documents drop column distribution, drop column review_months, drop column process_code;
-      alter table users drop column matricule;`);
+      drop view pub_programmes_recherche;`);
     await db.$client.close();
     const pending = await run(['--check']);
     expect([pending.code, pending.stdout]).toEqual([1, expect.stringContaining(`Migration(s) en attente : ${last.tag}.`)]);

@@ -15,6 +15,13 @@
       "when": 1792653222833,
       "tag": "0001_partage",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792842141722,
+      "tag": "0002_pub_programmes_recherche",
+      "breakpoints": true
     }
   ]
 }
