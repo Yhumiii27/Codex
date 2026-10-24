@@ -198,8 +198,10 @@ export const documents = codex.table(
     /** Earlier IDs (reclassification before first approval, migrated legacy references). */
     aliases: jsonb('aliases').$type<string[]>().notNull().default([]),
     /**
-     * Reference in the legacy system the document was migrated from (/api/import), also kept in aliases; null for a
-     * document created in Codex. Aliases also hold former IDs: only this column says which reference was imported.
+     * Reference in the legacy system the document was migrated from (/api/import), also kept in aliases; or, for a
+     * document another application filed (/api/documents), its reference there, `<application>:<reference>`, not an
+     * alias. Null for a document created in Codex. Aliases also hold former IDs: only this column says which reference
+     * a document came from.
      */
     legacyRef: text('legacy_ref').unique(),
     title: text('title').notNull(),

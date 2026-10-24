@@ -28,9 +28,11 @@ type FamilySpec = {
 export const RATE_LIMITS = {
   /** POST /api/import (migration tool), per address, once the token is checked. */
   import: { env: 'CODEX_RATE_IMPORT', def: '600/1m' },
+  /** POST /api/documents (documents filed by another application of the group), per address, once the token is checked. */
+  documents: { env: 'CODEX_RATE_DOCUMENTS', def: '600/1m' },
   /** POST /api/integrations/vigie (Vigie's decisions), per address, once the token is checked. */
   vigie: { env: 'CODEX_RATE_VIGIE', def: '600/1m' },
-  /** Credentials refused (token or signature missing or wrong) on those two and on a registry behind a token, per address: beyond, 429 instead of 401. */
+  /** Credentials refused (token or signature missing or wrong) on those three and on a registry behind a token, per address: beyond, 429 instead of 401. */
   tokens: { env: 'CODEX_RATE_TOKEN_FAILURES', def: '20/15m' },
   /** GET /api/registry (Keystone), per address, behind a trusted proxy only. */
   registry: { env: 'CODEX_RATE_REGISTRY', def: '300/1m' },
@@ -188,10 +190,10 @@ function tooManyText(wait: number, t: T): Response {
 
 /**
  * Integration endpoints: the 429 to send when the client's address has used up its bucket of `family`; otherwise null,
- * the request counted. Import and Vigie call it once the token is checked, so that only its holder spends the budget.
+ * the request counted. Import, documents and Vigie call it once the token is checked, so that only its holder spends the budget.
  * The registry has no token: it is limited behind a trusted proxy only, where a client cannot spend another's budget.
  */
-export function limitRequest(req: Request, family: 'import' | 'vigie' | 'registry'): Response | null {
+export function limitRequest(req: Request, family: 'import' | 'documents' | 'vigie' | 'registry'): Response | null {
   if (family === 'registry' && !trustProxy()) return null;
   const rule = ruleFor(family);
   const wait = rule ? take(family, clientAddress(req.headers), rule) : 0;

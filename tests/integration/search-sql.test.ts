@@ -156,8 +156,14 @@ describe('what the database search rests on', () => {
     // point only the newer one assigns may fold differently (U+A7CE, lower case in 17.0 only): the database search
     // stays consistent, since it folds the query and the values alike (lib/queries.ts textSearch), but may part from
     // the in-memory reference on such a code point. Every code point both assign is compared.
-    const { rows: [pg] } = await db().$client.query<{ v: string }>('select unicode_version() as v');
-    const versions = `Unicode ${process.versions.unicode} in Node, ${pg.v} in PGlite`;
+    // PostgreSQL 16 and 17 (the shared server stays on 16) have neither unicode_version() nor unicode_assigned(), and fold
+    // case with ICU ("und-x-icu", src/db/index.ts foldCollation): the code points ICU assigns are those its classes
+    // graph, space and cntrl hold (format characters, Cf, are left out of the sweep; the texts below have some).
+    const { rows: [pg] } = await db().$client.query<{ v: string | null }>(`select case when to_regproc('pg_catalog.unicode_version') is null then null
+      else (select setting from pg_settings where name = 'server_version') end as v`);
+    const assigned = pg.v ? 'unicode_assigned(x)' : `(x collate pg_catalog."und-x-icu") ~ '^[[:graph:][:space:][:cntrl:]]$'`;
+    if (pg.v) [pg.v] = (await db().$client.query<{ v: string }>('select unicode_version() as v')).rows.map((r) => r.v);
+    const versions = `Unicode ${process.versions.unicode} in Node, ${pg.v ?? "ICU's"} in the database`;
     const unassigned = /\p{Cn}/u;
     const cps: number[] = [];
     for (let c = 1; c <= 0x10ffff; c++) if ((c < 0xd800 || c > 0xdfff) && !unassigned.test(String.fromCodePoint(c))) cps.push(c);
@@ -168,7 +174,7 @@ describe('what the database search rests on', () => {
       // Compared in the database: PGlite would drop a byte order mark from a text it hands back.
       const { rows: [r] } = await db().$client.query<{ n: number; differ: string[] }>(
         `select count(*)::int as n, coalesce(array_agg(x) filter (where codex_fold(x) is distinct from want), '{}') as differ
-         from unnest($1::text[], $2::text[]) as u(x, want) where unicode_assigned(x)`, [xs, xs.map(fold)]);
+         from unnest($1::text[], $2::text[]) as u(x, want) where ${assigned}`, [xs, xs.map(fold)]);
       compared += r.n;
       differ.push(...r.differ.map((x) => `U+${x.codePointAt(0)!.toString(16)}`));
     }
@@ -220,8 +226,11 @@ describe('what the database search rests on', () => {
     // The order is ICU's. A PostgreSQL server (npm run test:pg, docs/postgres.md) built with an ICU older than PGlite's
     // may order a few characters otherwise: ICU 60 (Unicode 10.0) tells ' from ’, which the ICU of PGlite 0.5 and of
     // Node 22 (Unicode 16.0) find equal. Skipped on such a server only, said in the report; PGlite is always checked.
-    const { rows: [icu] } = await db().$client.query<{ v: string }>('select icu_unicode_version() as v');
-    if (engineOf(db().$client) === 'postgres' && Number.parseFloat(icu.v) < 16) ctx.skip(`ICU of the server on Unicode ${icu.v}, older than PGlite's (16.0)`);
+    // icu_unicode_version() exists from PostgreSQL 17. On 16 (postgres:16-bookworm: ICU 72, Unicode 15.0) the order of
+    // a few of these texts differs too: skipped as well.
+    const { rows: [has] } = await db().$client.query<{ f: boolean }>(`select to_regproc('pg_catalog.icu_unicode_version') is not null as f`);
+    const icu = has.f ? (await db().$client.query<{ v: string }>('select icu_unicode_version() as v')).rows[0] : { v: 'unknown (PostgreSQL 16)' };
+    if (engineOf(db().$client) === 'postgres' && !(Number.parseFloat(icu.v) >= 16)) ctx.skip(`ICU of the server on Unicode ${icu.v}, older than PGlite's (16.0)`);
     const collator = new Intl.Collator('fr', { numeric: true, sensitivity: 'base' });
     const r = random(3);
     const alphabet = [...'aAbBeEéÉèêzZœŒæÆçÇ0123456789 -_.,\'’()/«»:ñßøØ', '\ufeff'];

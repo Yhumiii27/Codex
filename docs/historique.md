@@ -3181,3 +3181,62 @@ de `pub_journal.objet` ; plan § 4.5 et § 6 (verrou d'écriture, `migrate.ts`).
 - **Coolify, à faire** : rien sur le port ni le volume ; supprimer `/data/pglite` (procédure §10) ; la case « disponible
   au build » des `NEXT_PUBLIC_*` n'est plus utile ; au raccordement au serveur commun, `DATABASE_URL` et
   `CODEX_SEED_DEMO=1` ou `CODEX_SEED=minimal`.
+
+### 20.1 Codex sur PostgreSQL 16, la version du serveur commun (22 oct.)
+
+> **Version retenue.** Le même jour, la PR #9 (autre session, commit `9116433`) a été fusionnée dans `main` avec la même
+> approche ; c'est sa version du code, des tests, de la CI (16 et 18) et de `docs/postgres.md` qui fait foi. La
+> collation y est choisie selon ce que la base contient (`pg_unicode_fast`, sinon `"und-x-icu"`), non selon
+> `server_version_num`. Le relevé et les vérifications ci-dessous restent valables pour le serveur 16.
+
+**Contexte.** Le passage du socle Matrix en PostgreSQL 18 (proposition P-01) a cassé la production des autres outils
+et a été annulé (PR Matrix #11, branche `claude/revert-socle-pg18`) : le serveur commun reste en `postgres:16-bookworm`.
+Codex exigeait la 18. Décision de l'utilisateur (D-27, [decisions.md](decisions.md)) : « fait le necessaire pour que
+codex soit en postgresql 16 comme le reste des outils ».
+
+**Ce qui dépendait de la 17 ou de la 18** (recherche dans `src/`, `drizzle/`, `scripts/`, `tests/`) :
+
+| Élément | Résolution |
+| --- | --- |
+| `codex_fold` : `collate pg_unicode_fast` (18) | collation choisie au démarrage selon `server_version_num` (`foldCollation`, `src/db/index.ts`) : `"und-x-icu"` avant la 18, `pg_unicode_fast` dès la 18 et en PGlite (inchangé) |
+| `SERVER_MIN_VERSION = 180000` | `160000` ; message pour une version plus ancienne (« Codex needs PostgreSQL 16 or later, the version of the shared EPC2I server… ») ; serveur sans ICU refusé avec un message |
+| Migrations `0000_init`, `0001_partage` | aucune syntaxe 17 ou 18 : inchangées, appliquées telles quelles sur 16.15 |
+| Tests : `unicode_assigned()`, `unicode_version()`, `icu_unicode_version()` (17) | sur 16 : caractères inconnus de l'ICU du serveur et laissés tels quels mis de côté ; tri `codex_fr` sauté seulement si le serveur distingue `'` de `’` |
+| Test de structure : contraintes `NOT NULL` de `pg_constraint` (18) | laissées de côté, `is_nullable` les compare |
+| CI : service `postgres:18` | `postgres:16-bookworm` (un second service en 18 est proposé, non ajouté : minutes Actions) |
+| `npm run test:pg` : message « serveur PostgreSQL 18 » | « PostgreSQL 16 ou plus récent » |
+
+Nouveau test (`search-sql.test.ts`) : en PGlite (et sur un serveur 18), `pg_unicode_fast` et `"und-x-icu"` replient à
+l'identique les 292 530 caractères assignés et les contextes du sigma final ; il garantit que la 16 replie comme PGlite
+et qu'un serveur passé plus tard en 18 garde des termes justes. Tableau des textes difficiles et écarts :
+[postgres.md](postgres.md), « Version ».
+
+**Vérifications** (conteneur Linux, Node 22.22, PostgreSQL 16.15 d'Ubuntu 24.04, ICU 74, dans `/var/tmp`, port 54316,
+supprimé à la fin) :
+
+- Repli contre `fold()` de Node (Unicode 16.0) : 287 175 caractères comparés, 0 écart ; 5 355 mis de côté (inconnus
+  de l'ICU du serveur, laissés tels quels), dont 47 que `fold()` change, tous nouveaux d'Unicode 16.0.
+- Socle Matrix (`claude/revert-socle-pg18`) rejoué avec psql (`init/01` à `03`, mots de passe d'essai en variables) ;
+  `npm run db:migrate` en `codex_app` : `0000_init` et `0001_partage` appliquées, `codex_fold` posé avec
+  `"und-x-icu"` ; `partage/40-codex.sql` de Matrix rejoué tel quel en `codex_app` : 7 vues identiques ;
+  `partage/90-droits.sql` : `droits.verifier()` sans erreur ; `verifier-droits.sql` : 114 cas conformes.
+- `npm run build` puis `next start` avec `DATABASE_URL` (`codex_app`) et `CODEX_SEED=demo` : 63 documents, 172 termes ;
+  `/api/health` 200 (`database ok`), accueil, `/recherche?q=PROCEDURE` (les 4 `PRO-…` attendus) et `/explorateur` en 200.
+- `npm run test:pg` sur 16.15 : 109 fichiers, 1 465 tests réussis, 3 sautés (les 2 d'avant, plus la comparaison des
+  deux collations, faute de `pg_unicode_fast` sur la 16), aucune base ni aucun rôle d'essai laissé. `npm test` (PGlite) : 1 455
+  réussis, 13 sautés, avec et sans `.data`. Typecheck, lint, `db:check`, build : sans erreur.
+
+### 20.2 Demandes d'Arche sans décision (23 oct.)
+
+**Contexte.** La boîte aux lettres `REQUESTS.md` (règle de périmètre entre outils de l'utilisateur, 22 oct.) a reçu trois
+entrées d'Arche (CX-01 à CX-08). Demande de l'utilisateur : « traite les demandes d'Arche qui ne dépendent d'aucune
+décision ».
+
+| Demande | Suite |
+| --- | --- |
+| CX-03 API de dépôt | **Faite** : `POST /api/documents` (`src/app/api/documents/route.ts`), mode `deposit` de l'importeur (`src/lib/importer.ts`) : nouveau document en brouillon A.1 avec son fichier, passé ensuite par un circuit ; `sourceRef` `<application>:<référence>` gardée en `legacy_ref` (pas en alias), rejouable (200, rien créé ; autre fichier : 409) ; propriétaire par identifiant ou matricule ; `sha256` vérifiée (422). Jeton, secret et débit propres (`CODEX_DOCUMENTS_*`, `CODEX_RATE_DOCUMENTS`). Lecture du corps commune avec l'import (`src/lib/import-request.ts`). Pas de migration. Tests : `tests/integration/deposit.test.ts`. |
+| CX-04 état d'un document | **Déjà couverte** par `pub_documents`, `pub_revisions_document`, `pub_validations`, accordées à Arche (CX-05) : documentée (`docs/api.md`, « Lire l'état d'un document »). |
+| CX-08 lien profond | **Confirmée** : `/documents/{id}` résout les alias et redirige ; test de contrat `tests/integration/deep-link.test.ts`. |
+| CX-01, CX-02 | Ouvertes : rattachement CAPEX (choix entre deux options, O-03) et types du registre (O-05). |
+| CX-06 | Ouverte : organigramme des filiales (O-04) et authentification (O-02). |
+| CX-07 | Ouverte : « révision approuvée d'office » contredirait la validation par circuit ; gel juridique à choisir. |

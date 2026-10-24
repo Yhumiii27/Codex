@@ -1,5 +1,6 @@
 import 'server-only';
-import { eq, or, sql } from 'drizzle-orm';
+import { createHash } from 'node:crypto';
+import { and, asc, eq, or, sql } from 'drizzle-orm';
 import { getDb, schema as s, type Db } from '@/db';
 import type { Attachment, Conf, Origin, RevStatus } from '@/db/schema';
 import { readersApply } from './access';
@@ -15,8 +16,9 @@ import { addTerms, loadTerms, readTerms } from './vocab';
 import { canonicalSubtype, cleanTerm, docLang, VOCAB_MAX } from './vocab-rules';
 
 // Integration endpoints (docs/api.md; their authentication: lib/server-auth.ts): the
-// import of one legacy document for the migration tool. The business rules repeat those of actions.validateFields,
-// which needs a user session and so cannot be called from a route handler.
+// import of one legacy document for the migration tool (POST /api/import), and the deposit of one new document by
+// another application of the group (POST /api/documents, mode 'deposit'). The business rules repeat those of
+// actions.validateFields, which needs a user session and so cannot be called from a route handler.
 
 /** System user that the migration is recorded under in the audit trail. */
 export const IMPORT_ACTOR = 'codex';
@@ -59,6 +61,9 @@ const MESSAGES: Record<string, string> = {
   program_required: DICT.fr.program_required,
   source_required: DICT.fr.source_required,
   readers_conf: 'Lecteurs désignés réservés aux documents confidentiels ou très confidentiels.',
+  not_allowed: 'Champ réservé à la reprise de l’existant (POST /api/import) : un document déposé par une application commence en brouillon A.1 et passe par un circuit.',
+  invalid_source_ref: 'Référence d’origine attendue : <application>:<référence> (ex. arche:dossier/CPX-APM-2026-01/business_case/v2), 200 caractères au plus.',
+  owner_ambiguous: 'ownerId et ownerMatricule désignent deux utilisateurs différents.',
   ignored: 'Champ ignoré : il ne s’applique pas à ce document (origine, rattachement ou statut).',
   invalid_lang: 'Langue attendue : fr, en ou vide.',
   subtype_unlisted: 'Sous-type absent de la liste du type : gardé tel quel, proposé aux administrateurs du registre (Administration › Vocabulaires).',
@@ -304,7 +309,9 @@ export type ImportResult =
    */
   | { kind: 'conflict'; id: string }
   /** The file was refused (format, size, virus scan: lib/storage.ts stageFile); nothing was imported. */
-  | { kind: 'file_rejected'; rejection: FileRejection };
+  | { kind: 'file_rejected'; rejection: FileRejection }
+  /** A deposit whose source reference already made the document `id` from another file: nothing was written. */
+  | { kind: 'ref_reused'; id: string };
 
 /** `legacyRef` as parseImportMeta reads it, or null when it is missing or invalid. */
 function legacyRefOf(raw: unknown): string | null {
@@ -312,6 +319,69 @@ function legacyRefOf(raw: unknown): string | null {
   if (typeof v !== 'string' && typeof v !== 'number') return null;
   const ref = String(v).trim();
   return ref && ref.length <= 200 ? ref : null;
+}
+
+// ── Deposit by another application (POST /api/documents) ──────────────
+
+/**
+ * The reference of a deposited document in the application that filed it, `<application>:<reference>`
+ * (« arche:dossier/CPX-APM-2026-01/business_case/v2 »): lower-case application name, then anything printable. It is
+ * recorded as the document's origin reference (documents.legacy_ref, unique), never as an alias: a later call with the
+ * same reference finds the document instead of creating a second one.
+ */
+export const SOURCE_REF = /^[a-z][a-z0-9_-]{1,31}:[^\s\p{C}](?:[^\p{C}]*[^\s\p{C}])?$/u;
+
+function sourceRefOf(raw: unknown): string | null {
+  const v = isRecord(raw) ? raw.sourceRef : null;
+  if (typeof v !== 'string') return null;
+  const ref = v.trim();
+  return ref.length <= 200 && SOURCE_REF.test(ref) ? ref : null;
+}
+
+/**
+ * Fields of a migration the deposit refuses: a deposited document is new, starts as draft A.1 and goes through a
+ * circuit (docs/decisions.md: revisions are approved by a circuit); its dates are Codex's.
+ */
+const DEPOSIT_REFUSED = ['legacyRef', 'status', 'revision', 'inForceAt', 'issuedAt', 'createdAt', 'modifiedAt'] as const;
+
+/**
+ * The metadata of a deposit as the import reads them: the source reference as legacy reference, a draft, and the owner
+ * given by Codex ID or by matricule (the person's number shared by the tools of the group, users.matricule).
+ */
+function depositMeta(raw: unknown, refs: Refs): { meta: unknown; issues: Issue[] } {
+  const issues: Issue[] = [];
+  const issue = (field: string, code: string) => issues.push({ field, code, message: MESSAGES[code] ?? code });
+  if (!isRecord(raw)) return { meta: raw, issues };
+  for (const k of DEPOSIT_REFUSED) if (raw[k] != null) issue(k, 'not_allowed');
+  const ref = sourceRefOf(raw);
+  if (!ref) issue('sourceRef', raw.sourceRef == null || raw.sourceRef === '' ? 'required' : 'invalid_source_ref');
+  const meta: Record<string, unknown> = { ...raw, legacyRef: ref ?? 'invalid', status: 'draft' };
+  delete meta.revision;
+  delete meta.inForceAt;
+  delete meta.issuedAt;
+  delete meta.createdAt;
+  delete meta.modifiedAt;
+  const matricule = typeof raw.ownerMatricule === 'string' || typeof raw.ownerMatricule === 'number' ? String(raw.ownerMatricule).trim() : '';
+  if (matricule) {
+    const u = [...refs.users.values()].find((x) => !x.isSystem && x.matricule === matricule);
+    if (!u) issue('ownerMatricule', 'unknown_user');
+    else if (meta.ownerId != null && String(meta.ownerId).trim() !== '' && String(meta.ownerId).trim() !== u.id) issue('ownerId', 'owner_ambiguous');
+    else meta.ownerId = u.id;
+  }
+  return { meta, issues };
+}
+
+/**
+ * A deposit sent again with its source reference: the document it made, when the file is the same as the first one
+ * (or neither has a file); `ref_reused` when another file comes under the same reference.
+ */
+async function replayedDeposit(db: Db, id: string, file: ImportFile | null): Promise<ImportResult> {
+  const [first] = await db.select({ sha256: s.workingVersions.sha256 }).from(s.workingVersions)
+    .innerJoin(s.revisions, eq(s.revisions.id, s.workingVersions.revisionId))
+    .where(and(eq(s.workingVersions.docId, id), eq(s.workingVersions.n, 1)))
+    .orderBy(asc(s.revisions.id)).limit(1);
+  const sent = file ? createHash('sha256').update(file.buf).digest('hex') : null;
+  return (first?.sha256 ?? null) === sent ? { kind: 'duplicate', id } : { kind: 'ref_reused', id };
 }
 
 /**
@@ -360,15 +430,21 @@ class DryRun extends Error {
  * written (document, counters, vocabularies, audit trail), an infected file not journaled. The ID given is the one a
  * real import would get if nothing changes in between.
  */
-export async function importDocument(raw: unknown, file: ImportFile | null, o: { dryRun?: boolean } = {}): Promise<ImportResult> {
+export async function importDocument(raw: unknown, file: ImportFile | null, o: { dryRun?: boolean; mode?: 'import' | 'deposit' } = {}): Promise<ImportResult> {
   const dryRun = !!o.dryRun;
+  const deposit = o.mode === 'deposit';
   const db = await getDb();
-  // A replay answers 409 whatever the register has become since the first run (a type deactivated meanwhile…).
-  const ref = legacyRefOf(raw);
+  // A replay answers whatever the register has become since the first run (a type deactivated meanwhile…): 409 for an
+  // import, the document already made for a deposit.
+  const ref = deposit ? sourceRefOf(raw) : legacyRefOf(raw);
   const known = ref ? await findByRef(db, ref) : null;
-  if (known) return known;
+  if (known) return deposit && known.kind === 'duplicate' ? replayedDeposit(db, known.id, file) : known;
   const refs = await loadRefs(db);
-  const { value: v, issues, warnings } = parseImportMeta(raw, refs);
+  const pre = deposit ? depositMeta(raw, refs) : { meta: raw, issues: [] };
+  const parsed = parseImportMeta(pre.meta, refs);
+  const { warnings } = parsed;
+  const issues = [...pre.issues, ...parsed.issues.filter((i) => !(deposit && i.field === 'legacyRef'))];
+  const v = issues.length ? null : parsed.value;
   if (!v) return { kind: 'invalid', issues, warnings };
   const type = refs.types.get(v.typeCode)!;
   const today = todayIso();
@@ -384,7 +460,7 @@ export async function importDocument(raw: unknown, file: ImportFile | null, o: {
   let staged: StagedFile | null = null;
   let checked: CheckedFile | null = null;
   if (file) {
-    const origin = { userId: IMPORT_ACTOR, entry: 'import', ref: v.legacyRef } as const;
+    const origin = { userId: IMPORT_ACTOR, entry: deposit ? 'create' : 'import', ref: v.legacyRef } as const;
     try {
       if (dryRun) checked = await checkFile(file.buf, file.name, file.mime, origin, { journal: false });
       else checked = staged = await stageFile(file.buf, file.name, file.mime, origin);
@@ -400,7 +476,7 @@ export async function importDocument(raw: unknown, file: ImportFile | null, o: {
         warnings.push({ field: 'file', code: 'duplicate_file', message: MESSAGES.duplicate_file.replace('{docs}', docs) });
       }
     } catch (err) {
-      logger('import').warn('duplicate check failed', { err });
+      logger(deposit ? 'deposit' : 'import').warn('duplicate check failed', { err });
     }
   }
   let res: ImportResult;
@@ -411,14 +487,15 @@ export async function importDocument(raw: unknown, file: ImportFile | null, o: {
       // taken in crossed order by another import.
       await tx.execute(sql`select pg_advisory_xact_lock(hashtext('codex:import'))`);
       // The legacy reference stays as an alias, and may become the ID: its number is reserved before the checks below,
-      // which then see any document that drew it from the counter, and no counter hands it out again.
-      await reserveDocId(tx, v.legacyRef);
+      // which then see any document that drew it from the counter, and no counter hands it out again. A deposit's source
+      // reference is neither (it names the document in the application that filed it).
+      if (!deposit) await reserveDocId(tx, v.legacyRef);
       // Checked again inside the transaction: a concurrent import of the same reference has committed by now.
       const existing = await findByRef(tx, v.legacyRef);
       // A simulation rolls back the reservation above too.
       if (existing && dryRun) throw new DryRun(existing);
       if (existing) return existing;
-      const id = await importId(tx, v);
+      const id = deposit ? await nextDocId(tx, v) : await importId(tx, v);
       // Unknown terms are added (controlled addition, journaled under the import), never refused: the existing ones
       // give their spelling (« SIEMENS » → « Siemens »), a merged duplicate the term it was merged into.
       for (const [kind, field, values] of [['source_org', 'sourceOrg', v.sourceOrg ? [v.sourceOrg] : []], ['keyword', 'keywords', v.keywords]] as const) {
@@ -430,7 +507,7 @@ export async function importDocument(raw: unknown, file: ImportFile | null, o: {
         warnings.push({ field, code: 'term_added', message: MESSAGES.term_added.replace('{terms}', read.added.map((x) => `« ${x} »`).join(', ')) });
       }
       await tx.insert(s.documents).values({
-        id, aliases: [v.legacyRef], legacyRef: v.legacyRef, title: v.title, origin: v.origin, attachment: v.attachment,
+        id, aliases: deposit ? [] : [v.legacyRef], legacyRef: v.legacyRef, title: v.title, origin: v.origin, attachment: v.attachment,
         projectCode: v.projectCode, programCode: v.programCode, family: type.family, typeCode: type.code, subtype: v.subtype,
         department: v.department, site: v.site, ownerId: v.ownerId, authorId: v.authorId, authorText: v.authorText,
         conf: v.conf, keywords: v.keywords, lang: v.lang, status: revStatus,
@@ -454,16 +531,27 @@ export async function importDocument(raw: unknown, file: ImportFile | null, o: {
     if (withVersion) {
       await tx.insert(s.workingVersions).values({
         revisionId: rev.id, docId: id, n: 1, authorId: v.authorId ?? v.ownerId, date: revStatus === 'in_force' ? inForceAt! : modifiedAt,
-        comment: v.comment ?? { fr: `Reprise de ${v.legacyRef}`, en: `Migrated from ${v.legacyRef}` },
+        comment: v.comment ?? (deposit
+          ? { fr: `Déposé par ${v.legacyRef.split(':')[0]} (${v.legacyRef})`, en: `Filed by ${v.legacyRef.split(':')[0]} (${v.legacyRef})` }
+          : { fr: `Reprise de ${v.legacyRef}`, en: `Migrated from ${v.legacyRef}` }),
         ...(stored ? fileColumns(stored) : {}),
       });
     }
     if (v.readers.length) await tx.insert(s.documentReaders).values(v.readers.map((userId) => ({ docId: id, userId })));
     await refreshHeadline(tx, id);
-    await audit(tx, IMPORT_ACTOR, 'import', id, `${v.legacyRef} → ${withVersion ? label : v.letter}`, rev.id, {
-      ...(stored ? { sha256: stored.sha256 } : {}),
-      text: { code: 'import', params: { ref: v.legacyRef, label: withVersion ? label : v.letter, ...(stored ? { size: stored.size } : {}) } },
-    });
+    // A deposit is journaled as a document created on screen (an upload of its first version), under Codex's system user,
+    // its source reference in the detail; an import as the arrival of a document migrated from the legacy system.
+    if (deposit) {
+      await audit(tx, IMPORT_ACTOR, 'upload', id, `${withVersion ? label : v.letter} · ${v.legacyRef}`, rev.id, {
+        ...(stored ? { sha256: stored.sha256 } : {}),
+        text: { code: 'version', params: { label: withVersion ? label : v.letter, ...(stored ? { size: stored.size } : {}) } },
+      });
+    } else {
+      await audit(tx, IMPORT_ACTOR, 'import', id, `${v.legacyRef} → ${withVersion ? label : v.letter}`, rev.id, {
+        ...(stored ? { sha256: stored.sha256 } : {}),
+        text: { code: 'import', params: { ref: v.legacyRef, label: withVersion ? label : v.letter, ...(stored ? { size: stored.size } : {}) } },
+      });
+    }
     const created: ImportResult = { kind: 'created', id, revision: v.letter, version: withVersion ? `${v.letter}.1` : null, revStatus, file: !!checked, warnings };
     // A simulation stops here: everything written above is rolled back.
     if (dryRun) throw new DryRun(created);
@@ -472,7 +560,7 @@ export async function importDocument(raw: unknown, file: ImportFile | null, o: {
   } catch (err) {
     if (err instanceof DryRun) {
       const r = err.result;
-      logger('import').info('import simulated (dry run), nothing written', { ref: v.legacyRef, result: r.kind === 'created' ? r.id : r.kind });
+      logger(deposit ? 'deposit' : 'import').info(`${deposit ? 'deposit' : 'import'} simulated (dry run), nothing written`, { ref: v.legacyRef, result: r.kind === 'created' ? r.id : r.kind });
       return r.kind === 'created' ? { kind: 'dry_run', id: r.id, warnings: r.warnings } : r;
     }
     await discardFile(staged);
