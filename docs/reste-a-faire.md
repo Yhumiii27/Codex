@@ -1,8 +1,9 @@
 # Reste à faire sur Codex
 
 Inventaire du 9 octobre 2026, sur la branche `codex-ged-v2-vkmf4l`, tenu à jour jusqu'au 18 octobre 2026 (lot 10,
-étape 6 comprise). Chaque point fait porte sa ligne « Fait le … » ; le détail de chaque lot est dans
-`docs/historique.md` (§11 à §19).
+étape 6 comprise), puis complété le 26 octobre 2026 par trois points (130 à 132) issus de l'analyse comparative avec
+les GED du commerce. Chaque point fait porte sa ligne « Fait le … » ; le détail de chaque lot est dans
+`docs/historique.md` (§11 à §20).
 
 ## Depuis le 18 octobre
 
@@ -11,13 +12,18 @@ Inventaire du 9 octobre 2026, sur la branche `codex-ged-v2-vkmf4l`, tenu à jour
 - **23 octobre** : demandes d'Arche (`REQUESTS.md`) : CX-03 (`POST /api/documents`), CX-04 (vues `pub_`) et CX-08
   (lien profond) faites ; CX-01, CX-02, CX-06 et CX-07 attendent une décision. Revérifié le même jour : aucun point
   n'est développable sans décision (`docs/historique.md` §20.3).
+- **26 octobre** : analyse comparative avec les GED du commerce (M-Files, SharePoint Premium, Alfresco, Nuxeo,
+  DocuWare, Aconex, Autodesk Docs, ProjectWise, Box, Zeendoc), faite le 25 octobre : 3 points ajoutés (130 à 132,
+  classés « Attend une décision de l'utilisateur », à valider avant de développer), 17 points annotés (ligne « Analyse
+  comparative du 25 octobre 2026 » : 20, 75, 79, 80, 82, 84, 85, 88, 90, 93, 94, 95, 103, 104, 107, 109, 110, avec
+  l'attente du marché et une priorité suggérée) ; aucun état ne change (`docs/historique.md` §20.5).
 
-## État au 18 octobre 2026 (lot 10, étape 6)
+## État au 18 octobre 2026 (lot 10, étape 6), complété le 26 octobre
 
 | Ce qui bloque (classement du 9 octobre) | Points | Faits | Faits en partie | Pas commencés |
 |---|---|---|---|---|
 | Développable maintenant | 69 | 58 | 11 | 0 |
-| Attend une décision de l'utilisateur | 49 | 0 | 0 | 49 |
+| Attend une décision de l'utilisateur | 52 (49 + 3 ajoutés le 26 octobre) | 0 | 0 | 52 |
 | Attend des données de l'utilisateur | 2 | 0 | 0 | 2 |
 | Demande une session sur macOS | 9 | 0 | 0 | 9 |
 
@@ -72,7 +78,9 @@ peut dépendre de plusieurs questions ; aucune n'a été tranchée à la place d
   - questions de l'audit encore ouvertes (annexe A de `docs/fiches-decision.md`) en plus d'une question O : 73 (G09,
     WFL-04 : question nouvelle, avec O-09), 78 (M02, avec O-05), 79 (M23, avec O-02), 80 (P08, M07), 86 (M12, avec
     O-01), 87 (A07), 88 (M22), 90 (M03), 92 (A12), 94 (M07), 96 (M17, M03), 99 (A23), 104 (M19), 107 (M08, M11, avec
-    O-02).
+    O-02) ;
+  - ajoutés le 26 octobre 2026 (analyse comparative avec les GED du commerce), à valider par l'utilisateur avant de
+    développer : 130 (M22, O-05, M10), 131 (P04, Q06, M12), 132 (M22, O-02, M10).
 - **Des données de l'utilisateur** : 119 (vrais modèles EPC2I, aussi le reste de 6), 120 (date de clôture de
   l'exercice).
 - **Une session sur macOS** : 121 à 129 (app Mac, T-02), et les essais sous macOS des restes de 43 (contrôle de version
@@ -454,6 +462,7 @@ Le manque est réel. Aujourd'hui, on ne peut changer le propriétaire que docume
 - **Fait en partie le 12 octobre 2026** : détection optimiste, sans réservation : `documents.version`, relevée par la base à chaque modification réelle de la fiche (déclencheur `documents_version`, `src/db/index.ts`) et réservée au cercle de rédaction (D-14), est renvoyée par les dialogues de métadonnées et de lecteurs désignés, et la dernière version de travail montrée par ceux de dépôt et de demande de validation ; `updateMeta`, `setReaders`, `addWorkingVersion` et `requestValidation` refusent sans rien écrire une action partie d'une vue périmée (« Ce document a été modifié entre-temps par … ; rechargez la fiche », ou la version de travail déposée entre-temps et son auteur), en nommant l'auteur de la dernière modification d'après le journal de la même transaction, et le dialogue propose « Recharger la fiche » (`src/lib/concurrency.ts`, `tests/integration/concurrent-edits.test.ts`). **Reste** : la réservation d'un brouillon (Réserver / Libérer), qui change la façon de travailler, proposée à l'utilisateur dans `docs/decisions.md` (« Modifications simultanées »).
 
 - **Effort** : moyen · **Références** : D-12
+- **Analyse comparative du 25 octobre 2026** — Standard du marché (M-Files, ProjectWise, SharePoint) : check-out / check-in avec verrouillage exclusif du fichier pendant l'édition. Codex n'a que le verrouillage optimiste des métadonnées (src/lib/concurrency.ts) ; la réservation d'un brouillon, restée en proposition (O-09, « Modifications simultanées » dans docs/decisions.md), est exactement cette fonction. Priorité suggérée : P2, dès que l'utilisateur confirme la proposition. L'état du point ne change pas.
 
 À faire :
 - une colonne `version` (entier) sur documents, envoyée en champ caché par le dialogue de métadonnées et comparée dans la transaction de updateMeta, avec une erreur `stale` (clé FR/EN) qui invite à recharger ;
@@ -1341,9 +1350,9 @@ Constaté. La seule aide est le bouton « Notes » de la barre latérale (src/co
 
 </details>
 
-## Attend une décision de l'utilisateur (49)
+## Attend une décision de l'utilisateur (49, puis 52 avec les points ajoutés le 26 octobre 2026)
 
-Ces points dépendent d'une question ouverte (O-01 à O-11 dans `docs/decisions.md`) ou d'une question de l'audit restée sans réponse. Ne pas les trancher à la place de l'utilisateur.
+Ces points dépendent d'une question ouverte (O-01 à O-11 dans `docs/decisions.md`) ou d'une question de l'audit restée sans réponse. Ne pas les trancher à la place de l'utilisateur. Les points 130 à 132, ajoutés le 26 octobre 2026, sont en plus à valider par l'utilisateur avant tout développement : ni le deck ni lui ne les ont demandés.
 
 ### Fonctionnel (18)
 
@@ -1439,6 +1448,7 @@ src/lib/actions.ts:117-130 : `validateFields` n'exige que le projet (l.122), le 
 #### 75. Diffusion d'une révision et prise de connaissance (accusé de lecture)
 
 - **Effort** : moyen · **Références** : M06
+- **Analyse comparative du 25 octobre 2026** — Niveau avancé du marché (OpenText, Aconex) : **matrices de distribution** automatiques par type, discipline ou projet, qui désignent d'elles-mêmes qui reçoit chaque révision mise en vigueur. Dans Codex, les lecteurs sont désignés un par un (`document_readers`, src/db/schema.ts:321) et aucune liste de diffusion n'existe ; c'est la « liste de diffusion par document ou par fonction » de ce point, à étendre à une règle du registre (type × discipline × projet → fonctions ou personnes). Priorité suggérée : P2, une fois M06 tranchée, avant les notifications sortantes (point 104) qui en seraient le canal. L'état du point ne change pas.
 
 Rien n'existe pour diffuser une révision mise en vigueur ni pour tracer sa prise de connaissance. Avant de développer, l'utilisateur doit préciser :
 - qui est notifié à la publication ;
@@ -1512,6 +1522,7 @@ Le manque est réel. Le registre ne distingue pas un document maîtrisé d'un en
 - **Effort** : moyen · **Références** : M23 (question de l'audit restée sans réponse, hors O-01..O-11)
 - **Avancé le 18 octobre 2026** (lot 10, étape 6) : `npm run a11y -- --narrow` rend les 30 écrans et 20 dialogues à 320 px et à 1 280 px zoomé à 200 % (WCAG 1.4.10, 1.4.4) et relève débordement de la page, contenus hors fenêtre, masqués, tronqués, superposés et violations axe (docs/accessibilite.md, « Affichage étroit et zoom »). Corrigé sans effet sur le bureau (captures à 1 440 px identiques) : barre latérale qui défile, onglets d'Administration et d'Archivage qui vont à la ligne, en-têtes de colonne réservés aux lecteurs d'écran gardés dans leur cellule, ligne d'un modèle tronquée ; à 200 %, 3 écrans sur 50 restent plus larges que la fenêtre au lieu de 15, 28 éléments hors fenêtre au lieu de 252. Reste, selon M23 : à 320 px tout écran (barre latérale de 224 px, en-tête), le panneau de fiche de 400 px, les trois colonnes de l'Explorateur, la colonne des filtres de la Recherche, les tableaux en défilement horizontal. Aucune mise en page mobile, ni barre repliable, ni PWA : le point attend toujours M23. Lot 10, étape 7 : la référence d'un modèle sur une ligne survolée de « Nouveau document », relevée à 4,38:1, passe à 4,91:1 (texte atténué à 60 % sur une ligne survolée).
 - **Revérifié le 18 octobre 2026** : constat inchangé, avec des nuances : quatre media queries existent désormais (administration, aide, pages de département), mais la grille de l'application garde sa barre latérale de 224 px (src/app/globals.css:22) et le panneau de la fiche ses 400 px (src/app/documents/[id]/document.module.css:45) ; ni manifeste ni service worker. Le point cite M23 et O-02 (hébergement : M22), ni O-01 ni O-11 (état récapitulatif corrigé le même jour).
+- **Analyse comparative du 25 octobre 2026** — Standard à avancé sur le marché (Autodesk Docs, Aconex, Box, M-Files) : application mobile avec consultation hors ligne, capture photo depuis le terrain et approbation d'une étape. Codex n'a qu'une app macOS (`desktop/`), non recettée (points 121 à 129), et aucune mise en page mobile. Priorité suggérée : P3, une fois M23 tranchée ; les trois volets de ce point (largeur mobile, hors ligne, capture) répondent à cette attente. L'état du point ne change pas.
 
 Il faut d'abord la réponse de l'utilisateur à M23 : faut-il un accès en chantier ou en dépôt, la consultation hors ligne des révisions en vigueur, le dépôt d'une photo depuis le terrain ? Selon cette réponse : (1) adaptation à largeur mobile : barre latérale repliable, panneau de fiche en pleine largeur, tableaux en liste (effort moyen) ; (2) hors ligne éventuel : PWA avec un cache des révisions en vigueur, en respectant canRead et la confidentialité (effort important) ; (3) dépôt depuis le terrain : capture photo dans FilePicker (accept/capture). L'accès au réseau depuis un chantier dépend aussi de l'hébergement et de l'authentification (O-02).
 
@@ -1525,6 +1536,7 @@ Le besoin n'est pas tranché. M23 est marqué « Suite : Ouvert » dans docs/aud
 
 - **Effort** : moyen · **Références** : O-05 (point 4 du registre), O-03, P08, M07
 - **Revérifié le 18 octobre 2026** : le drapeau est désormais modifiable dans Administration › Registre (`TypeEditor`, Dialogs.tsx:1493), journalisé, repris par `npm run registry:apply` et le cahier `types.csv` ; il est publié par `GET /api/registry` (src/app/api/registry/route.ts:64). Aucune logique ne le lit encore pour un document : constat inchangé sur le fond.
+- **Analyse comparative du 25 octobre 2026** — Le **dossier de livraison (handover)** vers l'exploitation, cité ci-dessous parmi les effets possibles du drapeau, est un différenciant du marché (OpenText) : archive indexée des révisions en vigueur des livrables d'un projet, reliée au parc machines et au SAV que suit Keystone. Absent de Codex ; la demande CX-07 d'Arche (dossier de jalon figé, `REQUESTS.md`) en est voisine. Priorité suggérée : P3, après les transmittals (point 94) et la liaison Keystone (O-03). L'état du point ne change pas.
 
 Il faut demander à l'utilisateur ce que ce drapeau doit déclencher. Exemples :
 - un bordereau de transmission (révision, date, destinataire) ;
@@ -1565,6 +1577,7 @@ Constaté. `lang` est une valeur texte unique (src/db/schema.ts:140). Le dialogu
 
 - **Effort** : important · **Références** : M10, G15 (question d'audit non numérotée en O-xx)
 - **Revérifié le 18 octobre 2026** : la recherche passe par la table `document_terms` (src/db/schema.ts:330, déclencheur `documents_terms` dans src/db/index.ts) et `score` (src/lib/search.ts:204-210) : métadonnées seules. Une extraction de texte existe depuis le point 14 (src/lib/text-extract.ts : PDF par unpdf, Office Open XML, OpenDocument, texte), mais seulement pour comparer deux versions : rien n'est stocké ni indexé. Le point cite M10 et G15, ni O-01 ni O-11 (état récapitulatif corrigé le même jour) ; le volume (O-11, M18) ne joue que sur le réglage.
+- **Analyse comparative du 25 octobre 2026** — Standard du marché (Alfresco, DocuWare, SharePoint, M-Files) : recherche plein texte dans le contenu des fichiers PDF et Office, avec OCR des scans (point 85). Codex ne cherche que dans les métadonnées ; le texte n'est extrait que pour la comparaison (src/lib/text-extract.ts), ce qui réduit l'effort : il reste à le stocker par version, à l'indexer (`tsvector`) et à filtrer selon la visibilité. Priorité suggérée : P1, avec le point 85, une fois M10 tranchée. L'état du point ne change pas.
 
 L'absence est réelle, mais le besoin n'est ni exigé par le deck ni confirmé par l'utilisateur : M10 est une question d'audit restée sans réponse, qui ne figure pas parmi O-01 à O-11. Il faut la faire trancher avant de lancer ce chantier coûteux. Si c'est validé :
 - extraire le texte au dépôt (`stageFile`) et à l'import, et le stocker par version de travail ;
@@ -1600,6 +1613,7 @@ src/lib/actions.ts:169-176 et 185 : le contenu du modèle est lu (`readStored`) 
 
 - **Effort** : important · **Références** : O-01
 - **Revérifié le 18 octobre 2026** : constat inchangé. Toujours aucun hôte WOPI ni édition en ligne ; le pilote SharePoint (`sharepoint()`, src/lib/storage.ts:196-327) n'a été essayé que contre un faux Microsoft Graph (lot 10, étape 3, point 103).
+- **Analyse comparative du 25 octobre 2026** — Standard d'un environnement Microsoft 365 : coédition Office 365 ouverte depuis la GED, et classement d'un document depuis Outlook ou Teams. Codex n'a ni l'un ni l'autre : les fichiers Office ne sont convertis en PDF qu'en lecture seule (src/lib/office-preview.ts) ; le classement depuis Outlook relève du point 107. Priorité suggérée : P2, après O-01 et M12, et seulement si le besoin d'édition en ligne est confirmé. L'état du point ne change pas.
 
 Aujourd'hui, on modifie un fichier en le téléchargeant puis en le redéposant comme version de travail. Correction au point : la coédition ne suppose pas forcément un accès direct à la bibliothèque SharePoint. Un hôte WOPI dans Codex le permettrait aussi (Office pour le web, sous programme partenaire Microsoft, ou Collabora / OnlyOffice). Mais cela créerait des versions hors du modèle de Codex : D-06 veut que SharePoint ne reçoive que le fichier, son nom et sa version, et que Codex fasse foi. Rien n'est à développer tant que l'utilisateur n'a pas dit si l'édition en ligne est nécessaire et n'a pas tranché O-01.
 
@@ -1613,6 +1627,7 @@ Aucune intégration d'édition en ligne (WOPI, Office pour le web, Collabora, On
 
 - **Effort** : important · **Références** : M09, M10
 - **Revérifié le 18 octobre 2026** : constat inchangé. La recherche ne porte que sur les métadonnées (`document_terms`, src/lib/search.ts:204-210) ; l'extraction de texte du point 14 lit la couche texte d'un PDF (un scan sans couche texte ne donne rien), sans OCR ; aucune empreinte d'horodatage ni procédure de valeur probante.
+- **Analyse comparative du 25 octobre 2026** — Standard du marché (DocuWare, Alfresco, SharePoint Premium) : OCR au dépôt et recherche dans le texte reconnu. Avec le point 82, c'est l'écart fonctionnel le plus visible pour les utilisateurs d'une GED du commerce. Priorité suggérée : P1 pour l'OCR et l'indexation, une fois M09 et M10 tranchées ; la valeur probante (NF Z42-026) reste une décision distincte. L'état du point ne change pas.
 
 Les scans ne sont pas cherchables, et rien n'encadre la valeur probante des copies (norme NF Z42-026, destruction des originaux papier). L'utilisateur doit d'abord décider :
 - qui numérise, avec quel outil ;
@@ -1669,6 +1684,7 @@ Constaté. src/lib/actions.ts:437 fixe `due: addDays(today, 7)` pour tout circui
 - **Effort** : moyen · **Références** : O-01, G02, M22
 - **Revérifié le 18 octobre 2026** : constat inchangé : le store local écrit et lit en clair (`local`, src/lib/storage.ts:120-143, dans `FILES_DIR`, src/db/index.ts:30) ; la base, les sauvegardes et les exports ne sont pas chiffrés.
 - **Avancé le 18 octobre 2026** (lot 10, étape 4, sans décision ; le point reste bloqué) : le chiffrement du volume est documenté (docs/exploitation.md §9, docs/sauvegarde.md « Chiffrement ») : volumes de `.data` (base et fichiers), des sauvegardes et des exports chiffrés, clés hors du serveur, sauvegarde des clés et restauration d'essai avec la clé de secours. Rien n'est codé ; le choix entre stockage chiffré, chiffrement applicatif et SharePoint attend O-01 et l'hébergement (M22).
+- **Analyse comparative du 25 octobre 2026** — Standard du marché : fichiers, **sauvegardes et exports chiffrés**. Dans Codex, les sauvegardes (`npm run backup`) et l'export complet sortent en clair ; seul le chiffrement du volume est documenté. Priorité suggérée : P2, avec la permission « Détruire » du point 90, dès O-01 et M22 ; le chiffrement des sauvegardes et des exports (clé hors du dépôt) ne dépend pas du choix du stockage et pourrait être proposé en premier. L'état du point ne change pas.
 
 Si SharePoint est activé (O-01), Microsoft 365 chiffre les fichiers au repos ; il restera la base PGlite, à placer sur un volume chiffré. Sinon, deux options :
 - un stockage objet chiffré (Azure Blob par exemple) derrière l'interface `FileStore` (storage.ts:24-35) ;
@@ -1705,6 +1721,7 @@ Constaté : src/db/schema.ts:35-44 (users : id, name, initials, role, title, dep
 
 - **Effort** : moyen · **Références** : G39, M03, O-07, ACC-06
 - **Revérifié le 18 octobre 2026** : constat inchangé. Les échéances proposent « destroy » ou « review » (`deadlines`, src/lib/queries.ts:1180) ; seules actions d'Archivage : `archiveDocuments` et `holdDocuments` (src/app/archivage/DueTable.tsx:50-51 ; src/lib/actions.ts:1429-1560 pour archivage, gel, levée, restauration) ; `ENFORCED_PERMS` sans 'destroy' (src/lib/i18n.ts:981) ; le gel journalise toujours le code du type (`holdDocumentsNow`, actions.ts:1475). Une date d'événement saisie (`setRetentionEvent`, actions.ts:1564) rend calculable la fin de conservation des types « durée de vie de l'actif » et « départ du salarié ».
+- **Analyse comparative du 25 octobre 2026** — Standard du marché (toutes les GED comparées) : la permission « Détruire » est réellement appliquée, avec un sort final exécuté et tracé. Dans Codex, elle est affichée dans la matrice des droits mais absente d'`ENFORCED_PERMS` (src/lib/i18n.ts:981) : elle n'a aucun effet. Priorité suggérée : P2, avec le chiffrement des sauvegardes et des exports (point 88), une fois M03 et O-07 tranchées. L'état du point ne change pas.
 
 Une fois le processus de fin de conservation tranché (M03 : qui valide, quelle preuve) et les durées validées (O-07) :
 - un circuit de destruction : proposition, puis validation par le droit Détruire, ajouté à `ENFORCED_PERMS`. Il est refusé sous gel juridique, avant l'échéance (`retainUntil`) ou si une révision est ouverte. Il supprime les fichiers dans le stockage (`remove`), efface ou anonymise la fiche en gardant un squelette (ID, type, dates) et laisse au journal un procès-verbal non effaçable ;
@@ -1760,6 +1777,7 @@ Constaté. Dans canRead (src/lib/access.ts:74-78), public, restreint et interne 
 
 - **Effort** : important · **Références** : O-02, T-01, D-03, G13, G48, M16, ACC-01, ACC-02, ACC-03
 - **Revérifié le 18 octobre 2026** : constat en partie périmé : `src/proxy.ts` existe désormais, mais il ne pose que la politique de sécurité du contenu avec un nonce par requête et, avec `CODEX_HTTPS`, HSTS ; il ne contrôle aucune session. L'identité reste lue dans les cookies `codex-user` et `codex-role` (src/lib/context.ts:11-12 et 68-71) ; `simulateUser` (src/lib/actions.ts:170-180) pose ces cookies sans `httpOnly` ni `secure`, ouvert à tous ; la route fichier et les exports passent par `getCtx`. Les appels entre serveurs (import, webhook Vigie, registre) sont, eux, authentifiés par jeton ou signature HMAC (src/lib/server-auth.ts). Reste après O-02 : la connexion OIDC, la session signée et le contrôle dans `src/proxy.ts` et les routes.
+- **Analyse comparative du 25 octobre 2026** — Standard du marché (M-Files, SharePoint Premium, Alfresco, Nuxeo, DocuWare, Box) : connexion par le SSO de l'entreprise (Entra ID ou autre OIDC/SAML) et identité vérifiée derrière chaque entrée du journal. Dans Codex, l'identité reste choisie par le client (cookies `codex-user` et `codex-role`, src/lib/context.ts). C'est le seul écart jugé **bloquant** pour une mise en service : sans lui, ni les droits ni le journal n'ont de valeur. Priorité suggérée : première, dès la réponse à O-02. L'état du point ne change pas.
 
 Une fois le fournisseur choisi (O-02 ; Entra ID est proposé, pas confirmé) :
 - connexion OIDC (code + PKCE), session signée en cookie httpOnly/secure/SameSite, route de rappel, déconnexion ;
@@ -1779,6 +1797,7 @@ Constaté : src/lib/context.ts:46-68 (utilisateur et rôle lus dans les cookies 
 - **Effort** : important · **Références** : D-13, ACC-02, G31, M07, O-02
 - **Revérifié le 18 octobre 2026** : constat inchangé sur le fond : Public, Restreint et Interne sont lus de la même façon (`canRead`, src/lib/access.ts:162-165) ; aucun partage externe, accès invité ni filigrane.
 - **Avancé le 18 octobre 2026** (lot 10, étape 4, sans décision ; le point reste bloqué) : le bouton de la fiche (`ShareButton`, src/components/ui/client.tsx) a pour nom accessible et info-bulle « Copier le lien du document » / « Copy the document link » (libellé `copy_link`, qui remplace `share`), ce qu'il fait réellement ; visuel inchangé (icône de la maquette). La diffusion encadrée attend toujours M07 et O-02.
+- **Analyse comparative du 25 octobre 2026** — Deux attentes du marché se rattachent à ce point (M07), à des niveaux différents. (1) **Transmittals formels** : bordereau numéroté, accusé de réception, historique de diffusion aux clients et fournisseurs. C'est un niveau avancé (Aconex, OpenText, ProjectWise), mais c'est la fonction clé d'une GED d'EPC : aujourd'hui, Codex n'a que le sous-type « Bordereau de transmission » du type LET dans le registre (src/db/registry.ts:1211), sans aucune fonction derrière ; le point 80 (drapeau « livrable client ») cite le même bordereau. Priorité suggérée : P1, une fois M07 tranchée. (2) **Partage externe sécurisé** : lien expirant, accès invité, filigrane dynamique au téléchargement. Standard (Box, SharePoint), absent de Codex ; les accès invités dépendent d'O-02 et le filigrane rejoint le point 86. Priorité suggérée : P2. L'état du point ne change pas.
 
 Reste à faire trancher par l'utilisateur (M07 ; dépend aussi d'O-02 pour des accès invités) comment se fait la diffusion d'un document Restreint au client ou au partenaire désigné : lien de partage expirant, accès invité, export tracé avec filigrane ou cartouche, ou simple bordereau de transmission. Il faudra ensuite :
 - le destinataire externe désigné sur le document ;
@@ -1797,6 +1816,7 @@ Constaté : src/lib/access.ts:74-78 (public, restreint et interne renvoient true
 
 - **Effort** : important · **Références** : G17, M04
 - **Revérifié le 18 octobre 2026** : constat inchangé : toutes les étapes sont créées avec `sign: false` (src/lib/actions.ts:956) ; l'action de journal 'sign' n'est jamais atteinte (actions.ts:1056) ; la mention eIDAS n'apparaît que si `r.current?.sign` (src/app/validations/page.tsx:176).
+- **Analyse comparative du 25 octobre 2026** — Niveau avancé du marché (Zeendoc, DocuWare, et les GED reliées à Yousign ou DocuSign) : signature électronique eIDAS dans le circuit, et **horodatage externe du journal** (jeton d'un tiers horodateur sur l'empreinte des entrées). Dans Codex, la fiche de visa n'est pas signée (src/lib/approval.ts, en-tête l.8 : « It bears no electronic signature ») et le journal, protégé contre toute modification par la base (`audit_log_append_only`, src/db/index.ts), n'a aucun horodatage externe : l'horodatage rejoint la valeur probante du point 85. Priorité suggérée : P2, une fois M04 tranchée. L'état du point ne change pas.
 
 Une fois tranchée par l'utilisateur la question d'audit M04 (types concernés, niveau eIDAS simple, avancé ou qualifié, prestataire Yousign, DocuSign ou autre, et si une approbation vaut signature) :
 - un attribut `sign` par étape de circuit dans le registre (`circuit` de src/db/registry.ts et écran Registre), repris par `requestValidation` à la place de `sign: false` ;
@@ -1948,6 +1968,7 @@ Constaté : src/db/seed-org.ts:67-70 (chef_projet, referent_ingenierie, resp_cha
 
 - **Effort** : moyen · **Références** : O-01, D-06, T-01, ARC-03, G02
 - **Revérifié le 18 octobre 2026** : références à jour : pilote `sharepoint()` (src/lib/storage.ts:196-327, commentaire « Tried against a fake Microsoft Graph only »), `stores()` (l.334), `renameDocFiles` (l.521) ; variables `CODEX_STORAGE` et `CODEX_SP_*` (.env.example:77 et suivantes). Aucune action de destruction.
+- **Analyse comparative du 25 octobre 2026** — Standard d'un environnement Microsoft 365 (SharePoint Premium, et les GED qui s'y adossent) : stockage SharePoint ou Graph éprouvé sur un vrai tenant. Le pilote de Codex (src/lib/storage.ts) n'a été testé que contre un faux Graph. Priorité suggérée : P1, dès la réponse à O-01 ; c'est aussi ce qui conditionne le chiffrement au repos (point 88), l'édition en ligne (point 84) et l'envoi au-delà de 250 Mo (point 98). L'état du point ne change pas.
 
 Le point est confirmé. Le pilote n'a jamais tourné sur un tenant, `renameDocFiles` non plus. Restent à décider (O-01) : l'activation, un fichier par version de travail ou par révision, et l'absence d'accès direct des utilisateurs à la bibliothèque.
 Ensuite :
@@ -1967,6 +1988,7 @@ Constaté : src/lib/storage.ts:65 (« Not exercised against a real tenant yet »
 
 - **Effort** : moyen · **Références** : G19, M19, O-02
 - **Revérifié le 18 octobre 2026** : constat en partie périmé : un planificateur existe (src/lib/scheduler.ts, tâches `promote`, `orphans`, `renames`, `integrity`, `backup`, `export` ; docs/exploitation.md §4), avec un point d'extension prévu pour les relances et les envois sortants, aucun encore. Toujours ni e-mail dans `users` (src/db/schema.ts:56-65), ni SMTP ni Graph, ni relance ; la cloche est src/components/shell/Header.tsx:90. Le délai de 7 jours est src/lib/actions.ts:955 ; l'indicateur « En retard » du point 87 est un affichage seul.
+- **Analyse comparative du 25 octobre 2026** — Standard du marché (DocuWare, Aconex, M-Files, SharePoint) : notification par e-mail des étapes de circuit, des échéances de revue et d'expiration, et **abonnement à un document** (être prévenu de sa nouvelle révision ou de son retrait), ce que Codex n'offre pas non plus : l'abonnement est à ajouter à ce point (une table d'abonnés par document, un bouton « Suivre » sur la fiche, les mêmes gabarits et le même canal). Dans Codex, tout reste dans l'application ; le point d'extension est en commentaire dans src/lib/scheduler.ts (l.34-37). Priorité suggérée : P1, une fois le canal choisi (M19 ; Graph suppose O-02). L'état du point ne change pas.
 
 Le manque est confirmé. Personne n'est prévenu hors de Codex :
 - d'une étape de circuit assignée ou d'un rejet ;
@@ -2021,6 +2043,7 @@ Constaté : src/lib/importer.ts:181-183 (une seule lettre de révision, statut i
 
 - **Effort** : moyen · **Références** : M08 (question d'audit ouverte, hors liste O-01 à O-11 ; liée à M11, à C15 et, pour un complément Outlook, à O-02)
 - **Revérifié le 18 octobre 2026** : constat en partie périmé : `.eml` et `.msg` sont des formats admis (src/lib/filetypes.ts:46, signature OLE2 contrôlée pour `.msg`), mais ni `EXT_BY_MIME` ni l'aperçu ne les connaissent (src/lib/storage.ts:340-348) et rien ne lit expéditeur, date, Message-ID ni pièces jointes. Le point cite M08 (et O-02 pour un complément Outlook), ni O-01 ni O-11 (état récapitulatif corrigé le même jour).
+- **Analyse comparative du 25 octobre 2026** — Standard d'un environnement Microsoft 365 (SharePoint, M-Files, DocuWare) : classer un e-mail et ses pièces jointes dans la GED depuis Outlook ou Teams, métadonnées préremplies. Dans Codex, le dépôt est manuel et sans lecture de l'e-mail. Priorité suggérée : P2, avec la coédition du point 84, une fois M08 tranchée (le complément Outlook suppose O-02). L'état du point ne change pas.
 
 Aujourd'hui, on peut seulement déposer à la main un fichier .eml ou .msg (ou un PDF imprimé depuis la messagerie) dans un document LET de sous-type « Email formalisé », en saisissant soi-même l'organisme source, la référence externe et la date de réception. Reste à développer, une fois la méthode choisie par l'utilisateur. 1) Reconnaître les formats .eml (message/rfc822) et .msg (application/vnd.ms-outlook) dans src/lib/storage.ts, avec un aperçu lisible : en-têtes et corps. 2) À l'analyse du fichier, pré-remplir les métadonnées dans le formulaire de dépôt et dans updateMeta : expéditeur vers sourceOrg, date vers receivedAt, Message-ID vers externalRef, objet vers le titre. 3) Selon le choix de l'utilisateur, soit garder les pièces jointes dans l'e-mail, soit les classer comme documents séparés. Ce second cas suppose une table de liens entre documents, qui n'existe pas (M11). 4) Un éventuel complément Outlook dépendrait en plus du fournisseur d'authentification (O-02). L'effort est moyen pour un dépôt .eml/.msg avec extraction automatique ; il devient important avec le classement séparé des pièces jointes ou un complément Outlook. La question est à reposer à l'utilisateur sous la référence M08, car elle n'a pas de numéro O-xx. Elle touche aussi C15 : les e-mails suivent-ils le cycle maîtrisé ?
 
@@ -2051,6 +2074,7 @@ Constaté. requestValidation refuse une révision sans version de travail (src/l
 
 - **Effort** : important · **Références** : O-10, T-01, D-16, D-17
 - **Revérifié le 18 octobre 2026** : constat en partie périmé : un planificateur existe (src/lib/scheduler.ts), avec un point d'extension pour les envois sortants (docs/exploitation.md §4) ; aucun envoi vers Vigie n'y est branché. `submitChange` fabrique toujours la référence ECR et n'écrit que la table miroir (src/lib/vigie.ts:37-45, appel réel en commentaire l.42) ; `vigieSimulated` dépend de la seule présence de `VIGIE_API_URL` (vigie.ts:26-27) ; `simulateVigieDecision` est refusée dès qu'elle est définie (src/lib/actions.ts:1280) ; lien `/changements/{id}` (vigie.ts:14).
+- **Analyse comparative du 25 octobre 2026** — Standard du marché (M-Files, OpenText, Aconex) : les demandes et ordres de modification (ECR/ECO) sont réellement échangés avec l'outil qui les traite. Dans Codex, `VIGIE_API_URL` n'est branché sur rien et les demandes ne quittent pas la table miroir. Priorité suggérée : P1 avec le point 110 (Keystone), dès le contrat d'API fixé (O-10). L'état du point ne change pas.
 
 Le manque est réel. Aujourd'hui, `submitChange` (src/lib/vigie.ts:24-31) fabrique elle-même la référence ECR et n'écrit que dans la table miroir. Il y a aussi un piège : définir `VIGIE_API_URL` coupe la simulation (actions.ts:592) alors que rien n'est envoyé. Les demandes resteraient alors « Transmise à Vigie » indéfiniment. À faire, une fois le contrat de l'API Vigie connu :
 (1) un client HTTP authentifié qui envoie le document, le titre, la révision en vigueur, le type, le propriétaire, le demandeur, le motif et le kind, puis enregistre la référence renvoyée par Vigie ;
@@ -2070,6 +2094,7 @@ Constaté : src/lib/vigie.ts:24-31 (submitChange calcule ECR-AAAA-NNN l.27-28, n
 
 - **Effort** : important · **Références** : O-03, T-01, D-04, M15, G44
 - **Revérifié le 18 octobre 2026** : constat inchangé : les projets ne sont écrits que par le seed (src/db/seed.ts:140) ; `validateFields` refuse un projet inconnu (src/lib/actions.ts:308) ; `ctx.projects` lit la table (src/lib/context.ts) ; aucune route `/api/integrations/keystone`.
+- **Analyse comparative du 25 octobre 2026** — Standard du marché (Aconex, Autodesk Docs, ProjectWise, OpenText) : la GED est reliée en direct à l'outil de gestion de projets (projets, phases, équipe, pièces attendues), pas à des tables miroirs. Dans Codex, les projets viennent du seed et `src/lib/keystone.ts` est une simulation. Priorité suggérée : P1 avec le point 109 (Vigie), dès la réponse à O-03 (M-01 a fixé la base commune ; la liaison reste une API ou les vues `pub_`). L'état du point ne change pas.
 
 Le manque est confirmé. Les projets n'existent que par le seed (seed.ts:103). Un nouveau projet Keystone est donc refusé à la création (actions.ts:122) comme à l'import (importer.ts:221). Le libellé « Synchronisé depuis Keystone à … » (page.tsx:255) affiche une date figée. Le chef de projet doit exister dans `users` (schema.ts:106). Lot et work package sont saisis en texte libre (Dialogs.tsx:273, G44).
 À faire, selon O-03 :
@@ -2227,6 +2252,59 @@ Un renommage de code de type (collisions FIN, JUR, COM, HSE ; doublons FIN/ADC, 
 <details><summary>Constat dans le code</summary>
 
 docs/registre-points-ouverts.md:7-32 liste 5 choix de fusion et 9 questions encore ouverts (O-05, docs/decisions.md:578). Vérification dans src/db/registry.ts : les codes de type FIN, JUR, COM et HSE sont aussi des codes de département (seed-org.ts:6-22). JUR manque dans la liste du point 1. MIN, PO, HSE et VIS admettent « sans rattachement » avec une étape chef_projet. LET, RFQ et PHO n'ont pas de circuit.
+
+</details>
+
+### Ajoutés le 26 octobre 2026 (analyse comparative avec les GED du commerce) (3)
+
+Trois attentes du marché relevées le 25 octobre 2026 (comparaison de Codex avec M-Files, SharePoint Premium, Alfresco, Nuxeo, DocuWare, Aconex, Autodesk Docs, ProjectWise, Box et Zeendoc) ne se rattachent à aucun point existant. Aucune n'est exigée par le deck ni demandée par l'utilisateur : chacune est **à valider par l'utilisateur avant de développer**, et dépend d'une question déjà ouverte. Les quatorze autres écarts de cette analyse sont annotés sous les points qu'ils recoupent (ligne « Analyse comparative du 25 octobre 2026 » des points 20, 75, 79, 80, 82, 84, 85, 88, 90, 93, 94, 95, 103, 104, 107, 109 et 110).
+
+#### 130. Classification et extraction automatiques de métadonnées à l'import (IA)
+
+- **Effort** : important · **Références** : M22 (hébergement), O-05 (registre), M10 ; à valider par l'utilisateur avant de développer
+- **Ajouté le 26 octobre 2026** (analyse comparative du 25 octobre 2026) : niveau avancé du marché (SharePoint Premium, DocuWare « Intelligent Indexing », M-Files) : au dépôt, le type, le projet, la date, l'organisme source et la référence externe sont proposés à partir du contenu du fichier, et une facture ou un courrier est reconnu sans saisie. Priorité suggérée : P2.
+
+Absent de Codex : le dépôt et `POST /api/import` prennent les métadonnées telles que saisies ou envoyées (`readFields`, src/lib/actions.ts ; `parseImportMeta`, src/lib/importer.ts:132) et rien ne lit le contenu pour les proposer. Avant de développer, l'utilisateur doit dire si le contenu des documents (dont les Confidentiels) peut être envoyé à un service d'extraction, lequel (service hébergé, modèle local), et pour quels types ; cela dépend de l'hébergement (M22) et rejoint l'extraction de texte des points 82 et 85. Ensuite :
+- extraire le texte au dépôt (src/lib/text-extract.ts, déjà écrit pour la comparaison) ;
+- un service de classification (règles sur le texte, puis modèle) qui propose type, projet, dates, organisme source et référence externe, avec un score ;
+- préremplir le dialogue de création et accepter les propositions dans l'import, sans jamais écrire une métadonnée non confirmée pour un document créé à la main ;
+- journaliser ce qui a été proposé et ce qui a été retenu.
+
+<details><summary>Constat dans le code</summary>
+
+src/lib/actions.ts (`readFields`, `validateFields`) et src/lib/importer.ts:132 (`parseImportMeta`) ne lisent que les champs saisis ou envoyés ; src/lib/text-extract.ts n'est appelé que par la comparaison (src/lib/compare.ts). Aucune dépendance de classification ni d'appel à un modèle dans package.json ni dans src/. Le deck ne demande rien de tel ; aucune question O-xx ne le couvre.
+
+</details>
+
+#### 131. Visionneuse DWG et 3D avec annotations et redlines, cartouche synchronisé avec les métadonnées
+
+- **Effort** : important · **Références** : P04, Q06 (point 108 : frontière avec SolidWorks PDM), M12 (point 83 : en-tête et cartouche) ; à valider par l'utilisateur avant de développer
+- **Ajouté le 26 octobre 2026** (analyse comparative du 25 octobre 2026) : différenciant des GED d'ingénierie (Autodesk Docs, OpenText, ProjectWise) : affichage des plans DWG et des modèles 3D (STEP, IFC) dans le navigateur, annotations et redlines conservées par révision, et cartouche du plan tenu à jour avec l'ID, la révision et le statut de Codex. Priorité suggérée : P3.
+
+Dans Codex, l'aperçu ne couvre que PDF, images et texte (`previewKind`, src/lib/filetypes.ts:17 ; src/app/documents/[id]/DocClient.tsx:70-74) : un `.dwg`, `.dxf`, `.step` ou `.ifc` est admis au dépôt (filetypes.ts:50) mais seulement proposé en téléchargement ; aucune annotation n'est stockée, et le cartouche n'est jamais écrit (point 83). Avant de développer, l'utilisateur doit dire si les plans vivent dans Codex ou dans SolidWorks PDM (P04, Q06, point 108), et s'il veut des annotations dans la GED. Ensuite :
+- un moteur de rendu (service de conversion DWG → PDF ou SVG, ou visionneuse tierce) derrière l'aperçu ;
+- une table d'annotations par version de travail, visibles selon `canRead`, journalisées ;
+- la synchronisation du cartouche, qui rejoint le préremplissage de l'en-tête du point 83.
+
+<details><summary>Constat dans le code</summary>
+
+src/lib/filetypes.ts:14-17 (`previewKind` : null pour `image/vnd.dwg`, les modèles 3D et les fichiers Office non convertis), :50 (`.dwg`, `.dxf`, `.step`, `.stp`, `.iges`, `.igs`, `.ifc`, `.stl` admis), :265 (signature DWG contrôlée) ; src/app/documents/[id]/DocClient.tsx:70-74 (aperçu PDF, image, texte ; sinon téléchargement). Aucune table d'annotations dans src/db/schema.ts. P04 et Q06 ne sont répondues qu'en partie (point 108).
+
+</details>
+
+#### 132. Résumé, questions-réponses et génération de documents par IA
+
+- **Effort** : important · **Références** : M22 (hébergement), O-02 (identité, pour que les réponses respectent `canRead`), M10 ; à valider par l'utilisateur avant de développer
+- **Ajouté le 26 octobre 2026** (analyse comparative du 25 octobre 2026) : différenciant du marché (Box AI, M-Files Aino, SharePoint Premium) : résumé d'un document, questions-réponses sur un dossier ou un projet, génération d'un document depuis un modèle et des métadonnées. Priorité suggérée : P3, après la recherche plein texte (points 82 et 85), qui en est le prérequis.
+
+Absent de Codex : aucun appel à un modèle, aucun résumé stocké, aucune génération de contenu (le modèle est copié tel quel, point 83). Avant de développer, l'utilisateur doit dire si le contenu des documents peut être envoyé à un service d'IA, lequel et où il est hébergé (M22), pour quels niveaux de confidentialité, et si le résumé est une métadonnée conservée ou un calcul à la demande. Ensuite :
+- un résumé par révision, calculé à la mise en vigueur et stocké, affiché sur la fiche selon `canRead` ;
+- une recherche en langage naturel limitée aux documents que l'utilisateur voit (`readerMaySeeVersion`), à partir de l'index plein texte ;
+- la génération depuis un modèle, prolongement du point 83.
+
+<details><summary>Constat dans le code</summary>
+
+Aucune occurrence de modèle de langage, de résumé ni de génération de contenu dans src/ ou package.json. Les seules productions de Codex sont le PDF de remplacement et la fiche de visa (src/lib/pdf.ts, src/lib/approval.ts) et l'aperçu PDF des fichiers Office (src/lib/office-preview.ts). La recherche ne porte que sur les métadonnées (point 82). Le deck ne demande rien de tel ; aucune question O-xx ne le couvre.
 
 </details>
 
