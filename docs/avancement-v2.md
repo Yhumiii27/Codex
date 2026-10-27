@@ -86,6 +86,11 @@ Classé selon ce qui le bloque : le détail est en tête de `docs/reste-a-faire.
   proposé, non confirmé), la liaison avec Keystone (O-03) et Vigie (`VIGIE_API_URL`, O-10), l'organigramme (O-04),
   les arbitrages du registre (O-05), les circuits et leurs titulaires (O-06), les durées de conservation (O-07), la
   conservation par révision remplacée (O-09, seul reste de T-03), l'hébergement (M22) et la formation (M14).
+- **Analyse comparative avec les GED du commerce** (25 octobre 2026, consignée le 26 octobre) : 3 points ajoutés à
+  `docs/reste-a-faire.md` (130 classification automatique à l'import, 131 visionneuse DWG/3D et cartouche, 132 résumé
+  et questions-réponses par IA), tous à valider par l'utilisateur avant de développer, et 17 points annotés avec
+  l'attente du marché et une priorité suggérée ; seul écart jugé bloquant pour une mise en service : l'authentification
+  réelle (point 93, O-02). Aucun état ne change.
 - **Données de l'utilisateur** : les vrais modèles EPC2I, la date de clôture de l'exercice.
 - **App Mac** : les corrections ci-dessous, et le test du dépôt et du téléchargement dans sa fenêtre (T-02), sur
   macOS.

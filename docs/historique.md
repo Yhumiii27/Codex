@@ -3262,3 +3262,24 @@ pub_programmes_recherche ». Migration `0002_pub_programmes_recherche` (SQL écr
 `migrate-command.test.ts` défait désormais `0002` au lieu de `0001_partage`. Restent hors de Codex : la vue et le droit
 de lecture dans le socle Matrix (`40-codex.sql`, `90-droits.sql`). L'autre moitié de CX-2 (à quoi se rattachent les
 documents d'essai : programme de recherche ou projet Keystone) reste une décision de l'utilisateur.
+
+### 20.5 Analyse comparative avec les GED du commerce (26 oct.)
+
+Le 25 octobre 2026, Codex a été comparé aux GED du commerce (M-Files, SharePoint Premium, Alfresco, Nuxeo, DocuWare,
+Aconex, Autodesk Docs, ProjectWise, Box, Zeendoc) : 17 écarts, chacun avec son niveau sur le marché (standard, avancé,
+différenciant), sa priorité (bloquant, P1 à P3) et son état dans le code. Le 26 octobre, ils sont consignés dans
+`docs/reste-a-faire.md` sans rien trancher :
+
+- **14 écarts recoupent un point existant** : ligne « Analyse comparative du 25 octobre 2026 » (attente du marché,
+  priorité suggérée) sous les points 93 (authentification, seul écart jugé **bloquant**, O-02), 82 et 85 (plein texte,
+  OCR), 104 (notifications e-mail, abonnement à un document à ajouter), 103 (SharePoint sur un vrai tenant, O-01), 110
+  et 109 (Keystone, Vigie : O-03, O-10), 94 (transmittals et partage externe sécurisé, M07), 80 (dossier de livraison),
+  20 (check-out exclusif, O-09), 84 et 107 (coédition Office 365, classement depuis Outlook), 75 (matrices de
+  distribution), 95 (signature eIDAS, horodatage externe du journal), 90 et 88 (permission « Détruire », sauvegardes et
+  exports chiffrés), 79 (mobile). Numéros et états inchangés.
+- **3 écarts sans point** deviennent les points 130 (classification et extraction automatiques de métadonnées à
+  l'import), 131 (visionneuse DWG et 3D, annotations, cartouche synchronisé) et 132 (résumé, questions-réponses et
+  génération par IA), dans « Attend une décision de l'utilisateur », sous-section « Ajoutés le 26 octobre 2026 », à
+  valider par l'utilisateur avant de développer (M22, O-05, P04, Q06, M12, O-02).
+- Préambule, « Depuis le 18 octobre » et tableau d'état (52 points en attente d'une décision) mis à jour ; ligne ajoutée
+  dans `docs/avancement-v2.md`. Aucun fichier de code touché.
