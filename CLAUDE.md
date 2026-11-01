@@ -187,9 +187,16 @@ Détail et inventaire : `docs/postgres.md`, « Échanges avec les autres outils 
 - Un nouveau besoin d'accès se déclare comme un lien du registre de Matrix (lecteur, objet, nature `lecture` ou
   `execution`) ; en attendant `POST /api/liens`, par une entrée courte dans le `REQUESTS.md` de Matrix. On ne demande
   plus à Matrix de recopier une vue.
-- Depuis M-18 (1er novembre 2026), Matrix définit et applique les vues `pub_` : une nouvelle vue `pub_` de Codex se
-  demande à Matrix au lieu de s'écrire dans une migration. Les vues de `0001_partage` et `0002` restent (migrations
-  appliquées) ; leur reprise par Matrix fera l'objet d'une demande dans `REQUESTS.md`.
+- Depuis M-18 (1er novembre 2026, demande traitée le même jour), **Matrix définit, applique et possède les vues
+  `pub_`** de Codex (rôle `matrix_gestion`, écran « Publications ») :
+  - aucune nouvelle migration ne crée, ne modifie, ne commente ni ne supprime de vue `pub_` : elle crée les tables et
+    les colonnes, et une nouvelle publication (ou une colonne de plus) se demande à Matrix. Sur le serveur, une
+    migration qui recréerait une vue reprise échouerait (« must be owner of view »). `tests/unit/migrations.test.ts`
+    refuse toute vue `pub_` dans une migration postérieure à `0002` ; `0001_partage` et `0002` (déjà appliquées)
+    continuent de les créer en PGlite ;
+  - avant de modifier ou de supprimer une colonne lue par une vue `pub_`, le signaler à Matrix (entrée dans son
+    `REQUESTS.md`) : la migration échouerait, la vue en dépend. Une colonne publiée ne se retire ni ne se renomme ;
+    un changement incompatible passe par une vue `…_v2`.
 
 ## Conventions
 

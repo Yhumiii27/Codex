@@ -116,10 +116,18 @@ Décisions de l'utilisateur consignées dans le dépôt Matrix (`docs/decisions.
   objet `schéma.pub_…`, nature `lecture` ou `execution`), en attendant `POST /api/liens` de Matrix par une entrée courte
   dans le `REQUESTS.md` de Matrix ; on ne demande plus à Matrix de recopier une vue dans `partage/` ;
 - **M-18 (1er novembre 2026) remplace la règle R3** : Matrix définit et applique les vues `pub_` (écran
-  « Publications », rôle `matrix_gestion`) et reprend celles qui existent. Une nouvelle vue `pub_` de Codex ne s'écrit
-  donc plus dans une migration : elle se demande à Matrix. Le retrait des vues des migrations de Codex fera l'objet
-  d'une demande de Matrix dans `REQUESTS.md` (lot P5) ; les migrations déjà appliquées (`0001_partage`,
-  `0002_pub_programmes_recherche`) ne changent pas.
+  « Publications », rôle `matrix_gestion`) et reprend celles qui existent (`partage/14-reprise-publications.sql` : les
+  8 vues `codex.pub_*` passent au rôle `matrix_gestion`, gardent nom, colonnes, commentaire et lecteurs). Demande M-18
+  traitée le 1er novembre 2026 :
+  - aucune nouvelle migration de Codex ne crée, ne modifie, ne commente ni ne supprime de vue `pub_`
+    (`tests/unit/migrations.test.ts`) ; une nouvelle publication, ou une colonne de plus, se demande à Matrix.
+    `0001_partage` et `0002_pub_programmes_recherche`, déjà appliquées, ne changent pas et créent toujours les vues en
+    PGlite (démonstration, tests) ;
+  - avant de modifier ou de supprimer une colonne de Codex lue par une vue `pub_` (`documents`, `revisions`,
+    `working_versions`, `workflows`, `workflow_steps`, `doc_types`, `families`, `functions`, `function_holders`,
+    `users`, `audit_log`, `research_programs`), le signaler à Matrix : la migration échouerait, la vue en dépend ;
+  - au démarrage, Codex ne touche à aucune vue (il ne repose que ses fonctions et déclencheurs, `openDb()`), et
+    l'export complet ne lit que les tables : la reprise par Matrix ne change rien à son fonctionnement.
 
 Inventaire du 1er novembre 2026 (code de `main`, `796e315`) :
 

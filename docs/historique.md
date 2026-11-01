@@ -3292,3 +3292,11 @@ dans `CLAUDE.md` et `docs/postgres.md` (« Échanges avec les autres outils »),
 conformes (lectures par vues `pub_` ou API, écritures par API), aucune fonction `pub_` à fournir pour l'instant, rien à
 signaler à Matrix. Le même jour, la vue `pub_programmes_recherche` (migration `0002`) a été appliquée sur le serveur
 commun et sa lecture accordée à Crucible.
+
+### 20.7 Demande M-18 de Matrix : Matrix possède les vues `pub_` (1er nov.)
+
+Demande M-18 de Matrix (`REQUESTS.md`) ; accord de l'utilisateur : « traite la demande M-18 ». Règles reprises dans
+`CLAUDE.md` et `docs/postgres.md` ; nouveau test dans `tests/unit/migrations.test.ts` : aucune vue `pub_` dans une
+migration postérieure à `0002`. Vérifié que Codex ne touche à aucune vue au démarrage ni à l'export : la reprise des 8
+vues par `matrix_gestion` (`partage/14-reprise-publications.sql`) ne change rien à son fonctionnement. Entrée passée à
+FAITE : Matrix peut reprendre les vues.
