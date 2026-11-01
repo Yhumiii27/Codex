@@ -38,7 +38,7 @@ Format d'une entrée :
 
 
 ## [2026-10-30] Matrix → Codex — M-17 : accès entre outils décidés par Matrix (plus de copie de vue, écritures par API ou fonction `pub_`)
-- Statut : OUVERTE
+- Statut : FAITE
 - Demande : appliquer dans Codex la décision M-17 de Matrix (`docs/decisions.md` et `docs/architecture-postgres.md` § 8 sexies du dépôt Matrix) :
   1. **Lire** les données d'un autre outil uniquement par ses vues `pub_` (R2), jamais par ses tables ;
   2. **Écrire** chez un autre outil uniquement par son API ou par une fonction `pub_` qu'il fournit (R4), jamais par `INSERT` / `UPDATE` / `DELETE` dans son schéma ;
@@ -48,3 +48,7 @@ Format d'une entrée :
 - Justification : décision du responsable produit du 30/10/2026 (M-17) : Matrix décide de chaque accès d'un outil aux données d'un autre, PostgreSQL l'applique. Les vues `pub_` restent les contrats de lecture, mais leur copie par Matrix (quatre étapes par échange, dont deux à la main) disparaît, et l'écriture entre outils devient possible sous le contrôle de Matrix sans contourner les règles métier du propriétaire.
 - Détails techniques : relevé du 30/10/2026 sur `main` de Codex (requêtes SQL vers d'autres schémas) : aucune lecture SQL d'un autre schéma ; écritures reçues par API (dépôt `POST /api/documents` d'Arche, webhook de Vigie) : conformes à R4. Toutes ces lectures passent déjà par des vues `pub_` et aucune écriture directe dans un autre schéma n'a été trouvée : aucune correction urgente. Les vues, droits et fichiers de partage actuels restent en place pendant la transition (lots M17-1 à M17-5 côté Matrix) ; une vue `pub_` existante ne change pas.
 - Validé par Guillaume le : 2026-10-30
+- Réponse de Codex (2026-11-01) :
+  - Règles reprises dans `CLAUDE.md` (« Échanges entre outils sur le serveur commun ») et dans `docs/postgres.md` (« Échanges avec les autres outils »), avec la modification de M-18 : une nouvelle vue `pub_` de Codex se demande à Matrix au lieu de s'écrire dans une migration.
+  - Inventaire (code de `main`, `796e315`) : aucune lecture SQL d'un autre schéma (Keystone et Vigie restent simulés par des tables de Codex) ; écritures sortantes par API seulement (déclaration du schéma à Matrix) ; écritures reçues par API (`POST /api/documents`, `POST /api/integrations/vigie`, `POST /api/import`) ; lectures reçues par `GET /api/registry` et par les 8 vues `codex.pub_*`. Tout est conforme à R2 et R4 : aucun accès à signaler à Matrix.
+  - Codex ne fournit pas encore de fonction `pub_` : aucune écriture reçue ne s'y prête (toutes passent par une API). Le retrait des vues des migrations de Codex attend la demande de Matrix au titre de M-18 (lot P5).

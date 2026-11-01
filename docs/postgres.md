@@ -95,12 +95,47 @@ posés par le socle (`partage/90-droits.sql`). Codex ne lit ni n'écrit encore l
 
 `0002_pub_programmes_recherche` (24 octobre 2026, demande CX-2 de Crucible, accord de l'utilisateur) ajoute une 8e vue,
 `pub_programmes_recherche` : `code`, `libelle`, `responsable_matricule` (matricule du responsable, nul s'il n'en a pas),
-`actif` (un programme clos y reste, `actif = false`). Lecteurs prévus : `crucible_app`, `matrix_app`. Elle n'est pas
-encore dans le socle Matrix : il faut l'ajouter à `partage/40-codex.sql` et accorder sa lecture dans
-`partage/90-droits.sql` (demande à déposer dans le `REQUESTS.md` de Matrix). Sur le serveur commun, cette migration
-est la première depuis la mise en service : Codex refuse de migrer un serveur sans sauvegarde, donc faire d'abord un
-`pg_dump` du schéma `codex` (procédure de sauvegarde du socle), puis démarrer une fois avec
-`CODEX_MIGRATION_BACKUP=off`, et retirer la variable ensuite.
+`actif` (un programme clos y reste, `actif = false`). Lecteurs : `crucible_app`, `matrix_app`. Recopiée dans le socle
+Matrix et accordée le 25 octobre 2026 ; appliquée sur le serveur commun le 1er novembre 2026 (Codex `796e315`, démarré
+une fois avec `CODEX_MIGRATION_BACKUP=off`, Codex refusant de migrer un serveur sans sauvegarde), droit posé par
+`appliquer-liens.sh`, lecture vérifiée en `crucible_app`.
+
+### Échanges avec les autres outils (décisions M-17 et M-18 de Matrix)
+
+Décisions de l'utilisateur consignées dans le dépôt Matrix (`docs/decisions.md`, `docs/architecture-postgres.md`
+§ 8 sexies et 8 septies), demande M-17 de `REQUESTS.md` :
+
+- chaque table a un seul outil écrivain, son propriétaire (R1) ;
+- Codex lit les données d'un autre outil **seulement par ses vues `pub_`**, jamais par ses tables (R2) ;
+- Codex écrit chez un autre outil **seulement par son API ou par une fonction `pub_` qu'il fournit**, jamais par
+  `INSERT`, `UPDATE` ou `DELETE` dans son schéma (R4) ; une écriture qu'un autre outil doit faire chez Codex passe par
+  une API de Codex, ou par une fonction `codex.pub_<verbe>_<objet>` créée par migration (`SECURITY DEFINER`,
+  `SET search_path = codex, pg_temp`, appelant identifié par `session_user`, règles et journal de Codex appliqués,
+  `REVOKE EXECUTE … FROM PUBLIC`) ; une écriture qui porte un fichier reste une API (dépôt `POST /api/documents`) ;
+- le registre `matrix.liens` est la seule source des droits (R5) : un besoin d'accès se déclare comme un lien (lecteur,
+  objet `schéma.pub_…`, nature `lecture` ou `execution`), en attendant `POST /api/liens` de Matrix par une entrée courte
+  dans le `REQUESTS.md` de Matrix ; on ne demande plus à Matrix de recopier une vue dans `partage/` ;
+- **M-18 (1er novembre 2026) remplace la règle R3** : Matrix définit et applique les vues `pub_` (écran
+  « Publications », rôle `matrix_gestion`) et reprend celles qui existent. Une nouvelle vue `pub_` de Codex ne s'écrit
+  donc plus dans une migration : elle se demande à Matrix. Le retrait des vues des migrations de Codex fera l'objet
+  d'une demande de Matrix dans `REQUESTS.md` (lot P5) ; les migrations déjà appliquées (`0001_partage`,
+  `0002_pub_programmes_recherche`) ne changent pas.
+
+Inventaire du 1er novembre 2026 (code de `main`, `796e315`) :
+
+| Sens | Échange | Moyen | Conforme |
+|---|---|---|---|
+| Lecture chez un autre outil | aucune : Keystone et Vigie sont simulés par des tables de Codex (`projects`, `users`, `departments`, `sites`…, `src/lib/keystone.ts`, `src/lib/vigie.ts`), remplies par l'amorçage | — | oui |
+| Écriture chez un autre outil | déclaration du schéma à Matrix (`src/lib/matrix.ts`) | API `POST` de Matrix | oui (R4) |
+| Écriture chez un autre outil | demandes de modification à Vigie | miroir local seulement (`submitChange`, `src/lib/vigie.ts`) ; l'envoi réel attend O-10 | oui |
+| Écriture reçue | dépôt d'un document par Arche (et toute application du groupe) | API `POST /api/documents` | oui (R4, fichier) |
+| Écriture reçue | décisions de Vigie | API `POST /api/integrations/vigie` | oui (R4) |
+| Écriture reçue | reprise de l'existant (outil de migration) | API `POST /api/import` | oui (R4) |
+| Lecture reçue | registre des types par Keystone | API `GET /api/registry` | oui |
+| Lecture reçue | 8 vues `codex.pub_*` (Keystone, Vigie, Arche, Crucible, Matrix) | vues `pub_`, droits du registre de Matrix | oui (R2) |
+
+Codex ne fournit aucune fonction `pub_` : aucune écriture reçue ne s'y prête encore (toutes passent par une API).
+Aucun accès non conforme n'est à signaler à Matrix.
 
 **Écarts avec le dépôt Matrix au 22 octobre 2026** (correctifs à y porter ; le dépôt Matrix n'est pas modifié ici) :
 
