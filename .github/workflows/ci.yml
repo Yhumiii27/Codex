@@ -19,7 +19,7 @@ concurrency:
 jobs:
   checks:
     name: Typecheck, lint, tests, build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
       NEXT_TELEMETRY_DISABLED: '1'
@@ -61,7 +61,7 @@ jobs:
   # codex_fold lowers case with ICU, and 18, as PGlite 0.5, where it uses pg_unicode_fast (src/db/index.ts foldCollation).
   postgres:
     name: Tests on PostgreSQL ${{ matrix.pg }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -93,7 +93,7 @@ jobs:
   # catch an API that Node 20.19 lacks; the tests run there.
   node-minimum:
     name: Tests on Node 20.19
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
       NEXT_TELEMETRY_DISABLED: '1'
