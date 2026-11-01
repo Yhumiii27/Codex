@@ -176,6 +176,21 @@ npm run a11y         # après le build : axe-core dans Chromium sur une base de 
 - Seule écriture permise ailleurs : ajouter une entrée au `REQUESTS.md` d'un autre dépôt, après avoir présenté à
   l'utilisateur une note détaillée (dépôt cible, demande, raison, conséquence d'un refus) et reçu son « validé ».
 
+## Échanges entre outils sur le serveur commun (décisions M-17 et M-18 de Matrix)
+
+Détail et inventaire : `docs/postgres.md`, « Échanges avec les autres outils ».
+- Codex ne lit les données d'un autre outil que par ses vues `pub_`, jamais par ses tables.
+- Codex n'écrit chez un autre outil que par son API ou par une fonction `pub_` qu'il fournit, jamais par `INSERT`,
+  `UPDATE` ou `DELETE` dans son schéma. Une écriture qu'un autre outil fait chez Codex passe par une API de Codex, ou
+  par une fonction `codex.pub_<verbe>_<objet>` créée par migration (`SECURITY DEFINER`, `SET search_path = codex,
+  pg_temp`, appelant identifié par `session_user`, règles et journal de Codex, `REVOKE EXECUTE … FROM PUBLIC`).
+- Un nouveau besoin d'accès se déclare comme un lien du registre de Matrix (lecteur, objet, nature `lecture` ou
+  `execution`) ; en attendant `POST /api/liens`, par une entrée courte dans le `REQUESTS.md` de Matrix. On ne demande
+  plus à Matrix de recopier une vue.
+- Depuis M-18 (1er novembre 2026), Matrix définit et applique les vues `pub_` : une nouvelle vue `pub_` de Codex se
+  demande à Matrix au lieu de s'écrire dans une migration. Les vues de `0001_partage` et `0002` restent (migrations
+  appliquées) ; leur reprise par Matrix fera l'objet d'une demande dans `REQUESTS.md`.
+
 ## Conventions
 
 - **Fidélité à la maquette** : `design/GED Groupe.dc.html`, Nocturne copié dans `src/app/nocturne.css`, un CSS module

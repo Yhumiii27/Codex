@@ -3283,3 +3283,12 @@ différenciant), sa priorité (bloquant, P1 à P3) et son état dans le code. Le
   valider par l'utilisateur avant de développer (M22, O-05, P04, Q06, M12, O-02).
 - Préambule, « Depuis le 18 octobre » et tableau d'état (52 points en attente d'une décision) mis à jour ; ligne ajoutée
   dans `docs/avancement-v2.md`. Aucun fichier de code touché.
+
+### 20.6 Demande M-17 de Matrix : accès entre outils (1er nov.)
+
+Demande M-17 de Matrix (`REQUESTS.md`, décision de l'utilisateur du 30 octobre ; complétée par M-18 du 1er novembre,
+qui confie à Matrix la définition des vues `pub_`). Accord de l'utilisateur : « traite la demande M-17 ». Règles reprises
+dans `CLAUDE.md` et `docs/postgres.md` (« Échanges avec les autres outils »), inventaire des échanges de Codex : tous
+conformes (lectures par vues `pub_` ou API, écritures par API), aucune fonction `pub_` à fournir pour l'instant, rien à
+signaler à Matrix. Le même jour, la vue `pub_programmes_recherche` (migration `0002`) a été appliquée sur le serveur
+commun et sa lecture accordée à Crucible.
