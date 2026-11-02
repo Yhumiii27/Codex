@@ -116,7 +116,8 @@ Règles de lecture :
   - `docs/modele-cible.md` §1.
   - `src/lib/storage.ts` : `CODEX_STORAGE=local` par défaut, ou `CODEX_STORAGE=sharepoint` en option. L'accès passe
     par Microsoft Graph en mode application. Il n'a jamais été testé sur un vrai tenant.
-- **Reste ouvert** : faut-il activer SharePoint, et selon quelles modalités (O-01).
+- **Reste ouvert** : faut-il activer SharePoint, et selon quelles modalités (O-01). Le 2 novembre 2026, pas pour le
+  moment : fichiers sur notre serveur (D-28).
 
 ### D-07 — Un registre des types unique, fusion du deck et de la spec Keystone
 - **Date** : question le 7 octobre à 12:40 (question 2 de l'audit), reformulée à 17:33, réponse à 17:52.
@@ -462,6 +463,23 @@ Règles de lecture :
   connus des deux ; la CI rejoue `npm run test:pg` sur `postgres:16-bookworm`. Détail et équivalence vérifiée :
   `docs/postgres.md` (« Version ») et `docs/historique.md` § 20.1.
 
+### D-28 — Bibliothèque de documents sur notre serveur, pour le moment
+- **Date** : 2 novembre 2026.
+- **Contexte** : O-01 (activer SharePoint ?) posée 4 fois sans réponse ; Codex stocke les fichiers en local par défaut
+  (`CODEX_STORAGE=local`), dans le volume `/data` de son conteneur Coolify, la base étant sur le serveur commun (M-01).
+- **Réponse de l'utilisateur** :
+  > Nous devons passer a une étape supérieure. Nous allons choisir pour le moment d'héberger la bibliothèque de document sur notre serveur. Fait moi toute la préparation a cela et s'il y a des étapes que je dois faire pour toi fait un guide pas a pas pour que je puisse le faire
+- **Décision retenue** : pour le moment, les fichiers restent dans le stockage local de Codex sur le serveur EPC2I
+  (option A de `docs/fiches-decision.md`, O-01) ; SharePoint n'est pas activé. « Pour le moment » : O-01 pourra être
+  rouverte ; rien n'est irréversible (le stockage est enregistré fichier par fichier).
+- **Mise en œuvre** : sauvegarde des fichiers quand la base est sur un serveur PostgreSQL (copie incrémentale vérifiée
+  par SHA-256, états, rotation, remise en place depuis l'Administration : `src/lib/files-backup-core.mjs`,
+  `src/lib/backup.ts`) ; avertissements de démarrage `files_backup_off` et `backup_same_disk` ; guide d'exploitation
+  `docs/stockage-serveur.md` (second disque, variables, antivirus, copie hors du serveur, chiffrement, essai de
+  restauration). Détail : `docs/historique.md` § 20.8.
+- **Reste ouvert** : la destination de la copie hors du serveur, les durées de conservation et la perte de données
+  tolérée (M22 ; P-08 de Matrix), le chiffrement au repos si l'hébergeur ne chiffre pas ses disques (point 88).
+
 ## Questions posées restées sans réponse directe
 
 | Date | Question de l'assistant | Suite |
@@ -476,7 +494,7 @@ Règles de lecture :
 | 7 oct., 12:40 | Question 8 : « quelles étapes ? » (ECR/ECO) | Relève de Vigie (D-16, O-10). |
 | 7 oct., 12:40 | Question 10 : « Quels volumes et quels emplacements faut-il migrer ? » | Pas de réponse ; la migration est hors de Codex (D-21, O-11). |
 | 7 oct., 12:40 | « Je peux mettre l'audit détaillé (64 exigences, 48 écarts, taxonomie complète) dans une page à partager si tu veux. » | Pas de réponse. Le rapport est dans `docs/audit-deck-epc2i.md`. |
-| 7 oct., 17:33 ; reposée à 18:07, à 23:18 et le 8 oct. à 06:18 | « Pour SharePoint : un fichier par révision, et aucun accès direct des utilisateurs à la bibliothèque ? » | Jamais répondue (O-01). |
+| 7 oct., 17:33 ; reposée à 18:07, à 23:18 et le 8 oct. à 06:18 | « Pour SharePoint : un fichier par révision, et aucun accès direct des utilisateurs à la bibliothèque ? » | Répondue pour le moment le 2 novembre 2026 : pas de SharePoint, fichiers sur notre serveur (D-28). |
 | 7 oct., 23:18 ; 8 oct., 06:18 | Arbitrages du registre, organigramme, branchements réels de Keystone, de Vigie et d'Entra ID | En attente (O-04, O-05, T-01). |
 | 8 oct., 07:09 et 07:36 | Tester soi-même, dans la fenêtre de l'app Mac, le dépôt d'un fichier et un téléchargement | Pas de retour (T-02). |
 
@@ -1700,7 +1718,7 @@ Fiches d'aide à la décision (état du code, options, effort, ce qui deviendrai
 
 | N° | Question | Responsable | Suivi |
 |---|---|---|---|
-| O-01 | **SharePoint** : faut-il l'activer ? Si oui, faut-il un fichier par version, sans accès direct des utilisateurs à la bibliothèque ? Sans cette restriction, les utilisateurs pourraient contourner les droits de Codex. Avec elle, on modifie un fichier en le téléchargeant puis en le redéposant, sans édition Office en ligne. Posée 4 fois (7 oct. à 17:33, 18:07 et 23:18 ; 8 oct. à 06:18), jamais répondue. | utilisateur | `docs/modele-cible.md` §1 (provisoire : un fichier par version de travail, aucun accès direct) ; `src/lib/storage.ts` |
+| O-01 | **Répondue pour le moment le 2 novembre 2026 (D-28)** : les fichiers restent sur notre serveur, SharePoint n'est pas activé ; la suite de la question ne vaut que si SharePoint revient. **SharePoint** : faut-il l'activer ? Si oui, faut-il un fichier par version, sans accès direct des utilisateurs à la bibliothèque ? Sans cette restriction, les utilisateurs pourraient contourner les droits de Codex. Avec elle, on modifie un fichier en le téléchargeant puis en le redéposant, sans édition Office en ligne. Posée 4 fois (7 oct. à 17:33, 18:07 et 23:18 ; 8 oct. à 06:18), jamais répondue. | utilisateur | `docs/modele-cible.md` §1 (provisoire : un fichier par version de travail, aucun accès direct) ; `src/lib/storage.ts` |
 | O-02 | **Fournisseur d'authentification** pour remplacer la simulation. Entra ID est proposé, non confirmé. | utilisateur | ce fichier ; `docs/avancement-v2.md` (Reste à faire) |
 | O-03 | **Liaison avec Keystone** : API ou base partagée ? Il faut aussi définir le contrat de dépôt et de synchronisation des documents projet. En partie répondue le 15 octobre 2026 (M-01) : base commune, un schéma par outil, sans accès croisé ; la liaison reste une API. Reste ouvert : le contrat de dépôt et de synchronisation. | utilisateur | ce fichier ; spec Keystone (dépôt Keystone) ; dépôt Matrix, `docs/architecture-postgres.md` |
 | O-04 | **Organigramme** : sociétés, sites, départements. | utilisateur | `src/db/seed-org.ts` (valeurs provisoires) |

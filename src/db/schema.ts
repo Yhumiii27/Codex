@@ -695,6 +695,13 @@ export type AuditData = {
   backup?: {
     archive: string; size: number; sha256?: string; documents: number; files: number; bytes: number; missing: number; sharepoint: number;
     createdAt?: string; replaced?: boolean;
+    /**
+     * 'files': the files backup of a server's database (lib/files-backup-core.mjs), or the files it put back (action
+     * 'files_restored', target 'backup' 'fichiers'): `files` and `bytes` are the files the state lists (or put back), `size` the bytes copied by this run, `copied` the files it copied,
+     * `altered` the files left out because their bytes no longer match their recorded SHA-256, `missing` (a restore: not
+     * in the backup).
+     */
+    scope?: 'files'; copied?: number; altered?: number;
   };
   /**
    * Full export (lib/export-core.mjs, target 'export' 'full'). At its start ('export_full', written in the snapshot the

@@ -9,9 +9,11 @@ l'export complet ([export.md](export.md)) : mêmes données, en JSON, CSV et fic
 pour les lire.
 
 **Base intégrée seulement.** Tout ce qui suit vaut pour PGlite, la base par défaut. Avec un serveur PostgreSQL
-(`DATABASE_URL`, [postgres.md](postgres.md)), `npm run backup` et `npm run restore` refusent avec un message, comme
-« Sauvegarder maintenant » dans l'Administration : le serveur se sauvegarde avec ses propres outils (`pg_dump`,
-instantanés de l'hébergeur), et le dossier des fichiers à part.
+(`DATABASE_URL`, [postgres.md](postgres.md)), `npm run backup` et `npm run restore` refusent avec un message : le
+serveur se sauvegarde avec ses propres outils (`pg_dump`, instantanés de l'hébergeur). Les fichiers, eux, sont
+sauvegardés par Codex depuis le 2 novembre 2026 : « Sauvegarder maintenant » et `CODEX_SCHEDULE_BACKUP` font alors une
+copie incrémentale des fichiers que la base référence, et « Remettre les fichiers manquants » les remet en place
+(`src/lib/files-backup-core.mjs`) ; procédure et guide de l'exploitant : [stockage-serveur.md](stockage-serveur.md).
 
 **Non décidé** (à fixer par l'utilisateur, voir [decisions.md](decisions.md), « Choix de l'assistant non validés ») :
 la fréquence des sauvegardes, le lieu où les archives sont conservées (hébergement), leur chiffrement, la perte de

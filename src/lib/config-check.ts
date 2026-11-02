@@ -131,6 +131,12 @@ export function checkConfig(env: Env, { production }: { production: boolean }): 
     if (ms === undefined) add('warn', 'schedule_invalid', `${spec.env}="${raw.slice(0, 40)}" is not an interval (30s, 5m, 6h, 1d, off): ${spec.def} applies`);
     else if (ms === null && task === 'promote') add('warn', 'schedule_promote_off', `${spec.env} is off: approved revisions enter into force on their date only when a page is opened`);
   }
+  // On a PostgreSQL server in production, nothing else copies the stored files (lib/files-backup-core.mjs): the backup
+  // task should run (docs/stockage-serveur.md).
+  if (production && set('DATABASE_URL') && !(scheduler && OFF.test(scheduler))) {
+    const raw = env[SCHEDULE.backup.env]?.trim();
+    if (!raw || parseInterval(raw) == null) add('warn', 'files_backup_off', `${SCHEDULE.backup.env} is not set: the stored files are not backed up (the server's pg_dump does not hold them); 1d, for instance`);
+  }
   const exportKeep = env.CODEX_SCHEDULE_EXPORT_KEEP?.trim();
   if (exportKeep && !(/^\d{1,3}$/.test(exportKeep) && Number(exportKeep) >= 1)) add('warn', 'export_keep_invalid', `CODEX_SCHEDULE_EXPORT_KEEP="${exportKeep}" is not a whole number from 1: 3 applies`);
 
@@ -317,7 +323,15 @@ export async function checkDirectories(env: Env, cwd: string): Promise<Finding[]
   for (const inner of [path.join(dataDir, 'pglite'), path.join(dataDir, 'files')]) {
     if (within(backupDir, inner) || within(inner, backupDir)) {
       out.push({ severity: 'warn', code: 'backup_dir_inside', message: `CODEX_BACKUP_DIR ${backupDir} overlaps ${inner}: every backup would be refused` });
-      break;
+      return out;
+    }
+  }
+  // On a PostgreSQL server, the files backup (lib/files-backup-core.mjs) is the only copy of the stored files Codex
+  // makes: on the same disk as the files, it does not survive the loss of that disk (docs/stockage-serveur.md).
+  if (env.DATABASE_URL?.trim()) {
+    const [fdev, bdev] = await Promise.all([path.join(dataDir, 'files'), backupDir].map(async (d) => (await stat(/*turbopackIgnore: true*/ await nearestExisting(d)).catch(() => null))?.dev));
+    if (fdev != null && fdev === bdev) {
+      out.push({ severity: 'warn', code: 'backup_same_disk', message: `CODEX_BACKUP_DIR ${backupDir} is on the same disk as the stored files: mount another volume there (docs/stockage-serveur.md)` });
     }
   }
   return out;

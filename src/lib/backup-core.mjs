@@ -149,7 +149,7 @@ export function archiveDate(name) {
  * @param {string} child
  * @param {string} parent
  */
-function inside(child, parent) {
+export function inside(child, parent) {
   const rel = path.relative(path.resolve(parent), path.resolve(child));
   return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
 }
@@ -788,7 +788,7 @@ export function pendingMigrations(manifest, migrations) {
  * What the manifest records of a database, and the local keys its working versions point to.
  * @param {Queryable} q
  */
-async function readDbMeta(q) {
+export async function readDbMeta(q) {
   const [c] = (await q.query(`select
     (select count(*) from documents)::int as documents, (select count(*) from revisions)::int as revisions,
     (select count(*) from working_versions)::int as working_versions, (select count(*) from audit_log)::int as audit_entries,
@@ -827,7 +827,7 @@ async function readDbMeta(q) {
  * @param {string} filesDir
  * @param {string} file
  */
-async function openStored(filesDir, file) {
+export async function openStored(filesDir, file) {
   /** @param {string} name */
   const tryOpen = async (name) => {
     try {

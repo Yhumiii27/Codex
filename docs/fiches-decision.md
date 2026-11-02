@@ -44,6 +44,10 @@ Le nombre de points de `docs/reste-a-faire.md` que chaque question concerne est 
 
 ## O-01 — SharePoint
 
+> **Répondue pour le moment le 2 novembre 2026 (D-28, `docs/decisions.md`)** : « Nous allons choisir pour le moment
+> d'héberger la bibliothèque de document sur notre serveur » : option A ci-dessous. Préparation et guide
+> d'exploitation : `docs/stockage-serveur.md`. La fiche reste pour le jour où SharePoint reviendrait.
+
 ### 1. La question
 
 > **SharePoint** : faut-il l'activer ? Si oui, faut-il un fichier par version, sans accès direct des utilisateurs à la bibliothèque ? Sans cette restriction, les utilisateurs pourraient contourner les droits de Codex. Avec elle, on modifie un fichier en le téléchargeant puis en le redéposant, sans édition Office en ligne. Posée 4 fois (7 oct. à 17:33, 18:07 et 23:18 ; 8 oct. à 06:18), jamais répondue.

@@ -1626,6 +1626,17 @@ export function integrityL(ctx: Ctx, x: NonNullable<AuditData['integrity']>): st
 function backupL(ctx: Ctx, b: NonNullable<AuditData['backup']>): string {
   const { t, lang } = ctx;
   const all = ctx.seesAll;
+  if (b.scope === 'files') {
+    // The files backup of a server's database (lib/files-backup-core.mjs), or the files it put back.
+    return [
+      t.backup_files_scope,
+      all ? t.backup_files.replace('{n}', String(b.files)).replace('{size}', fmtSize(b.bytes, lang)) : '',
+      all && b.copied ? t.backup_copied_n.replace('{n}', String(b.copied)).replace('{size}', fmtSize(b.size, lang)) : '',
+      all && b.missing ? t.backup_missing_n.replace('{n}', String(b.missing)) : '',
+      all && b.altered ? t.backup_altered_n.replace('{n}', String(b.altered)) : '',
+      all && b.sharepoint ? t.backup_sharepoint_n.replace('{n}', String(b.sharepoint)) : '',
+    ].filter(Boolean).join(' · ');
+  }
   return [
     b.createdAt ? t.backup_of.replace('{date}', fmtDateTime(parisStamp(b.createdAt), lang)) : '',
     all ? t.backup_docs.replace('{n}', String(b.documents)) : '',

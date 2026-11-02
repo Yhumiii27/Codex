@@ -247,6 +247,28 @@ describe('folders', () => {
     expect(codes(await checkDirectories({ CODEX_DATA_DIR: data, CODEX_BACKUP_DIR: data }, '/'))).toEqual(['backup_dir_inside']);
     expect(codes(await checkDirectories({ CODEX_DATA_DIR: data }, '/'))).toEqual([]);
   });
+
+  it('warns, on a PostgreSQL server, of a files backup on the same disk as the files (docs/stockage-serveur.md)', async () => {
+    const data = path.join(tmp, 'd');
+    const pg = { DATABASE_URL: 'postgres://codex_app@db:5432/epc2i', CODEX_DATA_DIR: data };
+    // A temporary folder holds both: one disk.
+    expect(codes(await checkDirectories({ ...pg, CODEX_BACKUP_DIR: path.join(tmp, 'b') }, '/'))).toEqual(['backup_same_disk']);
+    // With the embedded database, the archive is the backup of the database too: no warning.
+    expect(codes(await checkDirectories({ CODEX_DATA_DIR: data, CODEX_BACKUP_DIR: path.join(tmp, 'b') }, '/'))).toEqual([]);
+  });
+});
+
+describe('the files backup on a PostgreSQL server', () => {
+  const pg = { DATABASE_URL: 'postgres://codex_app@db:5432/epc2i' };
+  it('warns in production when CODEX_SCHEDULE_BACKUP does not run it', () => {
+    expect(codes(prod(pg), 'warn')).toContain('files_backup_off');
+    expect(codes(prod({ ...pg, CODEX_SCHEDULE_BACKUP: 'off' }), 'warn')).toContain('files_backup_off');
+    expect(codes(prod({ ...pg, CODEX_SCHEDULE_BACKUP: '1d' }), 'warn')).not.toContain('files_backup_off');
+    // Not with the embedded database (its archive is no daily obligation), nor in development, nor without a scheduler.
+    expect(codes(prod({}), 'warn')).not.toContain('files_backup_off');
+    expect(codes(dev(pg), 'warn')).not.toContain('files_backup_off');
+    expect(codes(prod({ ...pg, CODEX_SCHEDULER: 'off' }), 'warn')).not.toContain('files_backup_off');
+  });
 });
 
 describe('at start', () => {

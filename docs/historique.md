@@ -3300,3 +3300,24 @@ Demande M-18 de Matrix (`REQUESTS.md`) ; accord de l'utilisateur : « traite la 
 migration postérieure à `0002`. Vérifié que Codex ne touche à aucune vue au démarrage ni à l'export : la reprise des 8
 vues par `matrix_gestion` (`partage/14-reprise-publications.sql`) ne change rien à son fonctionnement. Entrée passée à
 FAITE : Matrix peut reprendre les vues.
+
+### 20.8 Bibliothèque de documents sur notre serveur (2 nov.)
+
+Décision D-28 de l'utilisateur : « Nous allons choisir pour le moment d'héberger la bibliothèque de document sur notre
+serveur. Fait moi toute la préparation a cela et s'il y a des étapes que je dois faire pour toi fait un guide pas a pas
+pour que je puisse le faire ». O-01 est répondue pour le moment (pas de SharePoint).
+
+- **Constat sur la production** (API Coolify, lecture seule) : Codex sur le serveur `localhost` de Coolify, volume
+  `manjb61o00i8pdtg738izfh0-codex-data` sur `/data`, base sur le serveur commun ; ni `CODEX_BACKUP_DIR`, ni
+  `CODEX_SCHEDULE_BACKUP`, ni `CODEX_CLAMD`. Les fichiers n'étaient sauvegardés par rien : `npm run backup` et
+  « Sauvegarder maintenant » refusaient sur un serveur PostgreSQL, et le `pg_dump` du serveur commun ne les contient pas.
+- **Code** : `src/lib/files-backup-core.mjs` (copie incrémentale des fichiers référencés, vérifiée par SHA-256, un état
+  par sauvegarde, rotation des états et des copies, remise en place sans jamais remplacer un fichier, y compris sous un
+  autre nom du même UUID) ; `src/lib/backup.ts` (`backUpNow` fait cette sauvegarde sur un serveur, `restoreFilesNow`) ;
+  action `restoreBackedUpFiles` et panneau « Sauvegardes » de l'Administration propre au serveur ; tâche planifiée
+  `backup` ; journal (`scope: 'files'`) ; contrôle de démarrage `files_backup_off` et `backup_same_disk`.
+- **Docs** : guide de l'exploitant `docs/stockage-serveur.md` (mesure de la place, second disque monté sur `/backups`,
+  variables, première sauvegarde, copie hors du serveur chiffrée par restic, antivirus clamd dans Coolify, chiffrement
+  du disque, essai de restauration, que faire en cas de perte) ; D-28 dans `docs/decisions.md`, fiche O-01, points 48,
+  84, 88, 98, 103 et 112 annotés, `docs/sauvegarde.md`, `docs/exploitation.md`, `.env.example`, `CLAUDE.md`.
+- **Tests** : `tests/integration/files-backup.test.ts` (12 cas), `tests/unit/config-check.test.ts`.
