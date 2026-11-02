@@ -54,7 +54,7 @@ Format d'une entrée :
   - Codex ne fournit pas encore de fonction `pub_` : aucune écriture reçue ne s'y prête (toutes passent par une API). Le retrait des vues des migrations de Codex attend la demande de Matrix au titre de M-18 (lot P5).
 
 ## [2026-11-01] Matrix → Codex — M-18 : Matrix définit vos vues `pub_` et décide de vos écritures croisées (plus de vue `pub_` dans vos migrations)
-- Statut : OUVERTE
+- Statut : FAITE
 - Demande : appliquer dans Codex la décision M-18 de Matrix (`docs/decisions.md` et `docs/architecture-postgres.md` § 8 septies du dépôt Matrix), qui **remplace le point 3 de la demande M-17** du 30/10/2026 (« la migration reste la seule définition des vues `pub_` ») :
   1. **ne plus créer, modifier ni supprimer de vue `pub_` dans vos migrations** (les migrations déjà appliquées ne changent pas) : une nouvelle publication, ou une colonne de plus, se demande à Matrix, qui la définit dans son écran « Publications » (`matrix.publications`) et l'applique lui-même (rôle `matrix_gestion`). Votre migration crée les tables et colonnes ; la vue est celle de Matrix ;
   2. **avant de modifier ou de supprimer une colonne lue par une vue `pub_`**, le signaler à Matrix (entrée dans son `REQUESTS.md`) : la migration échouerait, la vue en dépend. Une colonne publiée ne se retire ni ne se renomme ; un changement incompatible passe par une vue `…_v2` ;
@@ -64,4 +64,9 @@ Format d'une entrée :
 - Justification : décision du responsable produit du 01/11/2026 (M-18) : « matrix [doit] être le seul outil qui permette d'administrer la base de données postgre […] c'est matrix qui doit avoir la main sur ce que chaque outil publie, lie, écrit ». Matrix est en place (lots P1 à P4 fusionnés le 01/11/2026 : rôle `matrix_gestion`, registre et écran « Publications », liens appliqués tout de suite, liens d'écriture). Tant que la reprise n'est pas faite, rien ne change pour Codex ; après la reprise, une migration qui recréerait une vue `pub_` échouerait (« must be owner of view »), d'où le point 1 d'abord.
 - Détails techniques : vues de Codex reprises par Matrix : pub_circuits_type, pub_documents, pub_journal, pub_programmes_recherche, pub_revisions_document, pub_titulaires_fonction, pub_types_document, pub_validations (8 vues). Écritures reçues d'autres outils : décision de Vigie sur une demande de modification (webhook, flux F05) : API, conforme, rien à changer. Une vue reprise garde son nom, ses colonnes, son commentaire et ses lecteurs ; seule sa propriété change. Contrôles : `droits.verifier()` (vue `pub_` encore à l'outil : attention, « pas encore reprise »). Pour un essai local (PGlite, base de démonstration), vos migrations anciennes continuent de créer les vues : seule une **nouvelle** migration ne doit plus en créer ni en modifier.
 - Validé par Guillaume le : 2026-11-01
+- Réponse de Codex (2026-11-01) :
+  - Points 1 et 2 : règles reprises dans `CLAUDE.md` (« Échanges entre outils sur le serveur commun ») et `docs/postgres.md` (« Échanges avec les autres outils ») ; `tests/unit/migrations.test.ts` refuse désormais toute vue `pub_` (création, modification, commentaire, suppression) dans une migration postérieure à `0002`. `0001_partage` et `0002_pub_programmes_recherche` ne changent pas.
+  - Point 3 : écritures reçues (décision de Vigie, dépôt d'Arche, import) par API ; aucune fonction `pub_` à fournir.
+  - Point 4 : aucun besoin de lecture ou d'écriture chez les autres outils aujourd'hui.
+  - Vérifié : au démarrage, Codex ne recrée ni ne modifie aucune vue (`openDb()` ne repose que ses fonctions et déclencheurs) et l'export complet ne lit que les tables : Matrix peut reprendre les 8 vues `codex.pub_*`.
 

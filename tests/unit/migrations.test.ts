@@ -63,6 +63,15 @@ describe('the migrations of drizzle/ (decision M-01: schema codex, role codex_ap
     }
   });
 
+  it('touch no view pub_ after 0002: Matrix defines and owns them since its decision M-18 (1 November 2026)', () => {
+    // 0001_partage and 0002_pub_programmes_recherche, already applied on the shared server, still create them (and so in
+    // PGlite); any later migration creates the tables and columns only, and a new publication is asked of Matrix.
+    const frozen = new Set(['0000_init.sql', '0001_partage.sql', '0002_pub_programmes_recherche.sql']);
+    for (const f of files.filter((x) => !frozen.has(x))) {
+      expect(readFileSync(path.join('drizzle', f), 'utf8'), f).not.toMatch(/\b(create|alter|drop|comment\s+on)\b[^;]*\bview\b[^;]*\bpub_/i);
+    }
+  });
+
   it('qualify every table they create with the schema codex', () => {
     for (const f of files) {
       for (const m of readFileSync(path.join('drizzle', f), 'utf8').matchAll(/create\s+(?:unique\s+)?(?:table|index|view|or\s+replace\s+view)\s+(?:if\s+not\s+exists\s+)?("?[\w]+"?(?:\."?[\w]+"?)?)/gi)) {

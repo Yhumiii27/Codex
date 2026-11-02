@@ -5,9 +5,9 @@ import { Icon } from '@/components/ui/Icon';
 import { Seg } from '@/components/ui/Seg';
 import { ActionButton, DialogButton } from '@/components/ui/client';
 import { mayBackUp, mayCheckIntegrity, mayCleanStorage, mayExportAll, mayLinkTemplate, mayTransferHoldings } from '@/lib/access';
-import { backUpData, checkFileIntegrity, purgeOrphanFiles, removeFunctionHolder, renameProvisionalFiles, togglePermission } from '@/lib/actions';
+import { backUpData, checkFileIntegrity, restoreBackedUpFiles, purgeOrphanFiles, removeFunctionHolder, renameProvisionalFiles, togglePermission } from '@/lib/actions';
 import { antivirusStatus } from '@/lib/antivirus';
-import { backupList, backupSettings } from '@/lib/backup';
+import { backupKind, backupList, backupSettings, filesBackupList } from '@/lib/backup';
 import { getCtx, type Ctx } from '@/lib/context';
 import { featuredOf } from '@/lib/departments';
 import { fileRules, fmtMax } from '@/lib/filetypes';
@@ -625,6 +625,7 @@ async function Provisional({ ctx, open }: { ctx: Ctx; open: boolean }) {
 async function Backups({ ctx, open }: { ctx: Ctx; open: boolean }) {
   const { t, lang } = ctx;
   const when = (iso: string | null) => (iso ? fmtDateTime(parisStamp(iso), lang) : '—');
+  if ((await backupKind()) === 'files') return <FilesBackups ctx={ctx} open={open} />;
   if (!open) {
     const all = await backupList(false);
     const latest = all?.[0];
@@ -670,6 +671,74 @@ async function Backups({ ctx, open }: { ctx: Ctx; open: boolean }) {
                       {m && m.files.sharepoint > 0 && <span className="text-muted"> · {t.backup_sharepoint_n.replace('{n}', String(m.files.sharepoint))}</span>}
                     </td>
                     <td className="nowrap tabnum text-muted">{fmtSize(b.size, lang)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+    </section>
+  );
+}
+
+/**
+ * Backups on a PostgreSQL server (lib/files-backup-core.mjs): the database is backed up by the server's tools, Codex
+ * backs up the files it points to. The states of the backup, the button that backs up now and the one that puts back
+ * the files the store lacks.
+ */
+async function FilesBackups({ ctx, open }: { ctx: Ctx; open: boolean }) {
+  const { t, lang } = ctx;
+  const when = (iso: string | null) => (iso ? fmtDateTime(parisStamp(iso), lang) : '—');
+  if (!open) {
+    const all = await filesBackupList(false);
+    const latest = all?.[0];
+    return (
+      <p className={`${styles.filesPolicy} text-muted`}>
+        <strong>{t.backup_title}</strong>
+        <span>{t.backup_files_scope}</span>
+        {all ? <span>{latest ? t.backup_last.replace('{date}', when(latest.createdAt)) : t.backup_none}</span> : <span className={styles.filesOff}>{t.backup_list_error}</span>}
+        <Link href="/administration?tab=audit&backups=1" className="link-plain" scroll={false}>{t.backup_show}</Link>
+      </p>
+    );
+  }
+  const { dir, keep } = backupSettings();
+  const list = await filesBackupList();
+  return (
+    <section className={styles.orphans} aria-label={t.backup_title}>
+      <div className={styles.orphansHead}>
+        <strong>{t.backup_title}</strong>
+        <span className="text-muted">{t.backup_files_scope}</span>
+        <span style={{ flex: 1 }} />
+        <ActionButton action={backUpData} className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} confirm={t.backup_files_confirm.replace('{dir}', dir).replaceAll('{n}', String(keep))} after="/administration?tab=audit&backups=1">
+          {t.backup_create}
+        </ActionButton>
+        <ActionButton action={restoreBackedUpFiles} className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 10px' }} confirm={t.backup_restore_files_confirm} after="/administration?tab=audit&backups=1">
+          {t.backup_restore_files}
+        </ActionButton>
+        <Link href="/administration?tab=audit" className="btn btn-ghost" style={{ fontSize: 12 }} scroll={false}>{t.close}</Link>
+      </div>
+      <p className="text-muted">{t.backup_files_hint.replace('{dir}', dir).replaceAll('{n}', String(keep))}</p>
+      {!list
+        ? <p className={styles.filesOff}>{t.backup_list_error}</p>
+        : list.length === 0
+        ? <p>{t.backup_none}</p>
+        : (
+          <table className={`table ${styles.orphanTable}`}>
+            <thead><tr><th>{t.when}</th><th>{t.backup_col_by}</th><th style={{ textAlign: 'right' }}>{t.count}</th><th>{t.backup_col_state}</th><th>{t.backup_col_copied}</th></tr></thead>
+            <tbody>
+              {list.map((b) => {
+                const m = b.state;
+                return (
+                  <tr key={b.name}>
+                    <td className="nowrap tabnum" title={b.name}>{when(b.createdAt)}</td>
+                    <td>{m ? ctx.userName(m.by) : <span className={styles.filesOff}>{t.backup_unreadable}</span>}</td>
+                    <td className="tabnum" style={{ textAlign: 'right' }}>{m ? m.counts.documents : '—'}</td>
+                    <td className="tabnum">
+                      {m ? `${m.files.count} (${fmtSize(m.files.bytes, lang)})` : '—'}
+                      {m && m.files.missing.length > 0 && <span className={styles.filesOff}> · {t.backup_missing_n.replace('{n}', String(m.files.missing.length))}</span>}
+                      {m && m.files.altered.length > 0 && <span className={styles.filesOff}> · {t.backup_altered_n.replace('{n}', String(m.files.altered.length))}</span>}
+                    </td>
+                    <td className="nowrap tabnum text-muted">{m ? `${m.files.copied} (${fmtSize(m.files.copiedBytes, lang)})` : '—'}</td>
                   </tr>
                 );
               })}

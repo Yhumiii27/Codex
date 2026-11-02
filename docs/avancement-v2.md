@@ -81,8 +81,11 @@ Classé selon ce qui le bloque : le détail est en tête de `docs/reste-a-faire.
   modéré d'esbuild, outil de développement tiré par drizzle-kit, sans correctif compatible.
 - **Demandes des autres outils** (`REQUESTS.md`) : CX-01 et CX-02 (CAPEX dans Codex, O-03 et O-05), CX-06 (accès des
   filiales, O-04 et O-02), CX-07 (dossier de jalon figé), toutes en attente d'une décision.
+- **Bibliothèque sur notre serveur** (D-28, 2 novembre 2026) : pas de SharePoint pour le moment ; Codex sauvegarde
+  désormais les fichiers quand la base est sur le serveur commun, et les remet en place. Étapes de l'exploitant
+  (second disque, variables, antivirus, copie hors du serveur) : `docs/stockage-serveur.md`.
 - **Décisions de l'utilisateur** (O-01 à O-11 de `docs/decisions.md`, questions de l'audit) : 49 points, dont
-  l'activation de SharePoint et son test sur un vrai tenant (O-01), l'authentification réelle (O-02 ; Entra ID est
+  SharePoint s'il revient (O-01, répondue pour le moment par D-28), l'authentification réelle (O-02 ; Entra ID est
   proposé, non confirmé), la liaison avec Keystone (O-03) et Vigie (`VIGIE_API_URL`, O-10), l'organigramme (O-04),
   les arbitrages du registre (O-05), les circuits et leurs titulaires (O-06), les durées de conservation (O-07), la
   conservation par révision remplacée (O-09, seul reste de T-03), l'hébergement (M22) et la formation (M14).

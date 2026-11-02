@@ -9,7 +9,7 @@ import type { Attachment, AuditChange, AuditValue, Conf, Origin, SearchScope } f
 import { buildAccessIndex, canRead, followsCircuit, getAccessIndex, inDraftingCircle, isUsableTemplate, mayBackUp, mayCheckIntegrity, mayCleanStorage, mayDeleteSearch, mayEditLinks, mayLinkTemplate, mayManageRetention, mayReassignStep, mayRecall, mayRecordReview, maySaveSearch, maySetRetentionEvent, mayWorkOnDraft, readerMaySeeRevision, readersApply, mayTransferHoldings, seesSavedSearch } from './access';
 import { idMatches, nextDocId, nextWorkflowId, TEMPLATE_TYPE } from './codification';
 import { changeAuthor, seenVersion, seenWorkingBase, staleText, workingIssue, workingStaleText, type WorkingBase } from './concurrency';
-import { backUpNow } from './backup';
+import { backUpNow, restoreFilesNow } from './backup';
 import { checkFilesNow } from './integrity';
 import { COOKIE_LANG, COOKIE_ROLE, COOKIE_USER, getCtx, type Ctx } from './context';
 import { addDays, fmtDate, fmtDateTime, fmtSize, loc, localized, nowStamp, parisStamp, parseIsoDay, todayIso } from './format';
@@ -1825,11 +1825,25 @@ async function backUpDataNow(): Promise<ActionResult> {
     return fail(ctx, 'backup_failed');
   }
   if (res === 'busy') return fail(ctx, 'backup_busy');
-  if (res === 'server') return fail(ctx, 'backup_server');
   const { t, lang } = ctx;
   if ('recent' in res) {
     const at = (iso: string) => fmtDateTime(parisStamp(iso), lang);
     return { ok: false, error: t.backup_recent.replace('{date}', at(res.recent)).replace('{next}', at(res.next)) };
+  }
+  if ('kind' in res) {
+    // A server's database: the files backup (lib/files-backup-core.mjs).
+    const s = res.state.files;
+    refresh();
+    return {
+      ok: true,
+      message: [
+        t.backup_files_done.replace('{n}', String(s.count)).replace('{size}', fmtSize(s.bytes, lang)).replace('{copied}', String(s.copied)),
+        s.missing.length ? t.backup_missing.replace('{n}', String(s.missing.length)) : '',
+        s.altered.length ? t.backup_files_altered.replace('{n}', String(s.altered.length)) : '',
+        s.sharepoint ? t.backup_sharepoint.replace('{n}', String(s.sharepoint)) : '',
+        res.removed.length ? t.backup_rotated.replace('{n}', String(res.removed.length)) : '',
+      ].filter(Boolean).join(' '),
+    };
   }
   const f = res.manifest.files;
   refresh();
@@ -1841,6 +1855,42 @@ async function backUpDataNow(): Promise<ActionResult> {
       f.sharepoint ? t.backup_sharepoint.replace('{n}', String(f.sharepoint)) : '',
       res.removed.length ? t.backup_rotated.replace('{n}', String(res.removed.length)) : '',
     ].filter(Boolean).join(' '),
+  };
+}
+
+/**
+ * Puts back into the store, from the files backup, the files the database points to and the store lacks
+ * (lib/backup.ts restoreFilesNow): after the server's database was restored, or the volume of the files lost. Never
+ * replaces nor removes a file. A records manager with access to Administration only (lib/access.ts mayBackUp). With
+ * the embedded database, a backup is restored whole, server stopped (npm run restore).
+ */
+export async function restoreBackedUpFiles(...args: Parameters<typeof restoreBackedUpFilesNow>): Promise<ActionResult> {
+  return traceAction('restoreBackedUpFiles', () => restoreBackedUpFilesNow(...args));
+}
+async function restoreBackedUpFilesNow(): Promise<ActionResult> {
+  const ctx = await getCtx();
+  const busy = throttled(ctx);
+  if (busy) return busy;
+  if (!mayBackUp(ctx)) return fail(ctx, 'forbidden');
+  let res: Awaited<ReturnType<typeof restoreFilesNow>>;
+  try {
+    res = await restoreFilesNow(ctx.user.id);
+  } catch (err) {
+    log.error('files restore failed', { err });
+    return fail(ctx, 'backup_restore_failed');
+  }
+  if (res === 'busy') return fail(ctx, 'backup_restore_busy');
+  if (res === 'archive') return fail(ctx, 'backup_restore_archive');
+  const { t, lang } = ctx;
+  refresh();
+  const warning = [
+    res.notInBackup.length ? t.backup_restore_files_absent.replace('{n}', String(res.notInBackup.length)) : '',
+    res.altered.length ? t.backup_restore_files_altered.replace('{n}', String(res.altered.length)) : '',
+  ].filter(Boolean).join(' ');
+  return {
+    ok: true,
+    message: t.backup_restore_files_done.replace('{n}', String(res.restored.length)).replace('{size}', fmtSize(res.restoredBytes, lang)).replace('{present}', String(res.present)),
+    ...(warning ? { warning } : {}),
   };
 }
 

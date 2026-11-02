@@ -39,6 +39,7 @@ numéro, sans les trancher à la place de l'utilisateur.
 | `docs/registre-points-ouverts.md` | Points à arbitrer sur le registre des types (69 types, 23 familles). |
 | `docs/api.md` | API d'intégration : registre, import de migration, dépôt par une application (`POST /api/documents`), webhook Vigie, lecture de l'état par les vues `pub_`. |
 | `REQUESTS.md` | Boîte aux lettres : demandes des autres outils à Codex, avec leur statut et la réponse de Codex. |
+| `docs/stockage-serveur.md` | Bibliothèque de documents sur notre serveur (D-28) : sauvegarde des fichiers, guide pas à pas de l'exploitant (second disque, variables, antivirus, copie hors du serveur, restauration). |
 | `docs/accessibilite.md` | Accessibilité : contrôle automatisé `npm run a11y`, contrastes mesurés, ce qui reste (lecteur d'écran). |
 | `README.md` | Démarrage, écrans, ce qui est réel ou simulé, organisation du code. |
 
@@ -67,7 +68,10 @@ numéro, sans les trancher à la place de l'utilisateur.
   les documents, de Keystone pour les sujets de projet.
 - **Conservation par type de document, selon les règles d'usage.** La migration de l'existant se fera par un code
   dédié, **hors de Codex**.
-- **Non tranché** : activation de SharePoint (O-01), fournisseur d'authentification (O-02 ; Entra ID est proposé, pas
+- **Bibliothèque sur notre serveur, pour le moment (D-28, 2 novembre 2026)** : fichiers en stockage local sur le
+  serveur EPC2I, SharePoint non activé (O-01 répondue pour le moment). Avec la base sur le serveur commun, Codex
+  sauvegarde les fichiers lui-même (`src/lib/files-backup-core.mjs`) ; exploitation : `docs/stockage-serveur.md`.
+- **Non tranché** : fournisseur d'authentification (O-02 ; Entra ID est proposé, pas
   confirmé), liaison avec Keystone par API ou base partagée (O-03, en partie répondue par M-01 : base commune, un
   schéma par outil, la liaison reste une API), organigramme (O-04), arbitrages du registre (O-05).
 
@@ -187,9 +191,16 @@ Détail et inventaire : `docs/postgres.md`, « Échanges avec les autres outils 
 - Un nouveau besoin d'accès se déclare comme un lien du registre de Matrix (lecteur, objet, nature `lecture` ou
   `execution`) ; en attendant `POST /api/liens`, par une entrée courte dans le `REQUESTS.md` de Matrix. On ne demande
   plus à Matrix de recopier une vue.
-- Depuis M-18 (1er novembre 2026), Matrix définit et applique les vues `pub_` : une nouvelle vue `pub_` de Codex se
-  demande à Matrix au lieu de s'écrire dans une migration. Les vues de `0001_partage` et `0002` restent (migrations
-  appliquées) ; leur reprise par Matrix fera l'objet d'une demande dans `REQUESTS.md`.
+- Depuis M-18 (1er novembre 2026, demande traitée le même jour), **Matrix définit, applique et possède les vues
+  `pub_`** de Codex (rôle `matrix_gestion`, écran « Publications ») :
+  - aucune nouvelle migration ne crée, ne modifie, ne commente ni ne supprime de vue `pub_` : elle crée les tables et
+    les colonnes, et une nouvelle publication (ou une colonne de plus) se demande à Matrix. Sur le serveur, une
+    migration qui recréerait une vue reprise échouerait (« must be owner of view »). `tests/unit/migrations.test.ts`
+    refuse toute vue `pub_` dans une migration postérieure à `0002` ; `0001_partage` et `0002` (déjà appliquées)
+    continuent de les créer en PGlite ;
+  - avant de modifier ou de supprimer une colonne lue par une vue `pub_`, le signaler à Matrix (entrée dans son
+    `REQUESTS.md`) : la migration échouerait, la vue en dépend. Une colonne publiée ne se retire ni ne se renomme ;
+    un changement incompatible passe par une vue `…_v2`.
 
 ## Conventions
 

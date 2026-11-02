@@ -72,8 +72,13 @@ export const TASKS: Record<TaskName, { run: (db: Db) => Promise<TaskOutcome> }> 
   backup: {
     run: async () => {
       const r = await backUpNow(SCHEDULER_ACTOR);
-      if (r === 'busy' || r === 'server') return { status: 'skipped', summary: { reason: r } };
+      if (r === 'busy') return { status: 'skipped', summary: { reason: r } };
       if ('recent' in r) return { status: 'skipped', summary: { reason: 'recent' } };
+      // A server's database: the files backup (lib/files-backup-core.mjs).
+      if ('kind' in r) {
+        const f = r.state.files;
+        return { status: 'ok', summary: { archive: r.name, files: f.count, size: f.copiedBytes, copied: f.copied, missing: f.missing.length, altered: f.altered.length, rotatedOut: r.removed.length } };
+      }
       return { status: 'ok', summary: { archive: r.name, size: r.size, rotatedOut: r.removed.length } };
     },
   },
