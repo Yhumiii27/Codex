@@ -1,3 +1,6 @@
+import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { sql } from 'drizzle-orm';
 import { describe, expect, it, vi } from 'vitest';
 import { schema as s } from '@/db';
@@ -147,7 +150,16 @@ describe.skipIf(!server)('on a PostgreSQL server, between connections', () => {
     expect(await db().select().from(s.documents)).toHaveLength(1);
   });
 
-  it('refuses the backup from Administration: a server is backed up by its own tools', async () => {
-    expect(await backUpNow('cbardet')).toBe('server');
+  it('backs up the files only from Administration: the database is backed up by the server tools (D-28)', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'codex-pg-files-backup-'));
+    vi.stubEnv('CODEX_BACKUP_DIR', dir);
+    try {
+      const r = await backUpNow('manager');
+      expect(r).toMatchObject({ kind: 'files', state: { format: 'codex-files-backup', files: { count: 0 } } });
+      expect(readdirSync(path.join(dir, 'fichiers')).filter((n) => n.endsWith('.json'))).toHaveLength(1);
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
