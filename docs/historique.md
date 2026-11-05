@@ -3341,3 +3341,12 @@ Arche ; entrée du 2026-11-01 de `REQUESTS.md`, reprise de la PR #20). Décision
 - **Reste** : lien de lecture de `arche.pub_capex` par `codex_app` à déclarer à Matrix ; CX-06 (filiales) attend O-04 et
   O-02.
 
+### 20.10 Demande M-19 de Matrix : `codex.pub_editer` (5 nov.)
+
+Accord de l'utilisateur : « traite la demande M-19 ». Décision D-30. Migration `0004_pub_editer` (fonction écrite à la
+main d'après `docs/edition-par-les-outils.md` du dépôt Matrix) : départements, sites, programmes de recherche et
+titulaires des fonctions modifiables depuis la visionneuse de Matrix, avec les règles de l'Administration et le journal
+de Codex (acteur système `matrix`, personne et motif dans `audit_log.data.via`, affichés dans le journal) ; toute autre
+table refusée. Tests : `tests/integration/pub-editer.test.ts` (7 cas, rejoués sur PostgreSQL 16), `migrate-command`
+adapté (la dernière migration défaite est `0004_pub_editer`).
+

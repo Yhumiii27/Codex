@@ -738,6 +738,11 @@ export type AuditData = {
    * SHA-256 of the file a working version received (actions 'upload', 'working', 'import'). Kept from readers outside the
    * drafting circle (lib/queries.ts auditForReader, D-14): it would tell a draft's file apart.
    */
+  /**
+   * A change made from another tool of the group through its pub_ function (codex.pub_editer, Matrix's request M-19,
+   * migration 0004): the tool, the person connected to it and the reason they gave. The actor is that tool's system user.
+   */
+  via?: { app: string; person: string; reason: string };
   sha256?: string;
   /**
    * Check of the stored files against their recorded SHA-256 (action 'integrity_checked', lib/integrity-core.mjs).
