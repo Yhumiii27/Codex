@@ -22,13 +22,18 @@ les GED du commerce. Chaque point fait porte sa ligne « Fait le … » ; le dé
   est sur le serveur commun, et leur remise en place (`src/lib/files-backup-core.mjs`) ; guide de l'exploitant
   `docs/stockage-serveur.md`. Points 84, 98 et 103 sans objet tant que SharePoint n'est pas activé ; 88 et 112 annotés.
   Aucun point ne change de colonne (`docs/historique.md` §20.8).
+- **5 novembre** : point 133 ajouté à la demande de l'utilisateur (types consultables et créables selon la fonction de
+  la personne), dans « Attend une décision de l'utilisateur », avec une proposition à confirmer.
+- **5 novembre** : demandes d'Arche CX-01 (rattachement `capex`), CX-02 (sous-types) et CX-07 (gel juridique au dépôt)
+  faites (D-29, `docs/historique.md` §20.9) ; le registre gagne 15 sous-types et le rattachement `capex` (point 118 :
+  arbitrages du registre toujours ouverts pour le reste). Reste d'Arche : CX-06 (O-04, O-02).
 
 ## État au 18 octobre 2026 (lot 10, étape 6), complété le 26 octobre
 
 | Ce qui bloque (classement du 9 octobre) | Points | Faits | Faits en partie | Pas commencés |
 |---|---|---|---|---|
 | Développable maintenant | 69 | 58 | 11 | 0 |
-| Attend une décision de l'utilisateur | 52 (49 + 3 ajoutés le 26 octobre) | 0 | 0 | 52 |
+| Attend une décision de l'utilisateur | 53 (49 + 3 ajoutés le 26 octobre + 1 le 5 novembre) | 0 | 0 | 53 |
 | Attend des données de l'utilisateur | 2 | 0 | 0 | 2 |
 | Demande une session sur macOS | 9 | 0 | 0 | 9 |
 
@@ -1356,7 +1361,7 @@ Constaté. La seule aide est le bouton « Notes » de la barre latérale (src/co
 
 </details>
 
-## Attend une décision de l'utilisateur (49, puis 52 avec les points ajoutés le 26 octobre 2026)
+## Attend une décision de l'utilisateur (49, puis 53 avec les points ajoutés le 26 octobre et le 5 novembre 2026)
 
 Ces points dépendent d'une question ouverte (O-01 à O-11 dans `docs/decisions.md`) ou d'une question de l'audit restée sans réponse. Ne pas les trancher à la place de l'utilisateur. Les points 130 à 132, ajoutés le 26 octobre 2026, sont en plus à valider par l'utilisateur avant tout développement : ni le deck ni lui ne les ont demandés.
 
@@ -2316,6 +2321,30 @@ Absent de Codex : aucun appel à un modèle, aucun résumé stocké, aucune gén
 <details><summary>Constat dans le code</summary>
 
 Aucune occurrence de modèle de langage, de résumé ni de génération de contenu dans src/ ou package.json. Les seules productions de Codex sont le PDF de remplacement et la fiche de visa (src/lib/pdf.ts, src/lib/approval.ts) et l'aperçu PDF des fichiers Office (src/lib/office-preview.ts). La recherche ne porte que sur les métadonnées (point 82). Le deck ne demande rien de tel ; aucune question O-xx ne le couvre.
+
+</details>
+
+### Ajouté le 5 novembre 2026 (demande de l'utilisateur) (1)
+
+#### 133. Types de documents consultables et créables selon la fonction de la personne
+
+- **Effort** : moyen · **Références** : D-15 (fonctions), D-13 / D-14 (confidentialité, brouillons), O-06 (titulaires des fonctions), O-02 (rôles réels plus tard)
+- **Ajouté le 5 novembre 2026**, à la demande de l'utilisateur : « dans les prochains points de dev pour codex, sur les roles simulés fait une assignation des types de documents consultables et créables par fonction des personnes ».
+
+Aujourd'hui, ce qu'une personne lit dépend du rôle simulé (droit « Lire » de la matrice), de la confidentialité, du département, de l'équipe projet et des lecteurs désignés (`canRead`, src/lib/access.ts) ; ce qu'elle crée dépend du seul droit « Déposer » du rôle : **aucun des deux ne dépend du type de document**. Les fonctions (resp_qualite, chef_projet, resp_hse…) et leurs titulaires (`function_holders`) ne servent qu'aux circuits (D-15).
+
+Proposé (à confirmer par l'utilisateur avant de développer) :
+- une matrice **fonction × type** à deux cases, « consulter » et « créer », réglée dans Administration (Fonctions & circuits ou Registre des types), journalisée, avec une valeur par défaut tirée du registre (par exemple : la fonction du département propriétaire et les fonctions du circuit du type) ;
+- une personne a les droits des fonctions qu'elle tient (`function_holders`, quelle que soit la portée) ; le rôle simulé reste la première barrière (droit « Lire », « Déposer ») ; le gestionnaire documentaire garde tout (D-14) ;
+- « consulter » **s'ajoute** aux règles actuelles comme une condition de plus (le type doit être consultable **et** la confidentialité le permettre), appliquée en mémoire (`canRead`) et en SQL (`visibleSql`), testée par `tests/integration/access-sql.test.ts` ; le cercle de rédaction d'un brouillon (D-14) garde l'accès ;
+- « créer » limite les types proposés dans « Nouveau document » et refusés côté serveur (`createDocument`, dépôt et import par application exclus ou non : à décider) ;
+- même logique pour les rôles réels le jour où l'authentification arrive (O-02).
+
+Questions à trancher : une personne sans fonction voit-elle les types « ouverts à tous » (à marquer dans la matrice) ou rien ? Faut-il restreindre aussi le dépôt par une application (Arche) ? Les fonctions de portée département ou projet ne valent-elles que dans leur département ou projet ?
+
+<details><summary>Constat dans le code</summary>
+
+src/lib/access.ts:155-172 (`canRead` : rôle, cercle de rédaction, confidentialité, département, équipe, lecteurs ; aucune condition sur `typeCode`) ; src/lib/actions.ts `createDocument` / `validateFields` (droit `upload` du rôle et règles du registre, aucune restriction par fonction) ; src/db/schema.ts `functions`, `function_holders` (utilisées par `resolveFunction` pour les circuits seulement).
 
 </details>
 

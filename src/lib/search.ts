@@ -249,7 +249,7 @@ export function matches(d: DocView, q: string): boolean {
 export function facetValues(d: DocView, k: FacetKey): string[] {
   const one = (v: string | null | undefined) => (v ? [v] : []);
   switch (k) {
-    case 'project': return one(d.projectCode ?? d.programCode);
+    case 'project': return one(d.projectCode ?? d.programCode ?? d.capexCode);
     case 'family': return [d.family];
     case 'type': return [d.typeCode];
     case 'subtype': return one(d.subtype);

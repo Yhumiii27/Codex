@@ -45,7 +45,7 @@ const fr = {
   // Model v2 (docs/modele-cible.md)
   st_in_review:'En révision', st_approved:'Approuvé', st_in_force:'En vigueur', st_superseded:'Remplacé', st_obsolete:'Obsolète',
   f_in_force:'En vigueur', f_in_review:'En révision', f_obsolete:'Obsolètes',
-  origin:'Origine', or_interne:'Interne', or_externe:'Externe', attachment:'Rattachement', att_none:'Aucun', att_project:'Projet', att_research:'Recherche',
+  origin:'Origine', or_interne:'Interne', or_externe:'Externe', attachment:'Rattachement', att_none:'Aucun', att_project:'Projet', att_research:'Recherche', att_capex:'CAPEX', capex:'CAPEX', capex_required:'Choisissez le CAPEX de rattachement.', capex_none:'Aucun CAPEX publié par Arche pour l’instant.', capex_subsidiary:'Filiale', capex_phase:'Phase DIG-PRODI', capex_unknown:'CAPEX inconnu de Codex (liste lue dans Arche).',
   family:'Famille', subtype:'Sous-type', department:'Département / Fonction', site_label:'Site', title_label:'Titre', author_label:'Auteur', revision:'Révision', working_version:'Version de travail',
   conf_public:'Public', conf_restreint:'Restreint', conf_interne:'Interne', conf_confidentiel:'Confidentiel', conf_tres_confidentiel:'Très confidentiel',
   conf_hint_restreint:'Diffusable au client ou partenaire désigné', issued_at:'Date d’émission', effective_at:'Date d’effet', review_due_at:'Date de révision', expires_at:'Date d’expiration', retention_class:'Classe de conservation',
@@ -315,13 +315,13 @@ const fr = {
   integrity_altered_n:'altérés : {n}', integrity_missing_n:'absents : {n}', integrity_filled_n:'empreintes enregistrées : {n}', integrity_skipped_n:'non lus (SharePoint) : {n}',
   sched_title:'Planificateur', sched_hint:'Tâches que le serveur lance lui-même à intervalle régulier, chacune réglée par sa variable d’environnement (docs/exploitation.md §4). Seule la mise en vigueur différée est active par défaut ; les tâches d’exploitation attendent les choix d’hébergement. Chaque exécution est inscrite au journal technique, et ce qu’elle change au journal d’audit, sous l’acteur Codex.',
   sched_off:'Planificateur coupé (CODEX_SCHEDULER=off) : les révisions approuvées n’entrent en vigueur à leur date qu’à l’ouverture d’une page.', sched_not_started:'Le planificateur ne tourne pas dans ce processus : les révisions approuvées entrent en vigueur à l’ouverture d’une page.',
-  sched_task_promote:'Mise en vigueur différée et décisions en attente', sched_task_orphans:'Suppression des fichiers orphelins', sched_task_renames:'Renommage des fichiers restés sous un nom provisoire', sched_task_integrity:'Vérification d’intégrité', sched_task_backup:'Sauvegarde', sched_task_export:'Export complet',
+  sched_task_promote:'Mise en vigueur différée et décisions en attente', sched_task_capex:'CAPEX publiés par Arche', sched_task_orphans:'Suppression des fichiers orphelins', sched_task_renames:'Renommage des fichiers restés sous un nom provisoire', sched_task_integrity:'Vérification d’intégrité', sched_task_backup:'Sauvegarde', sched_task_export:'Export complet',
   sched_col_task:'Tâche', sched_col_every:'Fréquence', sched_col_last:'Dernière exécution', sched_col_result:'Résultat', sched_col_next:'Prochaine',
   sched_every:'toutes les {d}', sched_disabled:'désactivée', sched_never:'jamais', sched_next_first:'au premier passage',
   sched_st_ok:'terminée', sched_st_skipped:'sautée', sched_st_error:'échec', sched_st_running:'en cours', sched_interrupted:'interrompue (serveur arrêté pendant l’exécution)',
   sched_sum_promoted:'mises en vigueur : {n}', sched_sum_decisions:'décisions appliquées : {n}', sched_sum_removed:'fichiers supprimés : {n}', sched_sum_left:'orphelins restants : {n}', sched_sum_failed:'échecs : {n}', sched_sum_renamed:'fichiers renommés : {n}', sched_sum_provisional:'encore provisoires : {n}',
   sched_sum_checked:'fichiers vérifiés : {n}', sched_sum_altered:'altérés : {n}', sched_sum_missing:'absents : {n}', sched_sum_archive:'archive : {v}', sched_sum_files:'fichiers : {n}',
-  sched_reason_busy:'déjà en cours', sched_reason_server:'base PostgreSQL : à sauvegarder par ses propres outils', sched_reason_recent:'sauvegarde de moins de 15 minutes',
+  sched_reason_busy:'déjà en cours', sched_reason_no_source:'vue arche.pub_capex non lisible (lien à accorder par Matrix)', sched_reason_server:'base PostgreSQL : à sauvegarder par ses propres outils', sched_reason_recent:'sauvegarde de moins de 15 minutes',
   integrity_more:'… et {n} de plus', integrity_none:'aucun écart', integrity_found:'écarts constatés', integrity_failed_short:'vérification interrompue par une erreur',
   integrity_ok:'Aucun écart', integrity_see_list:'Liste dans Administration › Journal d’audit',
   integrity_busy:'Une vérification d’intégrité est déjà en cours.', integrity_failed:'La vérification d’intégrité a échoué : voir le journal du serveur.',
@@ -470,7 +470,7 @@ const fr = {
   skip_to_content:'Aller au contenu', nav_label:'Navigation principale', nav_help:'Aide', sc_help:'Aide', help_title:'Aide à l’utilisation',
   help_sub:'Les parcours courants, pas à pas.', col_actions:'Actions', col_attribute:'Attribut', version_select:'Sélectionner la version {v}',
   origin_hint:'Interne : émis par le groupe. Externe : reçu d’un organisme (norme, certificat, document d’un client ou d’un fournisseur).',
-  attachment_hint:'Il donne le contexte de l’identifiant : le code du projet ou du programme ; sans rattachement, le département propriétaire (QMS pour un modèle).',
+  attachment_hint:'Il donne le contexte de l’identifiant : le code du projet, du programme ou du CAPEX ; sans rattachement, le département propriétaire (QMS pour un modèle).',
   working_hint:'Les versions précédentes restent dans l’onglet Révisions. Tant que la révision n’est pas en vigueur, seul le cercle de rédaction la voit.',
   circuit_hint:'Les titulaires des fonctions sont désignés au lancement. Ni l’auteur de la révision ni vous ne pourrez la valider.',
   delegate_hint:'Seules les personnes dont le rôle permet de valider sont proposées, jamais l’auteur ni le demandeur de la révision.',
@@ -518,7 +518,7 @@ const en: Dict = {
   // Model v2 (docs/modele-cible.md)
   st_in_review:'In review', st_approved:'Approved', st_in_force:'In force', st_superseded:'Superseded', st_obsolete:'Obsolete',
   f_in_force:'In force', f_in_review:'In review', f_obsolete:'Obsolete',
-  origin:'Origin', or_interne:'Internal', or_externe:'External', attachment:'Attachment', att_none:'None', att_project:'Project', att_research:'Research',
+  origin:'Origin', or_interne:'Internal', or_externe:'External', attachment:'Attachment', att_none:'None', att_project:'Project', att_research:'Research', att_capex:'CAPEX', capex:'CAPEX', capex_required:'Choose the CAPEX.', capex_none:'No CAPEX published by Arche yet.', capex_subsidiary:'Subsidiary', capex_phase:'DIG-PRODI phase', capex_unknown:'CAPEX unknown to Codex (list read from Arche).',
   family:'Family', subtype:'Sub-type', department:'Department / Function', site_label:'Site', title_label:'Title', author_label:'Author', revision:'Revision', working_version:'Working version',
   conf_public:'Public', conf_restreint:'Restricted', conf_interne:'Internal', conf_confidentiel:'Confidential', conf_tres_confidentiel:'Highly confidential',
   conf_hint_restreint:'May be shared with the designated client or partner', issued_at:'Issue date', effective_at:'Effective date', review_due_at:'Review date', expires_at:'Expiry date', retention_class:'Retention class',
@@ -788,13 +788,13 @@ const en: Dict = {
   integrity_altered_n:'altered: {n}', integrity_missing_n:'missing: {n}', integrity_filled_n:'fingerprints recorded: {n}', integrity_skipped_n:'not read (SharePoint): {n}',
   sched_title:'Scheduler', sched_hint:'Tasks the server runs by itself at a regular interval, each set by its environment variable (docs/exploitation.md §4). Only the deferred entry into force is on by default; the maintenance tasks wait for the hosting choices. Each run is written to the technical log, and what it changes to the audit trail, under the Codex actor.',
   sched_off:'Scheduler off (CODEX_SCHEDULER=off): approved revisions enter into force on their date only when a page is opened.', sched_not_started:'The scheduler does not run in this process: approved revisions enter into force when a page is opened.',
-  sched_task_promote:'Deferred entry into force and pending decisions', sched_task_orphans:'Removal of orphan files', sched_task_renames:'Rename of files left under a provisional name', sched_task_integrity:'Integrity check', sched_task_backup:'Backup', sched_task_export:'Full export',
+  sched_task_promote:'Deferred entry into force and pending decisions', sched_task_capex:'CAPEX published by Arche', sched_task_orphans:'Removal of orphan files', sched_task_renames:'Rename of files left under a provisional name', sched_task_integrity:'Integrity check', sched_task_backup:'Backup', sched_task_export:'Full export',
   sched_col_task:'Task', sched_col_every:'Frequency', sched_col_last:'Last run', sched_col_result:'Result', sched_col_next:'Next',
   sched_every:'every {d}', sched_disabled:'off', sched_never:'never', sched_next_first:'at the first look',
   sched_st_ok:'done', sched_st_skipped:'skipped', sched_st_error:'failed', sched_st_running:'running', sched_interrupted:'interrupted (server stopped during the run)',
   sched_sum_promoted:'entered into force: {n}', sched_sum_decisions:'decisions applied: {n}', sched_sum_removed:'files removed: {n}', sched_sum_left:'orphans left: {n}', sched_sum_failed:'failures: {n}', sched_sum_renamed:'files renamed: {n}', sched_sum_provisional:'still provisional: {n}',
   sched_sum_checked:'files checked: {n}', sched_sum_altered:'altered: {n}', sched_sum_missing:'missing: {n}', sched_sum_archive:'archive: {v}', sched_sum_files:'files: {n}',
-  sched_reason_busy:'already running', sched_reason_server:'PostgreSQL database: to be backed up by its own tools', sched_reason_recent:'backup less than 15 minutes old',
+  sched_reason_busy:'already running', sched_reason_no_source:'view arche.pub_capex not readable (link to be granted by Matrix)', sched_reason_server:'PostgreSQL database: to be backed up by its own tools', sched_reason_recent:'backup less than 15 minutes old',
   integrity_more:'… and {n} more', integrity_none:'no discrepancy', integrity_found:'discrepancies found', integrity_failed_short:'check stopped by an error',
   integrity_ok:'No discrepancy', integrity_see_list:'List in Administration › Audit log',
   integrity_busy:'An integrity check is already running.', integrity_failed:'The integrity check failed: see the server log.',
@@ -939,7 +939,7 @@ const en: Dict = {
   skip_to_content:'Skip to content', nav_label:'Main navigation', nav_help:'Help', sc_help:'Help', help_title:'Using Codex',
   help_sub:'The common tasks, step by step.', col_actions:'Actions', col_attribute:'Attribute', version_select:'Select version {v}',
   origin_hint:'Internal: issued by the group. External: received from an organisation (standard, certificate, client or supplier document).',
-  attachment_hint:'It gives the identifier its context: the project or programme code; without attachment, the owning department (QMS for a template).',
+  attachment_hint:'It gives the identifier its context: the project, programme or CAPEX code; without attachment, the owning department (QMS for a template).',
   working_hint:'Earlier versions stay in the Revisions tab. Until the revision is in force, only the drafting circle sees it.',
   circuit_hint:'The holders of the functions are named at launch. Neither the revision’s author nor you will be able to approve it.',
   delegate_hint:'Only people whose role may approve are offered, never the revision’s author or requester.',
@@ -956,7 +956,7 @@ export const TAGCLS: Record<string, string> = { draft: 'tag tag-neutral', in_rev
 export const ECR_TAGCLS: Record<string, string> = { submitted: 'tag tag-outline', accepted: 'tag tag-accent', rejected: 'tag tag-neutral', implemented: 'tag tag-accent' };
 export const CONF_LEVELS = ['public', 'restreint', 'interne', 'confidentiel', 'tres_confidentiel'] as const;
 export const ORIGINS = ['interne', 'externe'] as const;
-export const ATTACHMENTS = ['none', 'project', 'research'] as const;
+export const ATTACHMENTS = ['none', 'project', 'research', 'capex'] as const;
 /** Who sees a saved search (saved_searches.scope). */
 export const SEARCH_SCOPES = ['personal', 'department', 'group'] as const;
 /** Lifecycle stages of a Keystone project (Keystone's own labels), offered as project phases. */

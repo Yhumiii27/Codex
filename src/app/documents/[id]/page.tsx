@@ -104,6 +104,7 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
   ]);
   // Types a template is meant for (« Nouveau depuis un modèle »).
   const tplTypes = doc.typeCode === TEMPLATE_TYPE ? (await templateTypesOf(ctx, [doc.id])).get(doc.id) ?? [] : null;
+  const capexOf = doc.attachment === 'capex' ? ctx.capex.find((c) => c.code === doc.capexCode) : undefined;
 
   // The Project tab is always there (design): without a project, it says so and offers to link one.
   const tabs = TABS;
@@ -274,7 +275,7 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
 
   const meta: MetaDoc = {
     id: doc.id, title: doc.title, typeCode: doc.typeCode, subtype: doc.subtype, origin: doc.origin, attachment: doc.attachment,
-    projectCode: doc.projectCode, programCode: doc.programCode, department: doc.department, site: doc.site, ownerId: doc.ownerId,
+    projectCode: doc.projectCode, programCode: doc.programCode, capexCode: doc.capexCode, department: doc.department, site: doc.site, ownerId: doc.ownerId,
     authorId: doc.authorId, authorText: doc.authorText, conf: doc.conf, keywords: doc.keywords, lang: doc.lang, reviewDueAt: doc.reviewDueAt, expiresAt: doc.expiresAt,
     sourceOrg: doc.sourceOrg, externalRef: doc.externalRef, receivedAt: doc.receivedAt,
     projectPhase: doc.projectPhase, workPackage: doc.workPackage, discipline: doc.discipline,
@@ -337,6 +338,7 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
           <div className={styles.tags}>
             {doc.attachment === 'project' && doc.projectCode && <span className="tag tag-accent">{doc.projectCode}</span>}
             {doc.attachment === 'research' && doc.programCode && <span className="tag tag-accent">{doc.programCode}</span>}
+            {doc.attachment === 'capex' && doc.capexCode && <span className="tag tag-accent">{doc.capexCode}</span>}
             <span className={doc.tagClass}>{doc.statusLabel}</span>
             {doc.expired && <span className="tag tag-outline">{t.ind_expired}</span>}
             {doc.reviewOverdue && <span className="tag tag-outline">{t.ind_review_late}</span>}
@@ -554,6 +556,12 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
                   <section style={{ marginTop: 18 }}>
                     <h2 className="sec-title" style={{ marginBottom: 10 }}>{t.attachment} · {doc.attachmentL}</h2>
                     <Dl rows={[[t.program, doc.contextL], [t.research_theme, doc.researchTheme ?? '—'], [t.study_id, doc.studyId ?? '—'], [t.ip_status, doc.ipStatus ?? '—']]} />
+                  </section>
+                )}
+                {doc.attachment === 'capex' && (
+                  <section style={{ marginTop: 18 }}>
+                    <h2 className="sec-title" style={{ marginBottom: 10 }}>{t.attachment} · {doc.attachmentL}</h2>
+                    <Dl rows={[[t.capex, doc.contextL], [t.capex_subsidiary, capexOf?.subsidiary ?? '—'], [t.site, capexOf?.site ?? '—'], [t.capex_phase, capexOf?.phase ?? '—']]} />
                   </section>
                 )}
                 {tplTypes && (

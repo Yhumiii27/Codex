@@ -10,7 +10,7 @@ import * as s from './schema';
 import type { Attachment, Conf, Origin, RevStatus } from './schema';
 import { FAMILIES, TYPES } from './registry';
 import { CHANGES, DEMO_DOCS, EVENTS, EXPECTED, LINKS, VCOMMENTS, type DemoDoc } from './seed-docs';
-import { DEPARTMENTS, FUNCTIONS, HOLDERS, MATRIX, PERM_KEYS, PROGRAMS, PROJECTS, ROLE_KEYS, SAVED, SITES, USERS } from './seed-org';
+import { DEMO_CAPEX, DEPARTMENTS, FUNCTIONS, HOLDERS, MATRIX, PERM_KEYS, PROGRAMS, PROJECTS, ROLE_KEYS, SAVED, SITES, USERS } from './seed-org';
 
 const loc = ([fr, en]: [string, string]) => ({ fr, en });
 
@@ -139,6 +139,7 @@ export async function seed(db: Db, mode: SeedMode = 'demo') {
     await tx.insert(s.functionHolders).values(HOLDERS.map(([functionKey, scopeValue, userId]) => ({ functionKey, scopeValue, userId })));
     await tx.insert(s.projects).values(PROJECTS.map((p) => ({ code: p.code, name: p.name, client: p.client, stage: p.stage, managerId: p.manager, site: p.site, tiers: p.tiers, syncedAt: `${p.synced}:00` })));
     await tx.insert(s.researchPrograms).values(PROGRAMS.map((p) => ({ code: p.code, name: p.name, managerId: p.manager })));
+    await tx.insert(s.capex).values(DEMO_CAPEX.map((c) => ({ ...c, active: true, syncedAt: '2026-10-28T08:00:00Z' })));
     await tx.insert(s.savedSearches).values(SAVED.map((x, i) => ({ label: loc(x.label), q: x.q, facets: x.facets, ownerId: x.owner, scope: 'group' as const, sort: i })));
 
     // ── Documents ──

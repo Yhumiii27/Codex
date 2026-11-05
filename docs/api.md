@@ -272,7 +272,7 @@ Réponse **200** (extrait) :
 | `labels` | Libellés FR / EN. |
 | `family` | Clé de la famille (`families[].key`). |
 | `origins` | Origines admises : `interne`, `externe`. |
-| `attachments` | Rattachements admis : `none`, `project`, `research`. |
+| `attachments` | Rattachements admis : `none`, `project`, `research`, `capex` (CAPEX d'une filiale, depuis le 5 novembre 2026 : admis par chaque type qui admet `project`, et par `FIN`). |
 | `subtypes` | Sous-types proposés (`{fr, en}`, 40 au plus), saisie libre possible. |
 | `circuit` | Étapes d'approbation après l'auteur, dans l'ordre, par fonction (`scope` : `global`, `department`, `project`, `research`). Liste vide : approbation immédiate. |
 | `retention` | Règle de conservation : durée en années (`null` : sans durée fixe), événement déclencheur, sort final, fondement (`basis`, en français) et sa rédaction anglaise (`basisEn`, `null` tant qu'elle n'est pas saisie dans Administration › Registre des types ; ajoutée le 18 octobre 2026). |
@@ -341,9 +341,10 @@ Dans tous ces cas, rien n'est importé et la `legacyRef` reste libre : l'outil p
 | `department` | oui | Code du département propriétaire (3 lettres, ex. `QUA`). Un département désactivé est accepté, comme un programme clos : la reprise porte aussi sur les documents des services fermés. |
 | `ownerId` | oui | Identifiant de l'utilisateur propriétaire. |
 | `origin` | non | `interne` / `externe`. Défaut : première origine admise par le type. |
-| `attachment` | non | `none` / `project` / `research`. Défaut : `project` si `projectCode` est fourni, `research` si `programCode` l'est, sinon `none` (ou le premier rattachement admis par le type). |
+| `attachment` | non | `none` / `project` / `research` / `capex`. Défaut : `project` si `projectCode` est fourni, `research` si `programCode` l'est, `capex` si `capexCode` l'est, sinon `none` (ou le premier rattachement admis par le type). |
 | `projectCode` | si projet | Code projet Keystone connu de Codex (ex. `HLT-026`). |
 | `programCode` | si recherche | Code du programme de recherche (ex. `R2601`). Un programme désactivé (clos) est accepté : la reprise porte aussi sur les documents des programmes terminés, alors que l'écran ne le propose plus à un nouveau document. |
+| `capexCode` | si CAPEX | Code d'un CAPEX qu'Arche publie (`arche.pub_capex`, ex. `CPX-APM-2026-01`), lu par Codex (tâche planifiée « CAPEX publiés par Arche ») : contexte de l'identifiant (`PID-CPX-APM-2026-01-001`). Inconnu de Codex, ou plus publié par Arche : refus `capex_unknown` ; absent : `capex_required`. |
 | `subtype` | non | Sous-type (texte, 200 caractères au plus). Écrit dans la graphie du registre quand il s'y retrouve à la casse, aux accents et aux espaces près (libellé français ou anglais du type) ; une autre valeur est gardée telle quelle (la liste reste ouverte, MET-17), avec l'avertissement `subtype_unlisted`, et proposée aux administrateurs (Administration › Vocabulaires). |
 | `site` | non | Clé d'un site connu, désactivé ou non. |
 | `author` | non | Identifiant d'un utilisateur, sinon texte libre (auteur externe, ancien salarié…). |
@@ -541,7 +542,7 @@ propre : `CODEX_DOCUMENTS_TOKEN` et/ou `CODEX_DOCUMENTS_SECRET`.
 
 ### Métadonnées
 
-Les champs de l'import (`title`, `typeCode`, `department`, `origin`, `attachment`, `projectCode`, `programCode`, `conf`,
+Les champs de l'import (`title`, `typeCode`, `department`, `origin`, `attachment`, `projectCode`, `programCode`, `capexCode`, `conf`,
 `readers`, `keywords`, `lang`, `site`, `author`, `subtype`, `reviewDueAt`, `expiresAt`, champs selon le contexte,
 `comment`), avec les mêmes règles du registre, sauf :
 
@@ -550,10 +551,11 @@ Les champs de l'import (`title`, `typeCode`, `department`, `origin`, `attachment
 | `sourceRef` | oui | Référence du document dans l'application qui le dépose, `<application>:<référence>` : nom de l'application en minuscules (2 à 32 caractères : lettres, chiffres, `-`, `_`), deux-points, puis la référence (200 caractères au total au plus, sans caractère de contrôle). Ex. `arche:dossier/CPX-APM-2026-01/business_case/v2`. Unique : elle rend l'appel rejouable. |
 | `ownerId` ou `ownerMatricule` | l'un des deux | Propriétaire : identifiant Codex, ou matricule (`EMP-0042`), le numéro de la personne commun aux outils du groupe. Les deux donnés et différents : refus `owner_ambiguous`. |
 | `sha256` | non | Empreinte SHA-256 (hexadécimal) que l'application a calculée du fichier. Vérifiée avant tout enregistrement : différente, **422** `sha256_mismatch`. Donnée sans fichier : refus `file_required`. |
+| `legalHold` | non | `true` : le document naît sous **gel juridique** (demande CX-07 d'Arche, décision D-29), pour une version figée (dossier de jalon G1, G2, G3) : ni modification ni suppression, ni circuit qui avance, jusqu'à ce qu'une personne qui a le droit Archiver le lève (fiche du document, « Lever le gel juridique » ; gestionnaires documentaires dans la matrice actuelle). Le document reste un brouillon A.1 : rien n'est approuvé hors circuit. Journal : « Gel juridique » (`hold`) sous l'acteur `codex`, après le dépôt. Un booléen seulement (`invalid_type` sinon). |
 
 Refusés (`not_allowed`), parce qu'ils n'appartiennent qu'à une reprise : `legacyRef`, `status`, `revision`, `inForceAt`,
-`issuedAt`, `createdAt`, `modifiedAt`. Le rattachement à un CAPEX (`attachment: "capex"`, demande CX-01) n'existe pas
-encore : il attend une décision (`REQUESTS.md`).
+`issuedAt`, `createdAt`, `modifiedAt`. Un document d'un CAPEX se dépose avec `attachment: "capex"` et `capexCode`
+(demande CX-01, décision D-29).
 
 ### Ce que crée le dépôt
 
@@ -571,10 +573,10 @@ propriétaire le soumet ensuite à validation dans Codex.
 
 | Code | Corps |
 |---|---|
-| **201** | `{"id","revision":"A","version","status":"draft","file","href","warnings"}` (`version` : `"A.1"`, ou `null` sans fichier) + `Location: /documents/<id>` |
+| **201** | `{"id","revision":"A","version","status":"draft","file","href","warnings"}` (`version` : `"A.1"`, ou `null` sans fichier ; `"legalHold":true` en plus quand le gel a été posé) + `Location: /documents/<id>` |
 | **200** | `{"id","href","replayed":true}` : la même `sourceRef` déjà déposée, avec le même fichier (ou sans fichier les deux fois) ; rien n'est créé. `id` est l'identifiant actuel du document. |
 | **200** | `{"dryRun":true,"id","warnings"}` : simulation |
-| **400** | `{"error":"validation","issues","warnings"}` ; codes en plus de ceux de l'import : `not_allowed`, `invalid_source_ref`, `owner_ambiguous`, `file_required` |
+| **400** | `{"error":"validation","issues","warnings"}` ; codes en plus de ceux de l'import : `not_allowed`, `invalid_source_ref`, `owner_ambiguous`, `file_required`, `invalid_type` (`legalHold`) |
 | **409** | `{"error":"source_ref_reused","id"}` : la `sourceRef` a déjà servi pour un **autre** fichier ; rien n'est créé |
 | **422** | `{"error":"sha256_mismatch","expected","actual"}` : le fichier reçu n'a pas l'empreinte annoncée ; rien n'est stocké |
 | autres | comme l'import : 401, 503 `disabled`, 413, 415, 422 `file_infected`, 503 `scan_unavailable`, 429, 500 |

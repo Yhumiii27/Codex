@@ -55,7 +55,7 @@ async function handlePost(req: Request) {
         return json({ dryRun: true, id: res.id, warnings: res.warnings }, 200);
       case 'created': {
         const href = `/documents/${encodeURIComponent(res.id)}`;
-        return json({ id: res.id, revision: res.revision, version: res.version, status: res.revStatus, file: res.file, href, warnings: res.warnings }, 201, { Location: href });
+        return json({ id: res.id, revision: res.revision, version: res.version, status: res.revStatus, file: res.file, ...(res.legalHold ? { legalHold: true } : {}), href, warnings: res.warnings }, 201, { Location: href });
       }
     }
   } catch (err) {

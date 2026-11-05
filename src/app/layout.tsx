@@ -53,6 +53,7 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
     sites: ctx.sites.map((x) => ({ key: x.key, label: fr ? x.labelFr : x.labelEn, active: x.active })),
     projects: ctx.projects.map((x) => ({ key: x.code, label: x.name })),
     programs: ctx.programs.map((x) => ({ key: x.code, label: x.name, active: x.active })),
+    capex: ctx.capex.map((x) => ({ key: x.code, label: x.subsidiary ? `${x.name} — ${x.subsidiary}` : x.name, active: x.active })),
     confs: CONF_LEVELS.map((c) => ({ key: c, label: ctx.t[`conf_${c}` as TKey] })),
     users: [...ctx.users.values()].filter((u) => !u.isSystem).sort((a, b) => a.name.localeCompare(b.name, ctx.lang))
       .map((u) => ({ id: u.id, name: u.name, initials: u.initials, role: u.role, department: u.department, approver: !!matrix.get(`${MATRIX_ROLE[u.role as SimRole]}:approve`) })),

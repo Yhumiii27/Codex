@@ -480,6 +480,25 @@ Règles de lecture :
 - **Reste ouvert** : la destination de la copie hors du serveur, les durées de conservation et la perte de données
   tolérée (M22 ; P-08 de Matrix), le chiffrement au repos si l'hébergeur ne chiffre pas ses disques (point 88).
 
+### D-29 — Demandes d'Arche : rattachement CAPEX, sous-types, gel juridique au dépôt
+- **Date** : choix du 1er novembre 2026 (dépôt Arche, `docs/DEMANDES-CODEX.md`, section « 1er nov. 2026 — AR-026 » ;
+  entrée du 2026-11-01 de `REQUESTS.md`, « Validé par Guillaume le : 2026-11-01 ») ; traitement demandé le 5 novembre.
+- **Réponse de l'utilisateur** (5 novembre) :
+  > traite les demande d'Arche
+- **Décisions retenues** (celles consignées par Arche le 1er novembre, en réponse aux deux options de chaque demande) :
+  - CX-01 : un **rattachement `capex` propre**, et non un CAPEX traité comme un projet ; le code CAPEX est le contexte
+    de l'identifiant (`PID-CPX-APM-2026-01-001`) ; la liste des CAPEX vient d'Arche (`arche.pub_capex`).
+  - CX-02 : des **sous-types des types existants**, et non de nouveaux types (liste dans `REQUESTS.md`).
+  - CX-07 : la **conservation légale** (gel juridique posé au dépôt), et non une révision approuvée d'office : la règle
+    « révisions validées par un circuit » (D-11) reste entière.
+- **Choix de l'assistant, à confirmer** : `capex` est admis par chaque type qui admet `project` (47 types) et par `FIN`
+  (pour l'AFE) ; les fonctions de portée projet d'un circuit (`chef_projet`, `validation_client`) n'ont pas de titulaire
+  par CAPEX et reviennent au titulaire de groupe ; l'accès des utilisateurs des filiales reste CX-06 (O-04, O-02).
+- **Mise en œuvre** : migration `0003_capex` (table `capex`, colonne `documents.capex_code`, données du registre),
+  `src/lib/capex.ts` (tâche planifiée « CAPEX publiés par Arche »), formulaires, dépôt et import (`capexCode`,
+  `legalHold`), `docs/api.md`. Détail : `docs/historique.md` § 20.9.
+- **Reste** : la lecture de `arche.pub_capex` par `codex_app` est un lien à déclarer à Matrix (M-18).
+
 ## Questions posées restées sans réponse directe
 
 | Date | Question de l'assistant | Suite |

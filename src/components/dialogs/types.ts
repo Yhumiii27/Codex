@@ -39,6 +39,8 @@ export type DialogData = {
   projects: Option[];
   /** Research programmes; an inactive (closed) one is only offered to a document that already has it. */
   programs: (Option & { active: boolean })[];
+  /** CAPEX of the subsidiaries (Arche), inactive ones kept for the documents that have them. */
+  capex: (Option & { active: boolean })[];
   confs: Option[];
   /** People of the group; `approver`: their default role may approve (function holders, delegation targets). */
   users: { id: string; name: string; initials: string; role: string; department: string | null; approver: boolean }[];
@@ -58,7 +60,7 @@ export type DialogData = {
 /** Every editable metadata field of a document (edit dialog). */
 export type MetaDoc = {
   id: string; title: string; typeCode: string; subtype: string | null; origin: Origin; attachment: Attachment;
-  projectCode: string | null; programCode: string | null; department: string; site: string | null; ownerId: string;
+  projectCode: string | null; programCode: string | null; capexCode: string | null; department: string; site: string | null; ownerId: string;
   /** The author: a person, or a free text (external author); both null for a record migrated without one (shows the owner). */
   authorId: string | null; authorText: string | null; conf: Conf; keywords: string[]; lang: string | null; reviewDueAt: string | null; expiresAt: string | null;
   sourceOrg: string | null; externalRef: string | null; receivedAt: string | null;

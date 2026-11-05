@@ -113,6 +113,15 @@ export const PROGRAMS: { code: string; name: string; manager: string }[] = [
   { code: 'R2602', name: 'Bétons bas carbone pour fondations', manager: 'yait' },
 ];
 
+/**
+ * Demonstration CAPEX of the subsidiaries (Arche's arche.pub_capex on the shared server, lib/capex.ts), for the demo only:
+ * on a server, the scheduler reads the real ones from Arche once the link is granted (demo ones then become inactive).
+ */
+export const DEMO_CAPEX: { code: string; name: string; subsidiaryCode: string; subsidiary: string; site: string; status: string; phase: string }[] = [
+  { code: 'CPX-APM-2026-01', name: 'Ligne de conditionnement 3', subsidiaryCode: 'APM', subsidiary: 'APM Industrie', site: 'Lyon', status: 'en_cours', phase: 'P2' },
+  { code: 'CPX-SNE-2026-02', name: 'Extension de l’entrepôt nord', subsidiaryCode: 'SNE', subsidiary: 'SNE Logistique', site: 'Strasbourg', status: 'en_cours', phase: 'P1' },
+];
+
 export const ROLE_KEYS = ['lecteur', 'contributeur', 'gestionnaire', 'validateur', 'auditeur', 'administrateur'] as const;
 export const PERM_KEYS = ['read', 'upload', 'edit', 'approve', 'publish', 'archive', 'destroy', 'admin'] as const;
 export const MATRIX = [
