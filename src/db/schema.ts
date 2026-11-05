@@ -17,7 +17,7 @@ const codex = pgSchema(DB_SCHEMA);
 export type Localized = string | { fr: string; en: string };
 
 export type Origin = 'interne' | 'externe';
-export type Attachment = 'none' | 'project' | 'research';
+export type Attachment = 'none' | 'project' | 'research' | 'capex';
 export type Conf = 'public' | 'restreint' | 'interne' | 'confidentiel' | 'tres_confidentiel';
 /** Lifecycle of one revision (A, B…); `cancelled` closes a revision left open when its document is withdrawn. */
 export type RevStatus = 'draft' | 'in_review' | 'approved' | 'in_force' | 'superseded' | 'cancelled';
@@ -165,6 +165,23 @@ export const researchPrograms = codex.table('research_programs', {
   active: boolean('active').notNull().default(true),
 });
 
+/**
+ * CAPEX of the subsidiaries (Arche, decision of 1 November 2026 on its request CX-01): the context of a CAPEX document's ID
+ * (PID-CPX-APM-2026-01-001). A mirror of Arche's view `arche.pub_capex`, refreshed by lib/capex.ts; Codex never edits
+ * it. A CAPEX no longer published stays, inactive (`active` false): its documents keep it, a new document cannot take it.
+ */
+export const capex = codex.table('capex', {
+  code: text('code').primaryKey(),
+  name: text('name').notNull(),
+  subsidiaryCode: text('subsidiary_code'),
+  subsidiary: text('subsidiary'),
+  site: text('site'),
+  status: text('status'),
+  phase: text('phase'),
+  active: boolean('active').notNull().default(true),
+  syncedAt: timestamp('synced_at', { mode: 'string', withTimezone: true }).notNull(),
+});
+
 // ── Controlled vocabularies (point 59 of docs/reste-a-faire.md) ─────────
 
 /**
@@ -209,6 +226,8 @@ export const documents = codex.table(
     attachment: text('attachment').$type<Attachment>().notNull(),
     projectCode: text('project_code').references(() => projects.code),
     programCode: text('program_code').references(() => researchPrograms.code),
+    /** CAPEX of a subsidiary (attachment 'capex', Arche's request CX-01). */
+    capexCode: text('capex_code').references(() => capex.code),
     family: text('family').notNull().references(() => families.key),
     typeCode: text('type_code').notNull().references(() => docTypes.code),
     subtype: text('subtype'),
@@ -287,6 +306,7 @@ export const documents = codex.table(
   (t) => [
     index('documents_aliases').using('gin', t.aliases.op('jsonb_path_ops')),
     index('documents_template').on(t.templateId).where(sql`${t.templateId} is not null`),
+    index('documents_capex').on(t.capexCode).where(sql`${t.capexCode} is not null`),
     check('documents_review_months_check', sql`${t.reviewMonths} > 0`),
   ],
 );

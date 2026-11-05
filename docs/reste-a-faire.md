@@ -22,6 +22,9 @@ les GED du commerce. Chaque point fait porte sa ligne « Fait le … » ; le dé
   est sur le serveur commun, et leur remise en place (`src/lib/files-backup-core.mjs`) ; guide de l'exploitant
   `docs/stockage-serveur.md`. Points 84, 98 et 103 sans objet tant que SharePoint n'est pas activé ; 88 et 112 annotés.
   Aucun point ne change de colonne (`docs/historique.md` §20.8).
+- **5 novembre** : demandes d'Arche CX-01 (rattachement `capex`), CX-02 (sous-types) et CX-07 (gel juridique au dépôt)
+  faites (D-29, `docs/historique.md` §20.9) ; le registre gagne 15 sous-types et le rattachement `capex` (point 118 :
+  arbitrages du registre toujours ouverts pour le reste). Reste d'Arche : CX-06 (O-04, O-02).
 
 ## État au 18 octobre 2026 (lot 10, étape 6), complété le 26 octobre
 

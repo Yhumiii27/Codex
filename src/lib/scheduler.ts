@@ -5,6 +5,7 @@ import { and, eq, isNull, lt, lte, or } from 'drizzle-orm';
 import { getDb, schema as s, type Db } from '@/db';
 import type { SchedulerStatus } from '@/db/schema';
 import { backUpNow } from './backup';
+import { syncCapex } from './capex';
 import { scheduledExportDir, scheduledExportKeep, writeFullExport } from './full-export';
 import { checkFilesNow } from './integrity';
 import { applyDuePendingDecisions, promoteDue } from './lifecycle';
@@ -47,6 +48,12 @@ export type TaskOutcome = { status: 'ok' | 'skipped'; summary: Record<string, un
 export const TASKS: Record<TaskName, { run: (db: Db) => Promise<TaskOutcome> }> = {
   promote: {
     run: async (db) => ({ status: 'ok', summary: { promoted: await promoteDue(db), decisions: await applyDuePendingDecisions(db) } }),
+  },
+  capex: {
+    run: async (db) => {
+      const r = await syncCapex(db);
+      return r.status === 'skipped' ? { status: 'skipped', summary: { reason: r.reason } } : { status: 'ok', summary: { read: r.read, added: r.added, updated: r.updated, inactivated: r.inactivated } };
+    },
   },
   orphans: {
     run: async () => {

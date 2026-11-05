@@ -5,19 +5,20 @@ import type { Attachment } from '@/db/schema';
 export const TEMPLATE_TYPE = 'FRM';
 export const TEMPLATE_CONTEXT = 'QMS';
 
-export type IdInput = { typeCode: string; attachment: Attachment; projectCode?: string | null; programCode?: string | null; department: string };
+export type IdInput = { typeCode: string; attachment: Attachment; projectCode?: string | null; programCode?: string | null; capexCode?: string | null; department: string };
 
-/** CONTEXTE segment: project code, research programme, QMS for templates, otherwise the owning department. */
+/** CONTEXTE segment: project code, research programme, CAPEX code, QMS for templates, otherwise the owning department. */
 export function contextOf(d: IdInput): string {
   if (d.attachment === 'project' && d.projectCode) return d.projectCode;
   if (d.attachment === 'research' && d.programCode) return d.programCode;
+  if (d.attachment === 'capex' && d.capexCode) return d.capexCode;
   if (d.typeCode === TEMPLATE_TYPE) return TEMPLATE_CONTEXT;
   return d.department;
 }
 
-/** Sequence width: 3 digits within a project, programme or the template space, 4 within a department. */
+/** Sequence width: 3 digits within a project, programme, CAPEX or the template space, 4 within a department. */
 export function seqWidth(d: IdInput): number {
-  return (d.attachment === 'project' && d.projectCode) || (d.attachment === 'research' && d.programCode) || d.typeCode === TEMPLATE_TYPE ? 3 : 4;
+  return (d.attachment === 'project' && d.projectCode) || (d.attachment === 'research' && d.programCode) || (d.attachment === 'capex' && d.capexCode) || d.typeCode === TEMPLATE_TYPE ? 3 : 4;
 }
 
 export function formatId(d: IdInput, seq: number): string {

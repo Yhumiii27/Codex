@@ -41,7 +41,7 @@ export function docView(ctx: Ctx, d: DocRow, workingL: string | null | undefined
   const modifiedAt = (!circle && shownModified) || d.modifiedAt;
   const version = circle ? d.version : 0;
   const typeLabel = label('type', d.typeCode), familyLabel = label('family', d.family);
-  const contextL = d.attachment === 'project' ? `${d.projectCode} · ${label('project', d.projectCode)}` : d.attachment === 'research' ? `${d.programCode} · ${label('program', d.programCode)}` : label('department', d.department);
+  const contextL = d.attachment === 'project' ? `${d.projectCode} · ${label('project', d.projectCode)}` : d.attachment === 'research' ? `${d.programCode} · ${label('program', d.programCode)}` : d.attachment === 'capex' ? `${d.capexCode} · ${label('capex', d.capexCode)}` : label('department', d.department);
   const until = retainUntil(d);
   const years = d.retentionYears != null ? `${d.retentionYears} ${t.years_short} · ` : '';
   const today = todayIso();
@@ -65,7 +65,7 @@ export function docView(ctx: Ctx, d: DocRow, workingL: string | null | undefined
     /** Revision shown in lists: the one in force, else the one being drafted. */
     rev: d.revInForce ?? (revWorking ? workingL ?? revWorking : '—'),
     /** Project or research programme code the document is attached to. */
-    attachedCode: d.attachment === 'project' ? d.projectCode : d.attachment === 'research' ? d.programCode : null,
+    attachedCode: d.attachment === 'project' ? d.projectCode : d.attachment === 'research' ? d.programCode : d.attachment === 'capex' ? d.capexCode : null,
     modifiedF: fmtDate(modifiedAt, lang),
     createdF: fmtDate(d.createdAt, lang),
     issuedF: fmtDate(d.issuedAt, lang),
@@ -254,7 +254,7 @@ const FACET_SQL: Record<Exclude<FacetKey, 'keywords' | 'overdue'>, SQL> = (() =>
   // (codex_unbom, src/db/index.ts); codes and IDs do not.
   const text = (c: { name: string }) => sql`nullif(codex_unbom(${col(c)}), '')`;
   return {
-    project: sql`nullif(coalesce(${col(D.projectCode)}, ${col(D.programCode)}), '')`,
+    project: sql`nullif(coalesce(${col(D.projectCode)}, ${col(D.programCode)}, ${col(D.capexCode)}), '')`,
     family: col(D.family), type: col(D.typeCode), subtype: text(D.subtype), origin: col(D.origin), attachment: col(D.attachment),
     department: col(D.department), site: sql`nullif(${col(D.site)}, '')`, owner: col(D.ownerId),
     author: sql`coalesce(nullif(codex_unbom(${col(D.authorText)}), ''), nullif(${col(D.authorId)}, ''), nullif(${col(D.ownerId)}, ''))`,
@@ -416,7 +416,7 @@ export const NO_ATTACHMENT = 'none';
 const AXIS_SQL: Record<ExplorerAxis, SQL> = {
   family: col(D.family),
   department: col(D.department),
-  project: sql`coalesce(case ${col(D.attachment)} when 'project' then ${col(D.projectCode)} when 'research' then ${col(D.programCode)} end, ${NO_ATTACHMENT})`,
+  project: sql`coalesce(case ${col(D.attachment)} when 'project' then ${col(D.projectCode)} when 'research' then ${col(D.programCode)} when 'capex' then ${col(D.capexCode)} end, ${NO_ATTACHMENT})`,
   type: col(D.typeCode),
   origin: col(D.origin),
 };
@@ -1439,7 +1439,7 @@ export function auditTargetL(ctx: Ctx, kind: AuditTargetKind | null, id: string 
 
 /** Labels of the fields a journal change names; `granted` and `active` have none (the target, or the value, says it). */
 const CHANGE_LABEL: Record<string, TKey> = {
-  title: 'title_label', typeCode: 'type', subtype: 'subtype', origin: 'origin', attachment: 'attachment', projectCode: 'project', programCode: 'program',
+  title: 'title_label', typeCode: 'type', subtype: 'subtype', origin: 'origin', attachment: 'attachment', projectCode: 'project', programCode: 'program', capexCode: 'capex',
   department: 'department', site: 'site', ownerId: 'owner', authorId: 'author_label', authorText: 'author_text', templateTypes: 'template_types', conf: 'conf', keywords: 'keywords', lang: 'language',
   reviewDueAt: 'review_due_at', expiresAt: 'expires_at', sourceOrg: 'source_org', externalRef: 'external_ref', receivedAt: 'received_at',
   projectPhase: 'project_phase', workPackage: 'work_package', discipline: 'discipline', researchTheme: 'research_theme', studyId: 'study_id',

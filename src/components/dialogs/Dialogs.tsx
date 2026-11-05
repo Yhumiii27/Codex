@@ -130,7 +130,7 @@ const roleLabel = (t: T, role: string) => t[`role_${role}` as TKey] ?? role;
 type TypeOpt = DialogData['types'][number];
 
 type Classif = {
-  origin: Origin; attachment: Attachment; projectCode: string; programCode: string;
+  origin: Origin; attachment: Attachment; projectCode: string; programCode: string; capexCode: string;
   family: string; typeCode: string; subtype: string; department: string; conf: Conf;
   /** The user picked the confidentiality: a change of type keeps it when the new type allows it. */
   confTouched: boolean;
@@ -162,8 +162,8 @@ function applyPatch(types: TypeOpt[], prev: Classif, patch: Partial<Classif>, lo
 
 /** CONTEXTE part of the ID being built (mirrors lib/codes.ts contextOf). */
 function idParts(s: Classif) {
-  const input = { typeCode: s.typeCode, attachment: s.attachment, projectCode: s.projectCode || null, programCode: s.programCode || null, department: s.department };
-  const pending = (s.attachment === 'project' && !s.projectCode) || (s.attachment === 'research' && !s.programCode);
+  const input = { typeCode: s.typeCode, attachment: s.attachment, projectCode: s.projectCode || null, programCode: s.programCode || null, capexCode: s.capexCode || null, department: s.department };
+  const pending = (s.attachment === 'project' && !s.projectCode) || (s.attachment === 'research' && !s.programCode) || (s.attachment === 'capex' && !s.capexCode);
   return { input, prefix: `${s.typeCode}-${pending ? '…' : contextOf(input)}-`, width: seqWidth(input) };
 }
 
@@ -238,6 +238,11 @@ function DocFields({ types, st, set, doc, preset, withOwner, locked, lockType, f
       {st.attachment === 'research' && (
         <Field label={t.program} span>
           {(id) => <><Select id={id} name={locked ? undefined : 'programCode'} value={st.programCode} onChange={(v) => set({ programCode: v })} options={data.programs.filter((p) => p.active || p.key === doc?.programCode).map(codeLabel)} empty="—" required disabled={!!locked} />{locked && <input type="hidden" name="programCode" value={st.programCode} />}</>}
+        </Field>
+      )}
+      {st.attachment === 'capex' && (
+        <Field label={t.capex} span hint={data.capex.length ? undefined : t.capex_none}>
+          {(id) => <><Select id={id} name={locked ? undefined : 'capexCode'} value={st.capexCode} onChange={(v) => set({ capexCode: v })} options={data.capex.filter((c) => c.active || c.key === doc?.capexCode).map(codeLabel)} empty="—" required disabled={!!locked} />{locked && <input type="hidden" name="capexCode" value={st.capexCode} />}</>}
         </Field>
       )}
 
@@ -497,7 +502,7 @@ function NewDocument({ preset }: { preset: NewPreset }) {
     const s = normalize(types, {
       origin: firstType && !firstType.origins.includes('interne') ? firstType.origins[0] : 'interne',
       attachment: lockProject ? 'project' : 'none',
-      projectCode: preset?.projectCode ?? '', programCode: '',
+      projectCode: preset?.projectCode ?? '', programCode: '', capexCode: '',
       family: firstType?.family ?? '', typeCode: firstType?.code ?? '', subtype: '',
       department: presetDept ?? newDocDepartment(data.currentDepartment, data.departments),
       conf: 'interne', confTouched: false,
@@ -606,7 +611,7 @@ function EditMeta({ doc, attach }: { doc: MetaDoc; attach?: 'project' }) {
   // A type withdrawn from the register stays available to the documents that already have it.
   const types = data.types.filter((x) => x.active || x.code === doc.typeCode);
   const [st, setSt] = useState<Classif>(() => normalize(types, {
-    origin: doc.origin, attachment: attach ?? doc.attachment, projectCode: doc.projectCode ?? '', programCode: doc.programCode ?? '',
+    origin: doc.origin, attachment: attach ?? doc.attachment, projectCode: doc.projectCode ?? '', programCode: doc.programCode ?? '', capexCode: doc.capexCode ?? '',
     family: types.find((x) => x.code === doc.typeCode)?.family ?? '', typeCode: doc.typeCode, subtype: doc.subtype ?? '',
     department: doc.department, conf: doc.conf, confTouched: true,
   }, false));

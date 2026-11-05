@@ -34,7 +34,7 @@ Deux axes indépendants remplacent le « Domaine » du deck :
 | Axe | Valeurs |
 |---|---|
 | Origine | Interne · Externe |
-| Rattachement | Aucun · Projet (code projet Keystone) · Recherche (programme) |
+| Rattachement | Aucun · Projet (code projet Keystone) · Recherche (programme) · CAPEX d'une filiale (code CAPEX d'Arche, depuis le 5 novembre 2026, D-29) |
 
 Puis : **Famille** (catégorie du deck) › **Type** (porte un code) › **Sous-type** (facultatif). Plus : **Département /
 Fonction** (obligatoire) et **Site** (facultatif) — valeurs *provisoires* jusqu'à l'organigramme. Elles se renomment
