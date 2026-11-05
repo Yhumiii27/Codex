@@ -59,6 +59,8 @@ const MESSAGES: Record<string, string> = {
   conf_not_allowed: DICT.fr.conf_not_allowed,
   project_required: DICT.fr.project_required,
   program_required: DICT.fr.program_required,
+  capex_required: DICT.fr.capex_required,
+  capex_unknown: 'CAPEX inconnu de Codex ou plus publié par Arche (liste lue dans arche.pub_capex).',
   source_required: DICT.fr.source_required,
   readers_conf: 'Lecteurs désignés réservés aux documents confidentiels ou très confidentiels.',
   not_allowed: 'Champ réservé à la reprise de l’existant (POST /api/import) : un document déposé par une application commence en brouillon A.1 et passe par un circuit.',
@@ -80,16 +82,19 @@ type Refs = {
   users: Map<string, UserRow>;
   projects: Set<string>;
   programs: Set<string>;
+  /** CAPEX Codex knows (lib/capex.ts), with whether Arche still publishes them: an inactive one takes no new document. */
+  capex: Map<string, boolean>;
 };
 
 async function loadRefs(db: Db): Promise<Refs> {
-  const [types, departments, sites, users, projects, programs] = await Promise.all([
+  const [types, departments, sites, users, projects, programs, capex] = await Promise.all([
     db.select().from(s.docTypes),
     db.select({ code: s.departments.code }).from(s.departments),
     db.select({ key: s.sites.key }).from(s.sites),
     db.select().from(s.users),
     db.select({ code: s.projects.code }).from(s.projects),
     db.select({ code: s.researchPrograms.code }).from(s.researchPrograms),
+    db.select({ code: s.capex.code, active: s.capex.active }).from(s.capex),
   ]);
   return {
     types: new Map(types.map((t) => [t.code, t])),
@@ -98,13 +103,14 @@ async function loadRefs(db: Db): Promise<Refs> {
     users: new Map(users.map((u) => [u.id, u])),
     projects: new Set(projects.map((p) => p.code)),
     programs: new Set(programs.map((p) => p.code)),
+    capex: new Map(capex.map((c) => [c.code, c.active])),
   };
 }
 
 /** Metadata of one imported document once validated against the register. */
 export type ImportInput = {
   legacyRef: string; title: string; typeCode: string; subtype: string | null; origin: Origin; attachment: Attachment;
-  projectCode: string | null; programCode: string | null; department: string; site: string | null; ownerId: string;
+  projectCode: string | null; programCode: string | null; capexCode: string | null; department: string; site: string | null; ownerId: string;
   authorId: string | null; authorText: string | null; conf: Conf; keywords: string[]; lang: string | null;
   letter: string; status: 'in_force' | 'draft';
   issuedAt: string | null; inForceAt: string | null; reviewDueAt: string | null; expiresAt: string | null;
@@ -188,12 +194,12 @@ function parseImportMeta(raw: unknown, refs: Refs): { value: ImportInput | null;
   const type = typeCode ? refs.types.get(typeCode) : undefined;
   if (typeCode && (!type || !type.active)) issue('typeCode', 'unknown_type');
 
-  const projectRaw = text('projectCode', 32), programRaw = text('programCode', 32);
+  const projectRaw = text('projectCode', 32), programRaw = text('programCode', 32), capexRaw = text('capexCode', 40);
   const origin = given('origin') ? oneOf('origin', ORIGINS) : type?.origins[0] ?? 'interne';
   // Without an explicit attachment, a project or programme code says what the document belongs to.
   const attachment = given('attachment')
     ? oneOf('attachment', ATTACHMENTS)
-    : projectRaw ? 'project' : programRaw ? 'research' : type && !type.attachments.includes('none') ? type.attachments[0] : 'none';
+    : projectRaw ? 'project' : programRaw ? 'research' : capexRaw ? 'capex' : type && !type.attachments.includes('none') ? type.attachments[0] : 'none';
   const conf = given('conf') ? oneOf('conf', CONF_LEVELS) : type?.confDefault ?? null;
   const status = given('status') ? oneOf('status', ['in_force', 'draft'] as const) : 'in_force';
   const letter = (text('revision', 3) ?? 'A').toUpperCase();
@@ -245,6 +251,11 @@ function parseImportMeta(raw: unknown, refs: Refs): { value: ImportInput | null;
   if (readers.length && conf && !readersApply(conf)) issue('readers', 'readers_conf');
   if (attachment === 'project' && !(projectRaw && refs.projects.has(projectRaw))) issue('projectCode', 'project_required');
   if (attachment === 'research' && !(programRaw && refs.programs.has(programRaw))) issue('programCode', 'program_required');
+  // A CAPEX Codex knows from Arche (arche.pub_capex, lib/capex.ts) and that Arche still publishes.
+  if (attachment === 'capex') {
+    if (!capexRaw) issue('capexCode', 'capex_required');
+    else if (refs.capex.get(capexRaw) !== true) issue('capexCode', 'capex_unknown');
+  }
   if (origin === 'externe' && !f.sourceOrg) issue('sourceOrg', 'source_required');
 
   // Contextual fields that do not apply are dropped, as in the creation dialog, and reported back.
@@ -261,6 +272,7 @@ function parseImportMeta(raw: unknown, refs: Refs): { value: ImportInput | null;
     letter, site, authorId, authorText, readers,
     projectCode: drop('projectCode', projectRaw, proj),
     programCode: drop('programCode', programRaw, res),
+    capexCode: drop('capexCode', capexRaw, attachment === 'capex'),
     sourceOrg: drop('sourceOrg', f.sourceOrg, ext),
     externalRef: drop('externalRef', f.externalRef, ext),
     receivedAt: drop('receivedAt', f.receivedAt, ext),
@@ -297,7 +309,7 @@ function parseImportMeta(raw: unknown, refs: Refs): { value: ImportInput | null;
 export type ImportFile = { buf: Buffer; name: string; mime: string };
 
 export type ImportResult =
-  | { kind: 'created'; id: string; revision: string; version: string | null; revStatus: RevStatus; file: boolean; warnings: Issue[] }
+  | { kind: 'created'; id: string; revision: string; version: string | null; revStatus: RevStatus; file: boolean; legalHold?: boolean; warnings: Issue[] }
   /** A simulation (`dryRun`) that would have created the document `id`: nothing was stored nor written. */
   | { kind: 'dry_run'; id: string; warnings: Issue[] }
   | { kind: 'invalid'; issues: Issue[]; warnings: Issue[] }
@@ -348,14 +360,19 @@ const DEPOSIT_REFUSED = ['legacyRef', 'status', 'revision', 'inForceAt', 'issued
  * The metadata of a deposit as the import reads them: the source reference as legacy reference, a draft, and the owner
  * given by Codex ID or by matricule (the person's number shared by the tools of the group, users.matricule).
  */
-function depositMeta(raw: unknown, refs: Refs): { meta: unknown; issues: Issue[] } {
+function depositMeta(raw: unknown, refs: Refs): { meta: unknown; issues: Issue[]; legalHold: boolean } {
   const issues: Issue[] = [];
   const issue = (field: string, code: string) => issues.push({ field, code, message: MESSAGES[code] ?? code });
-  if (!isRecord(raw)) return { meta: raw, issues };
+  if (!isRecord(raw)) return { meta: raw, issues, legalHold: false };
+  // Legal hold put at creation (Arche's request CX-07, decision of 1 November 2026: a gate file G1, G2, G3 stays as it was
+  // filed): neither changed nor removed until a records manager lifts it. A boolean only.
+  if (raw.legalHold != null && typeof raw.legalHold !== 'boolean') issue('legalHold', 'invalid_type');
+  const legalHold = raw.legalHold === true;
   for (const k of DEPOSIT_REFUSED) if (raw[k] != null) issue(k, 'not_allowed');
   const ref = sourceRefOf(raw);
   if (!ref) issue('sourceRef', raw.sourceRef == null || raw.sourceRef === '' ? 'required' : 'invalid_source_ref');
   const meta: Record<string, unknown> = { ...raw, legacyRef: ref ?? 'invalid', status: 'draft' };
+  delete meta.legalHold;
   delete meta.revision;
   delete meta.inForceAt;
   delete meta.issuedAt;
@@ -368,7 +385,7 @@ function depositMeta(raw: unknown, refs: Refs): { meta: unknown; issues: Issue[]
     else if (meta.ownerId != null && String(meta.ownerId).trim() !== '' && String(meta.ownerId).trim() !== u.id) issue('ownerId', 'owner_ambiguous');
     else meta.ownerId = u.id;
   }
-  return { meta, issues };
+  return { meta, issues, legalHold };
 }
 
 /**
@@ -440,7 +457,7 @@ export async function importDocument(raw: unknown, file: ImportFile | null, o: {
   const known = ref ? await findByRef(db, ref) : null;
   if (known) return deposit && known.kind === 'duplicate' ? replayedDeposit(db, known.id, file) : known;
   const refs = await loadRefs(db);
-  const pre = deposit ? depositMeta(raw, refs) : { meta: raw, issues: [] };
+  const pre = deposit ? depositMeta(raw, refs) : { meta: raw, issues: [], legalHold: false };
   const parsed = parseImportMeta(pre.meta, refs);
   const { warnings } = parsed;
   const issues = [...pre.issues, ...parsed.issues.filter((i) => !(deposit && i.field === 'legacyRef'))];
@@ -508,7 +525,7 @@ export async function importDocument(raw: unknown, file: ImportFile | null, o: {
       }
       await tx.insert(s.documents).values({
         id, aliases: deposit ? [] : [v.legacyRef], legacyRef: v.legacyRef, title: v.title, origin: v.origin, attachment: v.attachment,
-        projectCode: v.projectCode, programCode: v.programCode, family: type.family, typeCode: type.code, subtype: v.subtype,
+        projectCode: v.projectCode, programCode: v.programCode, capexCode: v.capexCode, family: type.family, typeCode: type.code, subtype: v.subtype,
         department: v.department, site: v.site, ownerId: v.ownerId, authorId: v.authorId, authorText: v.authorText,
         conf: v.conf, keywords: v.keywords, lang: v.lang, status: revStatus,
         issuedAt, reviewDueAt: v.reviewDueAt, expiresAt: v.expiresAt,
@@ -517,6 +534,7 @@ export async function importDocument(raw: unknown, file: ImportFile | null, o: {
         projectPhase: v.projectPhase, workPackage: v.workPackage, discipline: v.discipline,
         researchTheme: v.researchTheme, studyId: v.studyId, ipStatus: v.ipStatus, processOwnerId: v.processOwnerId,
         createdAt, modifiedAt,
+        ...(pre.legalHold ? { legalHold: true, legalHoldAt: today } : {}),
     });
     const [rev] = await tx.insert(s.revisions).values({
       docId: id, letter: v.letter, status: revStatus, createdAt,
@@ -546,13 +564,14 @@ export async function importDocument(raw: unknown, file: ImportFile | null, o: {
         ...(stored ? { sha256: stored.sha256 } : {}),
         text: { code: 'version', params: { label: withVersion ? label : v.letter, ...(stored ? { size: stored.size } : {}) } },
       });
+      if (pre.legalHold) await audit(tx, IMPORT_ACTOR, 'hold', id, type.code);
     } else {
       await audit(tx, IMPORT_ACTOR, 'import', id, `${v.legacyRef} → ${withVersion ? label : v.letter}`, rev.id, {
         ...(stored ? { sha256: stored.sha256 } : {}),
         text: { code: 'import', params: { ref: v.legacyRef, label: withVersion ? label : v.letter, ...(stored ? { size: stored.size } : {}) } },
       });
     }
-    const created: ImportResult = { kind: 'created', id, revision: v.letter, version: withVersion ? `${v.letter}.1` : null, revStatus, file: !!checked, warnings };
+    const created: ImportResult = { kind: 'created', id, revision: v.letter, version: withVersion ? `${v.letter}.1` : null, revStatus, file: !!checked, ...(pre.legalHold ? { legalHold: true } : {}), warnings };
     // A simulation stops here: everything written above is rolled back.
     if (dryRun) throw new DryRun(created);
     return created;

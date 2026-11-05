@@ -3321,3 +3321,23 @@ pour que je puisse le faire ». O-01 est répondue pour le moment (pas de ShareP
   du disque, essai de restauration, que faire en cas de perte) ; D-28 dans `docs/decisions.md`, fiche O-01, points 48,
   84, 88, 98, 103 et 112 annotés, `docs/sauvegarde.md`, `docs/exploitation.md`, `.env.example`, `CLAUDE.md`.
 - **Tests** : `tests/integration/files-backup.test.ts` (12 cas), `tests/unit/config-check.test.ts`.
+
+### 20.9 Demandes d'Arche CX-01, CX-02, CX-07 (5 nov.)
+
+Accord de l'utilisateur : « traite les demande d'Arche », sur les choix qu'il avait faits le 1er novembre (consignés par
+Arche ; entrée du 2026-11-01 de `REQUESTS.md`, reprise de la PR #20). Décision D-29.
+
+- **CX-01, rattachement `capex`** : migration `0003_capex` (table `codex.capex`, miroir de `arche.pub_capex` ; colonne
+  `documents.capex_code` ; `capex` ajouté aux rattachements admis des 47 types qui admettent `project` et de `FIN`) ;
+  identifiant `TYPE-<CAPEX>-SEQ` à 3 chiffres (`src/lib/codes.ts`) ; tâche planifiée « CAPEX publiés par Arche »
+  (`src/lib/capex.ts`, 15 min, sautée tant que la vue ne se lit pas) ; choix du CAPEX dans les formulaires, contexte sur
+  la fiche, facette et axe de l'explorateur ; `capexCode` à l'import et au dépôt ; deux CAPEX de démonstration.
+- **CX-02, sous-types** : ajoutés à `src/db/registry.ts` et, pour une base existante, par les mises à jour de données de
+  la migration (sans toucher aux sous-types réglés dans l'Administration).
+- **CX-07, gel juridique au dépôt** : `legalHold: true` (`POST /api/documents`), journal « Gel juridique » sous `codex`.
+- **Tests** : `tests/integration/capex.test.ts` (10 cas : identifiants, refus, reclassement, dépôt, synchronisation
+  depuis une vue `arche.pub_capex` simulée, registre, données de la migration rejouées, gel) ; tests du planificateur et
+  de `db:migrate` adaptés (la dernière migration défaite est désormais `0003_capex`).
+- **Reste** : lien de lecture de `arche.pub_capex` par `codex_app` à déclarer à Matrix ; CX-06 (filiales) attend O-04 et
+  O-02.
+

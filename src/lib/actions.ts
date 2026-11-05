@@ -182,7 +182,7 @@ export async function simulateUser(userId: string, role: string): Promise<Action
 // ── Metadata ─────────────────────────────────────────────────────────────
 
 type Fields = {
-  title: string; typeCode: string; subtype: string | null; origin: Origin; attachment: Attachment; projectCode: string | null; programCode: string | null;
+  title: string; typeCode: string; subtype: string | null; origin: Origin; attachment: Attachment; projectCode: string | null; programCode: string | null; capexCode: string | null;
   department: string; site: string | null; ownerId: string; authorId: string | null; authorText: string | null; conf: Conf; keywords: string[]; lang: string | null;
   reviewDueAt: string | null; expiresAt: string | null; sourceOrg: string | null; externalRef: string | null; receivedAt: string | null;
   projectPhase: string | null; workPackage: string | null; discipline: string | null; researchTheme: string | null; studyId: string | null; ipStatus: string | null; processOwnerId: string | null;
@@ -206,6 +206,7 @@ function readFields(ctx: Ctx, fd: FormData, base?: DocRow): Fields {
     typeCode, subtype: canonicalSubtype(type?.subtypes ?? [], opt(fd, 'subtype')).value, origin, attachment,
     projectCode: attachment === 'project' ? opt(fd, 'projectCode') : null,
     programCode: attachment === 'research' ? opt(fd, 'programCode') : null,
+    capexCode: attachment === 'capex' ? opt(fd, 'capexCode') : null,
     // Not sent: the user's department, refused by validateFields when inactive; without one, the first active department.
     department: str(fd, 'department') || base?.department || ctx.user.department || ctx.departments.find((d) => d.active)?.code || '',
     site: opt(fd, 'site'),
@@ -300,7 +301,7 @@ function metaChanges(d: DocRow, f: Fields, retention: Partial<Pick<DocRow, 'rete
  * Business rules of the register: type admits origin, attachment and confidentiality; contextual fields are filled.
  * An inactive type, programme, department or site is refused, except for a document that already has it (`current`).
  */
-function validateFields(ctx: Ctx, f: Fields, current?: Pick<DocRow, 'typeCode' | 'programCode' | 'department' | 'site' | 'lang'>): ActionResult | null {
+function validateFields(ctx: Ctx, f: Fields, current?: Pick<DocRow, 'typeCode' | 'programCode' | 'capexCode' | 'department' | 'site' | 'lang'>): ActionResult | null {
   const type = ctx.typeByCode.get(f.typeCode);
   if (!f.title || !type || !(type.active || type.code === current?.typeCode)) return fail(ctx);
   if (!type.origins.includes(f.origin) || !type.attachments.includes(f.attachment)) return fail(ctx, 'type_mismatch');
@@ -308,6 +309,8 @@ function validateFields(ctx: Ctx, f: Fields, current?: Pick<DocRow, 'typeCode' |
   if (f.attachment === 'project' && !ctx.projects.some((p) => p.code === f.projectCode)) return fail(ctx, 'project_required');
   // An inactive programme (closed) is no longer offered, except to a document that already has it.
   if (f.attachment === 'research' && !ctx.programs.some((p) => p.code === f.programCode && (p.active || p.code === current?.programCode))) return fail(ctx, 'program_required');
+  // A CAPEX Arche no longer publishes (inactive) is no longer offered, except to a document that already has it.
+  if (f.attachment === 'capex' && !ctx.capex.some((c) => c.code === f.capexCode && (c.active || c.code === current?.capexCode))) return fail(ctx, 'capex_required');
   if (f.origin === 'externe' && !f.sourceOrg) return fail(ctx, 'source_required');
   // Controlled values (point 59): the language is fr, en or none (a document that has another one keeps it); the lengths
   // the import admits for the sub-type, the keywords and the source organisation.
@@ -666,7 +669,7 @@ async function updateMetaNow(fd: FormData): Promise<ActionResult> {
   f.sourceOrg = vocab.sourceOrg;
   f.keywords = vocab.keywords;
   const type = ctx.typeByCode.get(f.typeCode)!;
-  const reclassified = f.typeCode !== d.typeCode || f.attachment !== d.attachment || f.projectCode !== d.projectCode || f.programCode !== d.programCode || f.department !== d.department;
+  const reclassified = f.typeCode !== d.typeCode || f.attachment !== d.attachment || f.projectCode !== d.projectCode || f.programCode !== d.programCode || f.capexCode !== d.capexCode || f.department !== d.department;
   const res = await db.transaction(async (tx): Promise<{ err: TKey } | { date: DateIssue } | { id: string } | { stale: string | null }> => {
     // Again where it is written: what changed since the check above would be overwritten by the form's fields.
     const [cur] = await tx.select({ version: s.documents.version }).from(s.documents).where(eq(s.documents.id, docId)).for('update');

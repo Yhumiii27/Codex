@@ -211,7 +211,8 @@ export const TYPES: RegistryType[] = [
   ],
   "attachments": [
    "none",
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [
    {
@@ -301,7 +302,8 @@ export const TYPES: RegistryType[] = [
   ],
   "attachments": [
    "none",
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [
    {
@@ -383,7 +385,8 @@ export const TYPES: RegistryType[] = [
   ],
   "attachments": [
    "none",
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [
    {
@@ -421,7 +424,8 @@ export const TYPES: RegistryType[] = [
   ],
   "attachments": [
    "none",
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [
    {
@@ -458,7 +462,8 @@ export const TYPES: RegistryType[] = [
   ],
   "attachments": [
    "none",
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [
    {
@@ -503,7 +508,8 @@ export const TYPES: RegistryType[] = [
   ],
   "attachments": [
    "none",
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [
    {
@@ -517,6 +523,26 @@ export const TYPES: RegistryType[] = [
    {
     "fr": "Plan CAPA",
     "en": "CAPA plan"
+   },
+   {
+    "fr": "HazID",
+    "en": "HAZID"
+   },
+   {
+    "fr": "HazOp / AMDEC",
+    "en": "HAZOP / FMECA"
+   },
+   {
+    "fr": "Zonage ATEX (DRPCE)",
+    "en": "ATEX zoning (DRPCE)"
+   },
+   {
+    "fr": "PSSR / RSPDI",
+    "en": "PSSR / RSPDI"
+   },
+   {
+    "fr": "Audit ASPD",
+    "en": "ASPD audit"
    }
   ],
   "circuit": [
@@ -692,7 +718,8 @@ export const TYPES: RegistryType[] = [
    "interne"
   ],
   "attachments": [
-   "none"
+   "none",
+   "capex"
   ],
   "subtypes": [
    {
@@ -710,6 +737,10 @@ export const TYPES: RegistryType[] = [
    {
     "fr": "Fiche de contrôle d’actifs",
     "en": "Asset control sheet"
+   },
+   {
+    "fr": "AFE (autorisation de dépense)",
+    "en": "AFE (authorisation for expenditure)"
    }
   ],
   "circuit": [
@@ -838,7 +869,8 @@ export const TYPES: RegistryType[] = [
   ],
   "attachments": [
    "none",
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [
    {
@@ -856,6 +888,14 @@ export const TYPES: RegistryType[] = [
    {
     "fr": "Notification d’approbation",
     "en": "Approval notice"
+   },
+   {
+    "fr": "Dossier ICPE",
+    "en": "ICPE file"
+   },
+   {
+    "fr": "Permis de construire / PLU",
+    "en": "Building permit / local plan"
    }
   ],
   "circuit": [
@@ -886,7 +926,8 @@ export const TYPES: RegistryType[] = [
   ],
   "attachments": [
    "none",
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [
    {
@@ -931,7 +972,8 @@ export const TYPES: RegistryType[] = [
   ],
   "attachments": [
    "none",
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [
    {
@@ -986,7 +1028,8 @@ export const TYPES: RegistryType[] = [
   ],
   "attachments": [
    "none",
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [
    {
@@ -1032,7 +1075,8 @@ export const TYPES: RegistryType[] = [
   ],
   "attachments": [
    "none",
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [
    {
@@ -1085,7 +1129,8 @@ export const TYPES: RegistryType[] = [
   ],
   "attachments": [
    "none",
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [
    {
@@ -1126,7 +1171,8 @@ export const TYPES: RegistryType[] = [
   ],
   "attachments": [
    "none",
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [],
   "circuit": [
@@ -1158,7 +1204,8 @@ export const TYPES: RegistryType[] = [
   ],
   "attachments": [
    "none",
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [
    {
@@ -1200,7 +1247,8 @@ export const TYPES: RegistryType[] = [
   ],
   "attachments": [
    "none",
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [
    {
@@ -1245,7 +1293,8 @@ export const TYPES: RegistryType[] = [
   ],
   "attachments": [
    "none",
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [
    {
@@ -1299,7 +1348,8 @@ export const TYPES: RegistryType[] = [
   ],
   "attachments": [
    "none",
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [
    {
@@ -1348,7 +1398,8 @@ export const TYPES: RegistryType[] = [
    "interne"
   ],
   "attachments": [
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [
    {
@@ -1366,6 +1417,22 @@ export const TYPES: RegistryType[] = [
    {
     "fr": "Plan d’exécution",
     "en": "Execution plan"
+   },
+   {
+    "fr": "Dossier d’investissement",
+    "en": "Investment file"
+   },
+   {
+    "fr": "Dossier de jalon G1",
+    "en": "Gate file G1"
+   },
+   {
+    "fr": "Dossier de jalon G2",
+    "en": "Gate file G2"
+   },
+   {
+    "fr": "Dossier de jalon G3",
+    "en": "Gate file G3"
    }
   ],
   "circuit": [
@@ -1396,7 +1463,8 @@ export const TYPES: RegistryType[] = [
    "interne"
   ],
   "attachments": [
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [
    {
@@ -1439,7 +1507,8 @@ export const TYPES: RegistryType[] = [
    "interne"
   ],
   "attachments": [
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [
    {
@@ -1488,7 +1557,8 @@ export const TYPES: RegistryType[] = [
    "interne"
   ],
   "attachments": [
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [
    {
@@ -1532,7 +1602,8 @@ export const TYPES: RegistryType[] = [
    "externe"
   ],
   "attachments": [
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [
    {
@@ -1574,7 +1645,8 @@ export const TYPES: RegistryType[] = [
    "interne"
   ],
   "attachments": [
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [
    {
@@ -1611,7 +1683,8 @@ export const TYPES: RegistryType[] = [
    "interne"
   ],
   "attachments": [
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [],
   "circuit": [
@@ -1643,7 +1716,8 @@ export const TYPES: RegistryType[] = [
    "interne"
   ],
   "attachments": [
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [],
   "circuit": [
@@ -1675,7 +1749,8 @@ export const TYPES: RegistryType[] = [
    "externe"
   ],
   "attachments": [
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [
    {
@@ -1721,7 +1796,8 @@ export const TYPES: RegistryType[] = [
    "externe"
   ],
   "attachments": [
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [],
   "circuit": [
@@ -1754,7 +1830,8 @@ export const TYPES: RegistryType[] = [
    "externe"
   ],
   "attachments": [
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [],
   "circuit": [
@@ -1788,7 +1865,8 @@ export const TYPES: RegistryType[] = [
    "externe"
   ],
   "attachments": [
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [],
   "circuit": [
@@ -1821,9 +1899,15 @@ export const TYPES: RegistryType[] = [
    "externe"
   ],
   "attachments": [
-   "project"
+   "project",
+   "capex"
   ],
-  "subtypes": [],
+  "subtypes": [
+   {
+    "fr": "Plan de masse",
+    "en": "Site plan"
+   }
+  ],
   "circuit": [
    "referent_ingenierie",
    "chef_projet"
@@ -1854,7 +1938,8 @@ export const TYPES: RegistryType[] = [
    "externe"
   ],
   "attachments": [
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [
    {
@@ -1907,7 +1992,8 @@ export const TYPES: RegistryType[] = [
    "externe"
   ],
   "attachments": [
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [
    {
@@ -1947,7 +2033,8 @@ export const TYPES: RegistryType[] = [
    "interne"
   ],
   "attachments": [
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [
    {
@@ -1995,7 +2082,8 @@ export const TYPES: RegistryType[] = [
   ],
   "attachments": [
    "none",
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [
    {
@@ -2034,7 +2122,8 @@ export const TYPES: RegistryType[] = [
   ],
   "attachments": [
    "none",
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [],
   "circuit": [
@@ -2065,7 +2154,8 @@ export const TYPES: RegistryType[] = [
    "interne"
   ],
   "attachments": [
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [
    {
@@ -2110,7 +2200,8 @@ export const TYPES: RegistryType[] = [
    "interne"
   ],
   "attachments": [
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [
    {
@@ -2159,7 +2250,8 @@ export const TYPES: RegistryType[] = [
    "interne"
   ],
   "attachments": [
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [
    {
@@ -2205,7 +2297,8 @@ export const TYPES: RegistryType[] = [
    "interne"
   ],
   "attachments": [
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [
    {
@@ -2250,7 +2343,8 @@ export const TYPES: RegistryType[] = [
    "interne"
   ],
   "attachments": [
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [
    {
@@ -2291,7 +2385,8 @@ export const TYPES: RegistryType[] = [
   ],
   "attachments": [
    "none",
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [
    {
@@ -2328,7 +2423,8 @@ export const TYPES: RegistryType[] = [
    "interne"
   ],
   "attachments": [
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [],
   "circuit": [],
@@ -2358,7 +2454,8 @@ export const TYPES: RegistryType[] = [
   ],
   "attachments": [
    "none",
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [
    {
@@ -2398,7 +2495,8 @@ export const TYPES: RegistryType[] = [
    "interne"
   ],
   "attachments": [
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [
    {
@@ -2408,6 +2506,10 @@ export const TYPES: RegistryType[] = [
    {
     "fr": "Dossier de transfert",
     "en": "Transfer file"
+   },
+   {
+    "fr": "PV de transfert d’actif",
+    "en": "Asset transfer record"
    }
   ],
   "circuit": [
@@ -2438,7 +2540,8 @@ export const TYPES: RegistryType[] = [
    "interne"
   ],
   "attachments": [
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [
    {
@@ -2475,7 +2578,8 @@ export const TYPES: RegistryType[] = [
    "interne"
   ],
   "attachments": [
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [
    {
@@ -2516,7 +2620,8 @@ export const TYPES: RegistryType[] = [
    "interne"
   ],
   "attachments": [
-   "project"
+   "project",
+   "capex"
   ],
   "subtypes": [
    {

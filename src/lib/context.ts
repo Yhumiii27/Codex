@@ -18,7 +18,7 @@ export const EMPTY_DATABASE_PATH = '/base-vide';
 export type User = typeof s.users.$inferSelect;
 export type DocType = typeof s.docTypes.$inferSelect;
 export type Screen = 'home' | 'explorer' | 'search' | 'departments' | 'workflow' | 'retention' | 'admin';
-export type LabelAxis = 'department' | 'site' | 'family' | 'type' | 'function' | 'project' | 'program';
+export type LabelAxis = 'department' | 'site' | 'family' | 'type' | 'function' | 'project' | 'program' | 'capex';
 
 export type Ctx = {
   lang: Lang;
@@ -37,6 +37,8 @@ export type Ctx = {
   functions: (typeof s.functions.$inferSelect)[];
   projects: (typeof s.projects.$inferSelect)[];
   programs: (typeof s.researchPrograms.$inferSelect)[];
+  /** CAPEX of the subsidiaries (mirror of Arche's arche.pub_capex, lib/capex.ts), inactive ones included. */
+  capex: (typeof s.capex.$inferSelect)[];
   perms: Set<Perm>;
   can: (p: Perm) => boolean;
   /** Records managers see every document, drafts included. */
@@ -54,7 +56,7 @@ export const getCtx = cache(async (): Promise<Ctx> => {
   // this process does it (lib/scheduler.ts, every 5 minutes by default): then requests no longer pay for it.
   if (!schedulerPromotes()) await promoteDue(db);
   const lang: Lang = jar.get(COOKIE_LANG)?.value === 'en' ? 'en' : 'fr';
-  const [users, departments, sites, families, types, functions, projects, programs, rows] = await Promise.all([
+  const [users, departments, sites, families, types, functions, projects, programs, capex, rows] = await Promise.all([
     db.select().from(s.users),
     // Code or key break a tie of ranks: the order must not follow a row's place in the table, which an update changes.
     db.select().from(s.departments).orderBy(asc(s.departments.sort), asc(s.departments.code)),
@@ -64,6 +66,7 @@ export const getCtx = cache(async (): Promise<Ctx> => {
     db.select().from(s.functions).orderBy(asc(s.functions.sort)),
     db.select().from(s.projects).orderBy(asc(s.projects.code)),
     db.select().from(s.researchPrograms).orderBy(asc(s.researchPrograms.code)),
+    db.select().from(s.capex).orderBy(asc(s.capex.code)),
     db.select().from(s.rolePermissions),
   ]);
   // A database left empty (a server without CODEX_SEED nor CODEX_SEED_DEMO: src/db/index.ts seedIfEmpty) has nobody to
@@ -85,9 +88,10 @@ export const getCtx = cache(async (): Promise<Ctx> => {
   functions.forEach((x) => labels.set(`function:${x.key}`, fr ? x.labelFr : x.labelEn));
   projects.forEach((x) => labels.set(`project:${x.code}`, x.name));
   programs.forEach((x) => labels.set(`program:${x.code}`, x.name));
+  capex.forEach((x) => labels.set(`capex:${x.code}`, x.name));
   return {
     lang, L: fr ? 0 : 1, t: DICT[lang], user, role, users: byId, departments, sites, families, types,
-    typeByCode: new Map(types.map((x) => [x.code, x])), functions, projects, programs, perms,
+    typeByCode: new Map(types.map((x) => [x.code, x])), functions, projects, programs, capex, perms,
     label: (axis, key) => (key ? labels.get(`${axis}:${key}`) ?? key : '—'),
     can: (p) => perms.has(p),
     seesAll: role === 'gestionnaire',
