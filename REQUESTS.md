@@ -113,3 +113,25 @@ Format d'une entrée :
   par `droits.accorder_execution` ; `droits.verifier()` signale une fonction `pub_` exécutable par tous ou sans
   `search_path` fixé. Rien ne change pour Codex tant que la fonction n'existe pas : la visionneuse reste en lecture seule.
 - Validé par Guillaume le : 2026-11-05
+
+## [2026-11-05] Vigie → Codex — Documents QHSE lus par Vigie (D10, lot 4 livré le 05/11/2026, décision CV-05)
+- Statut : OUVERTE
+- Demande :
+  1. Registre : confirmer que le sous-type « Instruction de travail » du type PRO et les départements QUA et HSE (déjà dans
+     origin/main de Codex : src/db/registry.ts, src/db/seed-org.ts) restent stables : Vigie lit comme registre QHSE les
+     documents sans rattachement (attachment = 'none') de ces deux départements (question C-06, choix par défaut).
+  2. Correspondance des types de Vigie (jeu de démonstration, et documents QHSE à créer dans Codex) : politique → POL ;
+     procédure → PRO (« Procédure standard ») ; instruction de travail → PRO (« Instruction de travail ») ; formulaire →
+     FRM ; enregistrement → REC ; document d'origine externe (exigences d'un client) → NRM (« Standard client »), organisme
+     source dans source_org. Processus de Vigie (QHSE, ACH, BE, MON, USI, ESS, DIR…) → process_code. Identifiants de
+     démonstration : PR-QHSE-002 → PRO-QUA-0002… (ancien identifiant en alias), voir src/db/seeds/documents.ts de Vigie.
+  3. Site des documents : pub_documents.site = code de site de Matrix (site_a…), vide = toute l'entreprise (Vigie filtre
+     dessus) ; matricule des propriétaires et valideurs renseigné (users.matricule : échéances de Vigie au propriétaire et
+     à la personne de l'étape en cours, pilote d'une action de revue).
+  4. review_due_at tenu à jour après une revue sans modification (recordReview) et une mise en vigueur : Vigie en tire
+     ses échéances de revue périodique (DOC-14).
+  5. Si des documents existent dans Vigie en production avant le basculement (P-03 : aucun à ce jour) : POST /api/import
+     étendu à l'historique des révisions, à la diffusion, à la périodicité de revue et au processus.
+- Justification : D10 option A, décision CV-05 de Vigie (05/11/2026) ; Vigie n'écrit rien chez Codex ; liens profonds
+  <codex>/documents/<id> (VIGIE_CODEX_URL de Vigie).
+- Validé par Guillaume le : 2026-11-05
