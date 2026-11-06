@@ -113,3 +113,26 @@ Format d'une entrée :
   par `droits.accorder_execution` ; `droits.verifier()` signale une fonction `pub_` exécutable par tous ou sans
   `search_path` fixé. Rien ne change pour Codex tant que la fonction n'existe pas : la visionneuse reste en lecture seule.
 - Validé par Guillaume le : 2026-11-05
+
+## [2026-11-06] Vigie → Codex — Création des ECR dans Vigie et décisions par le webhook (D12, lot 5 livré le 05/11/2026)
+- Statut : OUVERTE
+- Demande :
+  1. submitChange (src/lib/vigie.ts) appelle, en codex_app, select vigie.pub_creer_demande_modification(p_id_externe =>
+     identifiant de la demande chez Codex (même valeur au renvoi : même numéro), p_nature => 'modification' |
+     'obsolescence', p_document => docId, p_motif => reason, p_description => description, p_demandeur_ref => requesterId,
+     p_demandeur_nom => nom du demandeur, p_demandeur_matricule => users.matricule ou null, p_remplacant =>
+     replacementId ou null, p_enregistre_le => horodatage) et garde comme identifiant le numéro ECR-AAAA-NNN rendu (au
+     lieu de numéroter lui-même) ; erreurs P0V01 / P0V02 : demande non transmise, message à l'utilisateur. La demande est
+     créée dans Vigie à son traitement (10 minutes au plus) : « submitted », ou « rejected » avec le motif (document
+     inconnu, retiré, ou déjà visé par une demande en cours) — lisible dans vigie.pub_demandes_modification et notifié par
+     le webhook.
+  2. Lien vers la fiche : vigieUrl(id) = <NEXT_PUBLIC_VIGIE_URL>/modifications-techniques/<ECR> (au lieu de /changements/).
+  3. Webhook POST /api/integrations/vigie : Vigie l'appelle avec le corps actuel { requestId, accepted, ecoRef, modifierId,
+     note } (refus et acceptation sans ordre aussitôt ; acceptation avec un ordre à sa libération, ecoRef = numéro de
+     l'ordre) ; jeton et / ou signature : Vigie pose VIGIE_CODEX_WEBHOOK_TOKEN / VIGIE_CODEX_WEBHOOK_SECRET aux valeurs de
+     VIGIE_WEBHOOK_TOKEN / VIGIE_WEBHOOK_SECRET de Codex (O-10 en partie répondue : Vigie envoie, signe et reprend ses envois).
+     Vigie lit la réponse 200 « implemented » (révision ouverte) ; 409, 404, 400 : refus définitif (signalé au QHSE).
+  4. Lien de lecture codex_app sur vigie.pub_demandes_modification (convention) pour le contrôle de cohérence de route.ts.
+- Justification : D12 (Vigie numérote et décide), décisions CV-06 et CV-08 de Vigie ; M-17 (écriture par fonction pub_ du
+  propriétaire).
+- Validé par Guillaume le : 2026-11-06
