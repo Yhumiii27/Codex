@@ -135,16 +135,16 @@ describe('Vigie and Keystone', () => {
     expect(codes(prod({ NEXT_PUBLIC_KEYSTONE_URL: 'https://user:pw@keystone.epc2i.fr' }), 'error')).toEqual(['url_credentials']);
     // Never the value: without its scheme, an address with credentials reads as "scheme:password@host".
     for (const v of ['admin:S3cretPass@vigie.epc2i.local:3200/api', 'ftp://codex:S3cretPass@vigie.interne/api', 'vigie.local/api?apikey=S3cretKey', 'https://user:S3cretPass@keystone.epc2i.fr']) {
-      const f = prod({ VIGIE_API_URL: v, NEXT_PUBLIC_VIGIE_URL: v, NEXT_PUBLIC_KEYSTONE_URL: v });
-      expect(codes(f, 'error').length, v).toBe(3);
+      const f = prod({ NEXT_PUBLIC_VIGIE_URL: v, NEXT_PUBLIC_KEYSTONE_URL: v });
+      expect(codes(f, 'error').length, v).toBe(2);
       expect(JSON.stringify(f), v).not.toMatch(/S3cret/);
     }
     expect(codes(prod({ NEXT_PUBLIC_KEYSTONE_URL: 'https://keystone.epc2i.fr', NEXT_PUBLIC_VIGIE_URL: 'http://localhost:3200' }), 'error')).toEqual([]);
   });
 
-  it('warns that VIGIE_API_URL turns the simulation off while Codex does not call Vigie yet', () => {
-    expect(codes(prod({ VIGIE_API_URL: 'https://vigie.epc2i.fr/api' }), 'warn')).toEqual(expect.arrayContaining(['vigie_api_not_wired', 'vigie_no_webhook']));
-    expect(codes(prod({ VIGIE_API_URL: 'https://vigie.epc2i.fr/api', VIGIE_WEBHOOK_TOKEN: TOKEN }), 'warn')).not.toContain('vigie_no_webhook');
+  it('warns that VIGIE_API_URL is no longer read (D-31: Vigie is reached through its function)', () => {
+    expect(codes(prod({ VIGIE_API_URL: 'https://vigie.epc2i.fr/api' }), 'warn')).toContain('vigie_api_url_ignored');
+    expect(codes(prod({}), 'warn')).not.toContain('vigie_api_url_ignored');
   });
 });
 

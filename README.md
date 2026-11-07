@@ -269,9 +269,10 @@ document — Codex » sinon).
   droits côté serveur et la visibilité suit `src/lib/access.ts` (confidentialité, cercle de rédaction).
 - **Keystone simulé** : les projets (phase, client, pièces attendues, événements) viennent de tables locales, lues
   par `src/lib/keystone.ts`, seul fichier à remplacer par des appels API quand Keystone exposera les siennes.
-- **Vigie simulé** : les demandes de modification (ECR) et de retrait sont enregistrées par `src/lib/vigie.ts` ; tant
-  que `VIGIE_API_URL` n'est pas défini, un gestionnaire documentaire simule la décision depuis l'onglet Demandes.
-  Le webhook `/api/integrations/vigie` applique les décisions réelles.
+- **Vigie** : les demandes de modification (ECR) et de retrait sont créées par `src/lib/vigie.ts` ; sur le serveur
+  commun, par la fonction `vigie.pub_creer_demande_modification` dès que Matrix accorde le lien (D-31), Vigie numérote
+  et décide ; sans elle (PGlite, lien non accordé), Codex numérote et un gestionnaire documentaire simule la décision
+  depuis l'onglet Demandes. Le webhook `/api/integrations/vigie` applique les décisions réelles.
 - **Aperçu** : un PDF, une image PNG, JPEG, GIF ou WebP, ou un fichier texte déposés s'affichent dans la fiche ; les
   autres formats se téléchargent. Les documents de démonstration (sans fichier) gardent la page maquette et se
   téléchargent sous forme d'un PDF généré. Les fichiers Word, Excel, PowerPoint et OpenDocument s'affichent en PDF
