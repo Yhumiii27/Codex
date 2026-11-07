@@ -499,6 +499,23 @@ Règles de lecture :
   `legalHold`), `docs/api.md`. Détail : `docs/historique.md` § 20.9.
 - **Reste** : la lecture de `arche.pub_capex` par `codex_app` est un lien à déclarer à Matrix (M-18).
 
+### D-30 — Demande M-19 de Matrix : édition des données de Codex depuis Matrix, par `codex.pub_editer`
+- **Date** : 5 novembre 2026 (décision M-19 de Matrix, même jour ; demande validée par Guillaume le 5 novembre).
+- **Réponse de l'utilisateur** :
+  > traite la demande M-19
+- **Décision de Matrix reprise** (citée dans la demande) : « pour le moment, l'admin IT peut modifier toutes les données à
+  l'exception des données sensibles RGPD », **par les outils** : Matrix n'écrit jamais dans les tables de Codex.
+- **Choix de l'assistant, à confirmer** : la fonction générique `codex.pub_editer` n'ouvre que les quatre tables que
+  l'Administration de Codex modifie déjà, avec ses règles : départements, sites, programmes de recherche, titulaires des
+  fonctions. Elle refuse les documents, révisions, versions de travail, circuits, demandes et le journal (identifiants
+  immuables, révisions validées par un circuit, journal en ajout seul : D-10, D-11), et les personnes (données
+  personnelles, comptes à venir avec O-02). « Retirer » rend inactif (département, site, programme) et supprime un
+  titulaire, comme l'Administration. Ouvrir d'autres tables (registre des types, familles, vocabulaires…) est possible
+  par une nouvelle migration.
+- **Mise en œuvre** : migration `0004_pub_editer` ; journal sous l'acteur système `matrix` (créé à sa première
+  modification), entrée « depuis Matrix, par <personne> — motif » ; `tests/integration/pub-editer.test.ts`.
+- **Reste** : la DSI autorise dans Matrix le lien « écriture » `matrix_app` → `codex.pub_editer`.
+
 ## Questions posées restées sans réponse directe
 
 | Date | Question de l'assistant | Suite |

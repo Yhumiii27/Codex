@@ -142,7 +142,15 @@ Inventaire du 1er novembre 2026 (code de `main`, `796e315`) :
 | Lecture reçue | registre des types par Keystone | API `GET /api/registry` | oui |
 | Lecture reçue | 8 vues `codex.pub_*` (Keystone, Vigie, Arche, Crucible, Matrix) | vues `pub_`, droits du registre de Matrix | oui (R2) |
 
-Codex ne fournit aucune fonction `pub_` : aucune écriture reçue ne s'y prête encore (toutes passent par une API).
+Codex fournit une fonction `pub_` depuis le 5 novembre 2026 : **`codex.pub_editer(p_table, p_action, p_cle, p_valeurs,
+p_par, p_motif)`** (migration `0004_pub_editer`, demande M-19 de Matrix, D-30). La DSI corrige depuis la visionneuse de
+Matrix les **départements, sites, programmes de recherche et titulaires des fonctions**, avec les règles de
+l'Administration de Codex (codes immuables et libres dans l'espace des identifiants, « retirer » = rendre inactif, un
+département actif au moins, titulaire qui peut approuver) ; journal de Codex sous l'acteur système `matrix`, avec la
+personne connectée à Matrix et le motif. Toute autre table est refusée (documents, révisions, circuits, journal : règles
+documentaires ; personnes : données personnelles). `SECURITY DEFINER`, `SET search_path = codex, pg_temp`, exécution
+retirée à tous ; le droit d'exécution de `matrix_app` est un lien « écriture » décidé dans Matrix. Les autres écritures
+reçues passent par une API.
 Aucun accès non conforme n'est à signaler à Matrix.
 
 **Écarts avec le dépôt Matrix au 22 octobre 2026** (correctifs à y porter ; le dépôt Matrix n'est pas modifié ici) :

@@ -89,7 +89,7 @@ Format d'une entrée :
   - `docs/api.md` (« POST /api/import », « POST /api/documents ») décrit les nouveaux champs. La colonne `capex_code` n'est dans aucune vue `pub_` : si Arche veut la lire dans `pub_documents`, c'est une publication à demander à Matrix (M-18).
 
 ## [2026-11-05] Matrix → Codex — M-19 · Fonction d'édition `codex.pub_editer` : corriger les données de Codex depuis Matrix, par vos règles
-- Statut : OUVERTE
+- Statut : FAITE
 - Demande : fournir, par une migration de Codex, la fonction
   `codex.pub_editer(p_table text, p_action text, p_cle jsonb, p_valeurs jsonb, p_par text, p_motif text) RETURNS jsonb`
   (`SECURITY DEFINER`, `SET search_path = codex, pg_temp`, `REVOKE EXECUTE … FROM PUBLIC`), qui ajoute, corrige ou retire une ligne
@@ -113,6 +113,12 @@ Format d'une entrée :
   par `droits.accorder_execution` ; `droits.verifier()` signale une fonction `pub_` exécutable par tous ou sans
   `search_path` fixé. Rien ne change pour Codex tant que la fonction n'existe pas : la visionneuse reste en lecture seule.
 - Validé par Guillaume le : 2026-11-05
+- Réponse de Codex (2026-11-05) ; accord de Guillaume : « traite la demande M-19 » :
+  - Fonction générique `codex.pub_editer(p_table, p_action, p_cle, p_valeurs, p_par, p_motif) RETURNS jsonb` créée par la migration `0004_pub_editer` (`SECURITY DEFINER`, `SET search_path = codex, pg_temp`, `REVOKE EXECUTE … FROM PUBLIC`).
+  - Tables ouvertes, avec les règles de l'Administration de Codex : `departments` (clé `{"code"}` ; colonnes `code` à l'ajout, `label_fr`, `label_en`, `active` ; le code ne change jamais ; « retirer » = inactif ; un département actif au moins), `sites` (clé `{"key"}` ; `key` à l'ajout, `label_fr`, `label_en`, `active` ; « retirer » = inactif), `research_programs` (clé `{"code"}` ; `code` à l'ajout, `name`, `manager_id`, `active` ; « retirer » = clos), `function_holders` (clé `{"id"}` ; `function_key`, `scope_value`, `user_id` à l'ajout ; pas de « corriger » ; « retirer » supprime le titulaire). Codes de département et de programme libres dans l'espace des codes d'identifiant (types, projets, programmes, CAPEX, `QMS`) ; titulaire dont le rôle peut approuver.
+  - Toute autre table est refusée par un message qui le dit (documents, révisions, circuits et journal suivent les règles documentaires ; personnes : données personnelles) ; colonne inconnue ou de `droits.colonnes_sensibles` refusée ; motif et personne obligatoires.
+  - Journal de Codex : chaque modification sous l'acteur système `matrix`, avec la personne et le motif (« depuis Matrix, par … — motif : … » dans Administration › Journal d'audit).
+  - À faire dans Matrix : autoriser le lien « écriture » `matrix_app` → `codex.pub_editer` (« Liens entre outils »). La fonction existe sur le serveur commun dès le déploiement de cette version.
 
 ## [2026-11-05] Vigie → Codex — Documents QHSE lus par Vigie (D10, lot 4 livré le 05/11/2026, décision CV-05)
 - Statut : OUVERTE

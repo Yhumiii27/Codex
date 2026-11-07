@@ -71,10 +71,10 @@ describe('npm run db:migrate', () => {
     const last = code[code.length - 1];
     const db = await openDb(path.join(DATA, 'pglite'));
     await db.$client.exec(`insert into users (id, name, initials, role) values ('p1', 'P', 'P', 'collaborateur'), ('codex', 'Codex', 'CX', 'collaborateur')`);
-    // The last migration, 0003_capex, undone: its table and its column (the data it completes are in doc_types, empty here).
-    expect(last.tag).toBe('0003_capex');
+    // The last migration, 0004_pub_editer, undone: its function.
+    expect(last.tag).toBe('0004_pub_editer');
     await db.$client.exec(`delete from codex.__drizzle_migrations where created_at = ${last.createdAt};
-      alter table documents drop column capex_code; drop table capex;`);
+      drop function codex.pub_editer(text, text, jsonb, jsonb, text, text);`);
     await db.$client.close();
     const pending = await run(['--check']);
     expect([pending.code, pending.stdout]).toEqual([1, expect.stringContaining(`Migration(s) en attente : ${last.tag}.`)]);

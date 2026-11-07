@@ -198,6 +198,10 @@ Détail et inventaire : `docs/postgres.md`, « Échanges avec les autres outils 
     migration qui recréerait une vue reprise échouerait (« must be owner of view »). `tests/unit/migrations.test.ts`
     refuse toute vue `pub_` dans une migration postérieure à `0002` ; `0001_partage` et `0002` (déjà appliquées)
     continuent de les créer en PGlite ;
+  - fonction fournie : `codex.pub_editer` (M-19, migration `0004_pub_editer`, D-30), édition par la DSI depuis Matrix de
+    quatre tables de référence (départements, sites, programmes, titulaires) avec les règles et le journal de Codex ;
+    une nouvelle table ouverte s'ajoute par une nouvelle migration qui remplace la fonction, jamais par une modification
+    de `0004` ;
   - avant de modifier ou de supprimer une colonne lue par une vue `pub_`, le signaler à Matrix (entrée dans son
     `REQUESTS.md`) : la migration échouerait, la vue en dépend. Une colonne publiée ne se retire ni ne se renomme ;
     un changement incompatible passe par une vue `…_v2`.
