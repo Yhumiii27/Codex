@@ -22,6 +22,7 @@ les GED du commerce. Chaque point fait porte sa ligne « Fait le … » ; le dé
   est sur le serveur commun, et leur remise en place (`src/lib/files-backup-core.mjs`) ; guide de l'exploitant
   `docs/stockage-serveur.md`. Points 84, 98 et 103 sans objet tant que SharePoint n'est pas activé ; 88 et 112 annotés.
   Aucun point ne change de colonne (`docs/historique.md` §20.8).
+- **5 novembre** : demande M-19 de Matrix faite (`codex.pub_editer`, D-30, `docs/historique.md` §20.10).
 - **5 novembre** : point 133 ajouté à la demande de l'utilisateur (types consultables et créables selon la fonction de
   la personne), dans « Attend une décision de l'utilisateur », avec une proposition à confirmer.
 - **5 novembre** : demandes d'Arche CX-01 (rattachement `capex`), CX-02 (sous-types) et CX-07 (gel juridique au dépôt)
