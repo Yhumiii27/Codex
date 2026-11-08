@@ -3350,3 +3350,12 @@ de Codex (acteur système `matrix`, personne et motif dans `audit_log.data.via`,
 table refusée. Tests : `tests/integration/pub-editer.test.ts` (7 cas, rejoués sur PostgreSQL 16), `migrate-command`
 adapté (la dernière migration défaite est `0004_pub_editer`).
 
+
+### 20.11 Demandes D10 et D12 de Vigie (7 nov.)
+
+Accord de l'utilisateur : « traite les demandes de Vigie ». Décision D-31. D12 : `submitChange` crée la demande chez
+Vigie par `vigie.pub_creer_demande_modification`, dans la transaction du miroir, et garde le numéro ECR rendu ; refus
+P0V01 / P0V02 sans rien garder ; simulation des décisions seulement sans la fonction ; `VIGIE_API_URL` abandonnée ; lien
+`/modifications-techniques/<ECR>`. Aucune migration. Tests : `tests/integration/vigie-function.test.ts` (fonction de
+Vigie simulée en PGlite). D10 : confirmations (registre stable, types, `review_due_at`) ; restent les données (sites
+alignés sur Matrix, matricules) et les liens à accorder dans Matrix.

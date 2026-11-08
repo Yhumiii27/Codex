@@ -171,6 +171,6 @@ describe('Mes demandes Vigie', () => {
     expect(vigieLinkConfigured()).toBe(false);
     vi.stubEnv('NEXT_PUBLIC_VIGIE_URL', 'https://vigie.example.org/');
     expect(vigieLinkConfigured()).toBe(true);
-    expect(vigieUrl('ECR-2026-004')).toBe('https://vigie.example.org/changements/ECR-2026-004');
+    expect(vigieUrl('ECR-2026-004')).toBe('https://vigie.example.org/modifications-techniques/ECR-2026-004');
   });
 });

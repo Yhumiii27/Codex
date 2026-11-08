@@ -121,7 +121,7 @@ Format d'une entrée :
   - À faire dans Matrix : autoriser le lien « écriture » `matrix_app` → `codex.pub_editer` (« Liens entre outils »). La fonction existe sur le serveur commun dès le déploiement de cette version.
 
 ## [2026-11-05] Vigie → Codex — Documents QHSE lus par Vigie (D10, lot 4 livré le 05/11/2026, décision CV-05)
-- Statut : OUVERTE
+- Statut : FAITE
 - Demande :
   1. Registre : confirmer que le sous-type « Instruction de travail » du type PRO et les départements QUA et HSE (déjà dans
      origin/main de Codex : src/db/registry.ts, src/db/seed-org.ts) restent stables : Vigie lit comme registre QHSE les
@@ -141,9 +141,25 @@ Format d'une entrée :
 - Justification : D10 option A, décision CV-05 de Vigie (05/11/2026) ; Vigie n'écrit rien chez Codex ; liens profonds
   <codex>/documents/<id> (VIGIE_CODEX_URL de Vigie).
 - Validé par Guillaume le : 2026-11-05
+- Réponse de Codex (2026-11-07) ; accord de Guillaume : « traite les demandes de Vigie » :
+  1. Confirmé : le sous-type « Instruction de travail » de PRO et les départements QUA et HSE restent stables. Un code de
+     Codex ne se renomme ni ne se supprime (type retiré = désactivé ; département retiré = inactif, gardé), y compris par
+     `npm run registry:apply` et `codex.pub_editer`.
+  2. Confirmé : POL, PRO (« Procédure standard », « Instruction de travail »), FRM, REC et NRM (« Standard client »,
+     organisme dans `source_org`) existent ; le processus va dans `process_code` (texte libre). Identifiants : un
+     document créé dans Codex reçoit l’identifiant de Codex (PRO-QUA-0002…) ; l’ancien identifiant de Vigie se porte en
+     référence d’origine à l’import (`POST /api/import`, champ `legacyRef`).
+  3. Rien à changer dans le code : `pub_documents.site` publie `documents.site`, la clé d'un site de Codex (vide = toute
+     l'entreprise). Il suffit que les sites de Codex aient pour clé les codes de site de Matrix (`site_a`…) : la DSI les
+     crée dans Administration › Organisation ou depuis Matrix (`codex.pub_editer`, table `sites`). Matricules :
+     `users.matricule` existe et est publié (`owner_matricule`, `assignee_matricule`…) ; il reste à le remplir, avec la
+     source des personnes (comptes : O-02). Donnée à fournir, pas de code.
+  4. Déjà en place : `review_due_at` est posé à la mise en vigueur (s'il est vide, journal « review_planned ») et
+     repoussé par une revue sans modification (`recordReview`).
+  5. Sans objet tant que P-03 vaut « aucun » ; à rouvrir par une nouvelle demande s'il en apparaît.
 
 ## [2026-11-06] Vigie → Codex — Création des ECR dans Vigie et décisions par le webhook (D12, lot 5 livré le 05/11/2026)
-- Statut : OUVERTE
+- Statut : FAITE
 - Demande :
   1. submitChange (src/lib/vigie.ts) appelle, en codex_app, select vigie.pub_creer_demande_modification(p_id_externe =>
      identifiant de la demande chez Codex (même valeur au renvoi : même numéro), p_nature => 'modification' |
@@ -164,3 +180,18 @@ Format d'une entrée :
 - Justification : D12 (Vigie numérote et décide), décisions CV-06 et CV-08 de Vigie ; M-17 (écriture par fonction pub_ du
   propriétaire).
 - Validé par Guillaume le : 2026-11-06
+- Réponse de Codex (2026-11-07) ; accord de Guillaume : « traite les demandes de Vigie » :
+  1. `submitChange` appelle `vigie.pub_creer_demande_modification` (paramètres nommés comme demandé ; `p_id_externe` =
+     `codex:<uuid>`, `p_enregistre_le` = l'instant de la demande) **dans la transaction** qui écrit la demande chez
+     Codex : le dépôt chez Vigie et la demande de Codex sont gardés ou défaits ensemble, Codex ne renvoie donc jamais.
+     Codex garde le numéro ECR-AAAA-NNN rendu. P0V01 / P0V02 : « Demande non transmise » (message de Vigie pour P0V02),
+     rien n'est gardé. Un numéro rendu qui désigne déjà une demande de Codex (numérotée par Codex avant le lien) est
+     refusé de même. L'appel se fait dès que `codex_app` peut exécuter la fonction ; avant, Codex numérote et la
+     décision se simule.
+  2. Fait : `vigieUrl(id)` = `<NEXT_PUBLIC_VIGIE_URL>/modifications-techniques/<ECR>`.
+  3. Rien à changer : corps inchangé ; réponse 200 avec `status: "implemented"` quand la décision s'applique (`"rejected"`
+     pour un refus), 202 `pending` pour une acceptation en attente (document verrouillé, révision ouverte), 409 / 404 /
+     400 refus. Jetons : `VIGIE_WEBHOOK_TOKEN` / `VIGIE_WEBHOOK_SECRET` de Codex (à communiquer à l'exploitant de Vigie).
+  4. À faire dans Matrix : liens « exécution » `codex_app` → `vigie.pub_creer_demande_modification` et « lecture »
+     `codex_app` → `vigie.pub_demandes_modification`. Codex ne lit pas encore cette vue (le webhook suffit) ; le contrôle
+     de cohérence viendra quand la vue sera lisible.

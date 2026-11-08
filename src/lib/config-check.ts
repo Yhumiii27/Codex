@@ -37,7 +37,7 @@ const DOMAIN = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}
 export const MIN_TOKEN_LENGTH = 32;
 
 export const SHAREPOINT_VARS = ['CODEX_SP_TENANT_ID', 'CODEX_SP_CLIENT_ID', 'CODEX_SP_CLIENT_SECRET', 'CODEX_SP_DRIVE_ID'] as const;
-const URLS = ['VIGIE_API_URL', 'NEXT_PUBLIC_VIGIE_URL', 'NEXT_PUBLIC_KEYSTONE_URL'] as const;
+const URLS = ['NEXT_PUBLIC_VIGIE_URL', 'NEXT_PUBLIC_KEYSTONE_URL'] as const;
 
 /** Where the database and the files live, as src/db/index.ts reads it (`cwd`: the folder the server runs in). */
 export function dataDirOf(env: Env, cwd: string): string {
@@ -117,7 +117,6 @@ export function checkConfig(env: Env, { production }: { production: boolean }): 
   }
   const win = env.CODEX_SIGNATURE_WINDOW_S?.trim();
   if (win && !(/^\d{1,5}$/.test(win) && Number(win) >= 30 && Number(win) <= 3600)) add('warn', 'signature_window_invalid', `CODEX_SIGNATURE_WINDOW_S="${win}" is not a number of seconds from 30 to 3600: 300 applies`);
-  const vigieToken = [ENDPOINTS.vigie.token, `${ENDPOINTS.vigie.token}_NEXT`, ENDPOINTS.vigie.secret!, `${ENDPOINTS.vigie.secret}_NEXT`].some(set);
 
   // ── Scheduler (lib/scheduler.ts) ──
   const scheduler = env.CODEX_SCHEDULER?.trim();
@@ -154,10 +153,9 @@ export function checkConfig(env: Env, { production }: { production: boolean }): 
     if (!url || (url.protocol !== 'http:' && url.protocol !== 'https:')) add('error', 'url_invalid', `${name} is not an http(s) address: it must start with http:// or https://`);
     else if (url.username || url.password) add('error', 'url_credentials', `${name} carries a user name or a password: links built from it would show them`);
   }
-  if (env.VIGIE_API_URL) {
-    add('warn', 'vigie_api_not_wired', 'VIGIE_API_URL is set but Codex does not call Vigie yet: requests stay in Codex and their decisions can no longer be simulated, they must come through POST /api/integrations/vigie');
-    if (!vigieToken) add('warn', 'vigie_no_webhook', 'VIGIE_API_URL is set without VIGIE_WEBHOOK_TOKEN or VIGIE_WEBHOOK_SECRET: no decision of Vigie can reach Codex');
-  }
+  // D-31: requests reach Vigie through its function vigie.pub_creer_demande_modification on the shared server, never
+  // through an address: a variable of the earlier plan is ignored.
+  if (env.VIGIE_API_URL !== undefined) add('warn', 'vigie_api_url_ignored', 'VIGIE_API_URL is no longer read: Codex sends requests to Vigie through vigie.pub_creer_demande_modification once Matrix grants it (D-31); remove the variable');
   if (env.NEXT_PUBLIC_VIGIE_URL !== undefined && !env.NEXT_PUBLIC_VIGIE_URL.trim()) add('warn', 'url_empty', 'NEXT_PUBLIC_VIGIE_URL is empty: links to Vigie would point to Codex itself');
   if (env.NEXT_PUBLIC_KEYSTONE_URL !== undefined && !env.NEXT_PUBLIC_KEYSTONE_URL.trim()) add('warn', 'url_empty', 'NEXT_PUBLIC_KEYSTONE_URL is empty: links to Keystone would point to Codex itself');
 

@@ -129,9 +129,11 @@ Le contrôle de configuration signale un `…_NEXT` laissé seul (`rotation_inco
 
 ### Appels sortants
 
-Codex n'appelle encore ni Vigie ni Keystone (`submitChange` n'écrit que le miroir local, `src/lib/vigie.ts`). Quand il
-le fera, il signera ses corps de la même façon (`signRequest`, `src/lib/server-auth.ts`) ; le secret, le sens de la
-vérification côté Vigie et la file d'envoi restent à définir avec les branchements réels (T-01, O-10).
+Codex n'appelle Keystone par aucune API. Vers Vigie (D-31, demande D12), il ne fait pas d'appel HTTP : sur le serveur
+commun, `submitChange` (`src/lib/vigie.ts`) appelle la fonction `vigie.pub_creer_demande_modification` dans la
+transaction qui écrit le miroir, dès que Matrix accorde à `codex_app` son exécution, et garde le numéro ECR que Vigie
+rend ; P0V01 et P0V02 donnent « Demande non transmise ». Sans la fonction, Codex numérote la demande et la décision se
+simule. `signRequest` (`src/lib/server-auth.ts`) reste disponible pour un futur appel HTTP signé.
 
 ## Limites de débit
 
@@ -623,8 +625,10 @@ personne ne peut pas lire reste masqué, quel que soit l'identifiant demandé.
 
 Vigie gère les demandes de modification (ECR/ECO) et de retrait créées depuis Codex (`requestChange`). Ce webhook lui
 permet de renvoyer sa décision ; Codex l'applique dans une transaction, au nom de l'utilisateur système `vigie`
-(`applyChangeDecision` dans `src/lib/lifecycle.ts`). Tant qu'aucune URL Vigie n'est configurée (`VIGIE_API_URL`), un
-gestionnaire documentaire peut aussi simuler la décision depuis la fiche document.
+(`applyChangeDecision` dans `src/lib/lifecycle.ts`). Tant que Codex ne peut pas exécuter
+`vigie.pub_creer_demande_modification` (PGlite, lien non accordé par Matrix), un gestionnaire documentaire peut aussi
+simuler la décision depuis la fiche document (D-31). Vigie lit la réponse 200 `status: "implemented"` (décision
+appliquée) ; 409, 404 et 400 sont pour lui des refus définitifs ; 202 `pending` : acceptation enregistrée, en attente.
 
 ### Corps
 

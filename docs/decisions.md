@@ -516,6 +516,30 @@ Règles de lecture :
   modification), entrée « depuis Matrix, par <personne> — motif » ; `tests/integration/pub-editer.test.ts`.
 - **Reste** : la DSI autorise dans Matrix le lien « écriture » `matrix_app` → `codex.pub_editer`.
 
+### D-31 — Demandes D10 et D12 de Vigie : documents QHSE lus par Vigie, ECR créées par la fonction de Vigie
+- **Date** : 7 novembre 2026 (demandes de Vigie du 5 et du 6 novembre, validées par Guillaume les mêmes jours).
+- **Réponse de l'utilisateur** :
+  > traite les demandes de Vigie
+- **D12, mise en œuvre** : `submitChange` (`src/lib/vigie.ts`) appelle `vigie.pub_creer_demande_modification` dès que
+  `codex_app` peut l'exécuter (lu dans le catalogue, sans erreur possible), **dans la transaction** qui écrit le miroir :
+  le dépôt chez Vigie et la demande de Codex sont gardés ou défaits ensemble ; identifiant externe `codex:<uuid>` ;
+  Codex garde le numéro ECR-AAAA-NNN rendu par Vigie. P0V01 (Codex non reconnu comme appelant), P0V02 (demande refusée,
+  message de Vigie) : « Demande non transmise », rien n'est gardé. Sans la fonction (PGlite, lien non accordé), Codex
+  numérote lui-même et un gestionnaire simule la décision, comme avant ; dès qu'elle est joignable, la simulation
+  disparaît (`vigieSimulated`). `VIGIE_API_URL` n'est plus lue (avertissement `vigie_api_url_ignored`). Lien « Ouvrir
+  dans Vigie » : `/modifications-techniques/<ECR>`. Le webhook garde son corps ; sa réponse 200 porte déjà
+  `status: "implemented"` quand la décision s'applique, 409/404/400 sont des refus définitifs. O-10 en partie répondue
+  par Vigie : Vigie envoie, signe et reprend ses envois (jetons de Codex `VIGIE_WEBHOOK_TOKEN` / `_SECRET`).
+- **Choix de l'assistant, à confirmer** : un numéro rendu par Vigie qui désigne déjà une demande de Codex (numérotée par
+  Codex avant le lien) est refusé (« Demande non transmise ») plutôt que renuméroté.
+- **D10** : registre (sous-type « Instruction de travail » de PRO, départements QUA et HSE) confirmé stable — un code ne
+  se renomme ni ne se supprime (`npm run registry:apply`) ; correspondance des types confirmée (POL, PRO et ses sous-types,
+  FRM, REC, NRM « Standard client » + `source_org`, `process_code`) ; `review_due_at` déjà tenu à jour (mise en vigueur,
+  revue sans modification). Restent des **données**, pas du code : clés de site de Codex égales aux codes de site de
+  Matrix (site vide = toute l'entreprise), matricules des personnes (avec la source des personnes, O-02).
+- **Reste** : Matrix accorde à `codex_app` l'exécution de `vigie.pub_creer_demande_modification` et la lecture de
+  `vigie.pub_demandes_modification`.
+
 ## Questions posées restées sans réponse directe
 
 | Date | Question de l'assistant | Suite |

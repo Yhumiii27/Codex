@@ -34,7 +34,7 @@ import { isEventTrigger, parseEventDate, sameRule } from './retention';
 import { nextReviewDate } from './review';
 import { beyondBounds, cleanCriteria, hasCriteria, type SearchInput } from './search';
 import { discardFile, FileRejectedError, fileColumns, nameStoredFile, readStored, renameDocFiles, sha256Of, stageFile, stageUpload, type StagedFile } from './storage';
-import { submitChange, vigieSimulated } from './vigie';
+import { submitChange, VigieError, vigieSimulated } from './vigie';
 import { confirmTransfer } from './transfer';
 import { addTerms, documentsWith, loadTerms, readTerms, termById, VOCAB_TABLE } from './vocab';
 import { canonicalSubtype, cleanTerm, docLang, isVocabKind, termKeys, termNameIssue, VOCAB_MAX, vocabKey, type VocabKind } from './vocab-rules';
@@ -1246,7 +1246,8 @@ async function requestChangeNow(docId: string, kind: 'modification' | 'obsolesce
   if (!ctx.can('edit')) return denied(ctx, 'edit');
   const ix = await getAccessIndex(ctx);
   const db = await getDb();
-  const res = await db.transaction(async (tx): Promise<{ err: TKey; extra?: string; field?: string } | { id: string }> => {
+  type Out = { err: TKey; extra?: string; field?: string } | { id: string };
+  const res = await db.transaction(async (tx): Promise<Out> => {
     const d = await lockDoc(tx, docId);
     if (!d || !canRead(ctx, d, ix)) return { err: 'not_found' };
     const lock = lockOf(d);
@@ -1262,6 +1263,10 @@ async function requestChangeNow(docId: string, kind: 'modification' | 'obsolesce
     const id = await submitChange(tx, { kind, docId, requesterId: ctx.user.id, reason: why.slice(0, 300), description: description.trim().slice(0, 4000), replacementId: replacement });
     await audit(tx, ctx.user.id, kind === 'modification' ? 'ecr' : 'obsolete', docId, id);
     return { id };
+  }).catch((err: unknown): Out => {
+    // Vigie refused it (D-31): nothing was transmitted, nothing is kept in Codex.
+    if (err instanceof VigieError) return err.reason === 'invalid' ? { err: 'vigie_invalid', extra: err.message } : { err: err.reason === 'refused' ? 'vigie_refused' : 'vigie_taken', extra: err.reason === 'taken' ? err.message : undefined };
+    throw err;
   });
   if ('err' in res) return res.field ? { ok: false, error: ctx.t[res.err], field: res.field } : fail(ctx, res.err, res.extra);
   refresh();
@@ -1280,10 +1285,11 @@ async function simulateVigieDecisionNow(id: string, accepted: boolean, modifierI
   const ctx = await getCtx();
   const busy = throttled(ctx);
   if (busy) return busy;
-  if (!vigieSimulated() || !ctx.seesAll) return fail(ctx, 'vigie_only');
+  if (!ctx.seesAll) return fail(ctx, 'vigie_only');
   const modifier = modifierId ? ctx.users.get(modifierId) : null;
   if (modifierId && (!modifier || modifier.isSystem)) return fail(ctx);
   const db = await getDb();
+  if (!(await vigieSimulated(db))) return fail(ctx, 'vigie_only');
   const res = await db.transaction((tx) => applyChangeDecision(tx, id, { accepted, ecoRef: accepted ? id.replace(/^ECR/, 'ECO') : null, modifierId }, 'vigie'));
   if ('error' in res) return fail(ctx, res.error, res.error === 'modifier_not_allowed' ? modifier?.name : undefined);
   refresh();

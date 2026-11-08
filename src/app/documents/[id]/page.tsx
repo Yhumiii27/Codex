@@ -300,11 +300,11 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
   const readerIds = await namedReaders(doc.id);
   // Named readers count for confidential levels; leftovers on a lower level stay listed so they can be removed.
   const showReaders = readersApply(doc.conf) || readerIds.length > 0;
-  const simulateVigie = ctx.seesAll && vigieSimulated();
   // Simulated Vigie decision: the author proposed by default (requester if they may draft the document, else the
   // owner), the people who may draft it, and what an acceptance will wait for: the lock to lift, the revision open
   // (same rules as lib/lifecycle.ts applyChangeDecision). Records managers belong to the drafting circle.
   const db = await getDb();
+  const simulateVigie = ctx.seesAll && (await vigieSimulated(db));
   const submitted = simulateVigie ? requests.filter((r) => r.status === 'submitted') : [];
   const drafters = submitted.some((r) => r.kind === 'modification') ? await draftersOf(db, doc) : [];
   const vigieSpecs = new Map(await Promise.all(submitted.map(async (r) => {
