@@ -195,3 +195,47 @@ Format d'une entrée :
   4. À faire dans Matrix : liens « exécution » `codex_app` → `vigie.pub_creer_demande_modification` et « lecture »
      `codex_app` → `vigie.pub_demandes_modification`. Codex ne lit pas encore cette vue (le webhook suffit) ; le contrôle
      de cohérence viendra quand la vue sera lisible.
+
+## [2026-11-10] Cursus → Codex — Tous les documents de Cursus stockés dans Codex : catégories du dossier du personnel, dépôt sans circuit, lecture et destruction par l'application (lot 16 de Cursus)
+- Statut : OUVERTE
+- Demande : décision de Guillaume du 10/11/2026 : « quel que soit le logiciel de notre suite, tout doit être stocké dans
+  Codex ». Cursus déposera chaque pièce justificative de ses dossiers dans Codex et n'en gardera que la référence
+  (`ged:<identifiant Codex>`). Il lui faut :
+  1. **Catégories** (registre `src/db/registry.ts`, publiées dans `codex.pub_types_document`) : un type « enregistrement
+     du dossier du personnel » ou des sous-types de `RHF`, au choix de Codex, département RH, un par catégorie :
+     justificatif d'absence (Très confidentiel, santé, 5 ans après le départ) ; document déclaré par le salarié — passeport,
+     visa, carnet de vaccination (Très confidentiel ; passeport et visas effacés au départ, vaccination 5 ans) ; attestation
+     de formation (Confidentiel, 5 ans) ; titre d'habilitation signé (Confidentiel, 5 ans) ; pièce de dossier de
+     déplacement — ordre de mission, A1, invitation (Confidentiel, 5 ans) ; justificatif de note de frais (Confidentiel,
+     10 ans après le paiement ; variante Très confidentiel pour une dépense de santé) ; carte grise et assurance du
+     véhicule personnel (Confidentiel, usage du véhicule + durée des notes justifiées) ; pièce de dossier OPCO (reprend
+     la demande du lot 11 de Cursus, Confidentiel, 10 ans après l'exercice) ; à venir : compte rendu d'entretien signé
+     (Confidentiel, 5 ans). Durées à confirmer par le DPO.
+  2. **Dépôt d'un enregistrement sans circuit** : pour ces catégories, `POST /api/documents` crée un document déjà
+     enregistré (statut au choix de Codex), sans circuit ni révision ultérieure ; champs en plus : `subjectMatricule`
+     (matricule Cursus `EMP-…`, ou `I…` / `E…` d'une personne sur site, pour le classement et la conservation déclenchée
+     par le départ lu dans `cursus.pub_salaries`), `expiresAt` (fin de conservation calculée par Cursus quand elle ne
+     dépend pas du départ) ; propriétaire = compte de service de Cursus ; `sourceRef` `cursus:piece/<identifiant>`
+     rejouable ; `sha256` toujours fourni.
+  3. **Lecture du fichier par l'application** : `GET /api/documents/{id}/file` avec le jeton de Cursus, fichier tel que
+     déposé (type, empreinte), lecture journalisée par Codex, réservée aux documents de `sourceRef` `cursus:`.
+  4. **Retrait et destruction par l'application** : `POST /api/documents/{id}/destroy` (ou équivalent) avec un motif
+     codé `retrait` | `conservation` | `effacement` ; fichier et versions détruits, trace sans contenu gardée ; refus
+     sous gel juridique.
+  5. **Confidentialité** : catégories Très confidentiel lisibles par le seul compte de service de Cursus et les personnes
+     désignées par le service RH, jamais dans les vues `pub_` ; chiffrement au repos ; titres neutres envoyés par Cursus
+     (« Justificatif d'absence — EMP-0042 — 2026-11 »), jamais une donnée de santé dans un titre.
+- Justification : Cursus sert chaque pièce à ses propres utilisateurs (salarié, manager, RH, référent HSE, comptabilité),
+  qui n'ont pas tous un compte Codex, avec ses droits et son journal des consultations ; il doit relire et détruire ce
+  qu'il a déposé (retrait d'une pièce jointe par erreur, terme de conservation RGPD, anonymisation d'un dossier). Une
+  pièce justificative est une preuve reçue, pas un document à approuver : un circuit par pièce encombrerait les
+  valideurs. Sans les points 2 à 4, Cursus garde ses pièces en local (déposer des brouillons qu'il ne peut ni relire ni
+  détruire ferait deux copies, dont une hors de ses règles de conservation) ; sans le point 1, il n'a pas de type où
+  ranger ses pièces.
+- Détails techniques : note complète dans le dépôt de Cursus, `docs/demandes/codex-lot16-documents.md` (tableau des
+  catégories par objet de pièce, `pieces.objet`). Côté Cursus : adaptateur `server/src/integrations/ged.ts` (dépôt,
+  relecture, destruction), réglage « Stockage des pièces » = « GED », `CODEX_URL`, `CODEX_DOCUMENTS_TOKEN`,
+  `CODEX_DOCUMENTS_SECRET` dans l'environnement ; reprise des pièces du dossier local (dépôt, contrôle de l'empreinte,
+  effacement local). Lecture de l'état des documents par `codex.pub_documents` et des catégories par
+  `codex.pub_types_document` : liens demandés à Matrix le même jour. Aucune écriture chez Codex hors de son API (M-17).
+- Validé par Guillaume le : 2026-11-10
