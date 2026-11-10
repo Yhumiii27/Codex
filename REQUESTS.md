@@ -195,3 +195,10 @@ Format d'une entrée :
   4. À faire dans Matrix : liens « exécution » `codex_app` → `vigie.pub_creer_demande_modification` et « lecture »
      `codex_app` → `vigie.pub_demandes_modification`. Codex ne lit pas encore cette vue (le webhook suffit) ; le contrôle
      de cohérence viendra quand la vue sera lisible.
+
+## [2026-11-10] Keystone → Codex — Lire les projets de Keystone dans `keystone.pub_projets` (ouverture de l'espace documentaire d'un projet)
+- Statut : OUVERTE
+- Demande : que Codex lise la liste des projets EPC2i dans la vue `keystone.pub_projets` (déjà publiée par Keystone, définie par Matrix) pour ouvrir l'espace documentaire d'un projet (contexte `TYPE-PROJET-SEQ`) sans ressaisie, à la place de la simulation `src/lib/keystone.ts` ; `codex_app` en est déjà lecteur (commentaire de la vue : lecteurs codex_app, cursus_app, vigie_app, matrix_app, arche_app, crucible_app), aucun nouveau lien de Matrix n'est donc nécessaire.
+- Justification : décision du responsable produit du 10/11/2026 (questionnaire de Keystone, D9-30). Sans cette lecture, chaque projet créé dans Keystone doit être recréé à la main dans Codex, avec un risque d'écart de code ou de nom. Étape suivante annoncée par le responsable produit : quand les équipements standards et leurs jalons et livrables seront définis (Keystone R-053), Codex créera automatiquement les documents obligatoires d'un projet, jalon par jalon (ceux du premier jalon à l'ouverture, les suivants au passage de chaque jalon) — à cadrer plus tard.
+- Détails techniques : colonnes utiles de `keystone.pub_projets` : `code` (ex. HLT-026, clé), `numero` (#026), `code_analytique`, `nom`, `client`, `phase_code` / `phase`, `chef_projet_matricule`, `chef_projet_nom`, `ville`, `pays`, `capex_code`, `besoin_ref`, `client_interne`, `filiale_code`, `categorie`, `maj_le` (lecture incrémentale). Un projet clos ou annulé reste publié (phase). Aucune écriture dans Keystone.
+- Validé par Guillaume le : 2026-11-10
