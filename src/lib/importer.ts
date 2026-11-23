@@ -30,7 +30,7 @@ export const IMPORT_ACTOR = 'codex';
  * drafts, working versions and confidential documents from it.
  */
 const IMPORT_VIEWER = {
-  user: { id: IMPORT_ACTOR, name: 'Codex', initials: 'CX', role: 'system', title: null, department: null, site: null, isSystem: true, matricule: null },
+  user: { id: IMPORT_ACTOR, name: 'Codex', initials: 'CX', role: 'system', title: null, department: null, site: null, isSystem: true, matricule: null, clavisPersonId: null },
   seesAll: false,
   can: (p: string) => p === 'read',
 };

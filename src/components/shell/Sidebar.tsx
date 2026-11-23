@@ -23,11 +23,13 @@ export function activeScreen(pathname: string): Screen | 'document' | 'help' {
   return ITEMS.find((i) => i.href !== '/' && pathname.startsWith(i.href))?.key ?? 'home';
 }
 
-export function Sidebar({ screens, user, roleTitle, keystoneUrl }: {
+export function Sidebar({ screens, user, roleTitle, keystoneUrl, signOut = false }: {
   screens: Record<Screen, boolean>;
   user: { name: string; initials: string };
   roleTitle: string;
   keystoneUrl: string;
+  /** Signed in through Clavis (CODEX_AUTH=clavis): the person is not simulated, the button signs out. */
+  signOut?: boolean;
 }) {
   const { t, open, todo } = useApp();
   // Items of « À traiter » (AppProvider), shown on Accueil, whose list holds them all: the design puts the badge on
@@ -74,13 +76,25 @@ export function Sidebar({ screens, user, roleTitle, keystoneUrl }: {
             <Icon name="info" size={14} />{t.notes}
           </button>
         </div>
-        <button type="button" className={`plain-btn ${styles.user}`} onClick={() => open({ kind: 'user' })} title={t.sim_title}>
-          <div className={styles.avatar}>{user.initials}</div>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 13 }}>{user.name}</div>
-            <div className="text-muted ellipsis" style={{ fontSize: 11 }}>{roleTitle}</div>
-          </div>
-        </button>
+        {signOut ? (
+          <form method="post" action="/auth/deconnexion">
+            <button type="submit" className={`plain-btn ${styles.user}`} title={t.sign_out} aria-label={`${user.name} — ${t.sign_out}`}>
+              <div className={styles.avatar}>{user.initials}</div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 13 }}>{user.name}</div>
+                <div className="text-muted ellipsis" style={{ fontSize: 11 }}>{roleTitle} · {t.sign_out}</div>
+              </div>
+            </button>
+          </form>
+        ) : (
+          <button type="button" className={`plain-btn ${styles.user}`} onClick={() => open({ kind: 'user' })} title={t.sim_title}>
+            <div className={styles.avatar}>{user.initials}</div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 13 }}>{user.name}</div>
+              <div className="text-muted ellipsis" style={{ fontSize: 11 }}>{roleTitle}</div>
+            </div>
+          </button>
+        )}
       </div>
     </nav>
   );

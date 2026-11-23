@@ -2,6 +2,7 @@ import { constants as fsc } from 'node:fs';
 import { access, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { backupDirOf } from './backup-core.mjs';
+import { clavisConfigProblems } from './clavis-rules';
 import { admittedExtensions, DENIED_EXTENSIONS, SHAREPOINT_MAX_FILE_MB } from './filetypes';
 import { ENDPOINTS, type Endpoint } from './integration-credentials';
 import { LOG_LEVELS, write } from './log';
@@ -82,6 +83,14 @@ export function checkConfig(env: Env, { production }: { production: boolean }): 
   } else {
     const stray = SHAREPOINT_VARS.filter(set);
     if (stray.length) add('warn', 'sharepoint_unused', `${stray.join(', ')} set while CODEX_STORAGE is not sharepoint: not used, files are stored locally`);
+  }
+
+  // ── Sign-in through Clavis (lib/clavis-rules.ts): incomplete, Codex would refuse every page ──
+  const auth = env.CODEX_AUTH?.trim().toLowerCase();
+  if (auth && auth !== 'demo' && auth !== 'clavis') add('error', 'auth_unknown', `CODEX_AUTH="${auth.slice(0, 20)}" is neither demo nor clavis: the simulated user would be used`);
+  if (auth === 'clavis') {
+    for (const [k, m] of Object.entries(clavisConfigProblems(env))) add('error', 'auth_incomplete', `CODEX_AUTH=clavis but ${k} ${m}: nobody could sign in`);
+    add('info', 'auth_clavis', 'CODEX_AUTH=clavis: people sign in through Clavis; their role is read in clavis.pub_acces on every request');
   }
 
   // ── Integration credentials (lib/server-auth.ts): tokens and signing secrets, each with its _NEXT for a rotation ──

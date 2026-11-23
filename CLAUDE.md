@@ -136,7 +136,14 @@ npm run a11y         # après le build : axe-core dans Chromium sur une base de 
 - **Évolution de `src/db/registry.ts`** (ou des fonctions de `src/db/seed-org.ts`) : `npm run registry:apply`
   (serveur arrêté) montre l'écart avec la base, `-- --apply` l'applique après une sauvegarde, journalisé. Ce qui a été
   réglé dans l'Administration est conservé ; un code n'est jamais renommé ni supprimé (un type retiré est désactivé).
-- **Utilisateur et rôle simulés** par cookie. Par défaut : Claire Bardet, gestionnaire documentaire. Pour changer,
+- **Connexion par Clavis** (`CODEX_AUTH=clavis`, 23 novembre 2026, décision du propriétaire : une seule base, les droits
+  lus dans la base) : `/auth/connexion` → Clavis (OpenID Connect, PKCE) → `/auth/retour`, jeton vérifié (`src/lib/clavis-auth.ts`,
+  règles `src/lib/clavis-rules.ts`), personne liée à un utilisateur de Codex (`users.clavis_person_id`, créé à la première
+  connexion), session chiffrée qui ne porte que l'identifiant de la personne ; le rôle (`collaborateur`, `validateur`,
+  `auditeur`, `gestionnaire`) et l'ouverture de Codex sont relus dans `clavis.pub_acces` à chaque requête (`getCtx`) : un
+  accès retiré ou un rôle changé dans Clavis vaut à la page suivante ; vue illisible = refus. Lectures `clavis.pub_acces` et
+  `clavis.pub_personnes` (liens accordés par Matrix). Test : `tests/integration/clavis-sign-in.test.ts`.
+- **Utilisateur et rôle simulés** par cookie (`CODEX_AUTH=demo`, par défaut). Par défaut : Claire Bardet, gestionnaire documentaire. Pour changer,
   cliquer sur le profil en bas de la barre latérale.
 - **Pas de secrets dans le dépôt.** Les variables sont décrites dans `.env.example`, et `.gitignore` exclut `.env*`,
   les clés et les dossiers de build.

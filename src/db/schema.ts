@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { boolean, check, date, index, integer, jsonb, pgSchema, primaryKey, serial, text, timestamp, uniqueIndex, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { boolean, check, date, index, integer, jsonb, pgSchema, primaryKey, serial, text, timestamp, uniqueIndex, uuid, type AnyPgColumn } from 'drizzle-orm/pg-core';
 
 // Data model of the GED — see docs/modele-cible.md.
 
@@ -74,8 +74,14 @@ export const users = codex.table('users', {
   isSystem: boolean('is_system').notNull().default(false),
   /** Shared data D01 (Matrix): Cursus personnel number (EMP-nnnn); null for system actors. Not edited by Codex yet. */
   matricule: text('matricule').unique('users_matricule_unique'),
+  /**
+   * Person of Clavis, the group's directory (sign-in through Clavis, CODEX_AUTH=clavis): the `oid` of the ID token and
+   * `personne_id` of clavis.pub_acces. Set at the first sign-in; never for a system actor.
+   */
+  clavisPersonId: uuid('clavis_person_id').unique('users_clavis_person_unique'),
 }, (t) => [
   check('users_matricule_check', sql`${t.matricule} IS NULL OR (${t.matricule} ~ '^EMP-[0-9]{4,}$' AND NOT ${t.isSystem})`),
+  check('users_clavis_person_check', sql`${t.clavisPersonId} IS NULL OR NOT ${t.isSystem}`),
 ]);
 
 // ── Registry of document types (owned by Codex, read by Keystone) ─────────

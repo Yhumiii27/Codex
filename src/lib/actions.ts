@@ -12,6 +12,7 @@ import { changeAuthor, seenVersion, seenWorkingBase, staleText, workingIssue, wo
 import { backUpNow, restoreFilesNow } from './backup';
 import { checkFilesNow } from './integrity';
 import { COOKIE_LANG, COOKIE_ROLE, COOKIE_USER, getCtx, type Ctx } from './context';
+import { authMode } from './clavis-rules';
 import { addDays, fmtDate, fmtDateTime, fmtSize, loc, localized, nowStamp, parisStamp, parseIsoDay, todayIso } from './format';
 import { ATTACHMENTS, CONF_LEVELS, ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLES, ORIGINS, PERMS, SEARCH_SCOPES, SIM_ROLES, SIMULATED_MATRIX_ROLES, type Perm, type TKey } from './i18n';
 import { addLink, applyChangeDecision, applyPendingDecision, approverCheck, approveRevision, audit, circuitExclusions, catchUpEffectiveDates, journalConsultation, journalLink, linkBetween, lockDoc, lockDocs, lockOf, refreshHeadline, type ModifierSwap, type Tx } from './lifecycle';
@@ -169,6 +170,8 @@ export async function setLang(lang: string) {
 
 export async function simulateUser(userId: string, role: string): Promise<ActionResult> {
   const ctx = await getCtx();
+  // Signed in through Clavis: the person and the role are the ones Clavis gives, never simulated.
+  if (authMode() === 'clavis') return fail(ctx);
   const db = await getDb();
   const [u] = await db.select().from(s.users).where(and(eq(s.users.id, userId), eq(s.users.isSystem, false)));
   if (!u) return fail(ctx);
