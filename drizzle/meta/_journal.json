@@ -36,6 +36,13 @@
       "when": 1793894027473,
       "tag": "0004_pub_editer",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795452733692,
+      "tag": "0005_clavis_sign_in",
+      "breakpoints": true
     }
   ]
 }

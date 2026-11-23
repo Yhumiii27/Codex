@@ -13,6 +13,7 @@ import { ERROR_EN, ERROR_FR } from '@/lib/i18n-errors';
 import { fileRules } from '@/lib/filetypes';
 import { CONF_LEVELS, MATRIX_ROLE, type SimRole, type TKey } from '@/lib/i18n';
 import { keystoneUrl } from '@/lib/keystone';
+import { authMode } from '@/lib/clavis-rules';
 import { getMatrix, listTemplates, myTodo, recentActivity, typeView, vocabSuggestions } from '@/lib/queries';
 
 /** Title and description in the user's language; each screen names itself (lib/titles.ts screenTitle, WCAG 2.4.2). */
@@ -78,6 +79,7 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
               user={{ name: ctx.user.name, initials: ctx.user.initials }}
               roleTitle={ctx.t[`role_${ctx.role}`]}
               keystoneUrl={keystoneUrl()}
+              signOut={authMode() === 'clavis'}
             />
             <div className="app-col">
               <Header notif={{
