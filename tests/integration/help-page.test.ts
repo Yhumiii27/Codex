@@ -16,6 +16,8 @@ vi.mock('next/headers', () => ({ cookies: async () => (await import('../support/
 vi.mock('next/cache', () => ({ refresh: () => {} }));
 // next/link wants the app router mounted; a plain <a> keeps the href the page gives it.
 vi.mock('next/link', () => ({ default: ({ href, children, ...rest }: { href: string; children: ReactNode }) => createElement('a', { href, ...rest }, children) }));
+// The common page header (Norma 2.0) needs the shell's context (AppProvider): here only its title, as the page gives it.
+vi.mock('@/components/shell/PageHeader', () => ({ PageHeader: ({ title }: { title: ReactNode }) => createElement('header', null, createElement('h1', null, title)) }));
 
 setupDb();
 

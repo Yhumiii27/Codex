@@ -27,10 +27,11 @@ export function Bell() {
 
   return (
     <div className={styles.anchor} ref={popRef}>
-      <button type="button" className="btn btn-secondary btn-icon coque-bell" aria-label={pending.length ? `${tr('Notifications')} (${pending.length})` : tr('Notifications')} aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+      <button type="button" className="btn btn-secondary btn-icon coque-bell" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
         <Icon name="bell" />
-        {/* The count is in the button's name too (WCAG 2.5.3: the visible text is part of the name). */}
-        {pending.length > 0 && <span className="coque-bell-badge" aria-hidden="true">{pending.length}</span>}
+        {/* Named by its text: « Notifications », then the count the badge shows (WCAG 2.5.3, visible text in the name). */}
+        <span className="sr-only">{tr('Notifications')}</span>
+        {pending.length > 0 && <span className="coque-bell-badge">{pending.length}</span>}
       </button>
       {open && (
         <div className={`popover ${styles.pop}`} role="dialog" aria-label={tr('Notifications')}>

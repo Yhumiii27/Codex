@@ -136,3 +136,6 @@ a.btn-primary:hover, a.btn-ghost:hover { color: var(--color-accent); }
 @media (max-width: 1024px) {
   .coque-header .coque-header-tools { display: none; }
 }
+/* Light display: the ⌘K hint of the page search in --color-neutral-500 is 3.9:1 on white (norma/charte/README.md,
+   « Contraste en clair »); one step darker, 4.5:1 or more. To be carried into Norma's coque.css. */
+:root[data-theme="light"] .coque-kbd { color: var(--color-neutral-400); }
