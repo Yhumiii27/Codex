@@ -12,11 +12,8 @@ html, body { height: 100%; margin: 0; overflow: hidden; }
 /* Shadow of a page laid on the preview (document sheet): deep on the dark theme, soft on the light one (Norma 1.0). */
 :root { --shadow-paper: 0 20px 50px rgba(0,0,0,.55); }
 :root[data-theme="light"] { --shadow-paper: 0 0 0 1px var(--color-neutral-700), 0 16px 40px rgba(28, 30, 41, 0.16); }
-/* Light theme: Nocturne's muted texts (55 % and 50 % of the text) give 3.5 to 3.8:1 on the light background and surface,
-   under WCAG AA (npm run a11y -- --theme light). 68 % gives 5.2:1 on the tinted rows, 5.5 on the background. To be taken
-   up in Norma's light block (norma/charte/nocturne.css), then dropped here. */
-:root[data-theme="light"] .text-muted,
-:root[data-theme="light"] .card-meta { color: color-mix(in srgb, var(--color-text) 68%, transparent); }
+/* Light theme: muted texts at 68 % of the text come from Norma 1.0.2 (nocturne.css); a hovered row only darkens them a
+   little more, as the dark theme does (60 % above). */
 :root[data-theme="light"] .hover-tint:hover .text-muted { color: color-mix(in srgb, var(--color-text) 74%, transparent); }
 a { color: var(--color-accent); }
 a:hover { color: var(--color-accent-400); }
