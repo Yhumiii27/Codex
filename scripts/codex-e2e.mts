@@ -31,7 +31,8 @@
 import { randomBytes } from 'node:crypto';
 import type { Browser, BrowserContext, Locator, Page } from 'playwright-core';
 import { DICT } from '../src/lib/i18n';
-import { launchChromium, serverLogTail, startServer, stopServer, waitHealthy } from './codex-browser.mjs';
+import { translate } from '../src/i18n/index';
+import { launchChromium, pageAction, serverLogTail, startServer, stopServer, waitHealthy } from './codex-browser.mjs';
 
 const PATHS = ['approbation', 'rejet', 'rappel', 'vigie', 'import'] as const;
 type PathName = (typeof PATHS)[number];
@@ -129,9 +130,9 @@ async function people(page: Page, base: string): Promise<Map<string, string>> {
   return new Map(options);
 }
 
-/** Opens the dialog of the button named `name` (the first one on the page). */
+/** Opens the dialog of the button named `name` (the first one on the page, or a row of the header's « Actions » menu). */
 async function dialogOf(page: Page, name: string): Promise<Locator> {
-  const button = page.getByRole('button', { name, exact: true }).first();
+  const button = await pageAction(page, name, { actions: translate('fr', 'Actions') });
   check(await button.count(), `bouton « ${name} » absent`);
   check(await button.isEnabled(), `bouton « ${name} » désactivé : ${await button.getAttribute('title')}`);
   await button.click();

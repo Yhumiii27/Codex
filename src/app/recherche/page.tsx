@@ -1,5 +1,8 @@
 import Link from 'next/link';
-import { ActionButton, DialogButton } from '@/components/ui/client';
+import { ActionButton, ActionLink, DialogButton } from '@/components/ui/client';
+import { FilterBar, FilterNote } from '@norma/charte/ds/FilterBar';
+import { PageHeader } from '@/components/shell/PageHeader';
+import { translate } from '@/i18n';
 import { Icon } from '@/components/ui/Icon';
 import { Pager } from '@/components/ui/Pager';
 import { deleteSavedSearch } from '@/lib/actions';
@@ -85,7 +88,23 @@ export default async function SearchPage({ searchParams }: PageProps<'/recherche
   );
 
   return (
-    <div className="screen" style={{ display: 'flex', minWidth: 0 }} data-screen-label="Recherche">
+    <>
+      <PageHeader
+        title={translate(ctx.lang, 'Advanced search')}
+        actions={<>
+          {hasActive && ctx.can('read') && (
+            <DialogButton spec={{ kind: 'saveSearch', search, criteria: searchCriteriaL(ctx, search), mayShare: mayShareSearches(ctx) }} icon="bookmark">{t.search_save}</DialogButton>
+          )}
+          <ActionLink native href={searchHref(search, '/api/export/search')} icon="download">{t.export_list}</ActionLink>
+        </>}
+        toolbar={
+          <FilterBar>
+            <SortSelect value={sort} options={SORT_KEYS.map((k) => ({ key: k, label: sortL(ctx, k) }))} />
+            <FilterNote>{total} {total === 1 ? t.result_one : t.results}</FilterNote>
+          </FilterBar>
+        }
+      />
+    <div className="screen panes" data-screen-label="Recherche">
       <aside className={styles.side}>
         <section>
           <h2 className="sec-title" style={{ marginBottom: 8 }}>{t.saved}</h2>
@@ -135,20 +154,11 @@ export default async function SearchPage({ searchParams }: PageProps<'/recherche
         </section>
       </aside>
       <section className={styles.main}>
-        <div style={{ padding: '18px 24px 10px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div className={styles.fieldRow}>
           <SearchField q={q} />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <span className="text-muted" style={{ fontSize: 12 }}>{total} {total === 1 ? t.result_one : t.results}</span>
-            <span style={{ flex: 1 }} />
-            <SortSelect value={sort} options={SORT_KEYS.map((k) => ({ key: k, label: sortL(ctx, k) }))} />
-            {hasActive && ctx.can('read') && (
-              <DialogButton spec={{ kind: 'saveSearch', search, criteria: searchCriteriaL(ctx, search), mayShare: mayShareSearches(ctx) }} style={{ fontSize: 12 }} icon="bookmark">{t.search_save}</DialogButton>
-            )}
-            <a href={searchHref(search, '/api/export/search')} className="btn btn-secondary" style={{ fontSize: 12 }}><Icon name="download" size={14} />{t.export_list}</a>
-          </div>
         </div>
         {/* A page opens at its top: the list is mounted again for each page. */}
-        <div key={page} style={{ flex: 1, overflow: 'auto', padding: '0 24px 24px' }}>
+        <div key={page} className={styles.results}>
           {total === 0 && <p className="text-muted" style={{ padding: '20px 8px' }}>{t.no_results}</p>}
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             {results.map((d) => {
@@ -175,5 +185,6 @@ export default async function SearchPage({ searchParams }: PageProps<'/recherche
         </div>
       </section>
     </div>
+    </>
   );
 }

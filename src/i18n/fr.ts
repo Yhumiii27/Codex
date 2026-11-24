@@ -4,7 +4,8 @@
 
 export const FR: Record<string, string> = {
   // Shell: sidebar
-  'Main navigation': 'Navigation principale',
+  'Main menu': 'Menu principal',
+  'Close menu': 'Fermer le menu',
   'Group DMS': 'GED Groupe',
   Home: 'Accueil',
   Browse: 'Explorateur',
@@ -21,7 +22,7 @@ export const FR: Record<string, string> = {
   // Shell: page search (⌘K)
   'Go to a page…': 'Aller à une page…',
   'No page matches': 'Aucune page ne correspond',
-  // Shell: header
+  // Shell: page headers (Norma 2.0: one per screen) and the bell
   Dashboard: 'Tableau de bord',
   'Document browser': 'Explorateur documentaire',
   'Document record': 'Fiche document',
@@ -32,14 +33,15 @@ export const FR: Record<string, string> = {
   'Nothing to do for now.': 'Rien à traiter pour le moment.',
   'Recent activity': 'Activité récente',
   'Nothing new.': 'Rien de nouveau.',
-  // Dark / light display (Norma 1.1.0: group « Dark / light display » → « Affichage »)
+  // Language over display (Norma 2.0, PrefsStack; group « Dark / light display » → « Affichage »)
+  Language: 'Langue',
   'Dark / light display': 'Affichage',
   'Dark display': 'Affichage sombre',
   'Light display': 'Affichage clair',
   // Side panel and charte components
   Close: 'Fermer',
-  'Skip to content': 'Aller au contenu',
+  'Skip to main content': 'Aller au contenu',
 };
 
 /** Sources whose French is the same word: checked as such, never given an entry. */
-export const SAME_IN_FRENCH: readonly string[] = ['Administration', 'Notifications'];
+export const SAME_IN_FRENCH: readonly string[] = ['Actions', 'Administration', 'Menu', 'Notifications'];

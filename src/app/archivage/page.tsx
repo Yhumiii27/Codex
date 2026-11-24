@@ -1,7 +1,10 @@
 import { Fragment } from 'react';
 import Link from 'next/link';
 import { Forbidden } from '@/components/ui/Forbidden';
-import { Seg } from '@/components/ui/Seg';
+import { Segmented } from '@norma/charte/ds/Segmented';
+import { FilterBar, FilterNote } from '@norma/charte/ds/FilterBar';
+import { PageHeader } from '@/components/shell/PageHeader';
+import { translate } from '@/i18n';
 import { ActionButton, DialogButton } from '@/components/ui/client';
 import { mayRecordReview, maySetRetentionEvent } from '@/lib/access';
 import { restoreArchived } from '@/lib/actions';
@@ -29,14 +32,13 @@ export default async function RetentionPage({ searchParams }: PageProps<'/archiv
   if (!ctx.screens.retention) return <Forbidden text={t.forbidden} back={t.back_home} />;
   const tab = (TABS as readonly string[]).includes(sp.tab ?? '') ? sp.tab! : 'due';
   const canArchive = ctx.can('archive');
+  const title = translate(lang, 'Archiving & retention');
   const tabs = (
-    <Seg
-      name="retTab"
-      value={tab}
+    <Segmented
+      className="codex-seg"
       wrap
-      style={{ flex: 'none' }}
-      optStyle={{ padding: '6px 14px', fontSize: 12.5 }}
-      options={TABS.map((k) => ({ key: k, label: t[`ret_${k}`], href: `/archivage${k === 'due' ? '' : `?tab=${k}`}` }))}
+      value={tab}
+      options={TABS.map((k) => ({ value: k, label: t[`ret_${k}`], href: `/archivage${k === 'due' ? '' : `?tab=${k}`}` }))}
     />
   );
 
@@ -58,21 +60,15 @@ export default async function RetentionPage({ searchParams }: PageProps<'/archiv
         } : null,
       }));
     const filters = (
-      <Seg
-        name="dueF"
-        value={filter}
+      <Segmented
+        className="codex-seg"
         wrap
-        ariaLabel={t.ret_due}
-        style={{ flex: 'none' }}
-        optStyle={{ padding: '6px 12px', fontSize: 12.5 }}
-        options={DUE_FILTERS.map((k) => ({ key: k, label: t[`f_${k}`], href: `/archivage${k === 'all' ? '' : `?f=${k}`}` }))}
+        label={t.ret_due}
+        value={filter}
+        options={DUE_FILTERS.map((k) => ({ value: k, label: t[`f_${k}`], href: `/archivage${k === 'all' ? '' : `?f=${k}`}` }))}
       />
     );
-    return (
-      <div className="screen" style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }} data-screen-label="Archivage">
-        <DueTable tabs={tabs} filters={filters} rows={rows} canArchive={canArchive} />
-      </div>
-    );
+    return <DueTable title={title} tabs={tabs} filters={filters} rows={rows} canArchive={canArchive} />;
   }
 
   // Each tab reads only what it lists (lib/queries.ts), among the documents the user reads (D-14).
@@ -90,14 +86,19 @@ export default async function RetentionPage({ searchParams }: PageProps<'/archiv
   const today = todayIso();
   const archives = tab === 'archives' ? await archivedDocs(ctx) : [];
   return (
-    <div className="screen" style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }} data-screen-label="Archivage">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 24px 10px', flexWrap: 'wrap' }}>
-        {tabs}
-        <span style={{ flex: 1 }} />
-        {tab === 'rules' && <span className="text-muted" style={{ fontSize: 12 }}>{ctx.types.length} {t.types_count}</span>}
-        {tab === 'events' && <span className="text-muted" style={{ fontSize: 12 }}>{events.filter((d) => !d.retentionEventAt).length} {t.ret_events_missing}</span>}
-      </div>
-      <div style={{ flex: 1, overflow: 'auto', padding: '0 24px 24px' }}>
+    <>
+      <PageHeader
+        title={title}
+        toolbar={
+          <FilterBar>
+            {tabs}
+            {tab === 'rules' && <FilterNote>{ctx.types.length} {t.types_count}</FilterNote>}
+            {tab === 'events' && <FilterNote>{events.filter((d) => !d.retentionEventAt).length} {t.ret_events_missing}</FilterNote>}
+          </FilterBar>
+        }
+      />
+    <div className="screen" data-screen-label="Archivage">
+      <div className="codex-table-scroll">
         {tab === 'rules' && (
           <table className="table" style={{ fontSize: 13 }}>
             <thead>
@@ -208,5 +209,6 @@ export default async function RetentionPage({ searchParams }: PageProps<'/archiv
         )}
       </div>
     </div>
+    </>
   );
 }

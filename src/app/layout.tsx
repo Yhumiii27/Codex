@@ -1,11 +1,12 @@
 import type { Metadata } from 'next';
 import { cookies } from 'next/headers';
 import './nocturne.css';
+import '@norma/charte/touch.css';
+import '@norma/charte/coque.css';
 import './globals.css';
 import { AppProvider } from '@/components/shell/AppProvider';
-import { Header } from '@/components/shell/Header';
 import { EmptyDatabase } from '@/components/shell/EmptyDatabase';
-import { Sidebar } from '@/components/shell/Sidebar';
+import { Shell } from '@/components/shell/Shell';
 import { databaseIsEmpty } from '@/lib/empty-database';
 import type { DialogData } from '@/components/dialogs/types';
 import { interClassName } from '@/fonts/inter';
@@ -75,24 +76,14 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
   return (
     <html lang={ctx.lang} className={interClassName} data-theme={theme}>
       <body>
-        {/* First stop of the keyboard: jumps over the sidebar and the header to the screen (WCAG 2.4.1). */}
-        <a href="#contenu" className="skip-link">{translate(ctx.lang, 'Skip to content')}</a>
-        <AppProvider t={ctx.t} lang={ctx.lang} data={data} todo={todo}>
-          <div className="app">
-            <Sidebar
-              screens={ctx.screens}
-              user={{ name: ctx.user.name, initials: ctx.user.initials }}
-              roleTitle={ctx.t[`role_${ctx.role}`]}
-              keystoneUrl={keystoneUrl()}
-              signOut={authMode() === 'clavis'}
-            />
-            <div className="app-col">
-              <Header theme={theme} notif={{
-                recent: recent.map((a) => ({ id: a.id, when: a.when, user: a.user, actionLabel: a.actionLabel, ref: a.currentId ?? a.ref, href: a.href })),
-              }} />
-              <main id="contenu" className="app-main" tabIndex={-1}>{children}</main>
-            </div>
-          </div>
+        <AppProvider
+          t={ctx.t} lang={ctx.lang} data={data} todo={todo} theme={theme}
+          recent={recent.map((a) => ({ id: a.id, when: a.when, user: a.user, actionLabel: a.actionLabel, ref: a.currentId ?? a.ref, href: a.href }))}
+        >
+          {/* The common shell (Norma 2.0): skip link first, sidebar, then <main id="main-content"> holding the screen. */}
+          <Shell sidebar={{ screens: ctx.screens, user: { name: ctx.user.name, initials: ctx.user.initials }, roleTitle: ctx.t[`role_${ctx.role}`], keystoneUrl: keystoneUrl(), signOut: authMode() === 'clavis' }}>
+            {children}
+          </Shell>
         </AppProvider>
       </body>
     </html>

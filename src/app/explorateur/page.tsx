@@ -2,7 +2,10 @@ import { Fragment } from 'react';
 import Link from 'next/link';
 import { Icon } from '@/components/ui/Icon';
 import { Pager } from '@/components/ui/Pager';
-import { Seg } from '@/components/ui/Seg';
+import { Segmented } from '@norma/charte/ds/Segmented';
+import { FilterBar } from '@norma/charte/ds/FilterBar';
+import { PageHeader } from '@/components/shell/PageHeader';
+import { translate } from '@/i18n';
 import { ClickRow, DialogButton } from '@/components/ui/client';
 import { getCtx, type Ctx } from '@/lib/context';
 import {
@@ -106,19 +109,37 @@ export default async function ExplorerPage({ searchParams }: PageProps<'/explora
   };
 
   return (
-    <div className="screen" style={{ display: 'flex', minWidth: 0 }} data-screen-label="Explorateur">
+    <>
+      <PageHeader
+        crumbs={[translate(lang, 'Document browser'), ...parts.slice(0, -1)]}
+        title={parts[parts.length - 1]}
+        actions={<DialogButton spec={{ kind: 'new', preset: { mode: 'file', ...treePreset } }} icon="upload" deniedTitle={noUpload}>{t.upload}</DialogButton>}
+        primary={<DialogButton spec={{ kind: 'new', preset: treePreset }} className="btn btn-primary" icon="plus" iconSw={1.8} deniedTitle={noUpload}>{t.new_doc_btn}</DialogButton>}
+        toolbar={
+          <FilterBar>
+            <Segmented
+              className="codex-seg"
+              wrap
+              label={t.status}
+              value={status}
+              options={STATUSES.map((k) => ({ value: k, label: t[`f_${k}`], href: href({ ...here, sel, status: k === 'all' ? undefined : k }) }))}
+            />
+          </FilterBar>
+        }
+      />
+    <div className="screen panes" data-screen-label="Explorateur">
       <aside className={styles.tree} aria-label={t.classification}>
         <div style={{ padding: '14px 14px 10px' }}>
           <h2 className="sec-title" style={{ marginBottom: 8 }}>{t.classification}</h2>
-          <Seg
-            name="axis"
+          <Segmented
+            className={styles.axes}
+            fullWidth
+            label={t.classification}
             value={axis}
-            ariaLabel={t.classification}
-            style={{ display: 'flex', width: '100%' }}
-            optStyle={{ flex: 1, justifyContent: 'center', padding: '5px 1px', fontSize: 11, whiteSpace: 'nowrap', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}
             options={AXES.map((k) => ({
-              key: k,
-              label: <span title={axisLabel[k].full}>{axisLabel[k].short}</span>,
+              value: k,
+              label: axisLabel[k].short,
+              title: axisLabel[k].full,
               href: href({ axis: k === DEFAULT_AXIS ? undefined : k, status: base.status, due }),
             }))}
           />
@@ -161,23 +182,8 @@ export default async function ExplorerPage({ searchParams }: PageProps<'/explora
       </aside>
 
       <section className={styles.list}>
-        <div className={styles.listHead}>
-          <div style={{ flex: 1, minWidth: 220 }}>
-            <div className="text-muted" style={{ fontSize: 11 }}>{parts.slice(0, -1).join(' › ') || t.classification}</div>
-            <div style={{ fontSize: 16 }}>{parts[parts.length - 1]}</div>
-          </div>
-          <Seg
-            name="statusF"
-            value={status}
-            style={{ flex: 'none', maxWidth: '100%', overflow: 'auto' }}
-            optStyle={{ padding: '5px 10px', fontSize: 12, whiteSpace: 'nowrap' }}
-            options={STATUSES.map((k) => ({ key: k, label: t[`f_${k}`], href: href({ ...here, sel, status: k === 'all' ? undefined : k }) }))}
-          />
-          <DialogButton spec={{ kind: 'new', preset: { mode: 'file', ...treePreset } }} icon="upload" deniedTitle={noUpload}>{t.upload}</DialogButton>
-          <DialogButton spec={{ kind: 'new', preset: treePreset }} className="btn btn-primary" icon="plus" iconSw={1.8} deniedTitle={noUpload}>{t.new_doc_btn}</DialogButton>
-        </div>
         {/* A page opens at its top: the list is mounted again for each page. */}
-        <div key={page} style={{ flex: 1, overflow: 'auto', padding: '0 20px 20px' }}>
+        <div key={page} className={styles.listBody}>
           <table className="table" style={{ fontSize: 13 }}>
             <thead><tr><th>{t.title_label}</th><th>{t.type}</th><th>{t.rev_short}</th><th>{t.status}</th><th>{t.owner}</th><th>{t.modified}</th><th>{t.retention_short}</th></tr></thead>
             <tbody>
@@ -270,5 +276,6 @@ export default async function ExplorerPage({ searchParams }: PageProps<'/explora
         </aside>
       )}
     </div>
+    </>
   );
 }

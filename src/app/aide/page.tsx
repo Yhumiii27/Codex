@@ -3,6 +3,7 @@ import { Icon } from '@/components/ui/Icon';
 import { getCtx } from '@/lib/context';
 import { HELP } from '@/lib/i18n';
 import { screenTitle } from '@/lib/titles';
+import { PageHeader } from '@/components/shell/PageHeader';
 import styles from './aide.module.css';
 
 /** « Aide — Codex » / « Help — Codex ». */
@@ -18,19 +19,20 @@ export default async function HelpPage() {
   const { t, lang, screens } = await getCtx();
   const help = HELP[lang];
   return (
-    <div className="screen" style={{ overflow: 'auto', padding: 'var(--space-8)' }} data-screen-label="Aide">
+    <>
+    <PageHeader title={t.help_title} />
+    <div className="screen" data-screen-label="Aide">
       <div className={styles.page}>
-        <h2 className={styles.title}>{t.help_title}</h2>
         <p className={`text-muted ${styles.lead}`}>{t.help_sub} {help.lead}</p>
         <nav aria-labelledby="aide-sommaire" className={styles.toc}>
-          <h3 id="aide-sommaire" className={`sec-title ${styles.tocTitle}`}>{help.contents}</h3>
+          <h2 id="aide-sommaire" className={`sec-title ${styles.tocTitle}`}>{help.contents}</h2>
           <ol className={styles.tocList}>
             {help.topics.map((x) => <li key={x.id}><a href={`#${x.id}`} className="link-plain">{x.title}</a></li>)}
           </ol>
         </nav>
         {help.topics.map((x) => (
           <section key={x.id} id={x.id} aria-labelledby={`${x.id}-titre`} className={styles.topic}>
-            <h3 id={`${x.id}-titre`} className={styles.topicTitle}>{x.title}</h3>
+            <h2 id={`${x.id}-titre`} className={styles.topicTitle}>{x.title}</h2>
             <p className={styles.intro}>{x.intro}</p>
             <ol className={styles.steps}>{x.steps.map((s) => <li key={s}>{s}</li>)}</ol>
             {x.simulated && (
@@ -45,5 +47,6 @@ export default async function HelpPage() {
         <p className={`text-muted ${styles.foot}`}><Icon name="info" size={14} style={{ flex: 'none', marginTop: 2 }} />{help.notesHint}</p>
       </div>
     </div>
+    </>
   );
 }

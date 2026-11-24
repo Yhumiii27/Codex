@@ -2,8 +2,10 @@ import Form from 'next/form';
 import Link from 'next/link';
 import { Forbidden } from '@/components/ui/Forbidden';
 import { Icon } from '@/components/ui/Icon';
-import { Seg } from '@/components/ui/Seg';
-import { ActionButton, DialogButton } from '@/components/ui/client';
+import { Segmented } from '@norma/charte/ds/Segmented';
+import { FilterBar, FilterNote } from '@norma/charte/ds/FilterBar';
+import { PageHeader } from '@/components/shell/PageHeader';
+import { ActionButton, ActionLink, DialogButton } from '@/components/ui/client';
 import { mayBackUp, mayCheckIntegrity, mayCleanStorage, mayExportAll, mayLinkTemplate, mayTransferHoldings } from '@/lib/access';
 import { backUpData, checkFileIntegrity, restoreBackedUpFiles, purgeOrphanFiles, removeFunctionHolder, renameProvisionalFiles, togglePermission } from '@/lib/actions';
 import { antivirusStatus } from '@/lib/antivirus';
@@ -21,7 +23,6 @@ import { schedulerOverview, type TaskView } from '@/lib/scheduler';
 import { inUse } from '@/lib/org-rules';
 import { DEPARTMENT_HEAD_FUNCTION } from '@/lib/registry-rules';
 import { FACET_LABEL, oneEach } from '@/lib/search';
-import { AddValue } from './AddValue';
 import { Transfer } from './Transfer';
 import { Vocabularies } from './Vocabularies';
 import { FamilyFilter } from './FamilyFilter';
@@ -50,43 +51,47 @@ export default async function AdminPage({ searchParams }: PageProps<'/administra
   const typesByFamily = countBy(ctx.types, (x) => x.family);
 
   return (
-    <div className="screen" style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }} data-screen-label="Administration">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 24px 10px', flexWrap: 'wrap' }}>
-        <Seg
-          name="adminTab"
-          value={tab}
-          wrap
-          style={{ flex: 'none' }}
-          optStyle={{ padding: '6px 12px', fontSize: 12.5 }}
-          // The handover is for records managers only (access.ts mayTransferHoldings): the tab is not shown to others.
-          options={TABS.filter((k) => k !== 'transfer' || mayTransferHoldings(ctx)).map((k) => ({ key: k, label: t[TAB_LABEL[k]], href: `/administration${k === 'registry' ? '' : `?tab=${k}`}` }))}
-        />
-        <span style={{ flex: 1 }} />
-        {tab === 'registry' && (
-          // One group, so that once the line wraps the filter and the buttons stay together on the right.
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', justifyContent: 'flex-end', marginLeft: 'auto' }}>
-            <span className="text-muted" style={{ fontSize: 12 }}>{family ? typesByFamily.get(family) ?? 0 : ctx.types.length} {t.types_count}</span>
-            <FamilyFilter
-              value={family}
-              ariaLabel={t.family}
-              allLabel={t.all_families}
-              options={ctx.families.filter((f) => typesByFamily.has(f.key)).map((f) => ({ key: f.key, label: lang === 'fr' ? f.labelFr : f.labelEn, count: typesByFamily.get(f.key)! }))}
+    <>
+      {/* Administration (Norma 2.0): its tabs and the register's family filter in the toolbar, each tab's creations in
+          the page header (the main one rightmost). */}
+      <PageHeader
+        title={t[TAB_LABEL[tab]]}
+        crumbs={[t.nav_admin]}
+        actions={<>
+          {tab === 'registry' && <DialogButton spec={{ kind: 'family' }} className="btn btn-secondary" icon="plus" iconSw={1.8}>{t.new_family}</DialogButton>}
+          {tab === 'org' && <DialogButton spec={{ kind: 'org', what: 'site' }} className="btn btn-secondary" icon="plus" iconSw={1.8}>{t.new_site}</DialogButton>}
+          {tab === 'audit' && <ActionLink native href="/api/export/audit" icon="download">{t.export_csv}</ActionLink>}
+        </>}
+        primary={
+          tab === 'registry' ? <DialogButton spec={{ kind: 'type', family: family || undefined }} className="btn btn-primary" icon="plus" iconSw={1.8}>{t.new_type}</DialogButton>
+          : tab === 'functions' ? <DialogButton spec={{ kind: 'function' }} className="btn btn-primary" icon="plus" iconSw={1.8}>{t.new_function}</DialogButton>
+          : tab === 'org' ? <DialogButton spec={{ kind: 'org', what: 'department' }} className="btn btn-primary" icon="plus" iconSw={1.8}>{t.new_department}</DialogButton>
+          : tab === 'templates' ? <DialogButton spec={{ kind: 'new', preset: { typeCode: 'FRM' } }} className="btn btn-primary" icon="plus" iconSw={1.8}>{t.new_template}</DialogButton>
+          : undefined
+        }
+        toolbar={
+          <FilterBar>
+            <Segmented
+              className="codex-seg"
+              wrap
+              value={tab}
+              // The handover is for records managers only (access.ts mayTransferHoldings): the tab is not shown to others.
+              options={TABS.filter((k) => k !== 'transfer' || mayTransferHoldings(ctx)).map((k) => ({ value: k, label: t[TAB_LABEL[k]], href: `/administration${k === 'registry' ? '' : `?tab=${k}`}` }))}
             />
-            <DialogButton spec={{ kind: 'family' }} className="btn btn-secondary" icon="plus" iconSw={1.8}>{t.new_family}</DialogButton>
-            <DialogButton spec={{ kind: 'type', family: family || undefined }} className="btn btn-primary" icon="plus" iconSw={1.8}>{t.new_type}</DialogButton>
-          </div>
-        )}
-        {tab === 'functions' && <DialogButton spec={{ kind: 'function' }} className="btn btn-primary" icon="plus" iconSw={1.8}>{t.new_function}</DialogButton>}
-        {tab === 'org' && (
-          <>
-            <AddValue what="site" label={t.new_site} />
-            <AddValue what="department" label={t.new_department} primary />
-          </>
-        )}
-        {tab === 'templates' && <DialogButton spec={{ kind: 'new', preset: { typeCode: 'FRM' } }} className="btn btn-primary" icon="plus" iconSw={1.8}>{t.new_template}</DialogButton>}
-        {tab === 'audit' && <a href="/api/export/audit" className="btn btn-secondary"><Icon name="download" size={14} />{t.export_csv}</a>}
-      </div>
-      <div style={{ flex: 1, overflow: 'auto', padding: '4px 24px 24px' }}>
+            {tab === 'registry' && (
+              <FamilyFilter
+                value={family}
+                ariaLabel={t.family}
+                allLabel={t.all_families}
+                options={ctx.families.filter((f) => typesByFamily.has(f.key)).map((f) => ({ key: f.key, label: lang === 'fr' ? f.labelFr : f.labelEn, count: typesByFamily.get(f.key)! }))}
+              />
+            )}
+            {tab === 'registry' && <FilterNote>{family ? typesByFamily.get(family) ?? 0 : ctx.types.length} {t.types_count}</FilterNote>}
+          </FilterBar>
+        }
+      />
+    <div className="screen" data-screen-label="Administration">
+      <div className="codex-table-scroll">
         {tab === 'registry' && <Registry ctx={ctx} family={family} />}
         {tab === 'functions' && <Functions ctx={ctx} />}
         {tab === 'roles' && <Roles ctx={ctx} />}
@@ -97,6 +102,7 @@ export default async function AdminPage({ searchParams }: PageProps<'/administra
         {tab === 'audit' && <Audit ctx={ctx} sp={sp} />}
       </div>
     </div>
+    </>
   );
 }
 

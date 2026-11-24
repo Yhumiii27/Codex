@@ -7,7 +7,7 @@
   ascent-override: 90.44%; descent-override: 22.52%; line-gap-override: 0%; size-adjust: 107.12%;
 }
 
-html, body { height: 100%; margin: 0; overflow: hidden; }
+body { margin: 0; background: var(--color-bg); }
 :root { color-scheme: dark; }
 /* Shadow of a page laid on the preview (document sheet): deep on the dark theme, soft on the light one (Norma 1.0). */
 :root { --shadow-paper: 0 20px 50px rgba(0,0,0,.55); }
@@ -24,24 +24,37 @@ input[type=checkbox] { accent-color: var(--color-accent); }
 select.input { appearance: none; background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%); background-position: calc(100% - 14px) 50%, calc(100% - 9px) 50%; background-size: 5px 5px; background-repeat: no-repeat; padding-right: 26px; }
 select.input option { background: var(--color-surface); color: var(--color-text); }
 
-.app {
-  display: grid; grid-template-columns: 224px minmax(0, 1fr); height: 100vh;
-  background: var(--color-bg); color: var(--color-text);
-  font-family: var(--font-body); font-size: 13px; line-height: 1.45;
+/* — the common shell (Norma 2.0, norma/charte/coque.css) and what Codex adds to it — */
+/* The interface text of Codex: 13 px (--text-ui) in the column of the screens, as in the other tools. */
+.codex-shell { font-size: var(--text-ui); line-height: 1.45; }
+/* A screen of panes side by side (browser, search, approvals, record): over 1 024 px it fills the window under its
+   header, each pane scrolling on its own; the page itself does not scroll. */
+@media (min-width: 1025px) {
+  .codex-shell .coque-main:has(> .screen.panes) { height: 100vh; }
 }
-.app-col { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.app-main { flex: 1; min-height: 0; position: relative; }
-/* The skip link brings the focus to <main>, which does not draw a ring of its own. */
-.app-main:focus { outline: none; }
-/* « Aller au contenu »: hidden until it has the keyboard focus, then drawn over the sidebar's brand (WCAG 2.4.1). */
-.skip-link {
-  position: fixed; left: 12px; top: 10px; z-index: 60; padding: 8px 14px; font-size: 13px;
-  background: var(--color-surface); color: var(--color-text); border-radius: var(--radius-md); box-shadow: var(--shadow-md);
+.screen { position: relative; min-width: 0; }
+.screen.panes {
+  flex: 1; min-height: 0; display: flex; overflow: hidden;
+  border: 1px solid var(--color-divider); border-radius: var(--radius-lg); background: var(--color-bg);
 }
-.skip-link:not(:focus) { clip-path: inset(50%); width: 1px; height: 1px; padding: 0; overflow: hidden; white-space: nowrap; }
+/* 1 024 px or less (tablet, phone): the panes stack, and the page scrolls (COQUE.md § 1). */
+@media (max-width: 1024px) {
+  .screen.panes { flex-direction: column; overflow: visible; border: 0; border-radius: 0; background: none; }
+}
+/* A row of the header's « Actions » menu (HeaderMenuContext): the look of the charte's MenuItem. */
+.codex-menu-row {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; border: 0; border-radius: 6px;
+  background: transparent; color: var(--color-text); font: inherit; font-size: var(--text-ui); text-align: left;
+  text-decoration: none; cursor: pointer; white-space: nowrap;
+}
+.codex-menu-row:hover { background: var(--color-neutral-900); color: var(--color-text); }
+.codex-menu-row:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+.codex-menu-row[aria-disabled='true'] { opacity: 0.45; cursor: not-allowed; }
+/* The side panel's header (coque-panel): the title takes the row, the × on its right. */
+.coque-panel-head .coque-panel-title { flex: 1; min-width: 0; }
+.codex-panel-close { flex: none; width: 32px; height: 32px; }
 
 /* — shared patterns — */
-.screen { position: absolute; inset: 0; }
 .ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Read by screen readers only (a column of buttons, for instance). */
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
@@ -75,11 +88,10 @@ th > .sr-only { position: static; display: block; }
 .row-click { cursor: pointer; }
 /* Clickable rows are reached through the link in their title cell: show the row as focused. */
 .table tbody tr:has(a:focus-visible) { box-shadow: inset 2px 0 0 var(--color-accent); }
-.btn-sm { font-size: 12px; }
+.btn-sm { font-size: var(--text-control); }
 .btn[aria-disabled='true'] { opacity: 0.45; cursor: not-allowed; }
-/* A screen's tab bar (Seg wrap) wider than its row (narrow window, zoom: WCAG 1.4.10) goes on to a second row instead
-   of pushing the screen past the window's edge; on a desktop window it fits, unchanged. */
-.seg-wrap { flex-wrap: wrap; max-width: 100%; }
+/* A segmented control (charte Segmented) never pushes its row past the window's edge (zoom, WCAG 1.4.10). */
+.codex-seg { max-width: 100%; }
 /* v2 statuses ("En vigueur", "En révision") are two words: a tag never breaks across lines. */
 .tag { white-space: nowrap; }
 
@@ -89,10 +101,10 @@ th > .sr-only { position: static; display: block; }
   background: var(--color-surface); border-radius: var(--radius-lg); box-shadow: var(--shadow-md);
   padding: 12px 14px; display: flex; flex-direction: column; gap: 10px;
 }
-.toasts { position: fixed; right: 20px; bottom: 20px; z-index: 50; display: flex; flex-direction: column; gap: 8px; }
+.toasts { position: fixed; right: 22px; bottom: 22px; z-index: 70; display: flex; flex-direction: column; gap: 8px; }
 .toast {
   background: var(--color-surface); box-shadow: var(--shadow-md); border-radius: var(--radius-md);
-  padding: 10px 14px; font-size: 13px; display: flex; align-items: center; gap: 10px; max-width: 380px;
+  padding: 10px 14px; font-size: var(--text-ui); display: flex; align-items: center; gap: 10px; max-width: 420px;
 }
 .toast-error { box-shadow: 0 0 0 1px var(--color-accent-400), var(--shadow-md); }
 /* Done, with something to know (a file identical to one already filed): the second accent, left on screen longer. */
@@ -118,16 +130,12 @@ th > .sr-only { position: static; display: block; }
 a.btn:hover { color: var(--color-text); }
 a.btn-primary:hover, a.btn-ghost:hover { color: var(--color-accent); }
 
-/* — side panel (Norma § 7: forms open in a right side panel, closed on success; look of charte/ds/Drawer) — */
-.side-scrim { position: fixed; inset: 0; z-index: 10; background: color-mix(in srgb, var(--color-bg) 60%, transparent); }
-.side-panel {
-  position: fixed; top: 0; right: 0; bottom: 0; width: min(var(--panel-w, 640px), 100vw); overflow: auto;
-  display: flex; flex-direction: column; gap: 12px; padding: 18px 22px;
-  background: var(--color-surface); box-shadow: var(--shadow-lg); border-left: 1px solid var(--color-neutral-800);
+/* A wide table scrolls sideways within the screen instead of pushing the page past the window (WCAG 1.4.10). */
+.codex-table-scroll { overflow-x: auto; min-width: 0; }
+/* 1 024 px or less the top bar carries the bell (COQUE.md § 8): the page header does not repeat it. */
+@media (max-width: 1024px) {
+  .coque-header .coque-header-tools { display: none; }
 }
-.side-panel:focus { outline: none; }
-.side-panel-head { display: flex; align-items: flex-start; gap: 10px; }
-.side-panel-head .dialog-title { flex: 1; min-width: 0; }
-.side-panel-close { flex: none; width: 32px; height: 32px; }
-/* The actions stay in reach at the bottom of a long form. */
-.side-panel-actions { position: sticky; bottom: -18px; margin-top: auto; padding: 12px 0 18px; background: var(--color-surface); }
+/* Light display: the ⌘K hint of the page search in --color-neutral-500 is 3.9:1 on white (norma/charte/README.md,
+   « Contraste en clair »); one step darker, 4.5:1 or more. To be carried into Norma's coque.css. */
+:root[data-theme="light"] .coque-kbd { color: var(--color-neutral-400); }
