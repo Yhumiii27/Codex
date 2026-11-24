@@ -8,6 +8,8 @@ import { Seg } from '@/components/ui/Seg';
 import { setLang } from '@/lib/actions';
 import { searchUrlWith } from '@/lib/search';
 import { useApp } from './AppProvider';
+import { ThemeToggle } from './ThemeToggle';
+import type { Theme } from '@/lib/theme';
 import { activeScreen } from './Sidebar';
 import { TODO_ICON } from './todo';
 import styles from './Header.module.css';
@@ -18,7 +20,7 @@ export type Notif = {
   recent: { id: number; when: string; user: string; actionLabel: string; ref: string; href: string }[];
 };
 
-export function Header({ notif }: { notif: Notif }) {
+export function Header({ notif, theme }: { notif: Notif; theme: Theme }) {
   // What waits for the simulated user (AppProvider), as the home's « À traiter » and the sidebar badge list it.
   const { t, lang, todo: pending } = useApp();
   const pathname = usePathname();
@@ -85,6 +87,8 @@ export function Header({ notif }: { notif: Notif }) {
           options={[{ key: 'fr', label: 'FR' }, { key: 'en', label: 'EN' }]}
           onPick={(k) => start(() => setLang(k))}
         />
+        {/* Right of the language, as in every tool of the suite (Norma 1.0). */}
+        <ThemeToggle theme={theme} />
         <div style={{ position: 'relative' }} ref={popRef}>
           <button type="button" className="btn btn-secondary btn-icon" aria-label={t.notif} aria-expanded={notifOpen} onClick={() => setNotifOpen((v) => !v)} style={{ position: 'relative', width: 34, height: 34 }}>
             <Icon name="bell" />

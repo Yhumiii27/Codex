@@ -10,6 +10,7 @@ export default defineConfig({
     alias: [
       // Same alias as tsconfig.json.
       { find: /^@\//, replacement: `${here('./src')}/` },
+      { find: /^@norma\//, replacement: `${here('./norma')}/` },
       // 'server-only' throws outside a React Server Components build; in tests it is an empty module.
       { find: /^server-only$/, replacement: here('./tests/support/server-only.ts') },
     ],

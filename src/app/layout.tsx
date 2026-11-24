@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { cookies } from 'next/headers';
 import './nocturne.css';
 import './globals.css';
 import { AppProvider } from '@/components/shell/AppProvider';
@@ -14,6 +15,7 @@ import { fileRules } from '@/lib/filetypes';
 import { CONF_LEVELS, MATRIX_ROLE, type SimRole, type TKey } from '@/lib/i18n';
 import { keystoneUrl } from '@/lib/keystone';
 import { authMode } from '@/lib/clavis-rules';
+import { themeFromCookies } from '@/lib/theme';
 import { getMatrix, listTemplates, myTodo, recentActivity, typeView, vocabSuggestions } from '@/lib/queries';
 
 /** Title and description in the user's language; each screen names itself (lib/titles.ts screenTitle, WCAG 2.4.2). */
@@ -24,11 +26,13 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function RootLayout({ children }: LayoutProps<'/'>) {
+  // Dark / light display (Norma 1.0): the epc2i-theme cookie, set on <html> at render so that the page never flashes.
+  const theme = themeFromCookies(await cookies());
   // A server database left empty (no CODEX_SEED): one page that says how to fill it, in place of the shell and of every
   // screen, which need a person to act as (getCtx leads them to /base-vide).
   if (await databaseIsEmpty()) {
     return (
-      <html lang="fr" className={interClassName}>
+      <html lang="fr" className={interClassName} data-theme={theme}>
         <body><EmptyDatabase /></body>
       </html>
     );
@@ -68,7 +72,7 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
     vocab,
   };
   return (
-    <html lang={ctx.lang} className={interClassName}>
+    <html lang={ctx.lang} className={interClassName} data-theme={theme}>
       <body>
         {/* First stop of the keyboard: jumps over the sidebar and the header to the screen (WCAG 2.4.1). */}
         <a href="#contenu" className="skip-link">{ctx.t.skip_to_content}</a>
@@ -82,7 +86,7 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
               signOut={authMode() === 'clavis'}
             />
             <div className="app-col">
-              <Header notif={{
+              <Header theme={theme} notif={{
                 recent: recent.map((a) => ({ id: a.id, when: a.when, user: a.user, actionLabel: a.actionLabel, ref: a.currentId ?? a.ref, href: a.href })),
               }} />
               <main id="contenu" className="app-main" tabIndex={-1}>{children}</main>
