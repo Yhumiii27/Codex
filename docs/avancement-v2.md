@@ -1,5 +1,11 @@
 # Intégration du modèle cible — état d'avancement (18 octobre 2026, fin du lot 9)
 
+> **Remplacé le 24 novembre 2026 (Norma 1.2.0, `REGLES.md` § 3).** Le reste à faire de Codex se tient désormais dans
+> Norma, dans la liste unique de la suite : `reste-a-faire/codex.json` du dépôt `Yhumiii27/Norma` (points CX-001…,
+> écarts d'alignement CX-N01…), publiée sur la page globale https://claude.ai/artifact/Rs7kooJdowShdYUqNS8jQf. Ce
+> fichier est gardé comme archive : les lignes « Fait le … » et les décisions qu'il cite restent la trace du travail,
+> mais il n'est plus mis à jour.
+
 Le code suit le modèle de `docs/modele-cible.md`. `npm run typecheck`, `npm run lint`, `npm run db:check`, `npm test`
 (Vitest), `npm run build` et `npm run a11y` (accessibilité) passent ; la CI les rejoue à chaque push
 (`.github/workflows/ci.yml`), avec la suite de tests sur un serveur PostgreSQL 16 (version du serveur commun) et 18. Le détail de chaque étape est dans

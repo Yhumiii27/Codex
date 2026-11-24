@@ -1,5 +1,11 @@
 # Reste à faire sur Codex
 
+> **Remplacé le 24 novembre 2026 (Norma 1.2.0, `REGLES.md` § 3).** Le reste à faire de Codex se tient désormais dans
+> Norma, dans la liste unique de la suite : `reste-a-faire/codex.json` du dépôt `Yhumiii27/Norma` (points CX-001…,
+> écarts d'alignement CX-N01…), publiée sur la page globale https://claude.ai/artifact/Rs7kooJdowShdYUqNS8jQf. Ce
+> fichier est gardé comme archive : les lignes « Fait le … » et les décisions qu'il cite restent la trace du travail,
+> mais il n'est plus mis à jour.
+
 Inventaire du 9 octobre 2026, sur la branche `codex-ged-v2-vkmf4l`, tenu à jour jusqu'au 18 octobre 2026 (lot 10,
 étape 6 comprise), puis complété le 26 octobre 2026 par trois points (130 à 132) issus de l'analyse comparative avec
 les GED du commerce. Chaque point fait porte sa ligne « Fait le … » ; le détail de chaque lot est dans
@@ -530,7 +536,7 @@ src/lib/actions.ts:306 : `tx.update(s.documents).set({ ...f, ... })` écrase les
 
 Côté Codex, à développer :
 - un jeton de service (ex. `CODEX_REGISTRY_TOKEN`) contrôlé par `checkBearer` sur `GET /api/registry`, et réutilisé pour les futures API destinées à Keystone ;
-- la vérification d'une signature HMAC-SHA256 du corps brut et d'un horodatage (fenêtre de quelques minutes) sur `POST /api/integrations/vigie`, puis la même signature sur les futurs appels sortants vers Vigie (`submitChange`, src/lib/vigie.ts:29) ;
+- la vérification d'une signature HMAC-SHA256 du corps brut et d'un horodatage (fenêtre de quelques minutes) sur `POST /api/integrations/vigie`, puis la même signature sur les futurs appels sortants vers Vigie (`submitChange`, src/server/integrations/vigie/:29) ;
 - l'acceptation de deux valeurs pendant une rotation (variable `…_NEXT` ou liste séparée par des virgules) ;
 - la journalisation des refus (401/503 : route, IP, horodatage, jamais le jeton) ;
 - la documentation dans `.env.example` et `docs/api.md` (tableau l.5-9 et section registre l.38-42).
@@ -538,7 +544,7 @@ Le contrat de signature est à aligner avec Vigie (dépôt séparé), mais la v�
 
 <details><summary>Constat dans le code</summary>
 
-Constaté : src/app/api/registry/route.ts:6-7 (commentaire « open within the group network ») et :11-12 (GET sans aucun contrôle) ; src/lib/importer.ts:32-41 (checkBearer : une seule valeur par variable, comparaison de condensés SHA-256 en temps constant, 401 renvoyé sans aucune trace) ; src/app/api/integrations/vigie/route.ts:29-31 et src/app/api/import/route.ts:17-19 (seul contrôle = Bearer) ; aucune occurrence de HMAC, d'horodatage ou de signature dans src/ ; docs/api.md:7 et :41 (registre « aucune » authentification) ; .env.example:6-12 (seuls CODEX_IMPORT_TOKEN et VIGIE_WEBHOOK_TOKEN). Aucun webhook sortant n'existe encore (src/lib/vigie.ts:29, appel à Vigie seulement en commentaire). Ni D-03 ni aucune autre décision n'écarte ce durcissement.
+Constaté : src/app/api/registry/route.ts:6-7 (commentaire « open within the group network ») et :11-12 (GET sans aucun contrôle) ; src/lib/importer.ts:32-41 (checkBearer : une seule valeur par variable, comparaison de condensés SHA-256 en temps constant, 401 renvoyé sans aucune trace) ; src/app/api/integrations/vigie/route.ts:29-31 et src/app/api/import/route.ts:17-19 (seul contrôle = Bearer) ; aucune occurrence de HMAC, d'horodatage ou de signature dans src/ ; docs/api.md:7 et :41 (registre « aucune » authentification) ; .env.example:6-12 (seuls CODEX_IMPORT_TOKEN et VIGIE_WEBHOOK_TOKEN). Aucun webhook sortant n'existe encore (src/server/integrations/vigie/:29, appel à Vigie seulement en commentaire). Ni D-03 ni aucune autre décision n'écarte ce durcissement.
 
 </details>
 
@@ -800,7 +806,7 @@ Vérifié :
 - Les variables `CODEX_SP_*` ne sont lues qu'au premier appel Graph (`env()`, src/lib/storage.ts:67-71 ; `drive()` l.94).
 - Une valeur de `CODEX_STORAGE` autre que `sharepoint` bascule en silence sur le stockage local (storage.ts:128).
 - Il n'y a pas de `src/instrumentation.ts` : aucun fichier de ce nom dans le dépôt.
-- Autre incohérence possible : dès que `VIGIE_API_URL` est défini, `vigieSimulated()` renvoie faux (src/lib/vigie.ts:17-19) et la simulation des décisions disparaît, alors que `submitChange` n'appelle jamais Vigie (vigie.ts:29, simple commentaire).
+- Autre incohérence possible : dès que `VIGIE_API_URL` est défini, `vigieSimulated()` renvoie faux (src/server/integrations/vigie/:17-19) et la simulation des décisions disparaît, alors que `submitChange` n'appelle jamais Vigie (vigie.ts:29, simple commentaire).
 
 </details>
 
@@ -818,7 +824,7 @@ Trois réserves :
 
 <details><summary>Constat dans le code</summary>
 
-Vérifié : `promoteDue` n'est appelé que dans `getCtx` (src/lib/context.ts:50 ; src/lib/lifecycle.ts:70-87). Les routes src/app/api/integrations/vigie/route.ts, src/app/api/import/route.ts et src/app/api/registry/route.ts n'importent pas `getCtx`. Aucun `setInterval`, cron ni `instrumentation.ts` dans src/. Correction : `promoteDue` fait une jointure en lecture à chaque requête ; il n'ouvre de transaction d'écriture que s'il y a une révision à mettre en vigueur. Aucune table d'envoi vers Vigie ou Keystone n'existe : `submitChange` écrit seulement le miroir local (src/lib/vigie.ts:29-30), et les tables du schéma ne comprennent aucune file d'attente (src/db/schema.ts). Les relances n'existent pas : audit M19, « Ni notification ni escalade ».
+Vérifié : `promoteDue` n'est appelé que dans `getCtx` (src/lib/context.ts:50 ; src/lib/lifecycle.ts:70-87). Les routes src/app/api/integrations/vigie/route.ts, src/app/api/import/route.ts et src/app/api/registry/route.ts n'importent pas `getCtx`. Aucun `setInterval`, cron ni `instrumentation.ts` dans src/. Correction : `promoteDue` fait une jointure en lecture à chaque requête ; il n'ouvre de transaction d'écriture que s'il y a une révision à mettre en vigueur. Aucune table d'envoi vers Vigie ou Keystone n'existe : `submitChange` écrit seulement le miroir local (src/server/integrations/vigie/:29-30), et les tables du schéma ne comprennent aucune file d'attente (src/db/schema.ts). Les relances n'existent pas : audit M19, « Ni notification ni escalade ».
 
 </details>
 
@@ -846,7 +852,7 @@ Le risque n'existe qu'avec un Postgres serveur, en READ COMMITTED : deux créati
 
 Vérifié :
 - `nextDocId` relit à chaque création tous les documents et leurs alias, puis prend max+1 (src/lib/codification.ts:10-16). L'import passe aussi par lui (src/lib/importer.ts:301).
-- Les numéros `W-n` se calculent par max+1 sur toute la table `workflows` (src/lib/actions.ts:434-435), et `ECR-AAAA-NNN` de même (src/lib/vigie.ts:26-28).
+- Les numéros `W-n` se calculent par max+1 sur toute la table `workflows` (src/lib/actions.ts:434-435), et `ECR-AAAA-NNN` de même (src/server/integrations/vigie/:26-28).
 - Aujourd'hui, l'unique connexion PGlite sérialise les transactions : pas de bug actuel.
 
 </details>
@@ -1925,7 +1931,7 @@ Constaté. Dans src/lib/importer.ts:181, `status` n'accepte que in_force et draf
 #### 100. Webhook Vigie : accepter les demandes nées dans Keystone et les ECO portant sur plusieurs documents
 
 - **Effort** : moyen · **Références** : O-10, D-18, D-16
-- **Revérifié le 18 octobre 2026** : constat inchangé : le webhook répond 404 `not_found` à une demande inconnue (src/app/api/integrations/vigie/route.ts:93-94, docs/api.md:605) ; `change_requests.doc_id` et `requester_id` (src/db/schema.ts:544-545), index d'une demande en attente par document (`change_requests_pending`) ; `submitChange` accepte une source (src/lib/vigie.ts:34-43) que `requestChange` ne passe pas. Le webhook est désormais signé (HMAC, anti-rejeu, corps borné : src/lib/server-auth.ts).
+- **Revérifié le 18 octobre 2026** : constat inchangé : le webhook répond 404 `not_found` à une demande inconnue (src/app/api/integrations/vigie/route.ts:93-94, docs/api.md:605) ; `change_requests.doc_id` et `requester_id` (src/db/schema.ts:544-545), index d'une demande en attente par document (`change_requests_pending`) ; `submitChange` accepte une source (src/server/integrations/vigie/:34-43) que `requestChange` ne passe pas. Le webhook est désormais signé (HMAC, anti-rejeu, corps borné : src/lib/server-auth.ts).
 
 Le manque est confirmé, avec une correction. Ce n'est pas l'index `change_requests_pending` (schema.ts:315) qui limite une demande à un seul document : cet index n'autorise qu'une demande en attente par document. La limite vient de `doc_id`, une colonne unique et obligatoire (schema.ts:301). L'index pose en plus un problème : un ECO multi-documents entrerait en conflit avec une demande déjà en attente sur l'un de ces documents. Il faut aussi que le demandeur existe dans `users` (FK, schema.ts:302), ce qui suppose la correspondance des personnes avec Keystone.
 À faire, une fois le contrat fixé avec Vigie (O-10) :
@@ -2089,11 +2095,11 @@ Constaté. requestValidation refuse une révision sans version de travail (src/l
 #### 109. Vigie : envoyer réellement les demandes et suivre leur avancement
 
 - **Effort** : important · **Références** : O-10, T-01, D-16, D-17
-- **Revérifié le 18 octobre 2026** : constat en partie périmé : un planificateur existe (src/lib/scheduler.ts), avec un point d'extension pour les envois sortants (docs/exploitation.md §4) ; aucun envoi vers Vigie n'y est branché. `submitChange` fabrique toujours la référence ECR et n'écrit que la table miroir (src/lib/vigie.ts:37-45, appel réel en commentaire l.42) ; `vigieSimulated` dépend de la seule présence de `VIGIE_API_URL` (vigie.ts:26-27) ; `simulateVigieDecision` est refusée dès qu'elle est définie (src/lib/actions.ts:1280) ; lien `/changements/{id}` (vigie.ts:14).
+- **Revérifié le 18 octobre 2026** : constat en partie périmé : un planificateur existe (src/lib/scheduler.ts), avec un point d'extension pour les envois sortants (docs/exploitation.md §4) ; aucun envoi vers Vigie n'y est branché. `submitChange` fabrique toujours la référence ECR et n'écrit que la table miroir (src/server/integrations/vigie/:37-45, appel réel en commentaire l.42) ; `vigieSimulated` dépend de la seule présence de `VIGIE_API_URL` (vigie.ts:26-27) ; `simulateVigieDecision` est refusée dès qu'elle est définie (src/lib/actions.ts:1280) ; lien `/changements/{id}` (vigie.ts:14).
 - **En partie fait le 7 novembre 2026** (D-31, demande D12 de Vigie) : `submitChange` crée la demande chez Vigie par `vigie.pub_creer_demande_modification`, dans la transaction du miroir (donc sans file d'envoi : le dépôt est gardé ou défait avec la demande), et garde le numéro ECR rendu ; `vigieSimulated()` dépend de la fonction joignable, plus de `VIGIE_API_URL` (abandonnée) ; lien `/modifications-techniques/<ECR>` ; décisions reçues par le webhook (Vigie envoie, signe et reprend ses envois). Restent : les liens à accorder dans Matrix (exécution de la fonction, lecture de `vigie.pub_demandes_modification`) et l'étape (3), retours d'avancement vers Vigie (Vigie les lit dans les vues `pub_` de Codex).
 - **Analyse comparative du 25 octobre 2026** — Standard du marché (M-Files, OpenText, Aconex) : les demandes et ordres de modification (ECR/ECO) sont réellement échangés avec l'outil qui les traite. Dans Codex, `VIGIE_API_URL` n'est branché sur rien et les demandes ne quittent pas la table miroir. Priorité suggérée : P1 avec le point 110 (Keystone), dès le contrat d'API fixé (O-10). L'état du point ne change pas.
 
-Le manque est réel. Aujourd'hui, `submitChange` (src/lib/vigie.ts:24-31) fabrique elle-même la référence ECR et n'écrit que dans la table miroir. Il y a aussi un piège : définir `VIGIE_API_URL` coupe la simulation (actions.ts:592) alors que rien n'est envoyé. Les demandes resteraient alors « Transmise à Vigie » indéfiniment. À faire, une fois le contrat de l'API Vigie connu :
+Le manque est réel. Aujourd'hui, `submitChange` (src/server/integrations/vigie/:24-31) fabrique elle-même la référence ECR et n'écrit que dans la table miroir. Il y a aussi un piège : définir `VIGIE_API_URL` coupe la simulation (actions.ts:592) alors que rien n'est envoyé. Les demandes resteraient alors « Transmise à Vigie » indéfiniment. À faire, une fois le contrat de l'API Vigie connu :
 (1) un client HTTP authentifié qui envoie le document, le titre, la révision en vigueur, le type, le propriétaire, le demandeur, le motif et le kind, puis enregistre la référence renvoyée par Vigie ;
 (2) une table d'envoi (outbox) écrite dans la transaction de `requestChange` (actions.ts:570), puis un envoi hors transaction avec reprise sur erreur. Codex n'a aujourd'hui aucun mécanisme de tâche de fond, il faut donc aussi créer le déclencheur de reprise ;
 (3) les retours d'avancement vers Vigie : révision ouverte par l'ECO, mise en vigueur (ECO réalisé), retrait appliqué ;
@@ -2103,7 +2109,7 @@ Les étapes ECR/ECO restent dans Vigie (D-16).
 
 <details><summary>Constat dans le code</summary>
 
-Constaté : src/lib/vigie.ts:24-31 (submitChange calcule ECR-AAAA-NNN l.27-28, n'écrit que dans change_requests l.30, l'appel réel n'est qu'un commentaire l.29) ; vigie.ts:17-19 (vigieSimulated = !VIGIE_API_URL) ; src/lib/actions.ts:592 (simulateVigieDecision refusée dès que VIGIE_API_URL est défini) ; actions.ts:570-582 (submitChange appelé dans db.transaction) ; aucun fetch vers Vigie dans src/ (seuls storage.ts:75 et :88 appellent l'extérieur) ; aucun planificateur ni tâche de fond (promoteDue tourne à chaque requête, src/lib/context.ts:50). D-16 : Vigie n'a pas encore de module ECR/ECO ; O-10 ouverte.
+Constaté : src/server/integrations/vigie/:24-31 (submitChange calcule ECR-AAAA-NNN l.27-28, n'écrit que dans change_requests l.30, l'appel réel n'est qu'un commentaire l.29) ; vigie.ts:17-19 (vigieSimulated = !VIGIE_API_URL) ; src/lib/actions.ts:592 (simulateVigieDecision refusée dès que VIGIE_API_URL est défini) ; actions.ts:570-582 (submitChange appelé dans db.transaction) ; aucun fetch vers Vigie dans src/ (seuls storage.ts:75 et :88 appellent l'extérieur) ; aucun planificateur ni tâche de fond (promoteDue tourne à chaque requête, src/lib/context.ts:50). D-16 : Vigie n'a pas encore de module ECR/ECO ; O-10 ouverte.
 
 </details>
 
@@ -2111,7 +2117,7 @@ Constaté : src/lib/vigie.ts:24-31 (submitChange calcule ECR-AAAA-NNN l.27-28, n
 
 - **Effort** : important · **Références** : O-03, T-01, D-04, M15, G44
 - **Revérifié le 18 octobre 2026** : constat inchangé : les projets ne sont écrits que par le seed (src/db/seed.ts:140) ; `validateFields` refuse un projet inconnu (src/lib/actions.ts:308) ; `ctx.projects` lit la table (src/lib/context.ts) ; aucune route `/api/integrations/keystone`.
-- **Analyse comparative du 25 octobre 2026** — Standard du marché (Aconex, Autodesk Docs, ProjectWise, OpenText) : la GED est reliée en direct à l'outil de gestion de projets (projets, phases, équipe, pièces attendues), pas à des tables miroirs. Dans Codex, les projets viennent du seed et `src/lib/keystone.ts` est une simulation. Priorité suggérée : P1 avec le point 109 (Vigie), dès la réponse à O-03 (M-01 a fixé la base commune ; la liaison reste une API ou les vues `pub_`). L'état du point ne change pas.
+- **Analyse comparative du 25 octobre 2026** — Standard du marché (Aconex, Autodesk Docs, ProjectWise, OpenText) : la GED est reliée en direct à l'outil de gestion de projets (projets, phases, équipe, pièces attendues), pas à des tables miroirs. Dans Codex, les projets viennent du seed et `src/server/integrations/keystone/` est une simulation. Priorité suggérée : P1 avec le point 109 (Vigie), dès la réponse à O-03 (M-01 a fixé la base commune ; la liaison reste une API ou les vues `pub_`). L'état du point ne change pas.
 
 Le manque est confirmé. Les projets n'existent que par le seed (seed.ts:103). Un nouveau projet Keystone est donc refusé à la création (actions.ts:122) comme à l'import (importer.ts:221). Le libellé « Synchronisé depuis Keystone à … » (page.tsx:255) affiche une date figée. Le chef de projet doit exister dans `users` (schema.ts:106). Lot et work package sont saisis en texte libre (Dialogs.tsx:273, G44).
 À faire, selon O-03 :
@@ -2119,11 +2125,11 @@ Le manque est confirmé. Les projets n'existent que par le seed (seed.ts:103). U
 - une synchronisation périodique ou par webhook entrant (ex. `POST /api/integrations/keystone`) : création, modification et clôture d'un projet, phase, chef de projet, tiers, événements, lots ou WBS ;
 - la correspondance des identifiants de personnes ;
 - la vérification du chemin « Ouvrir dans Keystone » (`/projects/{code}`, keystone.ts:13).
-Remplacer `src/lib/keystone.ts` ne suffit pas, contrairement à ce que dit D-04 : `ctx.projects` (context.ts:59), l'import (importer.ts:85) et `resolveFunction` (actions.ts:381) lisent la table directement.
+Remplacer `src/server/integrations/keystone/` ne suffit pas, contrairement à ce que dit D-04 : `ctx.projects` (context.ts:59), l'import (importer.ts:85) et `resolveFunction` (actions.ts:381) lisent la table directement.
 
 <details><summary>Constat dans le code</summary>
 
-Constaté : src/lib/keystone.ts:16-38 (lecture des tables locales, synced = projects.syncedAt l.33) ; seules écritures dans projects : src/db/seed.ts:103 (données de src/db/seed-org.ts:105-108, synced figé '2026-10-07 08:40') ; src/lib/context.ts:59 (ctx.projects lit la table) ; src/lib/actions.ts:122 (validateFields → project_required) ; src/lib/importer.ts:85 et 221 (import → project_required) ; src/db/schema.ts:101-110 (manager_id notNull, FK users) ; src/components/dialogs/Dialogs.tsx:272-274 (lot / work package en texte libre). Aucune route /api/integrations/keystone.
+Constaté : src/server/integrations/keystone/:16-38 (lecture des tables locales, synced = projects.syncedAt l.33) ; seules écritures dans projects : src/db/seed.ts:103 (données de src/db/seed-org.ts:105-108, synced figé '2026-10-07 08:40') ; src/lib/context.ts:59 (ctx.projects lit la table) ; src/lib/actions.ts:122 (validateFields → project_required) ; src/lib/importer.ts:85 et 221 (import → project_required) ; src/db/schema.ts:101-110 (manager_id notNull, FK users) ; src/components/dialogs/Dialogs.tsx:272-274 (lot / work package en texte libre). Aucune route /api/integrations/keystone.
 
 </details>
 
