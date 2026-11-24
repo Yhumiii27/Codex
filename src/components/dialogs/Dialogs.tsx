@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { useApp } from '@/components/shell/AppProvider';
 import { Icon } from '@/components/ui/Icon';
-import { Seg } from '@/components/ui/Seg';
+import { Segmented } from '@norma/charte/ds/Segmented';
 import type { Attachment, Conf, LinkRel, Origin } from '@/db/schema';
 import {
   addDocLink, addFunctionHolder, addOrgValue, addWorkingVersion, createDocument, createFamily, createFunction, createProgram, createType, decideStep,
@@ -204,7 +204,6 @@ function DocFields({ types, st, set, doc, preset, withOwner, locked, lockType, f
   const type = types.find((x) => x.code === st.typeCode);
   const users = userOptions(data);
   const confHint = st.conf === 'restreint' ? t.conf_hint_restreint : st.conf === 'confidentiel' ? t.conf_hint_conf : st.conf === 'tres_confidentiel' ? t.conf_hint_tres : undefined;
-  const segOpt = { padding: '6px 12px', fontSize: 12.5 };
   const frozen = (label: string) => <div style={{ minHeight: 34, display: 'flex', alignItems: 'center' }}><span className="tag tag-neutral">{label}</span></div>;
   const errorOf = (name: string) => (fieldError?.field === name ? fieldError.error : null);
   const reviewHint = reviewDueHint(type?.reviewMonths, !!doc?.inForce);
@@ -219,13 +218,13 @@ function DocFields({ types, st, set, doc, preset, withOwner, locked, lockType, f
       <input type="hidden" name="origin" value={st.origin} />
       <input type="hidden" name="attachment" value={st.attachment} />
       <Field label={t.origin} hint={locked ? undefined : t.origin_hint}>
-        {locked ? frozen(t[`or_${st.origin}`]) : <Seg name="originSeg" ariaLabel={t.origin} value={st.origin} optStyle={segOpt} options={origins.map((o) => ({ key: o, label: t[`or_${o}`] }))} onPick={(k) => set({ origin: k as Origin })} />}
+        {locked ? frozen(t[`or_${st.origin}`]) : <Segmented className="codex-seg" wrap label={t.origin} value={st.origin} options={origins.map((o) => ({ value: o, label: t[`or_${o}`] }))} onChange={(k) => set({ origin: k as Origin })} />}
       </Field>
       <Field label={t.attachment} hint={lockProject || locked ? undefined : t.attachment_hint}>
         {lockProject
           ? <div style={{ minHeight: 34, display: 'flex', alignItems: 'center' }}><span className="tag tag-accent">{t.att_project}</span></div>
           : locked ? frozen(t[`att_${st.attachment}`])
-          : <Seg name="attachmentSeg" ariaLabel={t.attachment} value={st.attachment} optStyle={segOpt} options={atts.map((a) => ({ key: a, label: t[`att_${a}`] }))} onPick={(k) => set({ attachment: k as Attachment })} />}
+          : <Segmented className="codex-seg" wrap label={t.attachment} value={st.attachment} options={atts.map((a) => ({ value: a, label: t[`att_${a}`] }))} onChange={(k) => set({ attachment: k as Attachment })} />}
       </Field>
 
       {st.attachment === 'project' && (
@@ -564,13 +563,13 @@ function NewDocument({ preset }: { preset: NewPreset }) {
         )}
 
         <Field label={t.initial_content}>
-          <Seg
-            name="createMode"
-            ariaLabel={t.initial_content}
+          <Segmented
+            className="codex-seg"
+            wrap
+            label={t.initial_content}
             value={mode}
-            optStyle={{ padding: '6px 12px', fontSize: 12.5 }}
-            options={[{ key: 'template', label: t.from_template }, { key: 'file', label: t.from_file }, { key: 'blank', label: t.blank_doc }]}
-            onPick={(k) => setMode(k as Mode)}
+            options={[{ value: 'template', label: t.from_template }, { value: 'file', label: t.from_file }, { value: 'blank', label: t.blank_doc }]}
+            onChange={(k) => setMode(k as Mode)}
           />
         </Field>
         {mode === 'template' && (

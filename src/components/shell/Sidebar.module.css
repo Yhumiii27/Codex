@@ -1,56 +1,11 @@
-.nav {
-  flex-direction: column; align-items: stretch; gap: 0;
-  padding: var(--space-4) var(--space-3);
-  border-right: 1px solid var(--color-divider); min-height: 0;
-  /* A window too short for it (zoom at 200 %, WCAG 1.4.4): the bottom (help, notes, profile) scrolls into reach. */
-  overflow-y: auto;
+/* What Codex adds to the common sidebar (norma/charte/coque.css): the linked app above the help and the person. */
+.linkedBlock { display: flex; flex-direction: column; gap: 2px; }
+.overline {
+  padding: 0 8px 2px; font-size: var(--text-eyebrow); letter-spacing: var(--tracking-caps); text-transform: uppercase;
+  color: var(--color-neutral-400);
 }
-.brandRow { display: flex; align-items: center; gap: 10px; padding: 4px 8px 20px; }
-.logo {
-  width: 28px; height: 28px; flex: none; border-radius: var(--radius-md);
-  border: 1px solid var(--color-accent); display: grid; place-items: center; color: var(--color-accent);
-  box-shadow: 0 0 18px color-mix(in srgb, var(--color-accent) 35%, transparent);
-}
-.brand { font-size: 16px; line-height: 1.1; margin: 0; }
-.items { display: flex; flex-direction: column; gap: 2px; }
-.nav .item {
-  display: flex; align-items: center; gap: 10px; padding: 7px 10px;
-  border-radius: var(--radius-md); font-size: 13px; border-left: 2px solid transparent;
-}
-.nav .item:hover { background: color-mix(in srgb, var(--color-text) 6%, transparent); }
-.bottom { margin-top: auto; display: flex; flex-direction: column; gap: 8px; }
-/* Help, then the design notes: ghost buttons (a link inside .nav would otherwise take the text colour). */
-.helpRow { display: flex; flex-direction: column; align-items: stretch; }
-.nav .help { justify-content: flex-start; font-size: 12px; padding: 6px 8px; color: var(--color-accent); }
-.nav .help:hover { color: var(--color-accent); }
-.nav .help[aria-current='page'] { background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
-.overline { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 4px; }
-.nav .linked {
-  display: flex; align-items: center; gap: 8px; font-size: 13px;
-  text-decoration: none; color: inherit; padding: 4px 0;
-}
-.nav .linked:hover { color: var(--color-accent-300); }
+.linked { gap: 8px; }
 .linkedMark {
   width: 18px; height: 18px; flex: none; border-radius: 4px; border: 1px solid var(--color-neutral-600);
-  display: grid; place-items: center; font-size: 9px; font-weight: 500;
+  display: grid; place-items: center; font-size: 9px; font-weight: var(--weight-strong);
 }
-.user {
-  display: flex; align-items: center; gap: 10px; padding: 10px 8px 2px;
-  border-top: 1px solid var(--color-divider); width: 100%;
-}
-.user:hover .avatar { box-shadow: 0 0 0 1px var(--color-accent); }
-.avatar {
-  width: 30px; height: 30px; flex: none; border-radius: 50%;
-  background: var(--color-accent-800); color: var(--color-accent-100);
-  display: grid; place-items: center; font-size: 11px; font-weight: 500;
-}
-/* Page search (⌘K, Norma § 7), under the brand as in Keystone and Arche. */
-.search { position: relative; margin: 0 0 12px; }
-.searchIcon { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); opacity: 0.6; pointer-events: none; }
-.nav .searchInput { width: 100%; min-height: 30px; padding: 4px 38px 4px 28px; font-size: 12.5px; }
-.kbd {
-  position: absolute; right: 7px; top: 50%; transform: translateY(-50%); pointer-events: none;
-  font: inherit; font-size: 10.5px; padding: 1px 5px; border-radius: var(--radius-sm);
-  border: 1px solid var(--color-divider); color: color-mix(in srgb, var(--color-text) 68%, transparent);
-}
-.hits { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }

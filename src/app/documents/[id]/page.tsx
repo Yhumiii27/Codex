@@ -4,10 +4,12 @@ import { notFound, redirect } from 'next/navigation';
 import type { MetaDoc, VersionLite } from '@/components/dialogs/types';
 import { Forbidden } from '@/components/ui/Forbidden';
 import { Icon } from '@/components/ui/Icon';
-import { Seg } from '@/components/ui/Seg';
+import { Segmented } from '@norma/charte/ds/Segmented';
+import { PageHeader } from '@/components/shell/PageHeader';
+import { translate } from '@/i18n';
 import { HStepper, VStepper } from '@/components/ui/Stepper';
 import { getDb } from '@/db';
-import { ActionButton, DialogButton, ShareButton } from '@/components/ui/client';
+import { ActionButton, ActionLink, DialogButton, ShareButton } from '@/components/ui/client';
 import { canRead, mayEditLinks, mayGetApprovalRecord, mayLinkTemplate, mayManageRetention, mayRecordReview, maySetRetentionEvent, mayWorkOnDraft, openRevisionView, readerMaySeeRevision, readerMaySeeVersion, readersApply } from '@/lib/access';
 import { releaseHold, removeDocLink } from '@/lib/actions';
 import { isFinalStatus, TEMPLATE_TYPE } from '@/lib/codes';
@@ -190,7 +192,7 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
   );
   // A circuit already running: follow it (in Validations when the user takes part, else in the Validation tab).
   const validateBtn = (cls: string) => running
-    ? <Link href={running.visible ? running.href : tabHref('approval')} className={cls}><Icon name="check" size={14} />{t.follow_workflow}</Link>
+    ? <ActionLink href={running.visible ? running.href : tabHref('approval')} className={cls} icon="check">{t.follow_workflow}</ActionLink>
     : drafting && base && (
       <DialogButton
         spec={{ kind: 'validate', docId: doc.id, title: doc.title, revLabel: drafting.label, circuitL, minDate: todayIso(), base }}
@@ -326,15 +328,17 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
     : null;
 
   return (
-    <div className="screen" style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }} data-screen-label="Fiche document">
-      <RecordConsultation docId={doc.id} />
-      <div className={styles.head}>
-        <Link href="/explorateur" className="btn btn-ghost" style={{ padding: '6px 6px', fontSize: 12, marginTop: 2 }}><Icon name="back" size={14} />{t.back}</Link>
-        <div style={{ flex: 1, minWidth: 260 }}>
-          <div className="text-muted" style={{ fontSize: 11 }}>
-            {doc.id}{doc.aliases.length > 0 && ` · ${t.aliases} : ${doc.aliases.join(', ')}`} · {doc.path}
-          </div>
-          <h2 className={styles.title}>{doc.title}</h2>
+    <>
+      {/* The record's header (Norma 2.0): the document's path, its title and tags, then its actions — the main one
+          (request the validation, or a change once in force) rightmost, the others in « Actions » beyond three. */}
+      <PageHeader
+        crumbs={[
+          <Link key="b" href="/explorateur" className="link-plain">{translate(lang, 'Document browser')}</Link>,
+          translate(lang, 'Document record'),
+          <>{doc.id}{doc.aliases.length > 0 && ` · ${t.aliases} : ${doc.aliases.join(', ')}`} · {doc.path}</>,
+        ]}
+        title={doc.title}
+        titleAside={
           <div className={styles.tags}>
             {doc.attachment === 'project' && doc.projectCode && <span className="tag tag-accent">{doc.projectCode}</span>}
             {doc.attachment === 'research' && doc.programCode && <span className="tag tag-accent">{doc.programCode}</span>}
@@ -347,20 +351,20 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
             {wip && <span className="tag tag-outline">{wip}</span>}
             <span className="tag tag-neutral">{doc.confL}</span>
             {doc.legalHold && <span className="tag tag-outline"><Icon name="lock" size={11} style={{ marginRight: 4 }} />{t.hold}</span>}
-            <span className="text-muted nowrap" style={{ fontSize: 12, marginLeft: 4 }}>{t.modified} {doc.modifiedF} {t.by} {modifiedBy}</span>
           </div>
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {current
-            ? <a href={`${fileUrl}?v=${current.id}&download=1`} className="btn btn-secondary"><Icon name="download" size={14} />{t.download}</a>
-            : <button type="button" className="btn btn-secondary" aria-disabled title={t.no_version}><Icon name="download" size={14} />{t.download}</button>}
+        }
+        subtitle={<>{t.modified} {doc.modifiedF} {t.by} {modifiedBy}</>}
+        actions={<>
+          <ActionLink native href={`${fileUrl}?v=${current?.id}&download=1`} icon="download" denied={current ? undefined : t.no_version}>{t.download}</ActionLink>
           {workingBtn}
-          {validateBtn('btn btn-primary')}
-          {changeBtn('btn btn-primary')}
+          {validateBtn('btn btn-primary') && changeBtn('btn btn-secondary')}
           {withdrawBtn('btn btn-secondary')}
           <ShareButton />
-        </div>
-      </div>
+        </>}
+        primary={validateBtn('btn btn-primary') || changeBtn('btn btn-primary') || undefined}
+      />
+    <div className="screen panes" style={{ flexDirection: 'column' }} data-screen-label="Fiche document">
+      <RecordConsultation docId={doc.id} />
 
       {notice && (
         <div className={styles.stateNotice} data-state={notice.state} role="note">
@@ -410,13 +414,13 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
         />
         <aside className={styles.side}>
           <div style={{ padding: '12px 18px 0' }}>
-            <Seg
-              name="docTab"
+            <Segmented
+              className={tabs.length > 5 ? `${styles.tabs} ${styles.tabsMany}` : styles.tabs}
+              fullWidth
+              label={t.tab_meta}
               value={tab}
-              style={{ display: 'flex', width: '100%' }}
-              optStyle={{ flex: 1, justifyContent: 'center', padding: tabs.length > 5 ? '6px 1px' : '6px 2px', fontSize: tabs.length > 5 ? 11 : 11.5, whiteSpace: 'nowrap' }}
               options={tabs.map((k) => ({
-                key: k,
+                value: k,
                 label: k === 'project' ? t.project : k === 'versions' ? t.tab_revisions : k === 'requests' ? t.tab_requests : t[`tab_${k}`],
                 href: tabHref(k),
               }))}
@@ -748,12 +752,12 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
 
             {tab === 'history' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <Seg
-                  name="docHist"
+                <Segmented
+                  className="codex-seg"
+                  wrap
                   value={hist}
-                  ariaLabel={t.tab_history}
-                  optStyle={{ fontSize: 11.5, padding: '4px 8px' }}
-                  options={HIST.map((k) => ({ key: k, label: t[`hist_${k}`], href: `${doc.href}?tab=history${k === 'activity' ? '' : `&hist=${k}`}` }))}
+                  label={t.tab_history}
+                  options={HIST.map((k) => ({ value: k, label: t[`hist_${k}`], href: `${doc.href}?tab=history${k === 'activity' ? '' : `&hist=${k}`}` }))}
                 />
                 {hist === 'consultations' && <p className="text-muted" style={{ fontSize: 11, margin: 0 }}>{t.hist_consultations_note.replace('{n}', String(CONSULT_WINDOW_MINUTES))}</p>}
                 {(hist === 'consultations' ? consultations : hist === 'metadata' ? history.filter((h) => METADATA.has(h.action)) : history.length ? history : [{ id: 0, when: doc.createdF, user: doc.owner, actionLabel: t.act_upload, detail: 'A.1' }]).map((h) => (
@@ -769,5 +773,6 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
         </aside>
       </div>
     </div>
+    </>
   );
 }

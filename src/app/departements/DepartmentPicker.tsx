@@ -17,7 +17,7 @@ export function DepartmentPicker({ value, options, ariaLabel }: { value: string;
         const v = e.target.value;
         start(() => router.push(`/departements/${encodeURIComponent(v)}`));
       }}
-      style={{ width: 'auto', minHeight: 34, fontSize: 13, padding: '4px 30px 4px 10px' }}
+      style={{ width: 'auto', maxWidth: '100%', minHeight: 'var(--control-h)', fontSize: 'var(--text-control)', padding: '4px 30px 4px 10px' }}
     >
       {options.map((o) => <option key={o.key} value={o.key}>{o.key} · {o.label}</option>)}
     </select>

@@ -6,6 +6,8 @@ import { useApp } from '@/components/shell/AppProvider';
 import type { DialogSpec } from '@/components/dialogs/types';
 import { Icon } from '@/components/ui/Icon';
 import { DialogButton } from '@/components/ui/client';
+import { FilterBar, FilterNote } from '@norma/charte/ds/FilterBar';
+import { PageHeader } from '@/components/shell/PageHeader';
 import { archiveDocuments, holdDocuments, type ActionResult } from '@/lib/actions';
 import { failureText } from '@/lib/errors';
 
@@ -22,7 +24,7 @@ export type DueRow = {
 };
 
 /** Deadlines tab: selection and the two bulk actions of the design (archive, legal hold); `filters`: those past due only. */
-export function DueTable({ tabs, filters, rows, canArchive }: { tabs: ReactNode; filters: ReactNode; rows: DueRow[]; canArchive: boolean }) {
+export function DueTable({ title, tabs, filters, rows, canArchive }: { title: string; tabs: ReactNode; filters: ReactNode; rows: DueRow[]; canArchive: boolean }) {
   const { t, toast } = useApp();
   const [sel, setSel] = useState<Record<string, boolean>>({});
   const [pending, start] = useTransition();
@@ -42,15 +44,21 @@ export function DueTable({ tabs, filters, rows, canArchive }: { tabs: ReactNode;
 
   return (
     <>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 24px 10px', flexWrap: 'wrap' }}>
-        {tabs}
-        {filters}
-        <span style={{ flex: 1 }} />
-        <span className="text-muted" style={{ fontSize: 12 }}>{ids.length} {t.selected}</span>
-        <button type="button" className="btn btn-secondary" disabled={!ids.length || pending || !canArchive} title={denied} onClick={() => run(archiveDocuments)}><Icon name="archive" size={14} />{t.archive_sel}</button>
-        <button type="button" className="btn btn-primary" disabled={!ids.length || pending || !canArchive} title={denied} onClick={() => run(holdDocuments)}><Icon name="lock" size={14} />{t.hold_sel}</button>
-      </div>
-      <div style={{ flex: 1, overflow: 'auto', padding: '0 24px 24px' }}>
+      {/* The two bulk actions act on the rows ticked below: the page header holds them (Norma 2.0), the toolbar the tabs,
+          the filter and the count of the selection. */}
+      <PageHeader
+        title={title}
+        actions={<button type="button" className="btn btn-secondary" disabled={!ids.length || pending || !canArchive} title={denied} onClick={() => run(archiveDocuments)}><Icon name="archive" size={14} />{t.archive_sel}</button>}
+        primary={<button type="button" className="btn btn-primary" disabled={!ids.length || pending || !canArchive} title={denied} onClick={() => run(holdDocuments)}><Icon name="lock" size={14} />{t.hold_sel}</button>}
+        toolbar={
+          <FilterBar>
+            {tabs}
+            {filters}
+            <FilterNote>{ids.length} {t.selected}</FilterNote>
+          </FilterBar>
+        }
+      />
+      <div className="screen codex-table-scroll" data-screen-label="Archivage">
         <table className="table" style={{ fontSize: 13 }}>
           <thead>
             <tr>

@@ -6,6 +6,7 @@ import { translatorFor, type Translate } from '@/i18n';
 import type { MyAction, Todo } from '@/lib/queries';
 import { latestTodo } from './todo';
 import type { DialogData, DialogSpec } from '@/components/dialogs/types';
+import type { Theme } from '@/lib/theme';
 import { Dialogs } from '@/components/dialogs/Dialogs';
 
 /** `error`: a refusal; 'warn': done, with something to know (ActionResult.warning), left on screen longer. */
@@ -24,7 +25,13 @@ type AppCtx = {
   /** « À traiter » (lib/queries.ts myTodo): the sidebar badge and the bell, the most recent list the shell was given. */
   todo: MyAction[];
   reportTodo: (x: Todo) => void;
+  /** Display read from the epc2i-theme cookie at render (the switch changes it in the browser afterwards). */
+  theme: Theme;
+  /** The five latest entries of the bell's « Activité récente ». */
+  recent: Recent[];
 };
+
+export type Recent = { id: number; when: string; user: string; actionLabel: string; ref: string; href: string };
 
 const Ctx = createContext<AppCtx | null>(null);
 
@@ -44,7 +51,7 @@ export function TodoSync({ todo }: { todo: Todo }) {
   return null;
 }
 
-export function AppProvider({ t, lang, data, todo, children }: { t: T; lang: Lang; data: DialogData; todo: Todo; children: ReactNode }) {
+export function AppProvider({ t, lang, data, todo, theme, recent, children }: { t: T; lang: Lang; data: DialogData; todo: Todo; theme: Theme; recent: Recent[]; children: ReactNode }) {
   const [dialog, setDialog] = useState<DialogSpec | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const seq = useRef(0);
@@ -60,7 +67,7 @@ export function AppProvider({ t, lang, data, todo, children }: { t: T; lang: Lan
   }, []);
   const close = useCallback(() => setDialog(null), []);
   const tr = useMemo(() => translatorFor(lang), [lang]);
-  const value = useMemo(() => ({ t, tr, lang, data, open: setDialog, close, toast, todo: items, reportTodo }), [t, tr, lang, data, close, toast, items, reportTodo]);
+  const value = useMemo(() => ({ t, tr, lang, data, open: setDialog, close, toast, todo: items, reportTodo, theme, recent }), [t, tr, lang, data, close, toast, items, reportTodo, theme, recent]);
 
   return (
     <Ctx.Provider value={value}>

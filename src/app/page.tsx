@@ -3,7 +3,10 @@ import Link from 'next/link';
 import { TodoSync } from '@/components/shell/AppProvider';
 import { TODO_ICON } from '@/components/shell/todo';
 import { Icon } from '@/components/ui/Icon';
-import { ClickRow, DialogButton } from '@/components/ui/client';
+import { ActionLink, ClickRow, DialogButton } from '@/components/ui/client';
+import { PageHeader } from '@/components/shell/PageHeader';
+import { KpiGrid } from '@norma/charte/ds/Kpi';
+import { translate } from '@/i18n';
 import { getCtx } from '@/lib/context';
 import { todayLong } from '@/lib/format';
 import { dueDeadlines, inForceThisWeek, myTodo, recentActivity, recentDocs } from '@/lib/queries';
@@ -12,7 +15,7 @@ import { screenTitle } from '@/lib/titles';
 
 /** A KPI card: a link when the role may open its screen, otherwise a plain card (never a dead end). */
 function Kpi({ href, ok, children }: { href: string; ok: boolean; children: ReactNode }) {
-  const cls = `card ${styles.kpi}`;
+  const cls = `card elev-sm coque-kpi ${styles.kpi}`;
   return ok ? <Link href={href} className={cls}>{children}</Link> : <div className={cls}>{children}</div>;
 }
 
@@ -41,26 +44,23 @@ export default async function HomePage() {
   const noUpload = ctx.can('upload') ? undefined : `${t.not_allowed} : ${t.perm_upload}`;
 
   return (
-    <div className="screen" style={{ overflow: 'auto', padding: 'var(--space-8)' }} data-screen-label="Accueil">
+    <>
       <TodoSync todo={todo} />
-      <div style={{ maxWidth: 1180 }}>
-        <div className={styles.top}>
-          <div>
-            <h2 className={styles.hello}>{t.hello}, {ctx.user.name.split(' ')[0]}</h2>
-            <div className="text-muted">{todayLong(lang)} · {t.home_sub}</div>
-          </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <DialogButton spec={{ kind: 'new', preset: { mode: 'template' } }} className="btn btn-primary" icon="plus" iconSw={1.8} deniedTitle={noUpload}>{t.new_from_tpl}</DialogButton>
-            <DialogButton spec={{ kind: 'new', preset: { mode: 'file' } }} icon="upload" deniedTitle={noUpload}>{t.upload}</DialogButton>
-            <Link href="/recherche" className="btn btn-secondary">{t.adv_search}</Link>
-          </div>
-        </div>
-
-        <div className={styles.kpis}>
-          <Kpi href="/validations" ok={ctx.screens.workflow}><div className="card-kicker">{t.kpi_todo}</div><div className={styles.kpiValue}>{toApprove}</div><div className="card-meta">{t.kpi_todo_sub}</div></Kpi>
-          <Kpi href="/archivage" ok={ctx.screens.retention}><div className="card-kicker">{t.kpi_exp}</div><div className={styles.kpiValue}>{due.length}</div><div className="card-meta">{t.kpi_exp_sub}</div></Kpi>
-          <Kpi href="/explorateur?status=in_force" ok={ctx.screens.explorer}><div className="card-kicker">{t.kpi_in_force}</div><div className={styles.kpiValue}>{inForceWeek}</div><div className="card-meta">{t.kpi_in_force_sub}</div></Kpi>
-        </div>
+      <PageHeader
+        title={translate(lang, 'Dashboard')}
+        subtitle={<>{t.hello}, {ctx.user.name.split(' ')[0]} · {todayLong(lang)} · {t.home_sub}</>}
+        actions={<>
+          <ActionLink href="/recherche">{t.adv_search}</ActionLink>
+          <DialogButton spec={{ kind: 'new', preset: { mode: 'file' } }} icon="upload" deniedTitle={noUpload}>{t.upload}</DialogButton>
+        </>}
+        primary={<DialogButton spec={{ kind: 'new', preset: { mode: 'template' } }} className="btn btn-primary" icon="plus" iconSw={1.8} deniedTitle={noUpload}>{t.new_from_tpl}</DialogButton>}
+      />
+      <div className={`screen ${styles.page}`} data-screen-label="Accueil">
+        <KpiGrid min={170}>
+          <Kpi href="/validations" ok={ctx.screens.workflow}><div className="coque-kpi-label">{t.kpi_todo}</div><div className="coque-kpi-value">{toApprove}</div><div className="coque-kpi-sub">{t.kpi_todo_sub}</div></Kpi>
+          <Kpi href="/archivage" ok={ctx.screens.retention}><div className="coque-kpi-label">{t.kpi_exp}</div><div className="coque-kpi-value">{due.length}</div><div className="coque-kpi-sub">{t.kpi_exp_sub}</div></Kpi>
+          <Kpi href="/explorateur?status=in_force" ok={ctx.screens.explorer}><div className="coque-kpi-label">{t.kpi_in_force}</div><div className="coque-kpi-value">{inForceWeek}</div><div className="coque-kpi-sub">{t.kpi_in_force_sub}</div></Kpi>
+        </KpiGrid>
 
         <div className={styles.cols}>
           <div className={styles.col}>
@@ -90,6 +90,7 @@ export default async function HomePage() {
             </section>
             <section>
               <div className="sec-head" style={{ marginBottom: 6 }}><h2 className="sec-title">{t.recents}</h2><Link href="/explorateur" className="sec-link">{t.see_all}</Link></div>
+              <div className="codex-table-scroll">
               <table className="table" style={{ fontSize: 13 }}>
                 <thead><tr><th>{t.title_label}</th><th>{t.type}</th><th>{t.revision}</th><th>{t.status}</th><th>{t.modified}</th></tr></thead>
                 <tbody>
@@ -104,6 +105,7 @@ export default async function HomePage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </section>
           </div>
 
@@ -136,6 +138,6 @@ export default async function HomePage() {
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }

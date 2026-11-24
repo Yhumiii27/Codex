@@ -21,6 +21,16 @@ Le code suit le modèle de `docs/modele-cible.md`. `npm run typecheck`, `npm run
 
 ## Fait
 
+**Norma 2.0.0, coque commune (24 novembre 2026).** Copie de Norma 2.0.0 dans `norma/` et de son `nocturne.css` dans
+`src/app/nocturne.css` (Inter servie par le dépôt) ; plus de barre d'en-tête globale : la coque de la suite
+(`norma/charte/COQUE.md`, `coque.css`, `AppShell`, `Sidebar`, `PageHeader`) — barre latérale de 232 px (marque, recherche
+de pages ⌘K, écrans, puis application liée, aide, notes et profil en pied), un en-tête par écran (fil d'Ariane, titre
+`<h1>` de 26 px, recherche documentaire, actions de l'écran avec l'action principale à droite et le menu « Actions »
+au-delà de trois, cloche, puis **FR | EN au-dessus de sombre | clair**, `PrefsStack`), barre d'outils (onglets
+`Segmented`, filtres, note), panneaux latéraux de 640 px (680 pour un document), et la mise en page de 1 024 px ou moins
+(barre supérieure « Menu », tiroir, écrans en colonne). `src/components/shell/` : `Shell`, `Sidebar`, `PageHeader`,
+`Prefs`, `Bell`, `DocSearch` ; `Header.tsx`, `ThemeToggle.tsx` et `Seg` retirés.
+
 **Norma 1.0.0 et affichage clair (24 novembre 2026).** Copie du socle commun de la suite dans `norma/`
 (`norma.config.json`, `npm run norma:check`, job « Norma » de la CI, `@norma/REGLES.md` en tête de `CLAUDE.md`) ;
 bouton d'affichage sombre / clair à droite du sélecteur FR / EN (`src/components/shell/ThemeToggle.tsx`, cookie

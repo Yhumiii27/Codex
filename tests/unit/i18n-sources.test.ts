@@ -32,12 +32,19 @@ function sources(): Map<string, string> {
     if (p.endsWith(join('i18n', 'index.ts'))) continue;
     read(p, CALLS);
   }
-  // Charte components used by Codex: their t('…') labels go to Codex's dictionary (norma/charte/README.md).
+  // Charte components used by Codex, and those they import in turn (PageHeader → HeaderActions, HeaderTools…): their
+  // t('…') labels go to Codex's dictionary (norma/charte/README.md).
   const used = new Set<string>();
-  for (const p of files(join(ROOT, 'src'))) for (const m of readFileSync(p, 'utf8').matchAll(/@norma\/charte\/ds\/(\w+)/g)) used.add(m[1]);
-  for (const name of used) {
+  const todo: string[] = [];
+  const take = (name: string) => { if (!used.has(name)) { used.add(name); todo.push(name); } };
+  for (const p of files(join(ROOT, 'src'))) for (const m of readFileSync(p, 'utf8').matchAll(/@norma\/charte\/ds\/(\w+)/g)) take(m[1]);
+  while (todo.length) {
+    const name = todo.pop()!;
     const p = join(ROOT, 'norma', 'charte', 'ds', `${name}.tsx`);
-    try { read(p, [new RegExp(String.raw`\bt\(\s*` + LITERAL, 'g')]); } catch { /* a .ts module without labels */ }
+    let text: string;
+    try { text = readFileSync(p, 'utf8'); } catch { continue; /* a .ts module without labels */ }
+    read(p, [new RegExp(String.raw`\bt\(\s*` + LITERAL, 'g')]);
+    for (const m of text.matchAll(/from '\.\/(\w+)'/g)) take(m[1]);
   }
   return found;
 }
@@ -47,7 +54,10 @@ describe('English source strings', () => {
 
   it('finds the shell’s sources', () => {
     expect(found.has('Go to a page…')).toBe(true);
-    expect(found.has('Main navigation')).toBe(true);
+    expect(found.has('Main menu')).toBe(true);
+    // Followed through PageHeader: the « Actions » menu and the language / display pair (Norma 2.0).
+    expect(found.has('Actions')).toBe(true);
+    expect(found.has('Language')).toBe(true);
   });
 
   it('every source has its French, different from the English unless listed as the same word', () => {

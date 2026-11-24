@@ -10,7 +10,7 @@ import { existsSync, mkdtempSync, openSync, readFileSync, rmSync } from 'node:fs
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
-import { chromium, type Browser } from 'playwright-core';
+import { chromium, type Browser, type Locator, type Page } from 'playwright-core';
 
 const require = createRequire(import.meta.url);
 export const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
@@ -69,4 +69,31 @@ export async function stopServer(server: Server | null): Promise<void> {
 
 export function launchChromium(): Promise<Browser> {
   return chromium.launch(process.env.CODEX_A11Y_CHROMIUM ? { executablePath: process.env.CODEX_A11Y_CHROMIUM } : {});
+}
+
+/**
+ * A page action named `name` (Norma 2.0, norma/charte/COQUE.md § 3.3): a button of the page, or a row of the header's
+ * « Actions » menu (`actions`: its translated name), which is opened first when the action is there. At 1 024 px or
+ * less a button of the sidebar is reached by opening the drawer (`menu`: the top bar's « Menu »). `exact` as Playwright's.
+ */
+export async function pageAction(page: Page, name: string | RegExp, labels: { actions: string; menu?: string }, exact = typeof name === 'string'): Promise<Locator> {
+  const button = page.getByRole('button', { name, exact }).first();
+  if (await button.count()) return button;
+  const more = page.locator('.coque-header-actions').getByRole('button', { name: labels.actions, exact: true });
+  if (await more.count()) {
+    await more.first().click();
+    const row = page.getByRole('menuitem', { name, exact }).first();
+    if (await row.count()) return row;
+    await page.keyboard.press('Escape');
+  }
+  if (labels.menu) {
+    const toggle = page.locator('#coque-nav-toggle');
+    if (await toggle.isVisible().catch(() => false)) {
+      await toggle.click();
+      const inDrawer = page.getByRole('button', { name, exact }).first();
+      if (await inDrawer.count()) return inDrawer;
+      await page.keyboard.press('Escape');
+    }
+  }
+  return button;
 }

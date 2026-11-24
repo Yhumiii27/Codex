@@ -2,7 +2,11 @@ import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { Forbidden } from '@/components/ui/Forbidden';
 import { Icon } from '@/components/ui/Icon';
-import { ClickRow } from '@/components/ui/client';
+import { ActionLink, ClickRow } from '@/components/ui/client';
+import { FilterBar } from '@norma/charte/ds/FilterBar';
+import { KpiGrid } from '@norma/charte/ds/Kpi';
+import { PageHeader } from '@/components/shell/PageHeader';
+import { translate } from '@/i18n';
 import { getCtx } from '@/lib/context';
 import { markInactive } from '@/lib/org-rules';
 import { departmentPage } from '@/lib/queries';
@@ -17,7 +21,7 @@ const DUE_SHOWN = 8;
 
 /** A KPI card, as on the home page: a link when it leads to a list of the very items it counts. */
 function Kpi({ href, children }: { href?: string; children: ReactNode }) {
-  const cls = `card ${styles.kpi}`;
+  const cls = `card elev-sm coque-kpi ${styles.kpi}`;
   return href ? <Link href={href} className={cls}>{children}</Link> : <div className={cls}>{children}</div>;
 }
 
@@ -40,35 +44,37 @@ export default async function DepartmentPage({ params }: PageProps<'/departement
   const docs = page.inForce.slice(0, DOCS_SHOWN);
 
   return (
-    <div className="screen" style={{ overflow: 'auto', padding: 'var(--space-8)' }} data-screen-label="Département">
-      <div style={{ maxWidth: 1180 }}>
-        <div className={styles.top}>
-          <div style={{ minWidth: 0 }}>
-            <h2 className={styles.title}>
-              {page.label}{page.label !== page.code && <> <span className="tag tag-outline tabnum" style={{ verticalAlign: 'middle' }}>{page.code}</span></>}
-              {!page.active && <> <span className="tag tag-neutral" style={{ verticalAlign: 'middle' }}>{t.inactive}</span></>}
-            </h2>
-            <div className="text-muted">{t.department_short}</div>
-          </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-            {/* Inactive departments stay listed, marked: their pages show their documents. */}
+    <>
+      <PageHeader
+        crumbs={[translate(ctx.lang, 'Department page')]}
+        title={page.label}
+        titleAside={<>
+          {page.label !== page.code && <span className="tag tag-outline tabnum">{page.code}</span>}
+          {/* Inactive departments stay listed, marked: their pages show their documents. */}
+          {!page.active && <span className="tag tag-neutral">{t.inactive}</span>}
+        </>}
+        primary={<ActionLink href={page.href.all} icon="search">{t.dept_search}</ActionLink>}
+        toolbar={
+          <FilterBar>
             <DepartmentPicker value={page.code} ariaLabel={t.department_short} options={markInactive(ctx.departments.map((d) => ({ key: d.code, label: ctx.label('department', d.code), active: d.active })), t.inactive.toLowerCase())} />
-            <Link href={page.href.all} className="btn btn-secondary"><Icon name="search" size={14} />{t.dept_search}</Link>
-          </div>
-        </div>
+          </FilterBar>
+        }
+      />
+    <div className={`screen ${styles.page}`} data-screen-label="Département">
         <p className={`text-muted ${styles.hint}`}><Icon name="info" size={14} style={{ flex: 'none', marginTop: 1 }} />{page.active ? '' : `${t.dept_inactive_hint} `}{page.featuredDefault ? t.dept_hint : t.dept_hint_set}</p>
 
-        <div className={styles.kpis}>
-          <Kpi href={page.href.inForce}><div className="card-kicker">{t.dept_in_force}</div><div className={styles.kpiValue}>{page.inForce.length}</div><div className="card-meta">{t.dept_in_force_sub}</div></Kpi>
-          <Kpi><div className="card-kicker">{t.kpi_exp}</div><div className={styles.kpiValue}>{page.deadlines.length}</div><div className="card-meta">{t.kpi_exp_sub}</div></Kpi>
-          <Kpi><div className="card-kicker">{t.dept_wf}</div><div className={styles.kpiValue}>{page.workflows.length}</div><div className="card-meta">{t.dept_wf_sub}</div></Kpi>
-        </div>
+        <KpiGrid min={170}>
+          <Kpi href={page.href.inForce}><div className="coque-kpi-label">{t.dept_in_force}</div><div className="coque-kpi-value">{page.inForce.length}</div><div className="coque-kpi-sub">{t.dept_in_force_sub}</div></Kpi>
+          <Kpi><div className="coque-kpi-label">{t.kpi_exp}</div><div className="coque-kpi-value">{page.deadlines.length}</div><div className="coque-kpi-sub">{t.kpi_exp_sub}</div></Kpi>
+          <Kpi><div className="coque-kpi-label">{t.dept_wf}</div><div className="coque-kpi-value">{page.workflows.length}</div><div className="coque-kpi-sub">{t.dept_wf_sub}</div></Kpi>
+        </KpiGrid>
 
         <div className={styles.cols}>
           <div className={styles.col}>
             <section>
               <div className="sec-head" style={{ marginBottom: 6 }}><h2 className="sec-title">{t.dept_in_force}</h2><Link href={page.href.inForce} className="sec-link">{t.see_all}</Link></div>
               {docs.length ? (
+                <div className="codex-table-scroll">
                 <table className="table" style={{ fontSize: 13 }}>
                   <thead><tr><th>{t.title_label}</th><th>{t.type}</th><th>{t.revision}</th><th>{t.modified}</th></tr></thead>
                   <tbody>
@@ -82,6 +88,7 @@ export default async function DepartmentPage({ params }: PageProps<'/departement
                     ))}
                   </tbody>
                 </table>
+                </div>
               ) : <p className={`text-muted ${styles.empty}`}>{t.dept_in_force_empty}</p>}
             </section>
             <section>
@@ -155,7 +162,7 @@ export default async function DepartmentPage({ params }: PageProps<'/departement
             </section>
           </div>
         </div>
-      </div>
     </div>
+    </>
   );
 }

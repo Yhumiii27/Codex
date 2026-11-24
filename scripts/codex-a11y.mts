@@ -28,7 +28,7 @@ import path from 'node:path';
 import type { Browser, Page } from 'playwright-core';
 import { DICT, type Lang } from '../src/lib/i18n';
 import { translate } from '../src/i18n/index';
-import { launchChromium, serverLogTail, startServer, stopServer, waitHealthy } from './codex-browser.mjs';
+import { launchChromium, pageAction, serverLogTail, startServer, stopServer, waitHealthy } from './codex-browser.mjs';
 import { KIND_LABEL, KINDS, measureLayout, SIZES, type Layout, type Size } from './codex-narrow.mjs';
 
 const require = createRequire(import.meta.url);
@@ -150,7 +150,7 @@ async function open(page: Page, base: string, p: string) {
   return res?.status() ?? 0;
 }
 
-/** First Tab stop is « Aller au contenu », shown while focused; Enter moves the focus to <main id="contenu">. */
+/** First Tab stop is « Aller au contenu », shown while focused; Enter moves the focus to <main id="main-content"> (Norma 2.0). */
 async function skipLink(page: Page, base: string, t: T) {
   await open(page, base, '/');
   await page.keyboard.press('Tab');
@@ -159,17 +159,19 @@ async function skipLink(page: Page, base: string, t: T) {
     const r = a?.getBoundingClientRect();
     return { cls: a?.className ?? '', text: a?.textContent?.trim() ?? '', href: a?.getAttribute('href'), w: r?.width ?? 0, h: r?.height ?? 0 };
   });
-  if (!String(first.cls).includes('skip-link') || first.text !== translate(t === DICT.en ? 'en' : 'fr', 'Skip to content') || first.href !== '#contenu') problems.push(`Lien d'évitement : premier arrêt de Tab = ${JSON.stringify(first)}`);
+  if (!String(first.cls).includes('coque-skip') || first.text !== translate(t === DICT.en ? 'en' : 'fr', 'Skip to main content') || first.href !== '#main-content') problems.push(`Lien d'évitement : premier arrêt de Tab = ${JSON.stringify(first)}`);
   else if (first.w < 20 || first.h < 10) problems.push(`Lien d'évitement invisible au focus (${first.w}×${first.h})`);
   await page.keyboard.press('Enter');
   const after = await page.evaluate(() => document.activeElement?.id ?? '');
-  if (after !== 'contenu') problems.push(`Lien d'évitement : le focus va sur « ${after} » au lieu de <main id="contenu">`);
+  if (after !== 'main-content') problems.push(`Lien d'évitement : le focus va sur « ${after} » au lieu de <main id="main-content">`);
 }
 
 async function dialog(page: Page, base: string, d: (typeof DIALOGS)[number], t: T, lang: Lang, size?: Size) {
   await open(page, base, d.path);
   const name = d.button(t);
-  const btn = page.getByRole('button', { name, exact: typeof name === 'string' }).first();
+  const tl = t === DICT.en ? 'en' : 'fr';
+  // A page action may be a row of the header's « Actions » menu, a sidebar button inside the drawer (Norma 2.0).
+  const btn = await pageAction(page, name, { actions: translate(tl, 'Actions'), menu: translate(tl, 'Menu') });
   const tag = size && size.key !== 'bureau' ? ` (${size.label})` : '';
   if (!(await btn.count())) { problems.push(`${d.name}${tag} : bouton introuvable sur ${d.path}`); return; }
   if (await btn.isDisabled()) { problems.push(`${d.name}${tag} : bouton inactif sur ${d.path}`); return; }

@@ -78,10 +78,10 @@ conception ») et, sur la page d'un département, un décalage de 3 px sous « N
 
 ### Autres corrections
 
-- **Lien d'évitement** (WCAG 2.4.1) : « Aller au contenu » / « Skip to content », premier élément de la page, caché
-  jusqu'à ce qu'il reçoive le focus, mène à `<main id="contenu" tabindex="-1">` (`src/app/layout.tsx`, `.skip-link` dans
-  `src/app/globals.css`).
-- **Titres** : le nom de l'écran dans l'en-tête est le seul `<h1>` de la page ; les titres de section, dessinés comme
+- **Lien d'évitement** (WCAG 2.4.1) : « Aller au contenu » / « Skip to main content », premier élément de la page,
+  caché jusqu'à ce qu'il reçoive le focus, mène à `<main id="main-content" tabindex="-1">` (coque commune de Norma 2.0 :
+  `AppShell` de `norma/charte/ds/AppShell.tsx`, `.coque-skip` de `norma/charte/coque.css`).
+- **Titres** : le titre de l'écran dans son en-tête (`PageHeader`, Norma 2.0) est le seul `<h1>` de la page ; les titres de section, dessinés comme
   le `h6` de Nocturne, sont des `<h2>` (classe `.sec-title`), le titre d'une fiche ou d'un circuit aussi ; mêmes
   rendus qu'avant.
 - **Repères** : la barre latérale est la « Navigation principale » ; les deux colonnes `<aside>` de l'Explorateur
@@ -151,11 +151,11 @@ d'Administration a disparu.
 49 captures identiques au pixel près ; la cinquantième, Administration › Journal, ne diffère que par les heures du
 planificateur) :
 
-- **Barre latérale** : elle défile quand la fenêtre est trop basse (`overflow-y: auto`, `Sidebar.module.css`). À 200 %, l'Aide,
+- **Barre latérale** : elle défile quand la fenêtre est trop basse (`overflow: auto` de `.coque-side`, Norma 2.0). À 200 %, l'Aide,
   les notes de conception et le profil (simulation de l'utilisateur) étaient sous le bord de la fenêtre sur les
   30 écrans, inatteignables.
 - **Onglets d'Administration et d'Archivage, filtres des échéances** : ils vont à la ligne quand leur rangée est trop
-  étroite (`<Seg wrap>`, classe `.seg-wrap`). Les huit onglets d'Administration faisaient déborder la page de 541 px.
+  étroite (`<Segmented wrap>` de la charte, Norma 2.0 ; autrefois `<Seg wrap>`). Les huit onglets d'Administration faisaient déborder la page de 541 px.
   Les autres contrôles segmentés (langue de l'en-tête, Explorateur, fiche, dialogues) n'ont pas changé : leur
   passage à la ligne déformait l'en-tête.
 - **En-têtes de colonne réservés aux lecteurs d'écran** (« Actions », « Attribut ») : ils restent dans le flux de leur

@@ -1,0 +1,6 @@
+.anchor { position: relative; }
+/* Under the bell, aligned on its right edge; never wider than the window (top bar of a phone). */
+.pop { right: 0; top: calc(100% + 8px); z-index: 40; max-width: min(360px, calc(100vw - 36px)); }
+.row { display: flex; gap: 10px; align-items: flex-start; padding: 6px 8px; margin: 0 -8px; border-radius: var(--radius-md); }
+.row:hover { background: color-mix(in srgb, var(--color-text) 6%, transparent); }
+.pending { display: flex; flex-direction: column; max-height: min(360px, 50vh); overflow-y: auto; margin: 0 -8px; padding: 0 8px; }

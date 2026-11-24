@@ -18,7 +18,7 @@ const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([t
  * selection released outside the panel keeps it open). Named by its title; focus moves in on opening, stays inside
  * while it is open, and returns to where it was on closing.
  */
-export function Modal({ title, children, actions, width = 520, style }: { title: ReactNode; children: ReactNode; actions: ReactNode; width?: number; style?: CSSProperties }) {
+export function Modal({ title, children, actions, width = 640, style }: { title: ReactNode; children: ReactNode; actions: ReactNode; width?: number; style?: CSSProperties }) {
   const { close, tr } = useApp();
   const titleId = useId();
   const box = useRef<HTMLDivElement>(null);
@@ -45,7 +45,7 @@ export function Modal({ title, children, actions, width = 520, style }: { title:
   }, [close]);
   return (
     <div
-      className="side-scrim"
+      className="coque-panel-scrim"
       onPointerDown={(e) => { downOnBackdrop.current = e.target === e.currentTarget; }}
       onClick={(e) => {
         const ok = downOnBackdrop.current && e.target === e.currentTarget;
@@ -53,15 +53,16 @@ export function Modal({ title, children, actions, width = 520, style }: { title:
         if (ok) close();
       }}
     >
-      <div ref={box} className="side-panel" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} style={{ '--panel-w': `${Math.max(width, 560)}px`, ...style } as CSSProperties}>
-        <div className="side-panel-head">
-          <div className="dialog-title" id={titleId}>{title}</div>
-          <button type="button" className="btn btn-ghost btn-icon side-panel-close" onClick={close} aria-label={tr('Close')}>
+      {/* 640 px (--panel-w), 680 px for a document and the wider forms (--panel-w-wide): COQUE.md § 7. */}
+      <div ref={box} className={width >= 680 ? 'coque-panel is-wide' : 'coque-panel'} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} style={style}>
+        <div className="coque-panel-head">
+          <div className="coque-panel-title" id={titleId}>{title}</div>
+          <button type="button" className="btn btn-ghost btn-icon codex-panel-close" onClick={close} aria-label={tr('Close')}>
             <Icon name="close" />
           </button>
         </div>
         {children}
-        <div className="dialog-actions side-panel-actions">{actions}</div>
+        <div className="coque-panel-foot">{actions}</div>
       </div>
     </div>
   );

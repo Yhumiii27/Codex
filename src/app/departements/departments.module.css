@@ -1,13 +1,11 @@
 /* Department page: the home page's layout (title, KPI cards, two columns of sections). */
-.top { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 10px; }
-.title { font-size: 26px; margin: 0 0 4px; }
-.hint { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; margin: 0 0 20px; max-width: 820px; }
-.kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 26px; }
-.kpi { text-align: left; border: 0; color: inherit; font: inherit; gap: 2px; padding: 14px 16px; text-decoration: none; }
+.page { display: flex; flex-direction: column; gap: 22px; max-width: 1180px; }
+.hint { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; margin: 0; max-width: 820px; }
+/* A KPI tile (coque-kpi of the charte) that leads to the list it counts. */
+.kpi { text-align: left; border: 0; color: inherit; font: inherit; text-decoration: none; }
 a.kpi { cursor: pointer; }
-a.kpi:hover { color: inherit; box-shadow: var(--shadow-sm); }
-.kpiValue { font-size: 30px; line-height: 1.1; font-weight: 500; margin: 4px 0; }
-.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 28px; }
+a.kpi:hover { color: inherit; box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--color-accent-700); }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 28px; }
 .col { display: flex; flex-direction: column; gap: 26px; min-width: 0; }
 .empty { margin: 0; padding: 6px 0; font-size: 12.5px; }
 /* Circuits and due dates: one line per item, as the home's deadlines. */
@@ -23,4 +21,3 @@ a.kpi:hover { color: inherit; box-shadow: var(--shadow-sm); }
 /* Saved searches: as in /recherche's list. */
 .saved { display: flex; align-items: center; gap: 8px; color: inherit; font-size: 13px; padding: 6px 8px; margin: 0 -8px; border-radius: var(--radius-md); text-decoration: none; }
 .saved:hover { color: inherit; background: color-mix(in srgb, var(--color-text) 6%, transparent); }
-@media (max-width: 760px) { .kpis { grid-template-columns: minmax(0, 1fr); } }
