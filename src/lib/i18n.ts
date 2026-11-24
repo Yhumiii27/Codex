@@ -9,6 +9,8 @@ const fr = {
   ...ERROR_FR,
   brand_sub:'GED Groupe', nav_home:'Accueil', nav_explorer:'Explorateur', nav_search:'Recherche', nav_workflow:'Validations', nav_retention:'Archivage & rétention', nav_admin:'Administration',
   search_ph:'Rechercher un document, une référence, un mot-clé…', notes:'Notes de conception', notif:'Notifications',
+  // Added (Norma 1.0): dark / light display toggle of the header, beside the FR / EN switch.
+  theme_group:'Affichage', theme_dark:'Affichage sombre', theme_light:'Affichage clair',
   role_collaborateur:'Collaboratrice', role_validateur:'Manager validatrice', role_auditeur:'Audit & conformité', role_gestionnaire:'Gestionnaire documentaire',
   hello:'Bonjour', home_sub:'Voici ce qui demande votre attention.', new_from_tpl:'Nouveau depuis un modèle', upload:'Déposer un fichier', adv_search:'Recherche avancée',
   kpi_todo:'À valider', kpi_todo_sub:'circuits en attente de votre décision', kpi_exp:'Échéances sous 90 jours', kpi_exp_sub:'conservation, expiration ou revue à échéance', kpi_in_force:'Mis en vigueur cette semaine', kpi_in_force_sub:'nouvelles révisions entrées en vigueur',
@@ -482,6 +484,8 @@ const en: Dict = {
   ...ERROR_EN,
   brand_sub:'Group DMS', nav_home:'Home', nav_explorer:'Browse', nav_search:'Search', nav_workflow:'Approvals', nav_retention:'Archiving & retention', nav_admin:'Administration',
   search_ph:'Search documents, references, keywords…', notes:'Design notes', notif:'Notifications',
+  // Added (Norma 1.0): dark / light display toggle of the header, beside the FR / EN switch.
+  theme_group:'Display', theme_dark:'Dark display', theme_light:'Light display',
   role_collaborateur:'Employee', role_validateur:'Approving manager', role_auditeur:'Audit & compliance', role_gestionnaire:'Records manager',
   hello:'Good morning', home_sub:'Here is what needs your attention.', new_from_tpl:'New from template', upload:'Upload a file', adv_search:'Advanced search',
   kpi_todo:'To approve', kpi_todo_sub:'workflows waiting for your decision', kpi_exp:'Due within 90 days', kpi_exp_sub:'retention, expiry or review falling due', kpi_in_force:'In force this week', kpi_in_force_sub:'new revisions entered into force',

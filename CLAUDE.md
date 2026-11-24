@@ -1,3 +1,9 @@
+@norma/REGLES.md
+
+Règles communes de la suite EPC2I : copie versionnée de Norma (`norma/`, `norma/VERSION`), contrôlée par
+`npm run norma:check` ; elles se changent dans le dépôt `Yhumiii27/Norma`, jamais ici. Ce fichier n'ajoute que les
+règles propres à Codex.
+
 @AGENTS.md
 
 # Codex — GED du groupe EPC2I
@@ -83,6 +89,8 @@ npm run dev          # http://localhost:3100
 npm test             # Vitest : tests/unit et tests/integration (PGlite en mémoire), ~20 s, sans serveur ni .data/
 npm run typecheck && npm run lint && npm run build
 npm run a11y         # après le build : axe-core dans Chromium sur une base de démo jetable (docs/accessibilite.md)
+npm run a11y -- --theme light   # même contrôle en affichage clair (cookie epc2i-theme)
+npm run norma:check  # copie de Norma intacte, dépendances conformes à norma/dependances.json
 ```
 
 - **Intégration continue** : `.github/workflows/ci.yml` rejoue `npm ci`, `npm run db:check`, typecheck, lint, tests,
@@ -217,6 +225,11 @@ Détail et inventaire : `docs/postgres.md`, « Échanges avec les autres outils 
 
 - **Fidélité à la maquette** : `design/GED Groupe.dc.html`, Nocturne copié dans `src/app/nocturne.css`, un CSS module
   par écran.
+- **Affichage sombre / clair** (Norma 1.0) : cookie `epc2i-theme` lu par `src/app/layout.tsx`, qui pose `data-theme`
+  sur `<html>` ; bouton `src/components/shell/ThemeToggle.tsx` à droite du sélecteur FR / EN. Le bloc clair de
+  `src/app/nocturne.css` est celui de `norma/charte/nocturne.css` (mêmes valeurs, `tests/unit/theme.test.ts`). Une
+  couleur en dur se remplace par une variable ; un écart propre au thème clair s'écrit `:root[data-theme="light"] …`
+  (`:global(...)` dans un CSS module).
 - **État d'écran dans l'URL** : onglets, filtres et sélection.
 - **Mutations** : toutes dans `src/lib/actions.ts` (Server Actions), avec contrôle des droits côté serveur.
 - **Lectures et visibilité** : lectures dans `src/lib/queries.ts`, visibilité dans `src/lib/access.ts`.

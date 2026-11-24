@@ -3,7 +3,7 @@
 import { useOptimistic, useTransition, type CSSProperties, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 
-export type SegOption = { key: string; label: ReactNode; href?: string; count?: number | string };
+export type SegOption = { key: string; label: ReactNode; href?: string; count?: number | string; title?: string };
 
 /**
  * The design system's segmented control (`.seg` + `.seg-opt` on native radios).
@@ -29,7 +29,7 @@ export function Seg({
   return (
     <div className={wrap ? 'seg seg-wrap' : 'seg'} role="radiogroup" aria-label={ariaLabel} style={style}>
       {options.map((o) => (
-        <label key={o.key} className="seg-opt" style={optStyle}>
+        <label key={o.key} className="seg-opt" style={optStyle} title={o.title}>
           <input
             type="radio"
             name={name}

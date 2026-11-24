@@ -16,6 +16,7 @@
 .result:hover { color: inherit; background: color-mix(in srgb, var(--color-text) 4%, transparent); }
 /* Facet options beyond the first ones, folded under « N de plus ». */
 .more > summary { cursor: pointer; list-style: none; font-size: 12px; padding: 2px 0; color: color-mix(in srgb, var(--color-text) 60%, transparent); }
+:global(:root[data-theme="light"]) .more > summary { color: color-mix(in srgb, var(--color-text) 68%, transparent); }
 .more > summary::-webkit-details-marker { display: none; }
 .more > summary::before { content: '+ '; }
 .more[open] > summary::before { content: '− '; }

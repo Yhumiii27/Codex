@@ -15,6 +15,13 @@ Le code suit le modèle de `docs/modele-cible.md`. `npm run typecheck`, `npm run
 
 ## Fait
 
+**Norma 1.0.0 et affichage clair (24 novembre 2026).** Copie du socle commun de la suite dans `norma/`
+(`norma.config.json`, `npm run norma:check`, job « Norma » de la CI, `@norma/REGLES.md` en tête de `CLAUDE.md`) ;
+bouton d'affichage sombre / clair à droite du sélecteur FR / EN (`src/components/shell/ThemeToggle.tsx`, cookie
+`epc2i-theme` lu par `src/app/layout.tsx`, `src/lib/theme.ts`), valeurs claires de Norma en fin de
+`src/app/nocturne.css`, ombres et textes atténués passés en variables ; `npm run a11y -- --theme light` sans violation,
+rejoué par la CI.
+
 **Modèle v2 (7 et 8 octobre).**
 - `docs/modele-cible.md` : décisions de l'utilisateur et propositions à confirmer (voir `docs/decisions.md`).
 - `src/db/schema.ts` v2 : registre des types, familles, fonctions et titulaires, départements, sites, projets,

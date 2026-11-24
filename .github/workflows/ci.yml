@@ -17,6 +17,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Copy of Norma, the suite's common base (norma/): unchanged against its manifest, and package.json within
+  # norma/dependances.json (minimum versions, allowed and forbidden packages). No install needed, a few seconds.
+  norma:
+    name: Norma
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: node norma/outils/norma.mjs verifier
+
   checks:
     name: Typecheck, lint, tests, build
     runs-on: ubuntu-24.04
@@ -49,6 +62,8 @@ jobs:
       # served by the build above on a throwaway demo database; fails on a serious or critical violation (about 1 min).
       - run: npx playwright-core install --with-deps chromium
       - run: npm run a11y
+      # Same check on the light display (Norma 1.0, cookie epc2i-theme): its contrasts too (about 1 min).
+      - run: npm run a11y -- --theme light
       # End-to-end paths (scripts/codex-e2e.mts), same build, a throwaway demo database: approval step by step, a
       # rejection with its reason then a new request, a recall, a change accepted by the Vigie simulation then grafted or
       # waiting (D-26), an import simulated then real; each checks that the draft stays hidden outside its drafting

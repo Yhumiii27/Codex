@@ -16,3 +16,6 @@
 .row[data-op='-'] .text { color: var(--color-neutral-400); text-decoration: line-through; text-decoration-color: var(--color-neutral-600); }
 .skip { padding: 3px 10px; font-size: 11px; color: var(--color-neutral-500); background: color-mix(in srgb, var(--color-neutral-800) 40%, transparent); border-block: 1px solid var(--color-divider); }
 .skip:first-child { border-top: 0; }
+/* Light theme (Norma 1.0): the ramps are inverted, neutral-500 gives 3.9:1 on the surface; neutral-400 gives 6:1. */
+:global(:root[data-theme="light"]) .section, :global(:root[data-theme="light"]) .legend, :global(:root[data-theme="light"]) .note,
+:global(:root[data-theme="light"]) .op, :global(:root[data-theme="light"]) .skip { color: var(--color-neutral-400); }

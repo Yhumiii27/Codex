@@ -25,19 +25,23 @@
 .previewScroll { flex: 1; overflow: auto; padding: 28px 24px; display: flex; justify-content: center; align-items: flex-start; }
 .paper {
   width: min(100%, 560px); aspect-ratio: 1 / 1.414; background: var(--color-neutral-100); color: var(--color-neutral-900);
-  border-radius: 2px; box-shadow: 0 20px 50px rgba(0,0,0,.55); padding: 52px 56px;
+  border-radius: 2px; box-shadow: var(--shadow-paper); padding: 52px 56px;
   display: flex; flex-direction: column; gap: 14px; flex: none;
 }
 /* Small print of the mock page, between neutral-600 and -700: 4.9:1 on its paper (neutral-600 alone gave 3.96, WCAG AA). */
-.paper { --paper-muted: color-mix(in srgb, var(--color-neutral-600) 50%, var(--color-neutral-700)); }
+.paper { --paper-muted: color-mix(in srgb, var(--color-neutral-600) 50%, var(--color-neutral-700)); --paper-line: var(--color-neutral-300); }
+/* Light theme (Norma 1.0): the ramps are inverted there, so the page is drawn on the surface (white) with the same
+   light-grey lines and a muted text of 4.5:1 or more, instead of a dark page. */
+:global(:root[data-theme="light"]) .paper { background: var(--color-surface); color: var(--color-text); --paper-muted: var(--color-neutral-400); --paper-line: var(--color-neutral-700); }
+:global(:root[data-theme="light"]) .pdf { background: var(--color-surface); }
 .paperHead { display: flex; justify-content: space-between; font-size: 9px; letter-spacing: .08em; text-transform: uppercase; color: var(--paper-muted); }
 .lines { display: flex; flex-direction: column; gap: 7px; }
-.bar { height: 6px; background: var(--color-neutral-300); border-radius: 2px; }
-.cartouche { margin-top: 10px; border: 1px solid var(--color-neutral-300); border-radius: 2px; display: grid; grid-template-columns: 1fr 1fr 1fr; font-size: 8px; color: var(--paper-muted); }
+.bar { height: 6px; background: var(--paper-line); border-radius: 2px; }
+.cartouche { margin-top: 10px; border: 1px solid var(--paper-line); border-radius: 2px; display: grid; grid-template-columns: 1fr 1fr 1fr; font-size: 8px; color: var(--paper-muted); }
 .cartouche > div { padding: 6px 8px; }
-.cartouche > div + div { border-left: 1px solid var(--color-neutral-300); }
-.pdf { width: min(100%, 760px); height: 100%; min-height: 70vh; border: 0; border-radius: 2px; box-shadow: 0 20px 50px rgba(0,0,0,.55); background: var(--color-neutral-100); }
-.image { max-width: min(100%, 760px); height: auto; border-radius: 2px; box-shadow: 0 20px 50px rgba(0,0,0,.55); }
+.cartouche > div + div { border-left: 1px solid var(--paper-line); }
+.pdf { width: min(100%, 760px); height: 100%; min-height: 70vh; border: 0; border-radius: 2px; box-shadow: var(--shadow-paper); background: var(--color-neutral-100); }
+.image { max-width: min(100%, 760px); height: auto; border-radius: 2px; box-shadow: var(--shadow-paper); }
 /* A stored file the browser cannot show (Word, Excel…): a download panel instead of a stand-in page. */
 .unavailable { width: min(100%, 420px); margin-top: 10vh; padding: 28px 24px; border: 1px dashed var(--color-divider); border-radius: var(--radius-lg); display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; flex: none; }
 .pager { display: flex; align-items: center; justify-content: center; gap: 14px; padding: 10px 20px; border-top: 1px solid var(--color-divider); }
