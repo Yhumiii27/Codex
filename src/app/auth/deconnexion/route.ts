@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { SESSION_COOKIE, signOutUrl } from '@/lib/clavis-auth';
-import { authMode, clavisConfig } from '@/lib/clavis-rules';
+import { SESSION_COOKIE, signOutUrl } from '@/server/integrations/clavis/auth';
+import { authMode, clavisConfig } from '@/server/integrations/clavis/rules';
 
 /** POST /auth/deconnexion — ends the Codex session, then the Clavis one. A cross-site request is refused. */
 export async function POST(req: NextRequest) {

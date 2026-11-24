@@ -12,7 +12,7 @@ import { changeAuthor, seenVersion, seenWorkingBase, staleText, workingIssue, wo
 import { backUpNow, restoreFilesNow } from './backup';
 import { checkFilesNow } from './integrity';
 import { COOKIE_LANG, COOKIE_ROLE, COOKIE_USER, getCtx, type Ctx } from './context';
-import { authMode } from './clavis-rules';
+import { authMode } from '@/server/integrations/clavis/rules';
 import { addDays, fmtDate, fmtDateTime, fmtSize, loc, localized, nowStamp, parisStamp, parseIsoDay, todayIso } from './format';
 import { ATTACHMENTS, CONF_LEVELS, ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLES, ORIGINS, PERMS, SEARCH_SCOPES, SIM_ROLES, SIMULATED_MATRIX_ROLES, type Perm, type TKey } from './i18n';
 import { addLink, applyChangeDecision, applyPendingDecision, approverCheck, approveRevision, audit, circuitExclusions, catchUpEffectiveDates, journalConsultation, journalLink, linkBetween, lockDoc, lockDocs, lockOf, refreshHeadline, type ModifierSwap, type Tx } from './lifecycle';
@@ -35,7 +35,7 @@ import { isEventTrigger, parseEventDate, sameRule } from './retention';
 import { nextReviewDate } from './review';
 import { beyondBounds, cleanCriteria, hasCriteria, type SearchInput } from './search';
 import { discardFile, FileRejectedError, fileColumns, nameStoredFile, readStored, renameDocFiles, sha256Of, stageFile, stageUpload, type StagedFile } from './storage';
-import { submitChange, VigieError, vigieSimulated } from './vigie';
+import { submitChange, VigieError, vigieSimulated } from '@/server/integrations/vigie';
 import { confirmTransfer } from './transfer';
 import { addTerms, documentsWith, loadTerms, readTerms, termById, VOCAB_TABLE } from './vocab';
 import { canonicalSubtype, cleanTerm, docLang, isVocabKind, termKeys, termNameIssue, VOCAB_MAX, vocabKey, type VocabKind } from './vocab-rules';

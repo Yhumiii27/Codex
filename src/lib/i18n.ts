@@ -7,10 +7,8 @@ export type Lang = 'fr' | 'en';
 
 const fr = {
   ...ERROR_FR,
-  brand_sub:'GED Groupe', nav_home:'Accueil', nav_explorer:'Explorateur', nav_search:'Recherche', nav_workflow:'Validations', nav_retention:'Archivage & rétention', nav_admin:'Administration',
-  search_ph:'Rechercher un document, une référence, un mot-clé…', notes:'Notes de conception', notif:'Notifications',
-  // Added (Norma 1.0): dark / light display toggle of the header, beside the FR / EN switch.
-  theme_group:'Affichage', theme_dark:'Affichage sombre', theme_light:'Affichage clair',
+  nav_home:'Accueil', nav_explorer:'Explorateur', nav_search:'Recherche', nav_workflow:'Validations', nav_retention:'Archivage & rétention', nav_admin:'Administration',
+  search_ph:'Rechercher un document, une référence, un mot-clé…', notes:'Notes de conception',
   role_collaborateur:'Collaboratrice', role_validateur:'Manager validatrice', role_auditeur:'Audit & conformité', role_gestionnaire:'Gestionnaire documentaire',
   hello:'Bonjour', home_sub:'Voici ce qui demande votre attention.', new_from_tpl:'Nouveau depuis un modèle', upload:'Déposer un fichier', adv_search:'Recherche avancée',
   kpi_todo:'À valider', kpi_todo_sub:'circuits en attente de votre décision', kpi_exp:'Échéances sous 90 jours', kpi_exp_sub:'conservation, expiration ou revue à échéance', kpi_in_force:'Mis en vigueur cette semaine', kpi_in_force_sub:'nouvelles révisions entrées en vigueur',
@@ -18,7 +16,7 @@ const fr = {
   type:'Type', status:'Statut', owner:'Propriétaire', modified:'Modifié', retention:'Rétention', doc_type:'Type de document', all:'Tous', docs:'documents', cancel:'Annuler', create:'Créer', close:'Fermer', ref:'Référence', conf:'Confidentialité',
   act_upload:'Dépôt', act_edit:'Modification', act_request:'Demande de validation', act_sign:'Signature', act_download:'Téléchargement', act_consult:'Consultation de la fiche', act_view:'Consultation du fichier', act_approve:'Approbation', act_archive:'Archivage',
   x_renew:'Renouveler', x_review:'Réviser', x_archive:'Archiver', x_destroy:'Détruire',
-  sc_home:'Tableau de bord', sc_explorer:'Explorateur documentaire', sc_search:'Recherche avancée', sc_document:'Fiche document', sc_workflow:'Circuits de validation', sc_retention:'Archivage & rétention', sc_admin:'Administration',
+  sc_document:'Fiche document',
   classification:'Plan de classement', all_docs:'Tous les documents', new_doc_btn:'Nouveau', f_all:'Tous', f_draft:'Brouillons', f_archived:'Archivés', open_record:'Ouvrir la fiche', download:'Télécharger', quick_view:'Aperçu rapide',
   back:'Explorateur', copy_link:'Copier le lien du document', tab_meta:'Fiche', tab_approval:'Validation', tab_history:'Historique', hist_activity:'Activité', hist_metadata:'Métadonnées', hist_consultations:'Consultations', hist_consultations_note:'Une entrée par personne, fiche ou version consultée et période de {n} minutes.', hist_empty:'Aucune entrée.', page:'Page', of:'sur', preview_note:'Aperçu PDF généré par le service de conversion', keywords:'Mots-clés', language:'Langue', lang_fr:'Français', lang_en:'Anglais', edit_meta:'Modifier les métadonnées', current:'Courante', compare:'Comparer', restore:'Restaurer', no_workflow:'Aucun circuit en cours pour ce document.', by:'par', hold:'Gel juridique', hold_off:'Aucun', created:'Créé le',
   saved:'Recherches enregistrées', filters:'Filtres', clear:'Effacer', results:'résultats', result_one:'résultat', export_list:'Exporter la liste', no_results:'Aucun document ne correspond à ces critères.',
@@ -26,7 +24,7 @@ const fr = {
   ret_due:'Échéances', ret_rules:'Règles de conservation', ret_archives:'Archives', end_date:'Fin de conservation', proposed:'Action proposée', archive_sel:'Archiver la sélection', hold_sel:'Appliquer un gel juridique', selected:'sélectionné(s)', duration:'Durée', trigger:'Déclencheur', outcome:'Sort final', types_covered:'Types couverts', archived_on:'Archivé le', consult:'Consulter', days_left:'j restants',
   ad_roles:'Rôles & droits', ad_audit:'Journal d’audit', manager:'Responsable', count:'Documents', role:'Rôle', new_template:'Nouveau modèle', add_value:'Ajouter une valeur', export_csv:'Exporter (CSV)', when:'Horodatage', user:'Utilisateur', action:'Action', detail:'Détail', matrix_hint:'Cliquez une cellule pour accorder ou retirer le droit.',
   new_doc:'Nouveau document', choose_tpl:'Choisissez un modèle',
-  open_keystone:'Ouvrir dans Keystone', client:'Client', pm:'Chef de projet', site:'Site d’intervention', tiers:'Tiers', expected_pieces:'Pièces attendues par Keystone', missing:'Manquante', later:'Attendue plus tard', provided:'Déposée', ks_feed:'Événements Keystone', synced:'Synchronisé depuis Keystone à', deposit:'Déposer', linked_app:'Application liée',
+  open_keystone:'Ouvrir dans Keystone', client:'Client', pm:'Chef de projet', site:'Site d’intervention', tiers:'Tiers', expected_pieces:'Pièces attendues par Keystone', missing:'Manquante', later:'Attendue plus tard', provided:'Déposée', ks_feed:'Événements Keystone', synced:'Synchronisé depuis Keystone à', deposit:'Déposer',
   // Added
   act_reject:'Rejet', act_delegate:'Délégation', act_hold:'Gel juridique', act_restore:'Restauration',
   st_draft:'Brouillon', st_archived:'Archivé',
@@ -38,7 +36,6 @@ const fr = {
   delegate_title:'Déléguer l’étape', delegate_to:'Déléguer à',
   hold_on:'Actif depuis le', link_copied:'Lien copié dans le presse-papiers', not_allowed:'Droit requis', no_file:'Aucun fichier joint à cette version — aperçu de démonstration.',
   saved_ok:'Modifications enregistrées', page_not_found:'Page introuvable', page_not_found_hint:'Cette adresse ne correspond à aucun écran de Codex.', forbidden:'Vous n’avez pas accès à cet écran avec le rôle simulé.',
-  notif_empty:'Rien de nouveau.', notif_recent:'Activité récente',
   label_fr:'Libellé (FR)', label_en:'Libellé (EN)',
   years:'Durée (années)', disposition:'Action à échéance', rule_id:'Code',
   compare_title:'Comparer les versions', current_version:'Version courante', selected_version:'Version sélectionnée', size:'Taille', pages:'Pages', author:'Auteur', date:'Date',
@@ -142,7 +139,7 @@ const fr = {
   period_since:'depuis le', period_until:'jusqu’au', period_start:'Du', period_end:'Au', period_clear:'Effacer la période',
   facet_more:'de plus',
   // Pages par département (G12)
-  nav_departments:'Départements', sc_departments:'Page du département',
+  nav_departments:'Départements',
   dept_hint:'Départements provisoires, en attente de l’organigramme. Les filtres mis en avant suivent un réglage par défaut : le choix propre à chaque métier viendra du recueil des besoins par département.',
   dept_search:'Rechercher dans le département', dept_unknown:'Ce département n’existe pas.',
   dept_in_force:'Documents en vigueur', dept_in_force_sub:'que vous pouvez lire dans ce département', dept_wf:'Circuits en cours', dept_wf_sub:'que vous suivez sur ses documents',
@@ -469,7 +466,7 @@ const fr = {
   audit_from_template:'depuis le modèle {id}', audit_restored_from:'restaurée depuis {from}', audit_compared:'Comparaison',
   app_description:'Gestion électronique des documents du groupe', title_suffix:'Codex',
   // Added (lot 9, step 8): accessibility and help.
-  skip_to_content:'Aller au contenu', nav_label:'Navigation principale', nav_help:'Aide', sc_help:'Aide', help_title:'Aide à l’utilisation',
+  nav_help:'Aide', sc_help:'Aide', help_title:'Aide à l’utilisation',
   help_sub:'Les parcours courants, pas à pas.', col_actions:'Actions', col_attribute:'Attribut', version_select:'Sélectionner la version {v}',
   origin_hint:'Interne : émis par le groupe. Externe : reçu d’un organisme (norme, certificat, document d’un client ou d’un fournisseur).',
   attachment_hint:'Il donne le contexte de l’identifiant : le code du projet, du programme ou du CAPEX ; sans rattachement, le département propriétaire (QMS pour un modèle).',
@@ -482,10 +479,8 @@ type Dict = Record<keyof typeof fr, string>;
 
 const en: Dict = {
   ...ERROR_EN,
-  brand_sub:'Group DMS', nav_home:'Home', nav_explorer:'Browse', nav_search:'Search', nav_workflow:'Approvals', nav_retention:'Archiving & retention', nav_admin:'Administration',
-  search_ph:'Search documents, references, keywords…', notes:'Design notes', notif:'Notifications',
-  // Added (Norma 1.0): dark / light display toggle of the header, beside the FR / EN switch.
-  theme_group:'Display', theme_dark:'Dark display', theme_light:'Light display',
+  nav_home:'Home', nav_explorer:'Browse', nav_search:'Search', nav_workflow:'Approvals', nav_retention:'Archiving & retention', nav_admin:'Administration',
+  search_ph:'Search documents, references, keywords…', notes:'Design notes',
   role_collaborateur:'Employee', role_validateur:'Approving manager', role_auditeur:'Audit & compliance', role_gestionnaire:'Records manager',
   hello:'Good morning', home_sub:'Here is what needs your attention.', new_from_tpl:'New from template', upload:'Upload a file', adv_search:'Advanced search',
   kpi_todo:'To approve', kpi_todo_sub:'workflows waiting for your decision', kpi_exp:'Due within 90 days', kpi_exp_sub:'retention, expiry or review falling due', kpi_in_force:'In force this week', kpi_in_force_sub:'new revisions entered into force',
@@ -493,7 +488,7 @@ const en: Dict = {
   type:'Type', status:'Status', owner:'Owner', modified:'Modified', retention:'Retention', doc_type:'Document type', all:'All', docs:'documents', cancel:'Cancel', create:'Create', close:'Close', ref:'Reference', conf:'Confidentiality',
   act_upload:'Upload', act_edit:'Edit', act_request:'Approval request', act_sign:'Signed', act_download:'Download', act_consult:'Record opened', act_view:'File viewed', act_approve:'Approved', act_archive:'Archived',
   x_renew:'Renew', x_review:'Review', x_archive:'Archive', x_destroy:'Destroy',
-  sc_home:'Dashboard', sc_explorer:'Document browser', sc_search:'Advanced search', sc_document:'Document record', sc_workflow:'Approval workflows', sc_retention:'Archiving & retention', sc_admin:'Administration',
+  sc_document:'Document record',
   classification:'Classification plan', all_docs:'All documents', new_doc_btn:'New', f_all:'All', f_draft:'Drafts', f_archived:'Archived', open_record:'Open record', download:'Download', quick_view:'Quick view',
   back:'Browser', copy_link:'Copy the document link', tab_meta:'Record', tab_approval:'Approval', tab_history:'History', hist_activity:'Activity', hist_metadata:'Metadata', hist_consultations:'Consultations', hist_consultations_note:'One entry per person, record or version viewed and {n}-minute period.', hist_empty:'No entries.', page:'Page', of:'of', preview_note:'PDF preview generated by the conversion service', keywords:'Keywords', language:'Language', lang_fr:'French', lang_en:'English', edit_meta:'Edit metadata', current:'Current', compare:'Compare', restore:'Restore', no_workflow:'No approval workflow in progress for this document.', by:'by', hold:'Legal hold', hold_off:'None', created:'Created',
   saved:'Saved searches', filters:'Filters', clear:'Clear', results:'results', result_one:'result', export_list:'Export list', no_results:'No document matches these criteria.',
@@ -501,7 +496,7 @@ const en: Dict = {
   ret_due:'Deadlines', ret_rules:'Retention rules', ret_archives:'Archives', end_date:'Retention end', proposed:'Proposed action', archive_sel:'Archive selection', hold_sel:'Apply legal hold', selected:'selected', duration:'Duration', trigger:'Trigger', outcome:'Final outcome', types_covered:'Document types', archived_on:'Archived on', consult:'View', days_left:'days left',
   ad_roles:'Roles & permissions', ad_audit:'Audit log', manager:'Manager', count:'Documents', role:'Role', new_template:'New template', add_value:'Add a value', export_csv:'Export (CSV)', when:'Timestamp', user:'User', action:'Action', detail:'Detail', matrix_hint:'Click a cell to grant or revoke the permission.',
   new_doc:'New document', choose_tpl:'Choose a template',
-  open_keystone:'Open in Keystone', client:'Customer', pm:'Project manager', site:'Worksite', tiers:'Third parties', expected_pieces:'Documents expected by Keystone', missing:'Missing', later:'Expected later', provided:'Filed', ks_feed:'Keystone events', synced:'Synced from Keystone at', deposit:'Upload', linked_app:'Linked app',
+  open_keystone:'Open in Keystone', client:'Customer', pm:'Project manager', site:'Worksite', tiers:'Third parties', expected_pieces:'Documents expected by Keystone', missing:'Missing', later:'Expected later', provided:'Filed', ks_feed:'Keystone events', synced:'Synced from Keystone at', deposit:'Upload',
   // Added
   act_reject:'Rejected', act_delegate:'Delegated', act_hold:'Legal hold', act_restore:'Restored',
   st_draft:'Draft', st_archived:'Archived',
@@ -513,7 +508,6 @@ const en: Dict = {
   delegate_title:'Delegate the step', delegate_to:'Delegate to',
   hold_on:'Active since', link_copied:'Link copied to the clipboard', not_allowed:'Permission required', no_file:'No file attached to this version — demo preview.',
   saved_ok:'Changes saved', page_not_found:'Page not found', page_not_found_hint:'This address matches no screen of Codex.', forbidden:'The simulated role cannot access this screen.',
-  notif_empty:'Nothing new.', notif_recent:'Recent activity',
   label_fr:'Label (FR)', label_en:'Label (EN)',
   years:'Duration (years)', disposition:'Action when due', rule_id:'Code',
   compare_title:'Compare versions', current_version:'Current version', selected_version:'Selected version', size:'Size', pages:'Pages', author:'Author', date:'Date',
@@ -617,7 +611,7 @@ const en: Dict = {
   period_since:'since', period_until:'until', period_start:'From', period_end:'To', period_clear:'Clear the period',
   facet_more:'more',
   // Department pages (G12)
-  nav_departments:'Departments', sc_departments:'Department page',
+  nav_departments:'Departments',
   dept_hint:'Provisional departments, pending the organisation chart. The featured filters follow a default setting: the choice for each business will come from the survey of each department’s needs.',
   dept_search:'Search the department', dept_unknown:'This department does not exist.',
   dept_in_force:'Documents in force', dept_in_force_sub:'you may read in this department', dept_wf:'Running workflows', dept_wf_sub:'you follow on its documents',
@@ -940,7 +934,7 @@ const en: Dict = {
   retention_basis_fr:'Basis (FR)', retention_basis_en:'Basis (EN)', retention_basis_en_hint:'Empty: the French text is shown in English, followed by “(FR)”.',
   audit_from_template:'from template {id}', audit_restored_from:'restored from {from}', audit_compared:'Comparison',
   app_description:'Document management for the group', title_suffix:'Codex',
-  skip_to_content:'Skip to content', nav_label:'Main navigation', nav_help:'Help', sc_help:'Help', help_title:'Using Codex',
+  nav_help:'Help', sc_help:'Help', help_title:'Using Codex',
   help_sub:'The common tasks, step by step.', col_actions:'Actions', col_attribute:'Attribute', version_select:'Select version {v}',
   origin_hint:'Internal: issued by the group. External: received from an organisation (standard, certificate, client or supplier document).',
   attachment_hint:'It gives the identifier its context: the project, programme or CAPEX code; without attachment, the owning department (QMS for a template).',

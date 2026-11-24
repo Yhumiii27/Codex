@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import RootLayout from '@/app/layout';
 import { activeScreen } from '@/components/shell/Sidebar';
 import { DICT, type Lang } from '@/lib/i18n';
+import { translate } from '@/i18n';
 import { setupDb } from '../support/db';
 import { actAs, setLangCookie } from '../support/session';
 
@@ -34,10 +35,9 @@ async function shell(lang: Lang): Promise<string> {
 describe('Shell: skip link, landmarks, help', () => {
   it.each(['fr', 'en'] as const)('in %s, starts with the skip link to <main id="contenu">, which holds the screen', async (lang) => {
     const html = await shell(lang);
-    const t = DICT[lang];
     const body = html.slice(html.indexOf('<body'));
     // First element of the body, so the first stop of the Tab key.
-    expect(body).toMatch(new RegExp(`^<body[^>]*><a href="#contenu" class="skip-link">${t.skip_to_content}</a>`));
+    expect(body).toMatch(new RegExp(`^<body[^>]*><a href="#contenu" class="skip-link">${translate(lang, 'Skip to content')}</a>`));
     expect(html).toMatch(/<main id="contenu" class="app-main" tabindex="-1"><p>ÉCRAN<\/p><\/main>/);
     expect(html.match(/id="contenu"/g)).toHaveLength(1);
     expect(html).toContain(`<html lang="${lang}"`);
@@ -47,8 +47,8 @@ describe('Shell: skip link, landmarks, help', () => {
     const html = await shell(lang);
     const t = DICT[lang];
     expect(html).toContain(`<nav class="nav `);
-    expect(html).toMatch(new RegExp(`<nav [^>]*aria-label="${t.nav_label}"`));
-    expect(html).toMatch(new RegExp(`<a [^>]*href="/aide"[^>]*aria-current="page"[^>]*>.*?${t.nav_help}</a>`));
+    expect(html).toMatch(new RegExp(`<nav [^>]*aria-label="${translate(lang, 'Main navigation')}"`));
+    expect(html).toMatch(new RegExp(`<a [^>]*href="/aide"[^>]*aria-current="page"[^>]*>.*?${translate(lang, 'Help')}</a>`));
     // The header names the screen: the page's only level-one heading.
     expect(html.match(/<h1/g)).toHaveLength(1);
     expect(html).toMatch(new RegExp(`<h1 [^>]*>${t.sc_help}</h1>`));

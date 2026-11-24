@@ -23,7 +23,7 @@ vi.mock('next/cache', () => ({ refresh: () => {} }));
 const db = setupDb();
 fixClock(); // 10 October 2026, 10:00 in Paris
 
-// No Vigie endpoint: decisions are simulated from Codex (lib/vigie.ts, vigieSimulated).
+// No Vigie endpoint: decisions are simulated from Codex (src/server/integrations/vigie/, vigieSimulated).
 beforeAll(() => {
   vi.stubEnv('VIGIE_API_URL', '');
 });

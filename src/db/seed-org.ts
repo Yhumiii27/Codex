@@ -114,7 +114,7 @@ export const PROGRAMS: { code: string; name: string; manager: string }[] = [
 ];
 
 /**
- * Demonstration CAPEX of the subsidiaries (Arche's arche.pub_capex on the shared server, lib/capex.ts), for the demo only:
+ * Demonstration CAPEX of the subsidiaries (Arche's arche.pub_capex on the shared server, src/server/integrations/arche/capex.ts), for the demo only:
  * on a server, the scheduler reads the real ones from Arche once the link is granted (demo ones then become inactive).
  */
 export const DEMO_CAPEX: { code: string; name: string; subsidiaryCode: string; subsidiary: string; site: string; status: string; phase: string }[] = [

@@ -6,7 +6,7 @@ import { FILES_DIR, schema as s } from '@/db';
 import { addWorkingVersion, createDocument } from '@/lib/actions';
 import { DICT } from '@/lib/i18n';
 import { applyChangeDecision } from '@/lib/lifecycle';
-import { submitChange } from '@/lib/vigie';
+import { submitChange } from '@/server/integrations/vigie';
 import { addDoc, fixClock, getDoc, journalOf, revisionStatuses, setupDb, viewOf } from '../support/db';
 import type { Person } from '../support/fixtures';
 import { actAs } from '../support/session';

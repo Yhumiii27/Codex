@@ -1,7 +1,7 @@
 import 'server-only';
 import { eq, notInArray } from 'drizzle-orm';
 import { schema as s, type Db } from '@/db';
-import { logger } from './log';
+import { logger } from '@/lib/log';
 
 // CAPEX of the subsidiaries (Arche's request CX-01, decision of 1 November 2026: a 4th attachment `capex`, its code the
 // context of the ID, PID-CPX-APM-2026-01-001). Arche owns them and publishes them in its view `arche.pub_capex` (read by

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { seal, unseal } from '@/lib/clavis-auth';
-import { authMode, clavisConfig, clavisConfigProblems, initialsOf, roleFromAccess, safeReturnTo, userIdFor } from '@/lib/clavis-rules';
+import { seal, unseal } from '@/server/integrations/clavis/auth';
+import { authMode, clavisConfig, clavisConfigProblems, initialsOf, roleFromAccess, safeReturnTo, userIdFor } from '@/server/integrations/clavis/rules';
 
-// Sign-in through Clavis (lib/clavis-rules.ts): configuration, role read in clavis.pub_acces, new user identifiers.
+// Sign-in through Clavis (src/server/integrations/clavis/rules.ts): configuration, role read in clavis.pub_acces, new user identifiers.
 
 const ENV = {
   CODEX_AUTH: 'clavis', CODEX_PUBLIC_URL: 'https://codex.example/', CODEX_CLAVIS_URL: 'https://clavis.example',

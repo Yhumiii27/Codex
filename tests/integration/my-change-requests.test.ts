@@ -6,7 +6,7 @@ import { COOKIE_LANG, getCtx } from '@/lib/context';
 import { DICT } from '@/lib/i18n';
 import { applyChangeDecision, approveRevision } from '@/lib/lifecycle';
 import { listChangeRequests } from '@/lib/queries';
-import { submitChange, vigieLinkConfigured, vigieUrl } from '@/lib/vigie';
+import { submitChange, vigieLinkConfigured, vigieUrl } from '@/server/integrations/vigie';
 import { addDoc, fixClock, getRevision, setClock, setupDb } from '../support/db';
 import type { Person } from '../support/fixtures';
 import { actAs, cookieStore } from '../support/session';

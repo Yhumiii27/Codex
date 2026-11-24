@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Lang, T } from '@/lib/i18n';
+import { translatorFor, type Translate } from '@/i18n';
 import type { MyAction, Todo } from '@/lib/queries';
 import { latestTodo } from './todo';
 import type { DialogData, DialogSpec } from '@/components/dialogs/types';
@@ -11,7 +12,10 @@ import { Dialogs } from '@/components/dialogs/Dialogs';
 type Toast = { id: number; text: string; error?: boolean | 'warn' };
 
 type AppCtx = {
+  /** Keyed dictionary of the screens not yet moved to English source strings (src/lib/i18n.ts). */
   t: T;
+  /** English source string → the person's language (src/i18n, Norma § 2). */
+  tr: Translate;
   lang: Lang;
   data: DialogData;
   open: (d: DialogSpec) => void;
@@ -55,7 +59,8 @@ export function AppProvider({ t, lang, data, todo, children }: { t: T; lang: Lan
     setTimeout(() => setToasts((xs) => xs.filter((x) => x.id !== id)), error === 'warn' ? 10_000 : 3200);
   }, []);
   const close = useCallback(() => setDialog(null), []);
-  const value = useMemo(() => ({ t, lang, data, open: setDialog, close, toast, todo: items, reportTodo }), [t, lang, data, close, toast, items, reportTodo]);
+  const tr = useMemo(() => translatorFor(lang), [lang]);
+  const value = useMemo(() => ({ t, tr, lang, data, open: setDialog, close, toast, todo: items, reportTodo }), [t, tr, lang, data, close, toast, items, reportTodo]);
 
   return (
     <Ctx.Provider value={value}>

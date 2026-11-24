@@ -173,7 +173,7 @@ export const researchPrograms = codex.table('research_programs', {
 
 /**
  * CAPEX of the subsidiaries (Arche, decision of 1 November 2026 on its request CX-01): the context of a CAPEX document's ID
- * (PID-CPX-APM-2026-01-001). A mirror of Arche's view `arche.pub_capex`, refreshed by lib/capex.ts; Codex never edits
+ * (PID-CPX-APM-2026-01-001). A mirror of Arche's view `arche.pub_capex`, refreshed by src/server/integrations/arche/capex.ts; Codex never edits
  * it. A CAPEX no longer published stays, inactive (`active` false): its documents keep it, a new document cannot take it.
  */
 export const capex = codex.table('capex', {
@@ -332,7 +332,7 @@ export const projectExpected = codex.table(
     later: boolean('later').notNull().default(false),
     sort: integer('sort').notNull().default(0),
   },
-  // The project tab's checklist (lib/keystone.ts); the expected item a document fills, and the cascade of a reclassification.
+  // The project tab's checklist (src/server/integrations/keystone/); the expected item a document fills, and the cascade of a reclassification.
   (t) => [index('project_expected_project').on(t.projectCode), index('project_expected_doc').on(t.docId)],
 );
 

@@ -173,7 +173,7 @@ Le modèle est consigné dans [modele-cible.md](modele-cible.md), qui fait foi. 
   d'« autorité d'approbation ».
 - **Demandes Vigie** : ECR de modification ou de retrait (table `change_requests`). La décision est simulée par
   `simulateVigieDecision` (`src/lib/actions.ts`) tant que `VIGIE_API_URL` n'est pas défini (`vigieSimulated`,
-  `src/lib/vigie.ts`), puis appliquée par `applyChangeDecision` (`src/lib/lifecycle.ts`).
+  `src/server/integrations/vigie/`), puis appliquée par `applyChangeDecision` (`src/lib/lifecycle.ts`).
 - **Conservation** : une règle par type, portée par le registre et calculée dans `src/lib/retention.ts`.
 - **Données de démo** : les mêmes personnes que Keystone et ses projets HLT-026, NDC-031 et RCF-019
   (`src/db/seed-org.ts`, `src/db/seed-docs.ts`). Les départements et les sites restent provisoires.
@@ -434,7 +434,7 @@ Constats confirmés, dans la numérotation du workflow :
     iconutil, sips). Sous Linux, utiliser `npm run dev`.
   - **Lire Keystone et Vigie**, tant que leurs dépôts ne sont pas ajoutés à l'environnement :
     `github.com/Yhumiii27/Keystone` et `github.com/Yhumiii27/Vigie`. Sans eux, la spec Keystone n'est pas lisible, et
-    les deux applications restent simulées (`src/lib/keystone.ts`, `src/lib/vigie.ts`).
+    les deux applications restent simulées (`src/server/integrations/keystone/`, `src/server/integrations/vigie/`).
   - **Retrouver les données locales.** La base `.data`, les fichiers déposés et les `.env` sont exclus du dépôt. Au
     premier lancement de `npm run dev`, une base de démo neuve est créée et remplie.
 
@@ -677,7 +677,7 @@ qu'il a envoyées à Vigie, jusque-là visibles seulement document par document.
   La seconde reprend la disposition des circuits : à gauche la liste (ID et type, titre du document, référence et
   statut, jour d'envoi), celles qui attendent encore la décision ou leur application d'abord ; à droite la demande
   (statut, type, liens vers l'onglet Demandes de la fiche et, si `NEXT_PUBLIC_VIGIE_URL` est défini, vers Vigie
-  (`vigieLinkConfigured`, `src/lib/vigie.ts`), dates d'envoi et de décision, ECO, modificateur désigné, note de Vigie,
+  (`vigieLinkConfigured`, `src/server/integrations/vigie/`), dates d'envoi et de décision, ECO, modificateur désigné, note de Vigie,
   motif et description). Les dates gardent leur année (`fmtDateTime`, `src/lib/format.ts`) : la liste cumule les
   demandes de toutes les années. Un encadré dit où elle en est : « En attente de la décision de Vigie », ce qu'attend
   une demande acceptée (`acceptedWaitL`), ou la révision qu'elle a ouverte ou sur laquelle elle a été greffée. Sans
@@ -3134,7 +3134,7 @@ l'être sans elles.
 ## 20. Lot 11 (22 oct.)
 
 **Réunir la branche et `main` : PostgreSQL commun (schéma `codex`) et déclaration à Matrix.** `main` avait reçu, le
-17 octobre, deux commits absents de la branche v2 : `944d80e` (déclaration du schéma à Matrix, `src/lib/matrix.ts`) et
+17 octobre, deux commits absents de la branche v2 : `944d80e` (déclaration du schéma à Matrix, `src/server/integrations/matrix/`) et
 `5f692f3` (bascule vers le serveur commun, décision M-01 du 15 octobre : « Oui, je valide le format postgreSQL commun
 avec un schema par outil »). Le site Coolify, construit depuis `main`, était en panne : son volume `/data/pglite`
 contenait une base d'avant le schéma `codex`, refusée exprès. Le lot réunit les deux par un **commit de fusion**
@@ -3330,7 +3330,7 @@ Arche ; entrée du 2026-11-01 de `REQUESTS.md`, reprise de la PR #20). Décision
 - **CX-01, rattachement `capex`** : migration `0003_capex` (table `codex.capex`, miroir de `arche.pub_capex` ; colonne
   `documents.capex_code` ; `capex` ajouté aux rattachements admis des 47 types qui admettent `project` et de `FIN`) ;
   identifiant `TYPE-<CAPEX>-SEQ` à 3 chiffres (`src/lib/codes.ts`) ; tâche planifiée « CAPEX publiés par Arche »
-  (`src/lib/capex.ts`, 15 min, sautée tant que la vue ne se lit pas) ; choix du CAPEX dans les formulaires, contexte sur
+  (`src/server/integrations/arche/capex.ts`, 15 min, sautée tant que la vue ne se lit pas) ; choix du CAPEX dans les formulaires, contexte sur
   la fiche, facette et axe de l'explorateur ; `capexCode` à l'import et au dépôt ; deux CAPEX de démonstration.
 - **CX-02, sous-types** : ajoutés à `src/db/registry.ts` et, pour une base existante, par les mises à jour de données de
   la migration (sans toucher aux sous-types réglés dans l'Administration).

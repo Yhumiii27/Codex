@@ -15,14 +15,14 @@ import { getCtx } from '@/lib/context';
 import { addDays, fmtDate, todayIso } from '@/lib/format';
 import { previewKind } from '@/lib/filetypes';
 import { ECR_TAGCLS, PROJECT_PHASES, phaseIndex, phaseLabel } from '@/lib/i18n';
-import { getProject } from '@/lib/keystone';
+import { getProject } from '@/server/integrations/keystone';
 import { CONSULT_WINDOW_MINUTES, decisionWait, defaultModifier, draftersOf } from '@/lib/lifecycle';
 import { decisionWaitL, getDoc, namedReaders, listAudit, templateTypesOf, METADATA_ACTIONS, RETENTION_ACTIONS, listChangeRequests, listDocLinks, listRevisions, projectDocs as projectDocsOf, readableBriefs, stateNotice, typeView, docWorkflows, type RevisionView } from '@/lib/queries';
 import { sameRule } from '@/lib/retention';
 import { previewPlan } from '@/lib/office-preview';
 import { normalizeMime, storedExt } from '@/lib/storage';
 import { titled } from '@/lib/titles';
-import { vigieSimulated, vigieUrl } from '@/lib/vigie';
+import { vigieSimulated, vigieUrl } from '@/server/integrations/vigie';
 import { Preview, RecordConsultation, RevisionsTab, type RevItem } from './DocClient';
 import styles from './document.module.css';
 

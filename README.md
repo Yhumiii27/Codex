@@ -268,8 +268,8 @@ document — Codex » sinon).
   masqué pour le collaborateur, administration réservée au gestionnaire), les actions vérifient la matrice des
   droits côté serveur et la visibilité suit `src/lib/access.ts` (confidentialité, cercle de rédaction).
 - **Keystone simulé** : les projets (phase, client, pièces attendues, événements) viennent de tables locales, lues
-  par `src/lib/keystone.ts`, seul fichier à remplacer par des appels API quand Keystone exposera les siennes.
-- **Vigie** : les demandes de modification (ECR) et de retrait sont créées par `src/lib/vigie.ts` ; sur le serveur
+  par `src/server/integrations/keystone/`, seul fichier à remplacer par des appels API quand Keystone exposera les siennes.
+- **Vigie** : les demandes de modification (ECR) et de retrait sont créées par `src/server/integrations/vigie/` ; sur le serveur
   commun, par la fonction `vigie.pub_creer_demande_modification` dès que Matrix accorde le lien (D-31), Vigie numérote
   et décide ; sans elle (PGlite, lien non accordé), Codex numérote et un gestionnaire documentaire simule la décision
   depuis l'onglet Demandes. Le webhook `/api/integrations/vigie` applique les décisions réelles.
@@ -800,7 +800,7 @@ l'utilisateur `node`, jamais root (`docs/exploitation.md` §10). Le contrat avec
 
 Au démarrage, juste après les migrations, Codex lit le schéma réel de sa base (tables, colonnes, clés primaires,
 étrangères et uniques) et l'envoie à Matrix, le catalogue des bases de Keystone, Codex, Cursus et Vigie
-(`POST /api/declarations`, contrat `matrix.schema/1`, code dans `src/lib/matrix.ts`). L'envoi ne retarde jamais le
+(`POST /api/declarations`, contrat `matrix.schema/1`, code dans `src/server/integrations/matrix/`). L'envoi ne retarde jamais le
 démarrage : en cas d'échec, un avertissement `[matrix]` est écrit dans le journal et Codex continue.
 
 | Variable (Coolify) | Rôle |

@@ -7,7 +7,7 @@ import { DICT, type SimRole } from '@/lib/i18n';
 import { importDocument } from '@/lib/importer';
 import { applyChangeDecision } from '@/lib/lifecycle';
 import { listAudit } from '@/lib/queries';
-import { submitChange } from '@/lib/vigie';
+import { submitChange } from '@/server/integrations/vigie';
 import { addDoc, baseOf, fixClock, getChange, getRevision, journalOf, revisionStatuses, setupDb } from '../support/db';
 import type { Person } from '../support/fixtures';
 import { readPdf } from '../support/pdf';

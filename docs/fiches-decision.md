@@ -197,7 +197,7 @@ ouvert : le contrat de dépôt et de synchronisation des documents projet (sous-
 
 - **Tables miroir** `projects`, `project_expected`, `project_events` (`src/db/schema.ts`), remplies seulement par
   l'amorçage (`PROJECTS` de `src/db/seed-org.ts` : `HLT-026`, `NDC-031`, `RCF-019`).
-- **Frontière déclarée** : `src/lib/keystone.ts` (`getProject`, `keystoneUrl`). Mais d'autres lecteurs touchent la
+- **Frontière déclarée** : `src/server/integrations/keystone/` (`getProject`, `keystoneUrl`). Mais d'autres lecteurs touchent la
   table directement : `ctx.projects` (`src/lib/context.ts`), `resolveFunction` (chef de projet, `src/lib/actions.ts`),
   l'import (`src/lib/importer.ts`), l'index d'accès (`src/lib/access.ts`), la reprise (`src/lib/transfer.ts`).
 - **Ce que Keystone lit** : `GET /api/registry` (`src/app/api/registry/route.ts`), ouvert par défaut,
@@ -607,7 +607,7 @@ codex pour les documents ou depuis keystone pour les sujets liés au projets ou 
 
 ### 2. Ce que Codex fait aujourd'hui
 
-- **Envoi simulé** : `submitChange` (`src/lib/vigie.ts`) fabrique la référence `ECR-AAAA-NNN` et n'écrit que la table
+- **Envoi simulé** : `submitChange` (`src/server/integrations/vigie/`) fabrique la référence `ECR-AAAA-NNN` et n'écrit que la table
   miroir `change_requests`. Aucun appel à Vigie.
 - **Simulation des décisions** : `simulateVigieDecision` (`src/lib/actions.ts`) tant que `VIGIE_API_URL` n'est pas
   défini (`vigieSimulated`). Définir cette variable coupe la simulation alors que rien n'est envoyé (avertissement du

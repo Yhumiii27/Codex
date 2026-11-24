@@ -5,7 +5,7 @@ import { and, eq, isNull, lt, lte, or } from 'drizzle-orm';
 import { getDb, schema as s, type Db } from '@/db';
 import type { SchedulerStatus } from '@/db/schema';
 import { backUpNow } from './backup';
-import { syncCapex } from './capex';
+import { syncCapex } from '@/server/integrations/arche/capex';
 import { scheduledExportDir, scheduledExportKeep, writeFullExport } from './full-export';
 import { checkFilesNow } from './integrity';
 import { applyDuePendingDecisions, promoteDue } from './lifecycle';
