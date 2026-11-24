@@ -7,23 +7,27 @@ import { acceptAttr, fileIssue, fileIssueText, fmtMax } from '@/lib/filetypes';
 import { failureText } from '@/lib/errors';
 import { fmtSize } from '@/lib/format';
 import { useApp } from '@/components/shell/AppProvider';
+import { Icon } from '@/components/ui/Icon';
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /**
- * `.dialog-backdrop` + `.dialog` from the design system; closes on Escape and on a click that starts and ends on the
- * backdrop (a text selection released outside the dialog keeps it open). Named by its title; focus moves in on
- * opening, stays inside while it is open, and returns to where it was on closing.
+ * Side panel of the charte (Norma § 7: a form never opens in the page; a button opens a right side panel, closed on
+ * success by `useSubmit`). Same look as Norma's `Drawer` (charte/ds/Drawer.module.css): a scrim, a full-height panel on
+ * the right, a named close button. Closes on Escape, on the × and on a click that starts and ends on the scrim (a text
+ * selection released outside the panel keeps it open). Named by its title; focus moves in on opening, stays inside
+ * while it is open, and returns to where it was on closing.
  */
 export function Modal({ title, children, actions, width = 520, style }: { title: ReactNode; children: ReactNode; actions: ReactNode; width?: number; style?: CSSProperties }) {
-  const { close } = useApp();
+  const { close, tr } = useApp();
   const titleId = useId();
   const box = useRef<HTMLDivElement>(null);
   const downOnBackdrop = useRef(false);
   useEffect(() => {
     const before = document.activeElement as HTMLElement | null;
     const el = box.current;
-    (el?.querySelector<HTMLElement>(FOCUSABLE) ?? el)?.focus();
+    // First form control, else the panel itself (the × is not where a form starts).
+    (el?.querySelector<HTMLElement>('[data-autofocus], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled])') ?? el?.querySelector<HTMLElement>(FOCUSABLE) ?? el)?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') { close(); return; }
       if (e.key !== 'Tab' || !el) return;
@@ -41,8 +45,7 @@ export function Modal({ title, children, actions, width = 520, style }: { title:
   }, [close]);
   return (
     <div
-      className="dialog-backdrop"
-      style={{ zIndex: 10 }}
+      className="side-scrim"
       onPointerDown={(e) => { downOnBackdrop.current = e.target === e.currentTarget; }}
       onClick={(e) => {
         const ok = downOnBackdrop.current && e.target === e.currentTarget;
@@ -50,10 +53,15 @@ export function Modal({ title, children, actions, width = 520, style }: { title:
         if (ok) close();
       }}
     >
-      <div ref={box} className="dialog" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} style={{ width: `min(${width}px, 100%)`, maxHeight: '90vh', overflow: 'auto', ...style }}>
-        <div className="dialog-title" id={titleId}>{title}</div>
+      <div ref={box} className="side-panel" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} style={{ '--panel-w': `${Math.max(width, 560)}px`, ...style } as CSSProperties}>
+        <div className="side-panel-head">
+          <div className="dialog-title" id={titleId}>{title}</div>
+          <button type="button" className="btn btn-ghost btn-icon side-panel-close" onClick={close} aria-label={tr('Close')}>
+            <Icon name="close" />
+          </button>
+        </div>
         {children}
-        <div className="dialog-actions">{actions}</div>
+        <div className="dialog-actions side-panel-actions">{actions}</div>
       </div>
     </div>
   );
@@ -172,7 +180,7 @@ export function FilePicker({ label, required }: { label: string; required?: bool
             setIssue(text);
           }}
         />
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--color-accent)', flex: 'none' }}><path d="M12 16V4M7 9l5-5 5 5M4 20h16" /></svg>
+        <Icon name="upload" style={{ color: 'var(--color-accent)', flex: 'none' }} />
         <span className="ellipsis" style={{ flex: 1 }}>{file ? file.name : label}</span>
         <span className="text-muted sub nowrap">{file ? fmtSize(file.size, lang) : t.file_max_hint.replace('{max}', fmtMax(rules.maxBytes, lang))}</span>
       </label>

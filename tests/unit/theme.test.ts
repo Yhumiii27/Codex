@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { DICT } from '@/lib/i18n';
+import { translate } from '@/i18n';
 import { THEME_COOKIE, themeCookie, themeFromCookies, themeOf } from '@/lib/theme';
 
 // Dark / light display (Norma 1.0, owner 24 November 2026): the epc2i-theme cookie, read by the server (app/layout.tsx)
@@ -31,7 +31,7 @@ describe('header toggle', () => {
     const src = readFileSync(new URL('../../src/components/shell/Header.tsx', import.meta.url), 'utf8');
     const lang = src.indexOf('name="lang"');
     const toggle = src.indexOf('<ThemeToggle theme={theme} />');
-    const bell = src.indexOf('aria-label={t.notif}');
+    const bell = src.indexOf("aria-label={tr('Notifications')}");
     expect(lang).toBeGreaterThan(0);
     expect(toggle).toBeGreaterThan(lang);
     expect(bell).toBeGreaterThan(toggle);
@@ -41,8 +41,10 @@ describe('header toggle', () => {
   });
 
   it('is named in both languages', () => {
-    expect([DICT.fr.theme_group, DICT.fr.theme_dark, DICT.fr.theme_light]).toEqual(['Affichage', 'Affichage sombre', 'Affichage clair']);
-    expect([DICT.en.theme_group, DICT.en.theme_dark, DICT.en.theme_light]).toEqual(['Display', 'Dark display', 'Light display']);
+    // Norma 1.1.0: the group is « Dark / light display » (« Affichage »), as in norma/charte/ds/ThemeToggle.tsx.
+    const names = ['Dark / light display', 'Dark display', 'Light display'];
+    expect(names.map((x) => translate('fr', x))).toEqual(['Affichage', 'Affichage sombre', 'Affichage clair']);
+    expect(names.map((x) => translate('en', x))).toEqual(names);
   });
 
   it('applies the light values of Norma', () => {

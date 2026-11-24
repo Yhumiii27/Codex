@@ -7,8 +7,8 @@ import { getDb, schema as s } from '@/db';
 import { DICT, MATRIX_ROLE, SIM_ROLES, type Lang, type Perm, type SimRole, type T } from './i18n';
 import { promoteDue } from './lifecycle';
 import { schedulerPromotes } from './scheduler-state';
-import { SESSION_COOKIE, roleNow, unseal, type SessionData } from './clavis-auth';
-import { authMode, clavisConfig } from './clavis-rules';
+import { SESSION_COOKIE, roleNow, unseal, type SessionData } from '@/server/integrations/clavis/auth';
+import { authMode, clavisConfig } from '@/server/integrations/clavis/rules';
 
 export const COOKIE_LANG = 'codex-lang';
 export const COOKIE_USER = 'codex-user';
@@ -39,7 +39,7 @@ export type Ctx = {
   functions: (typeof s.functions.$inferSelect)[];
   projects: (typeof s.projects.$inferSelect)[];
   programs: (typeof s.researchPrograms.$inferSelect)[];
-  /** CAPEX of the subsidiaries (mirror of Arche's arche.pub_capex, lib/capex.ts), inactive ones included. */
+  /** CAPEX of the subsidiaries (mirror of Arche's arche.pub_capex, src/server/integrations/arche/capex.ts), inactive ones included. */
   capex: (typeof s.capex.$inferSelect)[];
   perms: Set<Perm>;
   can: (p: Perm) => boolean;

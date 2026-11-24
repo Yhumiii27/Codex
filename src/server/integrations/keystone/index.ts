@@ -1,8 +1,8 @@
 import 'server-only';
 import { asc, desc, eq } from 'drizzle-orm';
 import { getDb, schema as s } from '@/db';
-import type { Ctx } from './context';
-import { fmtClock, fmtWhen, loc } from './format';
+import type { Ctx } from '@/lib/context';
+import { fmtClock, fmtWhen, loc } from '@/lib/format';
 
 // Keystone integration boundary. Keystone owns projects; Codex keeps the documents and the type register that
 // Keystone reads (GET /api/registry). Until Keystone exposes an API, project data comes from Codex's local mirror

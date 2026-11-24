@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { SIGN_IN_COOKIE, cookieOptions, startSignIn } from '@/lib/clavis-auth';
-import { authMode, clavisConfig, safeReturnTo } from '@/lib/clavis-rules';
+import { SIGN_IN_COOKIE, cookieOptions, startSignIn } from '@/server/integrations/clavis/auth';
+import { authMode, clavisConfig, safeReturnTo } from '@/server/integrations/clavis/rules';
 import { logger } from '@/lib/log';
 
 const log = logger('auth');

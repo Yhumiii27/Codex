@@ -7,6 +7,7 @@ import { Icon } from '@/components/ui/Icon';
 import { Seg } from '@/components/ui/Seg';
 import { setLang } from '@/lib/actions';
 import { searchUrlWith } from '@/lib/search';
+import { msg } from '@/i18n';
 import { useApp } from './AppProvider';
 import { ThemeToggle } from './ThemeToggle';
 import type { Theme } from '@/lib/theme';
@@ -14,7 +15,11 @@ import { activeScreen } from './Sidebar';
 import { TODO_ICON } from './todo';
 import styles from './Header.module.css';
 
-const TITLE = { home: 'sc_home', explorer: 'sc_explorer', document: 'sc_document', search: 'sc_search', departments: 'sc_departments', workflow: 'sc_workflow', retention: 'sc_retention', admin: 'sc_admin', help: 'sc_help' } as const;
+const TITLE = {
+  home: msg('Dashboard'), explorer: msg('Document browser'), document: msg('Document record'), search: msg('Advanced search'),
+  departments: msg('Department page'), workflow: msg('Approval workflows'), retention: msg('Archiving & retention'),
+  admin: msg('Administration'), help: msg('Help'),
+} as const;
 
 export type Notif = {
   recent: { id: number; when: string; user: string; actionLabel: string; ref: string; href: string }[];
@@ -22,7 +27,7 @@ export type Notif = {
 
 export function Header({ notif, theme }: { notif: Notif; theme: Theme }) {
   // What waits for the simulated user (AppProvider), as the home's « À traiter » and the sidebar badge list it.
-  const { t, lang, todo: pending } = useApp();
+  const { tr, lang, todo: pending } = useApp();
   const pathname = usePathname();
   const params = useSearchParams();
   const router = useRouter();
@@ -65,7 +70,7 @@ export function Header({ notif, theme }: { notif: Notif; theme: Theme }) {
 
   return (
     <header className={styles.header}>
-      <h1 className={styles.title}>{t[TITLE[sc]]}</h1>
+      <h1 className={styles.title}>{tr(TITLE[sc])}</h1>
       <div className={styles.search}>
         <Icon name="search" size={15} style={{ position: 'absolute', left: 10, top: 10, opacity: 0.6 }} />
         <input
@@ -73,9 +78,9 @@ export function Header({ notif, theme }: { notif: Notif; theme: Theme }) {
           value={q}
           onChange={(e) => onType(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { if (timer.current) clearTimeout(timer.current); go(q, sc === 'search'); } }}
-          placeholder={t.search_ph}
+          placeholder={tr('Search documents, references, keywords…')}
           style={{ paddingLeft: 32, minHeight: 34 }}
-          aria-label={t.search_ph}
+          aria-label={tr('Search documents, references, keywords…')}
         />
       </div>
       <div className={styles.right}>
@@ -90,14 +95,14 @@ export function Header({ notif, theme }: { notif: Notif; theme: Theme }) {
         {/* Right of the language, as in every tool of the suite (Norma 1.0). */}
         <ThemeToggle theme={theme} />
         <div style={{ position: 'relative' }} ref={popRef}>
-          <button type="button" className="btn btn-secondary btn-icon" aria-label={t.notif} aria-expanded={notifOpen} onClick={() => setNotifOpen((v) => !v)} style={{ position: 'relative', width: 34, height: 34 }}>
+          <button type="button" className="btn btn-secondary btn-icon" aria-label={tr('Notifications')} aria-expanded={notifOpen} onClick={() => setNotifOpen((v) => !v)} style={{ position: 'relative', width: 34, height: 34 }}>
             <Icon name="bell" />
             {pending.length > 0 && <span className={styles.dot} />}
           </button>
           {notifOpen && (
-            <div className="popover" style={{ right: 0, top: 42 }} role="dialog" aria-label={t.notif}>
-              <h2 className="sec-title">{t.todo}</h2>
-              {pending.length === 0 && <div className="text-muted" style={{ fontSize: 12.5 }}>{t.todo_empty}</div>}
+            <div className="popover" style={{ right: 0, top: 42 }} role="dialog" aria-label={tr('Notifications')}>
+              <h2 className="sec-title">{tr('To do')}</h2>
+              {pending.length === 0 && <div className="text-muted" style={{ fontSize: 12.5 }}>{tr('Nothing to do for now.')}</div>}
               {pending.length > 0 && (
                 <div className={styles.pending}>
                   {pending.map((p) => (
@@ -112,8 +117,8 @@ export function Header({ notif, theme }: { notif: Notif; theme: Theme }) {
                   ))}
                 </div>
               )}
-              <h2 className="sec-title" style={{ marginTop: 4 }}>{t.notif_recent}</h2>
-              {notif.recent.length === 0 && <div className="text-muted" style={{ fontSize: 12.5 }}>{t.notif_empty}</div>}
+              <h2 className="sec-title" style={{ marginTop: 4 }}>{tr('Recent activity')}</h2>
+              {notif.recent.length === 0 && <div className="text-muted" style={{ fontSize: 12.5 }}>{tr('Nothing new.')}</div>}
               {notif.recent.map((a) => (
                 <div key={a.id} className="feed" style={{ fontSize: 12 }}>
                   <span className="text-muted feed-when">{a.when}</span>

@@ -8,7 +8,7 @@ import pg from 'pg';
 import { backupDirOf, createBackup, journal, journalData, keepOf, lockForServer, readMigrations } from '../lib/backup-core.mjs';
 import { logger } from '../lib/log';
 import { pgliteOptions } from '../lib/pglite-options.mjs';
-import { declarerSchemaCodex } from '../lib/matrix';
+import { declarerSchemaCodex } from '@/server/integrations/matrix';
 import { seedModeOf } from '../lib/seed-mode';
 import { appVersion } from '../lib/version';
 import { applyMigrations, planFor, readLayout, SERVER_PLAN, type MigrationPlan } from './migrations';
@@ -401,7 +401,7 @@ async function init(): Promise<Db> {
     },
   });
   if (before.archive) await journal(db.$client, 'backup_created', before.archive.name, before.archive.data, `migration ${before.pending.join(', ')}`);
-  // Declares the schema to Matrix (src/lib/matrix.ts, contract matrix.schema/1) right after the migrations, without
+  // Declares the schema to Matrix (src/server/integrations/matrix/, contract matrix.schema/1) right after the migrations, without
   // holding the start back: never awaited, never failing (a warning at most); without MATRIX_URL nor
   // MATRIX_DECLARATIONS_DIR, nothing is read nor sent. It reads current_schema(): codex, in both modes. The first
   // request, or the scheduler's first look (lib/scheduler.ts), opens the database, and so declares it, once per process.

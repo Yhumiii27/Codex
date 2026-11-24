@@ -3,7 +3,7 @@ import { eq, sql } from 'drizzle-orm';
 import { NextRequest } from 'next/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { schema as s } from '@/db';
-import { SESSION_COOKIE, SIGN_IN_COOKIE, resetDiscovery } from '@/lib/clavis-auth';
+import { SESSION_COOKIE, SIGN_IN_COOKIE, resetDiscovery } from '@/server/integrations/clavis/auth';
 import { getCtx } from '@/lib/context';
 import { GET as connexion } from '@/app/auth/connexion/route';
 import { GET as retour } from '@/app/auth/retour/route';

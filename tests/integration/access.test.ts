@@ -4,7 +4,7 @@ import { schema as s, type Db } from '@/db';
 import { buildAccessIndex, canRead, inDraftingCircle, type Viewer } from '@/lib/access';
 import type { Perm } from '@/lib/i18n';
 import { applyChangeDecision, approveRevision, defaultPerms, promoteDue } from '@/lib/lifecycle';
-import { submitChange } from '@/lib/vigie';
+import { submitChange } from '@/server/integrations/vigie';
 import { addDoc, addWorkflow, fixClock, getDoc, getRevision, setClock, setupDb } from '../support/db';
 import type { Person } from '../support/fixtures';
 

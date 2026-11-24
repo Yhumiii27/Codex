@@ -76,7 +76,7 @@ DATABASE_URL=postgres://codex_app:motdepasse@hote:5432/epc2i npm run start
 - **Connexions** : un pool de 10 connexions par processus (`CODEX_DB_POOL`, de 2 à 200 ; `CODEX_DB_POOL_MAX`, ancien
   nom, est encore lu), nommées `codex` (`application_name`).
 - **Déclaration à Matrix** : juste après les migrations, Codex envoie la description de ses tables à Matrix
-  (`MATRIX_URL`, `MATRIX_TOKEN` ; `src/lib/matrix.ts`), sans attendre la réponse ni échouer ; jamais pendant
+  (`MATRIX_URL`, `MATRIX_TOKEN` ; `src/server/integrations/matrix/`), sans attendre la réponse ni échouer ; jamais pendant
   `next build`, qui n'ouvre jamais le serveur.
 - **Fichiers** : ils restent dans `CODEX_DATA_DIR/files` (ou SharePoint, O-01). Le dossier de données garde son verrou
   `codex.lock` : un second serveur Codex sur le même dossier est refusé.
@@ -133,9 +133,9 @@ Inventaire du 1er novembre 2026 (code de `main`, `796e315`) :
 
 | Sens | Échange | Moyen | Conforme |
 |---|---|---|---|
-| Lecture chez un autre outil | aucune : Keystone et Vigie sont simulés par des tables de Codex (`projects`, `users`, `departments`, `sites`…, `src/lib/keystone.ts`, `src/lib/vigie.ts`), remplies par l'amorçage | — | oui |
-| Écriture chez un autre outil | déclaration du schéma à Matrix (`src/lib/matrix.ts`) | API `POST` de Matrix | oui (R4) |
-| Écriture chez un autre outil | demandes de modification à Vigie | miroir local seulement (`submitChange`, `src/lib/vigie.ts`) ; l'envoi réel attend O-10 | oui |
+| Lecture chez un autre outil | aucune : Keystone et Vigie sont simulés par des tables de Codex (`projects`, `users`, `departments`, `sites`…, `src/server/integrations/keystone/`, `src/server/integrations/vigie/`), remplies par l'amorçage | — | oui |
+| Écriture chez un autre outil | déclaration du schéma à Matrix (`src/server/integrations/matrix/`) | API `POST` de Matrix | oui (R4) |
+| Écriture chez un autre outil | demandes de modification à Vigie | miroir local seulement (`submitChange`, `src/server/integrations/vigie/`) ; l'envoi réel attend O-10 | oui |
 | Écriture reçue | dépôt d'un document par Arche (et toute application du groupe) | API `POST /api/documents` | oui (R4, fichier) |
 | Écriture reçue | décisions de Vigie | API `POST /api/integrations/vigie` | oui (R4) |
 | Écriture reçue | reprise de l'existant (outil de migration) | API `POST /api/import` | oui (R4) |

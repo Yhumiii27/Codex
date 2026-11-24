@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { Icon } from '@/components/ui/Icon';
 import { ECR_TAGCLS, type T } from '@/lib/i18n';
 import type { ChangeRequestView } from '@/lib/queries';
-import { vigieLinkConfigured, vigieUrl } from '@/lib/vigie';
+import { vigieLinkConfigured, vigieUrl } from '@/server/integrations/vigie';
 import styles from './workflow.module.css';
 
 /**

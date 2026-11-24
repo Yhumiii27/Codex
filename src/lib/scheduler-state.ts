@@ -35,7 +35,7 @@ export type TaskName = 'promote' | 'capex' | 'orphans' | 'renames' | 'integrity'
  */
 export const SCHEDULE: Record<TaskName, { env: string; def: string }> = {
   promote: { env: 'CODEX_SCHEDULE_PROMOTE', def: '5m' },
-  // The CAPEX Arche publishes (lib/capex.ts): skipped while arche.pub_capex cannot be read.
+  // The CAPEX Arche publishes (src/server/integrations/arche/capex.ts): skipped while arche.pub_capex cannot be read.
   capex: { env: 'CODEX_SCHEDULE_CAPEX', def: '15m' },
   orphans: { env: 'CODEX_SCHEDULE_ORPHANS', def: 'off' },
   renames: { env: 'CODEX_SCHEDULE_RENAMES', def: 'off' },

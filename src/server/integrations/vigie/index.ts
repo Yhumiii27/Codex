@@ -1,10 +1,10 @@
 import 'server-only';
 import { eq, sql } from 'drizzle-orm';
 import { schema as s } from '@/db';
-import { nextNumber } from './codification';
-import { nowStamp } from './format';
-import type { Tx } from './lifecycle';
-import { logger } from './log';
+import { nextNumber } from '@/lib/codification';
+import { nowStamp } from '@/lib/format';
+import type { Tx } from '@/lib/lifecycle';
+import { logger } from '@/lib/log';
 
 // Vigie integration boundary. Vigie owns change requests (ECR/ECO) and withdrawal requests; Codex creates them for
 // documents and applies Vigie's decisions (POST /api/integrations/vigie). On the shared server, Codex creates a request

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { schema as s } from '@/db';
 import { requestChange, simulateVigieDecision } from '@/lib/actions';
 import { DICT } from '@/lib/i18n';
-import { vigieConnected, vigieSimulated, vigieUrl } from '@/lib/vigie';
+import { vigieConnected, vigieSimulated, vigieUrl } from '@/server/integrations/vigie';
 import { addDoc, fixClock, setupDb } from '../support/db';
 import { actAs } from '../support/session';
 

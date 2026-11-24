@@ -13,16 +13,17 @@ import { getCtx } from '@/lib/context';
 import { ERROR_EN, ERROR_FR } from '@/lib/i18n-errors';
 import { fileRules } from '@/lib/filetypes';
 import { CONF_LEVELS, MATRIX_ROLE, type SimRole, type TKey } from '@/lib/i18n';
-import { keystoneUrl } from '@/lib/keystone';
-import { authMode } from '@/lib/clavis-rules';
+import { keystoneUrl } from '@/server/integrations/keystone';
+import { authMode } from '@/server/integrations/clavis/rules';
 import { themeFromCookies } from '@/lib/theme';
+import { translate } from '@/i18n';
 import { getMatrix, listTemplates, myTodo, recentActivity, typeView, vocabSuggestions } from '@/lib/queries';
 
 /** Title and description in the user's language; each screen names itself (lib/titles.ts screenTitle, WCAG 2.4.2). */
 export async function generateMetadata(): Promise<Metadata> {
   if (await databaseIsEmpty()) return { title: `${ERROR_FR.empty_title} · ${ERROR_EN.empty_title} — Codex` };
-  const { t } = await getCtx();
-  return { title: `${t.title_suffix} — ${t.brand_sub}`, description: t.app_description };
+  const { t, lang } = await getCtx();
+  return { title: `${t.title_suffix} — ${translate(lang, 'Group DMS')}`, description: t.app_description };
 }
 
 export default async function RootLayout({ children }: LayoutProps<'/'>) {
@@ -75,7 +76,7 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
     <html lang={ctx.lang} className={interClassName} data-theme={theme}>
       <body>
         {/* First stop of the keyboard: jumps over the sidebar and the header to the screen (WCAG 2.4.1). */}
-        <a href="#contenu" className="skip-link">{ctx.t.skip_to_content}</a>
+        <a href="#contenu" className="skip-link">{translate(ctx.lang, 'Skip to content')}</a>
         <AppProvider t={ctx.t} lang={ctx.lang} data={data} todo={todo}>
           <div className="app">
             <Sidebar

@@ -117,3 +117,17 @@ th > .sr-only { position: static; display: block; }
 /* Links rendered as buttons keep the button's own colour on hover. */
 a.btn:hover { color: var(--color-text); }
 a.btn-primary:hover, a.btn-ghost:hover { color: var(--color-accent); }
+
+/* — side panel (Norma § 7: forms open in a right side panel, closed on success; look of charte/ds/Drawer) — */
+.side-scrim { position: fixed; inset: 0; z-index: 10; background: color-mix(in srgb, var(--color-bg) 60%, transparent); }
+.side-panel {
+  position: fixed; top: 0; right: 0; bottom: 0; width: min(var(--panel-w, 640px), 100vw); overflow: auto;
+  display: flex; flex-direction: column; gap: 12px; padding: 18px 22px;
+  background: var(--color-surface); box-shadow: var(--shadow-lg); border-left: 1px solid var(--color-neutral-800);
+}
+.side-panel:focus { outline: none; }
+.side-panel-head { display: flex; align-items: flex-start; gap: 10px; }
+.side-panel-head .dialog-title { flex: 1; min-width: 0; }
+.side-panel-close { flex: none; width: 32px; height: 32px; }
+/* The actions stay in reach at the bottom of a long form. */
+.side-panel-actions { position: sticky; bottom: -18px; margin-top: auto; padding: 12px 0 18px; background: var(--color-surface); }

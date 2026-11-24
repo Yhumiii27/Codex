@@ -12,7 +12,7 @@ import { useApp } from './AppProvider';
  * trip to the server, which reads the cookie again on the next pages (app/layout.tsx).
  */
 export function ThemeToggle({ theme: initial }: { theme: Theme }) {
-  const { t } = useApp();
+  const { tr } = useApp();
   const [theme, setTheme] = useState<Theme>(initial);
   const option = (key: Theme, icon: 'moon' | 'sun', label: string) => ({
     key, title: label,
@@ -21,10 +21,10 @@ export function ThemeToggle({ theme: initial }: { theme: Theme }) {
   return (
     <Seg
       name="theme"
-      ariaLabel={t.theme_group}
+      ariaLabel={tr('Dark / light display')}
       value={theme}
       optStyle={{ padding: '5px 8px', fontSize: 12 }}
-      options={[option('dark', 'moon', t.theme_dark), option('light', 'sun', t.theme_light)]}
+      options={[option('dark', 'moon', tr('Dark display')), option('light', 'sun', tr('Light display'))]}
       onPick={(k) => {
         const v: Theme = k === 'light' ? 'light' : 'dark';
         setTheme(v);

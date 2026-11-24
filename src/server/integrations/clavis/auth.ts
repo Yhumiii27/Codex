@@ -1,5 +1,5 @@
 import 'server-only';
-// Sign-in of Codex through Clavis (CODEX_AUTH=clavis; rules and variables: lib/clavis-rules.ts). OpenID Connect
+// Sign-in of Codex through Clavis (CODEX_AUTH=clavis; rules and variables: src/server/integrations/clavis/rules.ts). OpenID Connect
 // authorisation code flow with PKCE, as Clavis provides it: /auth/connexion sends the browser to Clavis, /auth/retour
 // checks the ID token (RS256 signature against Clavis's keys, issuer, audience, expiry, nonce), links the person to a
 // Codex user and opens the session; /auth/deconnexion ends it. The session cookie holds the person's Clavis id only: the
@@ -7,9 +7,9 @@ import 'server-only';
 import { createCipheriv, createDecipheriv, createHash, createPublicKey, randomBytes, timingSafeEqual, verify } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
 import { getDb, schema as s } from '@/db';
-import type { ClavisConfig } from './clavis-rules';
-import { initialsOf, roleFromAccess, userIdFor } from './clavis-rules';
-import type { SimRole } from './i18n';
+import type { ClavisConfig } from './rules';
+import { initialsOf, roleFromAccess, userIdFor } from './rules';
+import type { SimRole } from '@/lib/i18n';
 
 export const SESSION_COOKIE = 'codex-session';
 export const SIGN_IN_COOKIE = 'codex-signin';

@@ -4,7 +4,7 @@ import { schema as s } from '@/db';
 import type { DocState } from '@/db/schema';
 import { buildAccessIndex } from '@/lib/access';
 import { applyChangeDecision, applyPendingDecision, approveRevision, promoteDue } from '@/lib/lifecycle';
-import { submitChange } from '@/lib/vigie';
+import { submitChange } from '@/server/integrations/vigie';
 import { addDoc, addWorkflow, fixClock, getChange, getDoc, getRevision, journalOf, revisionStatuses, setClock, setupDb } from '../support/db';
 import type { Person } from '../support/fixtures';
 
@@ -19,7 +19,7 @@ fixClock(); // 10 October 2026, 10:00 in Paris
 const ID = 'PRO-QUA-0001';
 const ECO = 'ECO-2026-010';
 
-/** Asks Vigie for a change of the document (lib/vigie.ts, as requestChange does). */
+/** Asks Vigie for a change of the document (src/server/integrations/vigie/, as requestChange does). */
 function ask(kind: 'modification' | 'obsolescence', requesterId: Person = 'writer', docId = ID) {
   return db().transaction((tx) => submitChange(tx, { kind, docId, requesterId, reason: 'r', description: '' }));
 }

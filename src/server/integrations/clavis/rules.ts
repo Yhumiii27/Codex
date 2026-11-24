@@ -1,6 +1,6 @@
 // Sign-in of Codex through Clavis, the group's directory and accesses (owner, 23 Nov 2026: one database for every tool;
 // the person's rights are read in the database, never copied). Pure rules: configuration, role, user identifier.
-// The flow itself (OpenID Connect, session cookie, routes /auth/…) is in lib/clavis-auth.ts.
+// The flow itself (OpenID Connect, session cookie, routes /auth/…) is in src/server/integrations/clavis/auth.ts.
 //
 //   CODEX_AUTH                  demo (default: the simulated user of the shell) | clavis
 //   CODEX_PUBLIC_URL            https://<host of Codex> (the callback is <url>/auth/retour, registered in Clavis)
@@ -9,7 +9,7 @@
 //   CODEX_CLAVIS_CLIENT_SECRET  its secret (`npm run oidc:client -- codex <callback>` in Clavis, shown once)
 //   CODEX_SESSION_SECRET        ≥ 32 characters: encrypts the session and sign-in cookies
 //   CODEX_SESSION_HOURS         session lifetime in hours (default 10, 1 to 24)
-import { SIM_ROLES, type SimRole } from './i18n';
+import { SIM_ROLES, type SimRole } from '@/lib/i18n';
 
 type Env = Readonly<Record<string, string | undefined>>;
 

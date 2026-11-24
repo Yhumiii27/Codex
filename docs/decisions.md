@@ -80,7 +80,7 @@ Règles de lecture :
 - **Réponse de l'utilisateur** (option choisie) : « Affaires simulées (Recommandé) »
 - **Décision retenue** : les projets sont des tables locales lues par un seul module, sans base partagée avec Keystone
   pour l'instant.
-- **Mise en œuvre** : `src/lib/keystone.ts` est le seul fichier à remplacer au branchement réel. Le lien est
+- **Mise en œuvre** : `src/server/integrations/keystone/` est le seul fichier à remplacer au branchement réel. Le lien est
   `NEXT_PUBLIC_KEYSTONE_URL` + `/projects/{code}`. Les projets `HLT-026`, `NDC-031` et `RCF-019` sont dans `PROJECTS`
   de `src/db/seed-org.ts`. Les tables sont `projects`, `project_expected` et `project_events` dans `src/db/schema.ts`.
 
@@ -295,7 +295,7 @@ Règles de lecture :
   projets comme des documents. Codex crée les demandes pour ses documents et applique les décisions : un ECO accepté
   ouvre la révision suivante en brouillon, attribuée au modificateur désigné.
 - **Mise en œuvre** :
-  - `src/lib/vigie.ts` (`submitChange`, références `ECR-AAAA-NNN`).
+  - `src/server/integrations/vigie/` (`submitChange`, références `ECR-AAAA-NNN`).
   - Table `change_requests` dans `src/db/schema.ts`.
   - `applyChangeDecision` dans `src/lib/lifecycle.ts`.
   - Webhook `POST /api/integrations/vigie` (`src/app/api/integrations/vigie/route.ts`, `docs/api.md`).
@@ -495,7 +495,7 @@ Règles de lecture :
   (pour l'AFE) ; les fonctions de portée projet d'un circuit (`chef_projet`, `validation_client`) n'ont pas de titulaire
   par CAPEX et reviennent au titulaire de groupe ; l'accès des utilisateurs des filiales reste CX-06 (O-04, O-02).
 - **Mise en œuvre** : migration `0003_capex` (table `capex`, colonne `documents.capex_code`, données du registre),
-  `src/lib/capex.ts` (tâche planifiée « CAPEX publiés par Arche »), formulaires, dépôt et import (`capexCode`,
+  `src/server/integrations/arche/capex.ts` (tâche planifiée « CAPEX publiés par Arche »), formulaires, dépôt et import (`capexCode`,
   `legalHold`), `docs/api.md`. Détail : `docs/historique.md` § 20.9.
 - **Reste** : la lecture de `arche.pub_capex` par `codex_app` est un lien à déclarer à Matrix (M-18).
 
@@ -520,7 +520,7 @@ Règles de lecture :
 - **Date** : 7 novembre 2026 (demandes de Vigie du 5 et du 6 novembre, validées par Guillaume les mêmes jours).
 - **Réponse de l'utilisateur** :
   > traite les demandes de Vigie
-- **D12, mise en œuvre** : `submitChange` (`src/lib/vigie.ts`) appelle `vigie.pub_creer_demande_modification` dès que
+- **D12, mise en œuvre** : `submitChange` (`src/server/integrations/vigie/`) appelle `vigie.pub_creer_demande_modification` dès que
   `codex_app` peut l'exécuter (lu dans le catalogue, sans erreur possible), **dans la transaction** qui écrit le miroir :
   le dépôt chez Vigie et la demande de Codex sont gardés ou défaits ensemble ; identifiant externe `codex:<uuid>` ;
   Codex garde le numéro ECR-AAAA-NNN rendu par Vigie. P0V01 (Codex non reconnu comme appelant), P0V02 (demande refusée,
@@ -1746,12 +1746,12 @@ Les valeurs de la maquette n'existent plus dans le modèle v2 :
 ### Liaison avec Keystone : API ou base partagée ?
 - **Aujourd'hui** (D-04) :
   - Les projets `HLT-026`, `NDC-031` et `RCF-019` sont des tables locales, remplies par `src/db/seed-org.ts` et lues
-    par `src/lib/keystone.ts`.
+    par `src/server/integrations/keystone/`.
   - Le lien « Ouvrir dans Keystone » mène à `NEXT_PUBLIC_KEYSTONE_URL` + `/projects/{code}`.
   - Keystone lit le registre des types par `GET /api/registry`.
 - **API ou base partagée** : l'utilisateur n'a pas tranché explicitement.
   - Au démarrage, il a choisi « Affaires simulées (Recommandé) » plutôt que « Base partagée avec Keystone ».
-  - Le code suppose donc des échanges par API. Codex expose le registre, et `src/lib/keystone.ts` est prévu pour être
+  - Le code suppose donc des échanges par API. Codex expose le registre, et `src/server/integrations/keystone/` est prévu pour être
     remplacé par des appels à l'API de Keystone.
   - Le « oui fusionne les deux bases » du 7 octobre porte sur les listes de types (D-07), pas sur les bases de données.
   - La spec Keystone décrit un index synchronisé depuis Codex (« Real time (webhooks) »). Elle laisse elle aussi
@@ -1787,7 +1787,7 @@ Fiches d'aide à la décision (état du code, options, effort, ce qui deviendrai
 | O-07 | **Durées de conservation par type** : proposées selon les règles d'usage, non validées une à une. | utilisateur | `src/db/registry.ts` (`retention`) ; points 3 et 6 de `docs/registre-points-ouverts.md` |
 | O-08 | **Types qui admettent « Public »** : aujourd'hui POL, REG, DTF, PUB et COL. Le registre n'a pas de type « communication », alors que c'est l'exemple donné par l'utilisateur. | utilisateur | `src/db/registry.ts` (`confAllowed`) |
 | O-09 | **Propositions de l'assistant à confirmer** : voir « Choix de l'assistant non validés explicitement ». | utilisateur | ce fichier ; `docs/modele-cible.md` §3-4 |
-| O-10 | **ECR/ECO** : quelles étapes, dans un module à créer dans Vigie ? Comment accepter les demandes nées dans Keystone, que le webhook de Codex refuse aujourd'hui ? Faut-il faire pointer vers Vigie le module ECO de Keystone ? | utilisateur (décision) ; dépôts Vigie et Keystone | D-16, D-18 ; `src/lib/vigie.ts` |
+| O-10 | **ECR/ECO** : quelles étapes, dans un module à créer dans Vigie ? Comment accepter les demandes nées dans Keystone, que le webhook de Codex refuse aujourd'hui ? Faut-il faire pointer vers Vigie le module ECO de Keystone ? | utilisateur (décision) ; dépôts Vigie et Keystone | D-16, D-18 ; `src/server/integrations/vigie/` |
 | O-11 | **Migration** : quels volumes et quels emplacements reprendre, pour l'outil séparé ? | utilisateur | D-21 ; `docs/api.md` (`POST /api/import`) |
 
 ### Travaux en attente (pas des questions)

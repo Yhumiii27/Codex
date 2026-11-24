@@ -4,7 +4,7 @@ import { schema as s } from '@/db';
 import { releaseHold, restoreArchived, simulateVigieDecision } from '@/lib/actions';
 import { DICT } from '@/lib/i18n';
 import { promoteDue } from '@/lib/lifecycle';
-import { submitChange } from '@/lib/vigie';
+import { submitChange } from '@/server/integrations/vigie';
 import { addDoc, fixClock, getChange, getDoc, getRevision, revisionStatuses, setClock, setupDb } from '../support/db';
 import type { Person } from '../support/fixtures';
 import { actAs } from '../support/session';
@@ -21,7 +21,7 @@ vi.mock('next/cache', () => ({ refresh: () => {} }));
 const db = setupDb();
 fixClock();
 
-// No Vigie endpoint: decisions are simulated from Codex (lib/vigie.ts, vigieSimulated).
+// No Vigie endpoint: decisions are simulated from Codex (src/server/integrations/vigie/, vigieSimulated).
 beforeAll(() => {
   vi.stubEnv('VIGIE_API_URL', '');
 });
