@@ -44,7 +44,7 @@ describe('language over display (Norma 2.0, norma/charte/COQUE.md § 4)', () => 
     expect(header).toMatch(/prefs=\{<Prefs \/>\}/);
     const tools = src('norma/charte/ds/HeaderTools.tsx');
     expect(tools.indexOf('{prefs}', tools.indexOf('export function HeaderTools'))).toBeGreaterThan(tools.indexOf('{bell}', tools.indexOf('export function HeaderTools')));
-    expect(src('src/components/shell/Shell.tsx')).toMatch(/<MobileTopBar name="Codex" icon=\{ICONS\.doc\} tools=\{<Bell \/>\} prefs=\{<Prefs \/>\} \/>/);
+    expect(src('src/components/shell/Shell.tsx')).toMatch(/<MobileTopBar name="Codex" logo=\{<ToolLogo code="codex" size=\{20\} \/>\} tools=\{<Bell \/>\} prefs=\{<Prefs \/>\} \/>/);
     // Never in the sidebar.
     expect(src('src/components/shell/Sidebar.tsx')).not.toMatch(/Prefs|ThemeSwitch|LangSwitch|setLang/);
   });

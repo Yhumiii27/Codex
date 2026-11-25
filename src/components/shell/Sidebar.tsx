@@ -5,6 +5,7 @@ import { useMemo } from 'react';
 import { usePathname } from 'next/navigation';
 import { NavEntry, NavList, PageSearch, Sidebar as Side, type PageHit } from '@norma/charte/ds/Sidebar';
 import { useCoque } from '@norma/charte/ds/AppShell';
+import { ToolLogo } from '@norma/charte/ds/ToolLogo';
 import { ICONS, Icon, type IconName } from '@/components/ui/Icon';
 import { msg } from '@/i18n';
 import { useApp } from './AppProvider';
@@ -83,7 +84,7 @@ export function Sidebar({ screens, user, roleTitle, keystoneUrl, signOut = false
   return (
     <Side
       name="Codex"
-      icon={ICONS.doc}
+      logo={<ToolLogo code="codex" />}
       footer={
         <>
           <div className={styles.linkedBlock}>

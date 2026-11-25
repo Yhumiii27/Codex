@@ -96,7 +96,7 @@ describe('src/proxy.ts', () => {
   it('runs on pages, not on the API nor the build’s static files', () => {
     const runs = (url: string) => unstable_doesMiddlewareMatch({ config, url });
     for (const page of ['/', '/documents/PRO-QUA-0001', '/recherche?q=pompe', '/administration', '/apiculture']) expect(runs(page), page).toBe(true);
-    for (const other of ['/api/registry', '/api/documents/PRO-QUA-0001/file', '/_next/static/chunks/main.js', '/_next/image?url=x', '/favicon.ico']) expect(runs(other), other).toBe(false);
+    for (const other of ['/api/registry', '/api/documents/PRO-QUA-0001/file', '/_next/static/chunks/main.js', '/_next/image?url=x', '/icon.svg']) expect(runs(other), other).toBe(false);
   });
 
   it('lets the Server Action calls through untouched: the proxy would copy their bodies, uploads included, into memory', () => {

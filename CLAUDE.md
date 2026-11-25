@@ -241,6 +241,9 @@ Détail et inventaire : `docs/postgres.md`, « Échanges avec les autres outils 
   `@phosphor-icons/react/dist/ssr`) ; recherche de pages ⌘K / Ctrl+K sous la marque de la barre latérale (écrans,
   Aide, onglets de l'Administration, pages de département) ; tout formulaire s'ouvre dans un panneau latéral
   (`Modal`, `src/components/dialogs/Modal.tsx`, aspect du `Drawer` de la charte), fermé au succès par `useSubmit`.
+- **Logo de Codex** (Norma 2.3, `norma/charte/COQUE.md` § 8 bis) : `<ToolLogo code="codex" />` de
+  `@norma/charte/ds/ToolLogo` dans la marque de la barre latérale (26 px, `src/components/shell/Sidebar.tsx`) et de la barre
+  supérieure (20 px, `src/components/shell/Shell.tsx`) ; favicon `src/app/icon.svg`, copie de `norma/charte/logos/codex.svg`.
 - **Connecteurs** (Norma § 5) : un dossier par outil sous `src/server/integrations/` (`keystone/`, `vigie/`,
   `matrix/`, `arche/capex.ts`, `clavis/auth.ts` et `rules.ts`). Une source illisible est un état, jamais une erreur
   de page (CAPEX : miroir gardé, tâche « ignorée » ; Vigie : demande simulée).
