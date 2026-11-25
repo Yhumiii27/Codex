@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { interClassName } from '@/fonts/inter';
+import { clientRefFor, sendClientReport } from '@/lib/client-error-report';
 import { errorRef } from '@/lib/errors';
 import { ERROR_EN as en, ERROR_FR as fr } from '@/lib/i18n-errors';
 import './nocturne.css';
@@ -14,7 +15,11 @@ import './globals.css';
  * the error's message: the reference the technical log carries (lib/errors.ts). `retry` renders the layout again.
  */
 export default function GlobalError({ error, retry }: { error: Error & { digest?: string }; retry: () => void }) {
-  const ref = errorRef(error);
+  // A server error carries its reference; one of the browser gets its own, reported to the technical log (lib/client-errors.ts).
+  const serverRef = errorRef(error);
+  const clientRef = useMemo(() => (serverRef ? null : clientRefFor(error)), [error, serverRef]);
+  useEffect(() => { if (clientRef) sendClientReport(error, clientRef); }, [error, clientRef]);
+  const ref = serverRef ?? clientRef;
   useEffect(() => { console.error(error); }, [error]);
   const both = (a: string, b: string) => (a === b ? a : `${a} · ${b}`);
   return (

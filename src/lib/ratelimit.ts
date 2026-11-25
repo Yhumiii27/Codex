@@ -42,6 +42,10 @@ export const RATE_LIMITS = {
   compare: { env: 'CODEX_RATE_COMPARE', def: '30/1m' },
   /** CSV exports (/api/export/search, /api/export/audit), per user (and address). */
   exports: { env: 'CODEX_RATE_EXPORTS', def: '30/1m' },
+  /** Errors of the browser reported to the technical log (/api/client-errors, lib/client-errors.ts), per user (and address). */
+  clientErrors: { env: 'CODEX_RATE_CLIENT_ERRORS', def: '10/1m' },
+  /** Documents offered by a record's dialogs as you type (/api/documents/[id]/candidates), per user (and address). */
+  lookups: { env: 'CODEX_RATE_LOOKUPS', def: '300/1m' },
   /** Server Actions that write (lib/actions.ts), per user. */
   writes: { env: 'CODEX_RATE_WRITES', def: '120/1m' },
 } as const satisfies Record<string, FamilySpec>;
@@ -205,7 +209,7 @@ export function limitRequest(req: Request, family: 'import' | 'documents' | 'vig
  * the raw cookie) has used up its bucket of `family`, or, behind a trusted proxy, the client's address has; otherwise
  * null, the request counted in both.
  */
-export function limitReader(req: Request, family: 'files' | 'exports' | 'compare', userId: string, t: T): Response | null {
+export function limitReader(req: Request, family: 'files' | 'exports' | 'compare' | 'clientErrors' | 'lookups', userId: string, t: T): Response | null {
   const rule = ruleFor(family);
   if (!rule) return null;
   const keys = [`user:${userId}`, ...(trustProxy() ? [`address:${clientAddress(req.headers)}`] : [])];
