@@ -19,8 +19,8 @@ export function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     {
-      // Pages only: not the API (JSON and stored files) nor the build's static files.
-      source: '/((?!api/|_next/static/|_next/image|favicon.ico).*)',
+      // Pages only: not the API (JSON and stored files), the build's static files nor the favicon (app/icon.svg).
+      source: '/((?!api/|_next/static/|_next/image|icon.svg).*)',
       // Nor the Server Action calls the browser sends (header Next-Action): their answer is a React stream, not a
       // document, and a proxy makes Next.js copy each request body into memory, cut at
       // experimental.proxyClientMaxBodySize: the file uploads would be truncated. A form posted before the page is
