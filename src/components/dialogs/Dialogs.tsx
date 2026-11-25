@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { useApp } from '@/components/shell/AppProvider';
 import { Icon } from '@/components/ui/Icon';
 import { Segmented } from '@norma/charte/ds/Segmented';
@@ -20,6 +20,7 @@ import { sameRule } from '@/lib/retention';
 import { reviewDueHint } from '@/lib/review';
 import { BUILT_IN_SCOPES, DISPOSITIONS, FAMILY_GROUPS, FUNCTION_SCOPES, RETENTION_TRIGGERS } from '@/lib/registry-rules';
 import { FACET_LABEL, type FacetKey } from '@/lib/search';
+import { DocPicker } from './DocPicker';
 import { FilePicker, Modal, Select, useSubmit, type SelectOption } from './Modal';
 import type { DialogData, DialogSpec, MetaDoc, TypeSettings, VersionLite } from './types';
 import cmp from './compare.module.css';
@@ -693,9 +694,10 @@ function RequestValidation({ docId, title, revLabel, circuitL, minDate, base }: 
   );
 }
 
-function ChangeRequest({ docId, title, change, openRev, replacements }: { docId: string; title: string; change: 'modification' | 'obsolescence'; openRev?: { letter: string; status: 'draft' | 'in_review' | 'approved' }; replacements?: { key: string; label: string }[] }) {
+function ChangeRequest({ docId, title, change, openRev, replacements }: { docId: string; title: string; change: 'modification' | 'obsolescence'; openRev?: { letter: string; status: 'draft' | 'in_review' | 'approved' }; replacements?: boolean }) {
   const { t, lang, close } = useApp();
   const { pending, error, field, run } = useSubmit();
+  const [replacement, setReplacement] = useState('');
   return (
     <Modal title={change === 'modification' ? t.request_change : t.request_obsolete} actions={<Actions pending={pending} label={t.send} onCancel={close} form="change-form" />}>
       <form
@@ -704,8 +706,8 @@ function ChangeRequest({ docId, title, change, openRev, replacements }: { docId:
           e.preventDefault();
           const form = e.currentTarget;
           const fd = new FormData(form);
-          const replacement = change === 'obsolescence' ? String(fd.get('replacement') ?? '') || null : null;
-          run(() => requestChange(docId, change, String(fd.get('reason') ?? ''), String(fd.get('description') ?? ''), replacement), { form });
+          const replacing = change === 'obsolescence' ? replacement || null : null;
+          run(() => requestChange(docId, change, String(fd.get('reason') ?? ''), String(fd.get('description') ?? ''), replacing), { form });
         }}
         style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
       >
@@ -727,7 +729,7 @@ function ChangeRequest({ docId, title, change, openRev, replacements }: { docId:
         {/* Withdrawal: the document that replaces this one, linked « remplacé par » once Vigie accepts (lib/lifecycle.ts). */}
         {change === 'obsolescence' && replacements && (
           <Field label={t.replacement_optional} hint={t.replacement_hint} error={field === 'replacement' ? error : null}>
-            {(id) => <Select id={id} name="replacement" options={replacements} empty={t.replacement_none} defaultValue="" />}
+            {(id) => <DocPicker id={id} docId={docId} purpose="replacement" name="replacement" value={replacement} onChange={setReplacement} empty={t.replacement_none} />}
           </Field>
         )}
         <ErrorLine error={field ? null : error} />
@@ -748,11 +750,13 @@ function LinkDocument({ spec }: { spec: Extract<DialogSpec, { kind: 'link' }> })
   const { t, close } = useApp();
   const { pending, error, field, run } = useSubmit();
   const [rel, setRel] = useState<LinkRel>('see_also');
-  const options = spec.candidates.filter((c) => (rel === 'replaces' ? c.withdrawn : rel === 'replaced_by' ? c.active : true));
+  // Whether any document at all may be linked under this kind, as long as no search narrows the list.
+  const [none, setNone] = useState(false);
+  const onOptions = useCallback((found: { key: string }[], searching: boolean) => { if (!searching) setNone(!found.length); }, []);
   const off = (k: LinkRel) => (k === 'replaced_by' && !spec.withdrawn) || (k === 'replaces' && !spec.active);
   const relHint = [!spec.withdrawn && t.link_hint_withdrawn, !spec.active && t.link_hint_inactive].filter(Boolean).join(' ') || undefined;
   const [other, setOther] = useState('');
-  const chosen = options.some((o) => o.key === other) ? other : '';
+  const chosen = other;
   return (
     <Modal title={t.link_title} width={560} actions={<Actions pending={pending} label={t.link_add} onCancel={close} form="link-form" disabled={!chosen} />}>
       <form
@@ -773,13 +777,13 @@ function LinkDocument({ spec }: { spec: Extract<DialogSpec, { kind: 'link' }> })
           <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
             {LINK_ORDER.map((k) => (
               <label key={k} className="radio" style={{ fontSize: 13, opacity: off(k) ? 0.5 : 1 }}>
-                <input type="radio" name="rel" checked={rel === k} disabled={off(k)} onChange={() => setRel(k)} /><span className="dot" />{t[`link_${k}`]}
+                <input type="radio" name="rel" checked={rel === k} disabled={off(k)} onChange={() => { setRel(k); setOther(''); }} /><span className="dot" />{t[`link_${k}`]}
               </label>
             ))}
           </div>
         </Field>
-        <Field label={t.link_other} error={field === 'other' ? error : null} hint={options.length ? undefined : t.link_no_candidate}>
-          {(id) => <Select id={id} name="other" value={chosen} onChange={setOther} options={options} empty={t.link_choose} disabled={!options.length} />}
+        <Field label={t.link_other} error={field === 'other' ? error : null} hint={none ? t.link_no_candidate : undefined}>
+          {(id) => <DocPicker key={rel} id={id} docId={spec.docId} purpose="link" rel={rel} name="other" value={chosen} onChange={setOther} empty={t.link_choose} onOptions={onOptions} />}
         </Field>
         <ErrorLine error={field ? null : error} />
       </form>

@@ -1,10 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useApp } from '@/components/shell/AppProvider';
 import { Icon } from '@/components/ui/Icon';
 import { PageHeader } from '@/components/shell/PageHeader';
+import { clientRefFor, sendClientReport } from '@/lib/client-error-report';
 import { errorRef } from '@/lib/errors';
 
 /**
@@ -15,7 +16,11 @@ import { errorRef } from '@/lib/errors';
  */
 export default function ErrorScreen({ error, retry }: { error: Error & { digest?: string }; retry: () => void }) {
   const { t } = useApp();
-  const ref = errorRef(error);
+  // A server error carries its reference; one of the browser gets its own, reported to the technical log (lib/client-errors.ts).
+  const serverRef = errorRef(error);
+  const clientRef = useMemo(() => (serverRef ? null : clientRefFor(error)), [error, serverRef]);
+  useEffect(() => { if (clientRef) sendClientReport(error, clientRef); }, [error, clientRef]);
+  const ref = serverRef ?? clientRef;
   // The browser's console only: the server already wrote its own entry (lib/log.ts logRequestError, traceAction).
   useEffect(() => { console.error(error); }, [error]);
   return (

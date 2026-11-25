@@ -12,7 +12,7 @@ import { extensionOf } from './filetypes';
 import { addDays, clip, daysBetween, fmtDate, fmtDateTime, fmtSize, fmtWhen, loc, nowStamp, parisStamp, parseIsoDay, TIME_ZONE, todayIso } from './format';
 import { CONF_LEVELS, MATRIX_ROLE_LABEL, phaseLabel, retentionBasisL, TAGCLS, type T, type TKey } from './i18n';
 import { decisionWait, lockOf, type DecisionWait, type Tx } from './lifecycle';
-import { LINK_RELS, otherEnd, relOf } from './links';
+import { LINK_RELS, otherEnd, relOf, type DocCandidate } from './links';
 import { NO_USAGE, type OrgUsage } from './org-rules';
 import { BUILT_IN_FUNCTIONS, BUILT_IN_TYPES } from './registry-rules';
 import { EVENT_TRIGGERS, isEventTrigger, retainUntil, retentionGap } from './retention';
@@ -557,6 +557,44 @@ export async function readableBriefs(ctx: Ctx): Promise<{ id: string; title: str
   const { rows } = await db.execute<{ id: string; title: string; state: string; obsolete_at: string | null; owner_id: string }>(sql`with ${visibleCte(ctx, todayIso())}
     select ${col(D.id)} as id, ${col(D.title)} as title, ${col(D.state)} as state, ${col(D.obsoleteAt)}::text as obsolete_at, ${col(D.ownerId)} as owner_id from vis0`);
   return rows.map((r) => ({ id: r.id, title: r.title, state: r.state, obsoleteAt: r.obsolete_at, ownerId: r.owner_id })).sort((a, b) => a.id.localeCompare(b.id));
+}
+
+/** Documents a record's dialog offers at most per answer (docCandidates): the reader narrows the search beyond. */
+export const CANDIDATES_SHOWN = 20;
+
+
+/**
+ * The documents the dialogs of the record of `docId` offer, read as the user types (point 47 of docs/reste-a-faire.md:
+ * the record no longer hands its dialogs every readable document). Same documents as the lists the record built from
+ * readableBriefs, filtered in SQL, by ID:
+ * - `replacement` (withdrawal request): active documents the user may read, other than this one;
+ * - `link`: documents the user may read and has the link rights on (mayEditLinks: the right Modifier, and every document
+ *   for whoever sees all, else their own), not yet linked to this one either way; with `rel`, only those that kind of link
+ *   accepts (« remplace » a withdrawn one, « remplacé par » an active one, lib/links.ts linkIssue).
+ * `q` (folded like the search, codex_fold) is found anywhere in the ID or the title; empty, the first ones by ID.
+ * `more`: there are others beyond the CANDIDATES_SHOWN given. The caller checks that the user may read `docId`.
+ */
+export async function docCandidates(
+  ctx: Ctx, docId: string, opts: { purpose: 'replacement' | 'link'; rel?: LinkRel; q?: string; limit?: number },
+): Promise<{ options: DocCandidate[]; more: boolean }> {
+  const limit = opts.limit ?? CANDIDATES_SHOWN;
+  if (opts.purpose === 'link' && !ctx.can('edit')) return { options: [], more: false };
+  const q = (opts.q ?? '').trim().slice(0, 100);
+  const conds: SQL[] = [sql`${sql.identifier('id')} <> ${docId}`];
+  if (q) conds.push(sql`(position(codex_fold(${q}) in codex_fold(${sql.identifier('id')})) > 0 or position(codex_fold(${q}) in codex_fold(${sql.identifier('title')})) > 0)`);
+  if (opts.purpose === 'replacement') conds.push(sql`${sql.identifier('state')} = 'active'`);
+  else {
+    if (!ctx.seesAll) conds.push(sql`${sql.identifier('owner_id')} = ${ctx.user.id}`);
+    conds.push(sql`not exists (select 1 from ${s.documentLinks} l where (l.source_id = ${docId} and l.target_id = vis0.id) or (l.target_id = ${docId} and l.source_id = vis0.id))`);
+    if (opts.rel === 'replaces') conds.push(sql`${sql.identifier('obsolete_at')} is not null`);
+    if (opts.rel === 'replaced_by') conds.push(sql`${sql.identifier('state')} = 'active'`);
+  }
+  const db = await getDb();
+  const { rows } = await db.execute<{ id: string; title: string; state: string; obsolete_at: string | null }>(sql`with ${visibleCte(ctx, todayIso())}
+    select id, title, state, obsolete_at::text as obsolete_at from vis0 where ${sql.join(conds, sql` and `)}
+    order by id collate "C" limit ${limit + 1}`);
+  const options = rows.slice(0, limit).map((r) => ({ key: r.id, label: `${r.id} · ${r.title}`, withdrawn: !!r.obsolete_at, active: r.state === 'active' }));
+  return { options, more: rows.length > limit };
 }
 
 /** Every document attached to a project, whether the user sees it or not (the record's checklist of expected pieces). */

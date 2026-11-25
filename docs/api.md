@@ -794,6 +794,21 @@ Ces routes ne sont pas des points d'intégration : elles servent l'écran de la 
 l'utilisateur (cookie), avec les droits de lecture de `src/lib/access.ts`. Elles sont décrites ici parce qu'elles
 répondent en dehors des pages.
 
+### `GET /api/documents/{id}/candidates?for=link|replacement[&rel=…]&q=…` — documents proposés par les dialogues
+
+Point 47 de `docs/reste-a-faire.md` (25 novembre 2026, `docCandidates` de `src/lib/queries.ts`) : la fiche ne transmet
+plus à ses dialogues la liste de tous les documents lisibles ; « Demander l'obsolescence » (`for=replacement`) et
+« Ajouter un lien » (`for=link`, `rel` = `see_also`, `replaces` ou `replaced_by`) cherchent pendant la saisie.
+
+- **Droits** : un document illisible donne **404**, comme la route fichier. Mêmes documents qu'avant :
+  remplacement = documents actifs lisibles, autres que celui-ci ; lien = documents lisibles sur lesquels l'utilisateur a
+  les droits de lien (droit Modifier, tous pour qui voit tout, sinon les siens), pas encore liés à celui-ci, et pour
+  `replaces` les documents retirés, pour `replaced_by` les actifs. Les Server Actions revérifient tout.
+- **Réponse 200** (`Cache-Control: private, no-store`) : `{ "options": [{ "key", "label", "withdrawn", "active" }],
+  "more": false }`, les 20 premiers par identifiant dont l'identifiant ou le titre contient `q` (replié comme la
+  recherche, `codex_fold`) ; `more` : il y en a d'autres, à préciser. **429** au-delà de `CODEX_RATE_LOOKUPS` (300 par
+  minute et par utilisateur).
+
 ### `GET /api/documents/{id}/compare?a={version}&b={version}` — comparer le contenu de deux versions
 
 Point 14 de `docs/reste-a-faire.md` (`src/lib/compare.ts`). `a` et `b` sont des identifiants de versions de travail
