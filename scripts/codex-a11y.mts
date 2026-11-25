@@ -7,6 +7,7 @@
 //   npm run a11y -- --url http://localhost:3100   an app already running, on its own database: no dialog is sent
 //                                       (see DIALOGS), but the records opened are journalised as consultations
 //   --lang en                          English interface (French by default); --lang all for both
+//   --theme light                      light display (Norma 1.0, cookie epc2i-theme; dark by default)
 //   --port 3190                        port of the server started here
 //   --json report.json                 every finding, moderate and minor ones included
 //   --narrow                           narrow display and zoom (WCAG 1.4.10, 1.4.4; scripts/codex-narrow.mts): every
@@ -26,7 +27,8 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import type { Browser, Page } from 'playwright-core';
 import { DICT, type Lang } from '../src/lib/i18n';
-import { launchChromium, serverLogTail, startServer, stopServer, waitHealthy } from './codex-browser.mjs';
+import { translate } from '../src/i18n/index';
+import { launchChromium, pageAction, serverLogTail, startServer, stopServer, waitHealthy } from './codex-browser.mjs';
 import { KIND_LABEL, KINDS, measureLayout, SIZES, type Layout, type Size } from './codex-narrow.mjs';
 
 const require = createRequire(import.meta.url);
@@ -43,9 +45,10 @@ const JSON_OUT = opt('--json');
 const NARROW = args.includes('--narrow');
 const SHOTS = opt('--shots');
 const LANG_ARG = opt('--lang') ?? 'fr';
+const THEME = opt('--theme') ?? 'dark';
 const LANGS: Lang[] = LANG_ARG === 'all' ? ['fr', 'en'] : LANG_ARG === 'en' ? ['en'] : LANG_ARG === 'fr' ? ['fr'] : [];
-if (!LANGS.length || !Number.isInteger(PORT)) {
-  console.error('npm run a11y [-- --dev | --url <adresse>] [--lang fr|en|all] [--port N] [--json fichier] [--narrow] [--shots dossier]');
+if (!LANGS.length || !Number.isInteger(PORT) || !['dark', 'light'].includes(THEME)) {
+  console.error('npm run a11y [-- --dev | --url <adresse>] [--lang fr|en|all] [--theme dark|light] [--port N] [--json fichier] [--narrow] [--shots dossier]');
   process.exit(2);
 }
 
@@ -147,7 +150,7 @@ async function open(page: Page, base: string, p: string) {
   return res?.status() ?? 0;
 }
 
-/** First Tab stop is « Aller au contenu », shown while focused; Enter moves the focus to <main id="contenu">. */
+/** First Tab stop is « Aller au contenu », shown while focused; Enter moves the focus to <main id="main-content"> (Norma 2.0). */
 async function skipLink(page: Page, base: string, t: T) {
   await open(page, base, '/');
   await page.keyboard.press('Tab');
@@ -156,17 +159,19 @@ async function skipLink(page: Page, base: string, t: T) {
     const r = a?.getBoundingClientRect();
     return { cls: a?.className ?? '', text: a?.textContent?.trim() ?? '', href: a?.getAttribute('href'), w: r?.width ?? 0, h: r?.height ?? 0 };
   });
-  if (!String(first.cls).includes('skip-link') || first.text !== t.skip_to_content || first.href !== '#contenu') problems.push(`Lien d'évitement : premier arrêt de Tab = ${JSON.stringify(first)}`);
+  if (!String(first.cls).includes('coque-skip') || first.text !== translate(t === DICT.en ? 'en' : 'fr', 'Skip to main content') || first.href !== '#main-content') problems.push(`Lien d'évitement : premier arrêt de Tab = ${JSON.stringify(first)}`);
   else if (first.w < 20 || first.h < 10) problems.push(`Lien d'évitement invisible au focus (${first.w}×${first.h})`);
   await page.keyboard.press('Enter');
   const after = await page.evaluate(() => document.activeElement?.id ?? '');
-  if (after !== 'contenu') problems.push(`Lien d'évitement : le focus va sur « ${after} » au lieu de <main id="contenu">`);
+  if (after !== 'main-content') problems.push(`Lien d'évitement : le focus va sur « ${after} » au lieu de <main id="main-content">`);
 }
 
 async function dialog(page: Page, base: string, d: (typeof DIALOGS)[number], t: T, lang: Lang, size?: Size) {
   await open(page, base, d.path);
   const name = d.button(t);
-  const btn = page.getByRole('button', { name, exact: typeof name === 'string' }).first();
+  const tl = t === DICT.en ? 'en' : 'fr';
+  // A page action may be a row of the header's « Actions » menu, a sidebar button inside the drawer (Norma 2.0).
+  const btn = await pageAction(page, name, { actions: translate(tl, 'Actions'), menu: translate(tl, 'Menu') });
   const tag = size && size.key !== 'bureau' ? ` (${size.label})` : '';
   if (!(await btn.count())) { problems.push(`${d.name}${tag} : bouton introuvable sur ${d.path}`); return; }
   if (await btn.isDisabled()) { problems.push(`${d.name}${tag} : bouton inactif sur ${d.path}`); return; }
@@ -207,7 +212,7 @@ async function pass(browser: Browser, base: string, lang: Lang, size: Size | und
   const ctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: vp.scale });
   // tsx keeps the names of the functions it compiles (__name), which measureLayout carries into the page.
   await ctx.addInitScript('globalThis.__name = globalThis.__name || ((f) => f);');
-  await ctx.addCookies([{ name: 'codex-lang', value: lang, url: base }]);
+  await ctx.addCookies([{ name: 'codex-lang', value: lang, url: base }, { name: 'epc2i-theme', value: THEME, url: base }]);
   const page = await ctx.newPage();
   const tag = size && size.key !== 'bureau' ? ` (${size.label})` : '';
   page.on('pageerror', (e) => problems.push(`[${lang}] erreur JavaScript${tag} : ${e.message}`));

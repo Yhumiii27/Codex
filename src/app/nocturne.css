@@ -1,5 +1,7 @@
 /* Nocturne design system — copied from design/_ds/nocturne-…/styles.css (source of truth for tokens and component classes).
-   Only change: Inter is served from the repository by next/font/local (src/fonts/inter.ts) instead of a Google Fonts @import. */
+   Changes: Inter is served from the repository by next/font/local (src/fonts/inter.ts) instead of a Google Fonts @import
+   (--font-heading and --font-body start with var(--font-inter)); the light theme at the end is copied from Norma 2.0.0
+   (norma/charte/nocturne.css), same values. */
 
 :root {
   --color-bg: #161826;
@@ -78,6 +80,38 @@
   --shadow-sm: 0 0 0 1px #3f424d;
   --shadow-md: 0 0 0 1px #595d6c, 0 6px 18px rgba(0,0,0,0.55);
   --shadow-lg: 0 0 0 1px #9397ab, 0 16px 40px rgba(0,0,0,0.65);
+
+  /* Norma 2.0 — échelle des textes de l'interface (valeurs que Keystone écrivait en dur ; charte/COQUE.md § 3).
+     Le corps des titres h1…h6 ci-dessous reste celui des pages éditoriales ; une application prend ces jetons. */
+  --text-micro: 10px;          /* en-tête de menu, compteur de groupe */
+  --text-eyebrow: 10.5px;      /* titre de section de la barre latérale, libellé de tuile KPI (capitales) */
+  --text-caption: 11.5px;      /* sous-ligne d'une tuile, d'une cellule, d'une notification */
+  --text-small: 12px;          /* fil d'Ariane, filtres, onglets segmentés, boutons xs */
+  --text-control: 12.5px;      /* champs de recherche, boutons sm, lignes de menu, état vide */
+  --text-ui: 13px;             /* corps de l'application : entrées du menu, tableaux, panneaux */
+  --text-dialog: 14px;         /* bouton md, corps d'un dialogue */
+  --text-brand: 16px;          /* nom de l'outil dans la barre latérale */
+  --text-kpi: 22px;            /* valeur d'une tuile KPI */
+  --text-kpi-lg: 24px;         /* valeur d'une tuile KPI d'accueil */
+  --text-title: 26px;          /* titre de page */
+  --text-title-compact: 22px;  /* titre de page ≤ 1024 px */
+  --weight-strong: 500;        /* titres, valeurs, marque (jamais 600 / 700 dans la coque) */
+  --tracking-caps: 0.08em;     /* textes en capitales */
+
+  /* Norma 2.0 — mesures de la coque (charte/COQUE.md § 1). */
+  --shell-sidebar-w: 232px;
+  --shell-drawer-w: min(300px, 86vw);  /* barre latérale en tiroir, ≤ 1024 px */
+  --shell-main-pad: 20px 28px 40px;
+  --shell-main-pad-compact: 0 18px 32px;
+  --shell-gap: 18px;                   /* entre en-tête de page et blocs de la page */
+  --shell-gap-compact: 14px;
+  --control-h: 32px;                   /* champ de recherche, sélecteur de page */
+  --touch-target: 40px;                /* cible tactile ≤ 1024 px ou pointeur grossier */
+  --pref-opt-w: 36px;                  /* option des sélecteurs langue / affichage (largeur identique) */
+  --pref-h: 26px;                      /* hauteur d'un sélecteur langue / affichage */
+  --pref-gap: 4px;                     /* entre les deux sélecteurs empilés */
+  --panel-w: 640px;                    /* panneau latéral (formulaires) */
+  --panel-w-wide: 680px;
 }
 
 body {
@@ -292,3 +326,67 @@ textarea.input { min-height: 90px; resize: vertical; }
 .dialog-body { font-size: 14px; opacity: 0.85; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2); }
 
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Thème clair (Norma 1.0, propriétaire 24 novembre 2026) — <html data-theme="light">.
+   Les rampes tonales sont inversées (100 ↔ 900…) : un composant qui prend un
+   « fond teinté » dans les pas sombres (700–900) et son texte dans les pas clairs
+   (100–300) reste juste dans les deux thèmes, sans rien changer à son CSS. Seuls
+   le fond, la surface, le texte, l'accent (plus sombre, pour le contraste sur
+   blanc), les séparateurs et les ombres sont redéfinis. Le thème sombre reste
+   celui par défaut.
+   ══════════════════════════════════════════════════════════════════════ */
+:root { color-scheme: dark; }
+:root[data-theme="light"] {
+  color-scheme: light;
+  --color-bg: #f4f5f9;
+  --color-surface: #ffffff;
+  --color-text: #1c1e29;
+  --color-accent: #5f51b8;
+  --color-accent-2: #6d67a8;
+  --color-divider: color-mix(in srgb, #1c1e29 14%, transparent);
+
+  --color-neutral-100: #1f2128;
+  --color-neutral-200: #33363f;
+  --color-neutral-300: #4a4d5a;
+  --color-neutral-400: #5f6272;
+  --color-neutral-500: #7c8093;
+  --color-neutral-600: #a2a6b8;
+  --color-neutral-700: #c9ccdb;
+  --color-neutral-800: #e2e4ee;
+  --color-neutral-900: #eef0f6;
+
+  --color-accent-100: #251f4a;
+  --color-accent-200: #362e6b;
+  --color-accent-300: #4a3f92;
+  --color-accent-400: #5f51b8;
+  --color-accent-500: #7b6fd0;
+  --color-accent-600: #a49ae6;
+  --color-accent-700: #cbc5f6;
+  --color-accent-800: #e3e0fb;
+  --color-accent-900: #f1effd;
+
+  --color-accent-2-100: #26233f;
+  --color-accent-2-200: #37335a;
+  --color-accent-2-300: #4b467b;
+  --color-accent-2-400: #615b9c;
+  --color-accent-2-500: #7d78b6;
+  --color-accent-2-600: #a5a1d2;
+  --color-accent-2-700: #cbc8e9;
+  --color-accent-2-800: #e3e1f4;
+  --color-accent-2-900: #f1f0fa;
+
+  --color-section: #e3e5fb;
+  --color-section-glow: #cfd3f6;
+  --color-section-ghost: #b4baee;
+
+  --shadow-sm: 0 0 0 1px #e2e4ee;
+  --shadow-md: 0 0 0 1px #c9ccdb, 0 6px 18px rgba(28, 30, 41, 0.10);
+  --shadow-lg: 0 0 0 1px #a2a6b8, 0 16px 40px rgba(28, 30, 41, 0.16);
+}
+:root[data-theme="light"] .lighten { mix-blend-mode: normal; }
+/* Norma 1.0.2 : textes secondaires plus soutenus en clair (55 % et 50 % du texte ne donnaient que 3,7:1 sur blanc,
+   sous le seuil AA de 4,5:1 ; 68 % donne au moins 5,2:1 — relevé par l'a11y de Codex). */
+:root[data-theme="light"] figcaption,
+:root[data-theme="light"] .text-muted,
+:root[data-theme="light"] .card-meta { color: color-mix(in srgb, var(--color-text) 68%, transparent); }

@@ -2,6 +2,7 @@ import { constants as fsc } from 'node:fs';
 import { access, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { backupDirOf } from './backup-core.mjs';
+import { clavisConfigProblems } from '@/server/integrations/clavis/rules';
 import { admittedExtensions, DENIED_EXTENSIONS, SHAREPOINT_MAX_FILE_MB } from './filetypes';
 import { ENDPOINTS, type Endpoint } from './integration-credentials';
 import { LOG_LEVELS, write } from './log';
@@ -84,6 +85,14 @@ export function checkConfig(env: Env, { production }: { production: boolean }): 
     if (stray.length) add('warn', 'sharepoint_unused', `${stray.join(', ')} set while CODEX_STORAGE is not sharepoint: not used, files are stored locally`);
   }
 
+  // ── Sign-in through Clavis (src/server/integrations/clavis/rules.ts): incomplete, Codex would refuse every page ──
+  const auth = env.CODEX_AUTH?.trim().toLowerCase();
+  if (auth && auth !== 'demo' && auth !== 'clavis') add('error', 'auth_unknown', `CODEX_AUTH="${auth.slice(0, 20)}" is neither demo nor clavis: the simulated user would be used`);
+  if (auth === 'clavis') {
+    for (const [k, m] of Object.entries(clavisConfigProblems(env))) add('error', 'auth_incomplete', `CODEX_AUTH=clavis but ${k} ${m}: nobody could sign in`);
+    add('info', 'auth_clavis', 'CODEX_AUTH=clavis: people sign in through Clavis; their role is read in clavis.pub_acces on every request');
+  }
+
   // ── Integration credentials (lib/server-auth.ts): tokens and signing secrets, each with its _NEXT for a rotation ──
   const values: { name: string; value: string }[] = [];
   for (const endpoint of Object.keys(ENDPOINTS) as Endpoint[]) {
@@ -139,7 +148,7 @@ export function checkConfig(env: Env, { production }: { production: boolean }): 
   const exportKeep = env.CODEX_SCHEDULE_EXPORT_KEEP?.trim();
   if (exportKeep && !(/^\d{1,3}$/.test(exportKeep) && Number(exportKeep) >= 1)) add('warn', 'export_keep_invalid', `CODEX_SCHEDULE_EXPORT_KEEP="${exportKeep}" is not a whole number from 1: 3 applies`);
 
-  // ── Vigie and Keystone addresses (lib/vigie.ts, lib/keystone.ts) ──
+  // ── Vigie and Keystone addresses (src/server/integrations/vigie/, src/server/integrations/keystone/) ──
   for (const name of URLS) {
     const raw = env[name]?.trim();
     if (!raw) continue;

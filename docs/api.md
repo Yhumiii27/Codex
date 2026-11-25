@@ -130,7 +130,7 @@ Le contrôle de configuration signale un `…_NEXT` laissé seul (`rotation_inco
 ### Appels sortants
 
 Codex n'appelle Keystone par aucune API. Vers Vigie (D-31, demande D12), il ne fait pas d'appel HTTP : sur le serveur
-commun, `submitChange` (`src/lib/vigie.ts`) appelle la fonction `vigie.pub_creer_demande_modification` dans la
+commun, `submitChange` (`src/server/integrations/vigie/`) appelle la fonction `vigie.pub_creer_demande_modification` dans la
 transaction qui écrit le miroir, dès que Matrix accorde à `codex_app` son exécution, et garde le numéro ECR que Vigie
 rend ; P0V01 et P0V02 donnent « Demande non transmise ». Sans la fonction, Codex numérote la demande et la décision se
 simule. `signRequest` (`src/lib/server-auth.ts`) reste disponible pour un futur appel HTTP signé.

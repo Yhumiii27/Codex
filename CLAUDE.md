@@ -1,3 +1,9 @@
+@norma/REGLES.md
+
+Règles communes de la suite EPC2I : copie versionnée de Norma (`norma/`, `norma/VERSION`), contrôlée par
+`npm run norma:check` ; elles se changent dans le dépôt `Yhumiii27/Norma`, jamais ici. Ce fichier n'ajoute que les
+règles propres à Codex.
+
 @AGENTS.md
 
 # Codex — GED du groupe EPC2I
@@ -12,10 +18,15 @@ Elle fait partie d'un système de trois apps :
   `github.com/Yhumiii27/Vigie`.
 - **Codex** : ce dépôt.
 
-Dans Codex, Keystone et Vigie sont **simulés**, via `src/lib/keystone.ts` et `src/lib/vigie.ts`.
+Dans Codex, Keystone et Vigie sont **simulés**, via `src/server/integrations/keystone/` et `src/server/integrations/vigie/`.
 
-L'utilisateur écrit en français : réponds en français. L'interface et les docs sont en français ; les textes FR/EN
-sont dans `src/lib/i18n.ts`.
+L'utilisateur écrit en français : réponds en français. L'interface et les docs sont en français. Textes de
+l'interface (Norma § 2, CX-N01, en cours) : chaînes sources en anglais `tr('Go to a page…')` traduites par
+`src/i18n/fr.ts` (français par défaut ; `src/i18n/index.ts`, `useApp().tr`, `useI18n()` de `src/i18n/client.tsx` pour
+les composants de la charte, `msg()` pour une source rangée dans une table ; contrôle `tests/unit/i18n-sources.test.ts`).
+La coque (barre latérale, en-tête, recherche de pages, panneau latéral, affichage) est passée ; les écrans lisent encore
+le dictionnaire à clés de `src/lib/i18n.ts` (`t.key`) jusqu'à leur reprise, écran par écran : une clé reprise se retire
+des deux langues.
 
 ## À lire avant de travailler
 
@@ -32,10 +43,11 @@ numéro, sans les trancher à la place de l'utilisateur.
 | `docs/audit-deck-epc2i.md` | Audit du deck (7 octobre 2026) : exigences, modèle de métadonnées, écarts avec Codex et leur statut actuel, architecture. |
 | `docs/sources/deck-ged-epc2i.md` | Texte intégral du deck. L'original est `docs/sources/creation-ged-epc2i.pptx`. |
 | `docs/historique.md` | Chronologie du travail : construction, audit, modèle v2, revues, app Mac, GitHub. |
-| `docs/avancement-v2.md` | État d'avancement et reste à faire. |
+| `docs/avancement-v2.md` | État d'avancement jusqu'au 24 novembre 2026 (archive : le reste à faire est dans Norma, ci-dessous). |
 | `docs/postgres.md` | PostgreSQL serveur en option (`DATABASE_URL`), limites, `npm run test:pg`. |
 | `docs/performances.md` | Mesures sur gros volume (`npm run seed:large`, `npm run perf`). |
-| `docs/reste-a-faire.md` | Inventaire vérifié du 9 octobre 2026 : 129 points ouverts, classés selon ce qui les bloque (rien, décision, données, macOS). |
+| `docs/reste-a-faire.md` | Inventaire du 9 octobre 2026 (archive, remplacée le 24 novembre 2026 par la liste de Norma). |
+| Norma `reste-a-faire/codex.json` | **Reste à faire de Codex** (Norma 1.2.0, `REGLES.md` § 3) : liste unique de la suite, page globale https://claude.ai/artifact/Rs7kooJdowShdYUqNS8jQf. Après chaque développement, la mettre à jour dans le dépôt Norma (PR) et republier la page. |
 | `docs/registre-points-ouverts.md` | Points à arbitrer sur le registre des types (69 types, 23 familles). |
 | `docs/api.md` | API d'intégration : registre, import de migration, dépôt par une application (`POST /api/documents`), webhook Vigie, lecture de l'état par les vues `pub_`. |
 | `REQUESTS.md` | Boîte aux lettres : demandes des autres outils à Codex, avec leur statut et la réponse de Codex. |
@@ -83,6 +95,8 @@ npm run dev          # http://localhost:3100
 npm test             # Vitest : tests/unit et tests/integration (PGlite en mémoire), ~20 s, sans serveur ni .data/
 npm run typecheck && npm run lint && npm run build
 npm run a11y         # après le build : axe-core dans Chromium sur une base de démo jetable (docs/accessibilite.md)
+npm run a11y -- --theme light   # même contrôle en affichage clair (cookie epc2i-theme)
+npm run norma:check  # copie de Norma intacte, dépendances conformes à norma/dependances.json
 ```
 
 - **Intégration continue** : `.github/workflows/ci.yml` rejoue `npm ci`, `npm run db:check`, typecheck, lint, tests,
@@ -104,7 +118,7 @@ npm run a11y         # après le build : axe-core dans Chromium sur une base de 
     `codex.table(…)`, jamais `pgTable(…)`. L'objet `pgSchema` n'est jamais exporté : exporté, drizzle-kit ajoute un
     `CREATE SCHEMA` que `codex_app` ne peut pas exécuter. Aucune migration ne contient `CREATE SCHEMA`,
     `CREATE EXTENSION` ni `public` (`tests/unit/migrations.test.ts`).
-  - Déclaration à Matrix (`src/lib/matrix.ts`) juste après les migrations, jamais attendue ni bloquante, jamais
+  - Déclaration à Matrix (`src/server/integrations/matrix/`) juste après les migrations, jamais attendue ni bloquante, jamais
     pendant `next build` ; sans `MATRIX_URL`, rien n'est envoyé.
   - **Le serveur commun est en PostgreSQL 16** (décision D-27 du 22 octobre 2026), PGlite est un PostgreSQL 18 : Codex
     accepte 16 ou plus récent (`SERVER_MIN_VERSION`, `src/db/index.ts`). Rien de propre à la 17 ou à la 18 dans le code
@@ -136,7 +150,14 @@ npm run a11y         # après le build : axe-core dans Chromium sur une base de 
 - **Évolution de `src/db/registry.ts`** (ou des fonctions de `src/db/seed-org.ts`) : `npm run registry:apply`
   (serveur arrêté) montre l'écart avec la base, `-- --apply` l'applique après une sauvegarde, journalisé. Ce qui a été
   réglé dans l'Administration est conservé ; un code n'est jamais renommé ni supprimé (un type retiré est désactivé).
-- **Utilisateur et rôle simulés** par cookie. Par défaut : Claire Bardet, gestionnaire documentaire. Pour changer,
+- **Connexion par Clavis** (`CODEX_AUTH=clavis`, 23 novembre 2026, décision du propriétaire : une seule base, les droits
+  lus dans la base) : `/auth/connexion` → Clavis (OpenID Connect, PKCE) → `/auth/retour`, jeton vérifié (`src/server/integrations/clavis/auth.ts`,
+  règles `src/server/integrations/clavis/rules.ts`), personne liée à un utilisateur de Codex (`users.clavis_person_id`, créé à la première
+  connexion), session chiffrée qui ne porte que l'identifiant de la personne ; le rôle (`collaborateur`, `validateur`,
+  `auditeur`, `gestionnaire`) et l'ouverture de Codex sont relus dans `clavis.pub_acces` à chaque requête (`getCtx`) : un
+  accès retiré ou un rôle changé dans Clavis vaut à la page suivante ; vue illisible = refus. Lectures `clavis.pub_acces` et
+  `clavis.pub_personnes` (liens accordés par Matrix). Test : `tests/integration/clavis-sign-in.test.ts`.
+- **Utilisateur et rôle simulés** par cookie (`CODEX_AUTH=demo`, par défaut). Par défaut : Claire Bardet, gestionnaire documentaire. Pour changer,
   cliquer sur le profil en bas de la barre latérale.
 - **Pas de secrets dans le dépôt.** Les variables sont décrites dans `.env.example`, et `.gitignore` exclut `.env*`,
   les clés et les dossiers de build.
@@ -210,7 +231,19 @@ Détail et inventaire : `docs/postgres.md`, « Échanges avec les autres outils 
 
 - **Fidélité à la maquette** : `design/GED Groupe.dc.html`, Nocturne copié dans `src/app/nocturne.css`, un CSS module
   par écran.
+- **Affichage sombre / clair** (Norma 1.0) : cookie `epc2i-theme` lu par `src/app/layout.tsx`, qui pose `data-theme`
+  sur `<html>` ; bouton `src/components/shell/ThemeToggle.tsx` à droite du sélecteur FR / EN. Le bloc clair de
+  `src/app/nocturne.css` est celui de `norma/charte/nocturne.css` (mêmes valeurs, `tests/unit/theme.test.ts`). Une
+  couleur en dur se remplace par une variable ; un écart propre au thème clair s'écrit `:root[data-theme="light"] …`
+  (`:global(...)` dans un CSS module).
 - **État d'écran dans l'URL** : onglets, filtres et sélection.
+- **Coque (Norma § 7)** : icônes Phosphor par `src/components/ui/Icon.tsx` (un nom de rôle → un glyphe de
+  `@phosphor-icons/react/dist/ssr`) ; recherche de pages ⌘K / Ctrl+K sous la marque de la barre latérale (écrans,
+  Aide, onglets de l'Administration, pages de département) ; tout formulaire s'ouvre dans un panneau latéral
+  (`Modal`, `src/components/dialogs/Modal.tsx`, aspect du `Drawer` de la charte), fermé au succès par `useSubmit`.
+- **Connecteurs** (Norma § 5) : un dossier par outil sous `src/server/integrations/` (`keystone/`, `vigie/`,
+  `matrix/`, `arche/capex.ts`, `clavis/auth.ts` et `rules.ts`). Une source illisible est un état, jamais une erreur
+  de page (CAPEX : miroir gardé, tâche « ignorée » ; Vigie : demande simulée).
 - **Mutations** : toutes dans `src/lib/actions.ts` (Server Actions), avec contrôle des droits côté serveur.
 - **Lectures et visibilité** : lectures dans `src/lib/queries.ts`, visibilité dans `src/lib/access.ts`.
 - **Git** : dépôt privé `github.com/Yhumiii27/Codex`, branche par défaut `main`. On travaille sur une branche et on

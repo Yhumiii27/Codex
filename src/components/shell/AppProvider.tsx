@@ -2,16 +2,21 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Lang, T } from '@/lib/i18n';
+import { translatorFor, type Translate } from '@/i18n';
 import type { MyAction, Todo } from '@/lib/queries';
 import { latestTodo } from './todo';
 import type { DialogData, DialogSpec } from '@/components/dialogs/types';
+import type { Theme } from '@/lib/theme';
 import { Dialogs } from '@/components/dialogs/Dialogs';
 
 /** `error`: a refusal; 'warn': done, with something to know (ActionResult.warning), left on screen longer. */
 type Toast = { id: number; text: string; error?: boolean | 'warn' };
 
 type AppCtx = {
+  /** Keyed dictionary of the screens not yet moved to English source strings (src/lib/i18n.ts). */
   t: T;
+  /** English source string → the person's language (src/i18n, Norma § 2). */
+  tr: Translate;
   lang: Lang;
   data: DialogData;
   open: (d: DialogSpec) => void;
@@ -20,7 +25,13 @@ type AppCtx = {
   /** « À traiter » (lib/queries.ts myTodo): the sidebar badge and the bell, the most recent list the shell was given. */
   todo: MyAction[];
   reportTodo: (x: Todo) => void;
+  /** Display read from the epc2i-theme cookie at render (the switch changes it in the browser afterwards). */
+  theme: Theme;
+  /** The five latest entries of the bell's « Activité récente ». */
+  recent: Recent[];
 };
+
+export type Recent = { id: number; when: string; user: string; actionLabel: string; ref: string; href: string };
 
 const Ctx = createContext<AppCtx | null>(null);
 
@@ -40,7 +51,7 @@ export function TodoSync({ todo }: { todo: Todo }) {
   return null;
 }
 
-export function AppProvider({ t, lang, data, todo, children }: { t: T; lang: Lang; data: DialogData; todo: Todo; children: ReactNode }) {
+export function AppProvider({ t, lang, data, todo, theme, recent, children }: { t: T; lang: Lang; data: DialogData; todo: Todo; theme: Theme; recent: Recent[]; children: ReactNode }) {
   const [dialog, setDialog] = useState<DialogSpec | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const seq = useRef(0);
@@ -55,7 +66,8 @@ export function AppProvider({ t, lang, data, todo, children }: { t: T; lang: Lan
     setTimeout(() => setToasts((xs) => xs.filter((x) => x.id !== id)), error === 'warn' ? 10_000 : 3200);
   }, []);
   const close = useCallback(() => setDialog(null), []);
-  const value = useMemo(() => ({ t, lang, data, open: setDialog, close, toast, todo: items, reportTodo }), [t, lang, data, close, toast, items, reportTodo]);
+  const tr = useMemo(() => translatorFor(lang), [lang]);
+  const value = useMemo(() => ({ t, tr, lang, data, open: setDialog, close, toast, todo: items, reportTodo, theme, recent }), [t, tr, lang, data, close, toast, items, reportTodo, theme, recent]);
 
   return (
     <Ctx.Provider value={value}>

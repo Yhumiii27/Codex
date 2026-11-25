@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { boolean, check, date, index, integer, jsonb, pgSchema, primaryKey, serial, text, timestamp, uniqueIndex, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { boolean, check, date, index, integer, jsonb, pgSchema, primaryKey, serial, text, timestamp, uniqueIndex, uuid, type AnyPgColumn } from 'drizzle-orm/pg-core';
 
 // Data model of the GED — see docs/modele-cible.md.
 
@@ -74,8 +74,14 @@ export const users = codex.table('users', {
   isSystem: boolean('is_system').notNull().default(false),
   /** Shared data D01 (Matrix): Cursus personnel number (EMP-nnnn); null for system actors. Not edited by Codex yet. */
   matricule: text('matricule').unique('users_matricule_unique'),
+  /**
+   * Person of Clavis, the group's directory (sign-in through Clavis, CODEX_AUTH=clavis): the `oid` of the ID token and
+   * `personne_id` of clavis.pub_acces. Set at the first sign-in; never for a system actor.
+   */
+  clavisPersonId: uuid('clavis_person_id').unique('users_clavis_person_unique'),
 }, (t) => [
   check('users_matricule_check', sql`${t.matricule} IS NULL OR (${t.matricule} ~ '^EMP-[0-9]{4,}$' AND NOT ${t.isSystem})`),
+  check('users_clavis_person_check', sql`${t.clavisPersonId} IS NULL OR NOT ${t.isSystem}`),
 ]);
 
 // ── Registry of document types (owned by Codex, read by Keystone) ─────────
@@ -167,7 +173,7 @@ export const researchPrograms = codex.table('research_programs', {
 
 /**
  * CAPEX of the subsidiaries (Arche, decision of 1 November 2026 on its request CX-01): the context of a CAPEX document's ID
- * (PID-CPX-APM-2026-01-001). A mirror of Arche's view `arche.pub_capex`, refreshed by lib/capex.ts; Codex never edits
+ * (PID-CPX-APM-2026-01-001). A mirror of Arche's view `arche.pub_capex`, refreshed by src/server/integrations/arche/capex.ts; Codex never edits
  * it. A CAPEX no longer published stays, inactive (`active` false): its documents keep it, a new document cannot take it.
  */
 export const capex = codex.table('capex', {
@@ -326,7 +332,7 @@ export const projectExpected = codex.table(
     later: boolean('later').notNull().default(false),
     sort: integer('sort').notNull().default(0),
   },
-  // The project tab's checklist (lib/keystone.ts); the expected item a document fills, and the cascade of a reclassification.
+  // The project tab's checklist (src/server/integrations/keystone/); the expected item a document fills, and the cascade of a reclassification.
   (t) => [index('project_expected_project').on(t.projectCode), index('project_expected_doc').on(t.docId)],
 );
 

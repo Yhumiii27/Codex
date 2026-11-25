@@ -1,10 +1,12 @@
 import type { Metadata } from 'next';
+import { cookies } from 'next/headers';
 import './nocturne.css';
+import '@norma/charte/touch.css';
+import '@norma/charte/coque.css';
 import './globals.css';
 import { AppProvider } from '@/components/shell/AppProvider';
-import { Header } from '@/components/shell/Header';
 import { EmptyDatabase } from '@/components/shell/EmptyDatabase';
-import { Sidebar } from '@/components/shell/Sidebar';
+import { Shell } from '@/components/shell/Shell';
 import { databaseIsEmpty } from '@/lib/empty-database';
 import type { DialogData } from '@/components/dialogs/types';
 import { interClassName } from '@/fonts/inter';
@@ -12,22 +14,27 @@ import { getCtx } from '@/lib/context';
 import { ERROR_EN, ERROR_FR } from '@/lib/i18n-errors';
 import { fileRules } from '@/lib/filetypes';
 import { CONF_LEVELS, MATRIX_ROLE, type SimRole, type TKey } from '@/lib/i18n';
-import { keystoneUrl } from '@/lib/keystone';
+import { keystoneUrl } from '@/server/integrations/keystone';
+import { authMode } from '@/server/integrations/clavis/rules';
+import { themeFromCookies } from '@/lib/theme';
+import { translate } from '@/i18n';
 import { getMatrix, listTemplates, myTodo, recentActivity, typeView, vocabSuggestions } from '@/lib/queries';
 
 /** Title and description in the user's language; each screen names itself (lib/titles.ts screenTitle, WCAG 2.4.2). */
 export async function generateMetadata(): Promise<Metadata> {
   if (await databaseIsEmpty()) return { title: `${ERROR_FR.empty_title} · ${ERROR_EN.empty_title} — Codex` };
-  const { t } = await getCtx();
-  return { title: `${t.title_suffix} — ${t.brand_sub}`, description: t.app_description };
+  const { t, lang } = await getCtx();
+  return { title: `${t.title_suffix} — ${translate(lang, 'Group DMS')}`, description: t.app_description };
 }
 
 export default async function RootLayout({ children }: LayoutProps<'/'>) {
+  // Dark / light display (Norma 1.0): the epc2i-theme cookie, set on <html> at render so that the page never flashes.
+  const theme = themeFromCookies(await cookies());
   // A server database left empty (no CODEX_SEED): one page that says how to fill it, in place of the shell and of every
   // screen, which need a person to act as (getCtx leads them to /base-vide).
   if (await databaseIsEmpty()) {
     return (
-      <html lang="fr" className={interClassName}>
+      <html lang="fr" className={interClassName} data-theme={theme}>
         <body><EmptyDatabase /></body>
       </html>
     );
@@ -67,25 +74,16 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
     vocab,
   };
   return (
-    <html lang={ctx.lang} className={interClassName}>
+    <html lang={ctx.lang} className={interClassName} data-theme={theme}>
       <body>
-        {/* First stop of the keyboard: jumps over the sidebar and the header to the screen (WCAG 2.4.1). */}
-        <a href="#contenu" className="skip-link">{ctx.t.skip_to_content}</a>
-        <AppProvider t={ctx.t} lang={ctx.lang} data={data} todo={todo}>
-          <div className="app">
-            <Sidebar
-              screens={ctx.screens}
-              user={{ name: ctx.user.name, initials: ctx.user.initials }}
-              roleTitle={ctx.t[`role_${ctx.role}`]}
-              keystoneUrl={keystoneUrl()}
-            />
-            <div className="app-col">
-              <Header notif={{
-                recent: recent.map((a) => ({ id: a.id, when: a.when, user: a.user, actionLabel: a.actionLabel, ref: a.currentId ?? a.ref, href: a.href })),
-              }} />
-              <main id="contenu" className="app-main" tabIndex={-1}>{children}</main>
-            </div>
-          </div>
+        <AppProvider
+          t={ctx.t} lang={ctx.lang} data={data} todo={todo} theme={theme}
+          recent={recent.map((a) => ({ id: a.id, when: a.when, user: a.user, actionLabel: a.actionLabel, ref: a.currentId ?? a.ref, href: a.href }))}
+        >
+          {/* The common shell (Norma 2.0): skip link first, sidebar, then <main id="main-content"> holding the screen. */}
+          <Shell sidebar={{ screens: ctx.screens, user: { name: ctx.user.name, initials: ctx.user.initials }, roleTitle: ctx.t[`role_${ctx.role}`], keystoneUrl: keystoneUrl(), signOut: authMode() === 'clavis' }}>
+            {children}
+          </Shell>
         </AppProvider>
       </body>
     </html>

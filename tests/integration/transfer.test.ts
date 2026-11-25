@@ -5,7 +5,7 @@ import { reassignStep, transferHoldings } from '@/lib/actions';
 import { getCtx } from '@/lib/context';
 import { DICT } from '@/lib/i18n';
 import { listAudit, transferView } from '@/lib/queries';
-import { submitChange } from '@/lib/vigie';
+import { submitChange } from '@/server/integrations/vigie';
 import { addDoc, addWorkflow, fixClock, getDoc, getRevision, journalOf, setupDb } from '../support/db';
 import type { Person } from '../support/fixtures';
 import { actAs } from '../support/session';

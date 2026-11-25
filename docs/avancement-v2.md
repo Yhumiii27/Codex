@@ -1,5 +1,11 @@
 # Intégration du modèle cible — état d'avancement (18 octobre 2026, fin du lot 9)
 
+> **Remplacé le 24 novembre 2026 (Norma 1.2.0, `REGLES.md` § 3).** Le reste à faire de Codex se tient désormais dans
+> Norma, dans la liste unique de la suite : `reste-a-faire/codex.json` du dépôt `Yhumiii27/Norma` (points CX-001…,
+> écarts d'alignement CX-N01…), publiée sur la page globale https://claude.ai/artifact/Rs7kooJdowShdYUqNS8jQf. Ce
+> fichier est gardé comme archive : les lignes « Fait le … » et les décisions qu'il cite restent la trace du travail,
+> mais il n'est plus mis à jour.
+
 Le code suit le modèle de `docs/modele-cible.md`. `npm run typecheck`, `npm run lint`, `npm run db:check`, `npm test`
 (Vitest), `npm run build` et `npm run a11y` (accessibilité) passent ; la CI les rejoue à chaque push
 (`.github/workflows/ci.yml`), avec la suite de tests sur un serveur PostgreSQL 16 (version du serveur commun) et 18. Le détail de chaque étape est dans
@@ -14,6 +20,23 @@ Le code suit le modèle de `docs/modele-cible.md`. `npm run typecheck`, `npm run
 `npm run registry:apply` (point 60).
 
 ## Fait
+
+**Norma 2.0.0, coque commune (24 novembre 2026).** Copie de Norma 2.0.0 dans `norma/` et de son `nocturne.css` dans
+`src/app/nocturne.css` (Inter servie par le dépôt) ; plus de barre d'en-tête globale : la coque de la suite
+(`norma/charte/COQUE.md`, `coque.css`, `AppShell`, `Sidebar`, `PageHeader`) — barre latérale de 232 px (marque, recherche
+de pages ⌘K, écrans, puis application liée, aide, notes et profil en pied), un en-tête par écran (fil d'Ariane, titre
+`<h1>` de 26 px, recherche documentaire, actions de l'écran avec l'action principale à droite et le menu « Actions »
+au-delà de trois, cloche, puis **FR | EN au-dessus de sombre | clair**, `PrefsStack`), barre d'outils (onglets
+`Segmented`, filtres, note), panneaux latéraux de 640 px (680 pour un document), et la mise en page de 1 024 px ou moins
+(barre supérieure « Menu », tiroir, écrans en colonne). `src/components/shell/` : `Shell`, `Sidebar`, `PageHeader`,
+`Prefs`, `Bell`, `DocSearch` ; `Header.tsx`, `ThemeToggle.tsx` et `Seg` retirés.
+
+**Norma 1.0.0 et affichage clair (24 novembre 2026).** Copie du socle commun de la suite dans `norma/`
+(`norma.config.json`, `npm run norma:check`, job « Norma » de la CI, `@norma/REGLES.md` en tête de `CLAUDE.md`) ;
+bouton d'affichage sombre / clair à droite du sélecteur FR / EN (`src/components/shell/ThemeToggle.tsx`, cookie
+`epc2i-theme` lu par `src/app/layout.tsx`, `src/lib/theme.ts`), valeurs claires de Norma en fin de
+`src/app/nocturne.css`, ombres et textes atténués passés en variables ; `npm run a11y -- --theme light` sans violation,
+rejoué par la CI.
 
 **Modèle v2 (7 et 8 octobre).**
 - `docs/modele-cible.md` : décisions de l'utilisateur et propositions à confirmer (voir `docs/decisions.md`).

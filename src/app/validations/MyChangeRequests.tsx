@@ -1,9 +1,8 @@
-import { Fragment, type ReactNode } from 'react';
+import { Fragment } from 'react';
 import Link from 'next/link';
 import { Icon } from '@/components/ui/Icon';
 import { ECR_TAGCLS, type T } from '@/lib/i18n';
 import type { ChangeRequestView } from '@/lib/queries';
-import { vigieLinkConfigured, vigieUrl } from '@/lib/vigie';
 import styles from './workflow.module.css';
 
 /**
@@ -11,11 +10,11 @@ import styles from './workflow.module.css';
  * them to this reader. Outside a document's drafting circle, it already leaves out the change order, the designated
  * author and the revision of a change not in force yet, and shows a graft onto a hidden revision « Acceptée » (D-14).
  * `requests`: still waiting first; `selected`: the one shown; `href`: the URL that selects a request. Dates keep their
- * year: the list holds every request ever sent. The link to Vigie only when its address is configured.
+ * year: the list holds every request ever sent. The record and Vigie (when its address is configured) are opened from
+ * the page header (validations/page.tsx).
  */
-export function MyChangeRequests({ t, views, requests, selected, href }: { t: T; views: ReactNode; requests: ChangeRequestView[]; selected: ChangeRequestView | undefined; href: (id: string) => string }) {
+export function MyChangeRequests({ t, requests, selected, href }: { t: T; requests: ChangeRequestView[]; selected: ChangeRequestView | undefined; href: (id: string) => string }) {
   const c = selected;
-  const vigieLink = vigieLinkConfigured();
   const facts = c
     ? ([
         [t.ecr_sent_on, c.sentF],
@@ -38,9 +37,8 @@ export function MyChangeRequests({ t, views, requests, selected, href }: { t: T;
           : null;
 
   return (
-    <div className="screen" style={{ display: 'flex', minWidth: 0 }} data-screen-label="Validations">
+    <div className="screen panes" data-screen-label="Validations">
       <aside className={styles.side}>
-        {views}
         <div className={styles.list} style={{ paddingTop: 10 }}>
           {requests.length === 0 && <p className="text-muted" style={{ padding: '16px 8px', fontSize: 12.5, margin: 0 }}>{t.vigie_empty}</p>}
           {requests.map((r) => (
@@ -56,7 +54,7 @@ export function MyChangeRequests({ t, views, requests, selected, href }: { t: T;
         </div>
       </aside>
 
-      <section style={{ flex: 1, minWidth: 0, overflow: 'auto', padding: '20px 28px 28px' }}>
+      <section className={styles.detail}>
         {c && (
           <div style={{ maxWidth: 880, display: 'flex', flexDirection: 'column', gap: 24 }}>
             <div>
@@ -65,10 +63,6 @@ export function MyChangeRequests({ t, views, requests, selected, href }: { t: T;
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                 <span className={ECR_TAGCLS[c.status] ?? 'tag tag-neutral'}>{c.statusL}</span>
                 <span className="tag tag-neutral">{c.kindL}</span>
-                <span style={{ display: 'flex', gap: 14, marginLeft: 'auto', fontSize: 12 }}>
-                  <Link href={`${c.docHref}?tab=requests`} className="link-plain nowrap">{t.open_record}</Link>
-                  {vigieLink && <a href={vigieUrl(c.id)} target="_blank" rel="noreferrer" className="link-plain nowrap" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="openExternal" size={12} />{t.open_vigie}</a>}
-                </span>
               </div>
             </div>
             {outcome && (

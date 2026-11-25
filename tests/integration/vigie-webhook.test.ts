@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { POST } from '@/app/api/integrations/vigie/route';
-import { submitChange } from '@/lib/vigie';
+import { submitChange } from '@/server/integrations/vigie';
 import { approveRevision } from '@/lib/lifecycle';
 import { addDoc, fixClock, getChange, getRevision, journalOf, revisionStatuses, setupDb } from '../support/db';
 

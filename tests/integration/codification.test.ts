@@ -5,7 +5,7 @@ import { updateMeta } from '@/lib/actions';
 import { nextDocId, nextNumber, nextWorkflowId, reserveDocId } from '@/lib/codification';
 import type { IdInput } from '@/lib/codes';
 import { DICT } from '@/lib/i18n';
-import { submitChange } from '@/lib/vigie';
+import { submitChange } from '@/server/integrations/vigie';
 import { addDoc, addWorkflow, fixClock, getDoc, getRevisions, journalOf, setClock, setupDb, viewOf, type DocSpec } from '../support/db';
 import { actAs } from '../support/session';
 

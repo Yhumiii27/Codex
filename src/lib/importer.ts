@@ -30,7 +30,7 @@ export const IMPORT_ACTOR = 'codex';
  * drafts, working versions and confidential documents from it.
  */
 const IMPORT_VIEWER = {
-  user: { id: IMPORT_ACTOR, name: 'Codex', initials: 'CX', role: 'system', title: null, department: null, site: null, isSystem: true, matricule: null },
+  user: { id: IMPORT_ACTOR, name: 'Codex', initials: 'CX', role: 'system', title: null, department: null, site: null, isSystem: true, matricule: null, clavisPersonId: null },
   seesAll: false,
   can: (p: string) => p === 'read',
 };
@@ -82,7 +82,7 @@ type Refs = {
   users: Map<string, UserRow>;
   projects: Set<string>;
   programs: Set<string>;
-  /** CAPEX Codex knows (lib/capex.ts), with whether Arche still publishes them: an inactive one takes no new document. */
+  /** CAPEX Codex knows (src/server/integrations/arche/capex.ts), with whether Arche still publishes them: an inactive one takes no new document. */
   capex: Map<string, boolean>;
 };
 
@@ -251,7 +251,7 @@ function parseImportMeta(raw: unknown, refs: Refs): { value: ImportInput | null;
   if (readers.length && conf && !readersApply(conf)) issue('readers', 'readers_conf');
   if (attachment === 'project' && !(projectRaw && refs.projects.has(projectRaw))) issue('projectCode', 'project_required');
   if (attachment === 'research' && !(programRaw && refs.programs.has(programRaw))) issue('programCode', 'program_required');
-  // A CAPEX Codex knows from Arche (arche.pub_capex, lib/capex.ts) and that Arche still publishes.
+  // A CAPEX Codex knows from Arche (arche.pub_capex, src/server/integrations/arche/capex.ts) and that Arche still publishes.
   if (attachment === 'capex') {
     if (!capexRaw) issue('capexCode', 'capex_required');
     else if (refs.capex.get(capexRaw) !== true) issue('capexCode', 'capex_unknown');

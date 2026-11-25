@@ -1,6 +1,5 @@
 /* Help (/aide): a reading column in the style of the other screens (title, muted lead, sections under a hairline). */
 .page { max-width: 820px; }
-.title { font-size: 26px; margin: 0 0 4px; }
 .lead { font-size: 13px; margin: 0 0 22px; max-width: 720px; }
 .toc { padding: 12px 16px; border-radius: var(--radius-md); background: var(--color-surface); margin-bottom: 8px; }
 .tocTitle { font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; margin: 0 0 6px; }

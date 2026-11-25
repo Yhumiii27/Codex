@@ -12,3 +12,5 @@
 .similar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: var(--color-neutral-500); }
 .similarBtn { border: 1px solid var(--color-divider); background: transparent; color: var(--color-accent-200); border-radius: var(--radius-sm); padding: 1px 8px; font: inherit; font-size: 12px; cursor: pointer; }
 .similarBtn:hover, .similarBtn:focus-visible { border-color: var(--color-accent); }
+/* Light theme (Norma 1.0): neutral-500 gives 3.9:1 on the surface there; neutral-400 gives 6:1. */
+:global(:root[data-theme="light"]) .similar { color: var(--color-neutral-400); }

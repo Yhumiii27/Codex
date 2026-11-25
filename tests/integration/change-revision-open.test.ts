@@ -8,7 +8,7 @@ import { getCtx } from '@/lib/context';
 import { DICT } from '@/lib/i18n';
 import { applyChangeDecision, applyPendingDecision, approveRevision, cancelOpenRevisions, promoteDue } from '@/lib/lifecycle';
 import { acceptedWaitL, decisionWaitL, listAudit, listChangeRequests, listRevisions } from '@/lib/queries';
-import { submitChange } from '@/lib/vigie';
+import { submitChange } from '@/server/integrations/vigie';
 import { addDoc, addWorkflow, baseOf, fixClock, getChange, getDoc, getRevision, journalOf, revisionStatuses, setClock, setupDb, type DocSpec } from '../support/db';
 import type { Person } from '../support/fixtures';
 import { actAs } from '../support/session';
@@ -25,7 +25,7 @@ vi.mock('next/cache', () => ({ refresh: () => {} }));
 const db = setupDb();
 fixClock(); // 10 October 2026, 10:00 in Paris
 
-// No Vigie endpoint: decisions may be simulated from Codex (lib/vigie.ts, vigieSimulated).
+// No Vigie endpoint: decisions may be simulated from Codex (src/server/integrations/vigie/, vigieSimulated).
 beforeAll(() => {
   vi.stubEnv('VIGIE_API_URL', '');
 });
@@ -43,7 +43,7 @@ const DECIDED = '2026-10-10 10:00:00';
 const withOpen = (status: RevStatus, over: Partial<DocSpec> = {}, rev: { effectiveAt?: string; modifierId?: Person | null } = {}) =>
   addDoc(db(), { id: ID, revisions: [{ letter: 'A', status: 'in_force' }, { letter: 'B', status, modifierId: 'modifierId' in rev ? rev.modifierId : 'writer', changeRef: ECO_B, effectiveAt: rev.effectiveAt ?? null, versions: ['writer'] }], ...over });
 
-/** A change asked by writer2 (lib/vigie.ts, as requestChange does). */
+/** A change asked by writer2 (src/server/integrations/vigie/, as requestChange does). */
 const ask = () => db().transaction((tx) => submitChange(tx, { kind: 'modification', docId: ID, requesterId: 'writer2', reason: 'r', description: '' }));
 
 type Decision = Parameters<typeof applyChangeDecision>[2];

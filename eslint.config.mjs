@@ -15,6 +15,8 @@ const eslintConfig = defineConfig([
     // Design prototype sources (reference only)
     "design/**",
     ".data/**",
+    // Copy of Norma, the suite's common base (node norma/outils/norma.mjs verifier): checked against its manifest, not linted here
+    "norma/**",
     // Working copies of other agents (git worktrees), outside the repository
     ".claude/**",
   ]),

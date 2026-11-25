@@ -8,7 +8,10 @@
 .node:hover { background: color-mix(in srgb, var(--color-text) 6%, transparent) !important; color: inherit; }
 .child { font-size: 12px; padding: 5px 8px 5px 30px; background: transparent; }
 .list { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
-.listHead { display: flex; align-items: center; gap: 12px; padding: 12px 20px 8px; flex-wrap: wrap; }
+.listBody { flex: 1; overflow: auto; padding: 8px 20px 20px; }
+/* The classification axes: five options sharing the tree's width (charte Segmented, fullWidth). */
+.axes { width: 100%; }
+.axes > * { min-width: 0; padding-inline: 1px; font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
 .quick {
   width: 300px; flex: none; border-left: 1px solid var(--color-divider); overflow: auto; padding: 16px 18px;
   display: flex; flex-direction: column; gap: 14px; height: 100%; background: var(--color-bg); position: relative; z-index: 1;
@@ -26,3 +29,12 @@
 .due { flex: none; border-top: 1px solid var(--color-divider); padding: 10px 8px 12px; display: flex; flex-direction: column; gap: 1px; }
 /* Under the table: the number of documents, and the previous and next pages when there are several. */
 .foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 8px; }
+
+/* 1 024 px or less: the tree, the list and the quick view one under the other (the page scrolls). */
+@media (max-width: 1024px) {
+  .tree { width: auto; border-right: 0; border-bottom: 1px solid var(--color-divider); }
+  .treeBody { max-height: 40vh; }
+  .list { overflow: visible; }
+  .listBody { overflow-x: auto; padding: 8px 0 20px; }
+  .quick { width: auto; height: auto; border-left: 0; border-top: 1px solid var(--color-divider); }
+}

@@ -6,7 +6,7 @@ import { POST } from '@/app/api/documents/route';
 import { schema as s } from '@/db';
 import { TYPES } from '@/db/registry';
 import { createDocument, releaseHold, updateMeta } from '@/lib/actions';
-import { syncCapex } from '@/lib/capex';
+import { syncCapex } from '@/server/integrations/arche/capex';
 import { getCtx } from '@/lib/context';
 import { DICT } from '@/lib/i18n';
 import { getDoc } from '@/lib/queries';

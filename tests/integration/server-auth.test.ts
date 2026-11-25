@@ -5,7 +5,7 @@ import { GET as registryGET } from '@/app/api/registry/route';
 import { schema as s } from '@/db';
 import { resetRateLimits } from '@/lib/ratelimit';
 import { signRequest } from '@/lib/server-auth';
-import { submitChange } from '@/lib/vigie';
+import { submitChange } from '@/server/integrations/vigie';
 import { addDoc, fixClock, getChange, setClock, setupDb } from '../support/db';
 
 // Authentication between servers through the real route handlers (point 23 of docs/reste-a-faire.md; contract:

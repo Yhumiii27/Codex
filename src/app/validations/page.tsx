@@ -1,17 +1,22 @@
+import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { Forbidden } from '@/components/ui/Forbidden';
 import { Icon } from '@/components/ui/Icon';
 import { Pager } from '@/components/ui/Pager';
-import { Seg } from '@/components/ui/Seg';
+import { Segmented } from '@norma/charte/ds/Segmented';
+import { FilterBar } from '@norma/charte/ds/FilterBar';
+import { PageHeader } from '@/components/shell/PageHeader';
+import { translate } from '@/i18n';
 import { HStepper, type StepItem } from '@/components/ui/Stepper';
-import { ActionButton, DialogButton } from '@/components/ui/client';
+import { ActionButton, ActionLink, DialogButton } from '@/components/ui/client';
 import { mayReassignStep } from '@/lib/access';
 import { decideStep } from '@/lib/actions';
 import { getCtx } from '@/lib/context';
 import { getDoc, listChangeRequests, listRevisions, validationsPage, WORKFLOW_FILTERS, type WorkflowFilter } from '@/lib/queries';
 import { CommentBox } from './CommentBox';
 import { MyChangeRequests } from './MyChangeRequests';
+import { vigieLinkConfigured, vigieUrl } from '@/server/integrations/vigie';
 import styles from './workflow.module.css';
 import { screenTitle } from '@/lib/titles';
 
@@ -43,19 +48,27 @@ export default async function WorkflowPage({ searchParams }: PageProps<'/validat
   const vigieHref = (id?: string) => `/validations?f=${VIGIE}${id ? `&c=${encodeURIComponent(id)}` : ''}`;
   // "Circuits" leads to the first filter with something in it.
   const landing: Filter = FILTERS.find((k) => wf.counts[k] > 0) ?? 'mine';
-  const views = (view: 'circuits' | typeof VIGIE) => (
-    <div style={{ padding: '14px 12px 0' }}>
-      <Seg
-        name="wfView"
-        value={view}
-        style={{ display: 'flex', width: '100%' }}
-        optStyle={{ flex: '1 1 auto', justifyContent: 'center', padding: '6px 6px', fontSize: 12, gap: 5, whiteSpace: 'nowrap' }}
-        options={[
-          { key: 'circuits', label: t.wf_circuits, count: wf.total, href: href(landing) },
-          { key: VIGIE, label: t.wf_vigie, count: sent.length, href: vigieHref() },
-        ]}
-      />
-    </div>
+  // The screen's header (Norma 2.0): its two views as the toolbar's tabs, the actions on the circuit shown.
+  const header = (view: 'circuits' | typeof VIGIE, more: { crumbs?: string[]; primary?: ReactNode; actions?: ReactNode } = {}) => (
+    <PageHeader
+      title={translate(ctx.lang, 'Approval workflows')}
+      crumbs={more.crumbs}
+      primary={more.primary}
+      actions={more.actions}
+      toolbar={
+        <FilterBar>
+          <Segmented
+            className="codex-seg"
+            wrap
+            value={view}
+            options={[
+              { value: 'circuits', label: t.wf_circuits, count: wf.total, href: href(landing) },
+              { value: VIGIE, label: t.wf_vigie, count: sent.length, href: vigieHref() },
+            ]}
+          />
+        </FilterBar>
+      }
+    />
   );
 
   // Without a filter or a circuit asked for, someone who takes part in no circuit lands on the requests they sent.
@@ -66,7 +79,19 @@ export default async function WorkflowPage({ searchParams }: PageProps<'/validat
     // Those still waiting for Vigie or for their application first, then the most recent.
     const waiting = (c: (typeof sent)[number]) => c.status === 'submitted' || c.status === 'accepted';
     const list = [...sent].sort((a, b) => Number(waiting(b)) - Number(waiting(a)));
-    return <MyChangeRequests t={t} views={views(VIGIE)} requests={list} selected={picked ?? list[0]} href={vigieHref} />;
+    const shown = picked ?? list[0];
+    const vigieLink = vigieLinkConfigured();
+    return (
+      <>
+        {header(VIGIE, {
+          actions: shown && <>
+            {vigieLink && <ActionLink native href={vigieUrl(shown.id)} icon="openExternal">{t.open_vigie}</ActionLink>}
+            <ActionLink href={`${shown.docHref}?tab=requests`}>{t.open_record}</ActionLink>
+          </>,
+        })}
+        <MyChangeRequests t={t} requests={list} selected={shown} href={vigieHref} />
+      </>
+    );
   }
   if (wf.hidden) {
     // A circuit the user took part in but no longer sees: once it is over, its approvers leave the drafting circle
@@ -81,13 +106,15 @@ export default async function WorkflowPage({ searchParams }: PageProps<'/validat
 
   if (!r) {
     return (
-      <div className="screen" style={{ display: 'flex', minWidth: 0 }} data-screen-label="Validations">
-        <aside className={styles.side}>
-          {views('circuits')}
-          <p className="text-muted" style={{ padding: '16px 20px', fontSize: 12.5, margin: 0 }}>{t.wf_empty}</p>
-        </aside>
-        <section style={{ flex: 1, minWidth: 0 }} />
-      </div>
+      <>
+        {header('circuits')}
+        <div className="screen panes" data-screen-label="Validations">
+          <aside className={styles.side}>
+            <p className="text-muted" style={{ padding: '16px 20px', fontSize: 12.5, margin: 0 }}>{t.wf_empty}</p>
+          </aside>
+          <section style={{ flex: 1, minWidth: 0 }} />
+        </div>
+      </>
     );
   }
   const [found, revs] = await Promise.all([getDoc(ctx, r.docId), listRevisions(ctx, r.docId)]);
@@ -103,12 +130,12 @@ export default async function WorkflowPage({ searchParams }: PageProps<'/validat
   const publishDenied = approveDenied ?? (lastStep && !ctx.can('publish') ? `${t.not_allowed} : ${t.perm_publish}` : undefined);
   // The requester or a records manager may recall a running circuit (lib/access.ts, mayRecall); a lock stops them too.
   const closeSpec = { workflowId: r.id, step: r.step, stepName: r.stepName, docId: r.docId, title: r.docTitle, letter: r.letter };
-  const recallBtn = r.recallable && <DialogButton spec={{ kind: 'recall', ...closeSpec }} className="btn btn-ghost" deniedTitle={lockText}>{t.recall}</DialogButton>;
+  const recallBtn = r.recallable && <DialogButton spec={{ kind: 'recall', ...closeSpec }} deniedTitle={lockText}>{t.recall}</DialogButton>;
   // Never offered as delegates: the requester, the revision's author (designated, or the owner) and its working versions' authors.
   const excluded = [...new Set([r.requesterId, rev?.modifierId ?? doc?.ownerId, ...(rev?.versions.map((v) => v.authorId) ?? [])].filter((x): x is string => !!x))];
   // A records manager hands on a step someone else holds (an absent person, point 19): the rules of a delegation.
   const reassignBtn = !canAct && !over && r.current && mayReassignStep(ctx) && (
-    <DialogButton spec={{ kind: 'reassign', workflowId: r.id, stepName: r.stepName, step: r.step, excluded, holder: r.current.assigneeId, holderName: r.current.assignee }} className="btn btn-ghost" deniedTitle={lockText}>{t.reassign}</DialogButton>
+    <DialogButton spec={{ kind: 'reassign', workflowId: r.id, stepName: r.stepName, step: r.step, excluded, holder: r.current.assigneeId, holderName: r.current.assignee }} deniedTitle={lockText}>{t.reassign}</DialogButton>
   );
 
   const steps: StepItem[] = r.steps.map((st) => {
@@ -121,17 +148,29 @@ export default async function WorkflowPage({ searchParams }: PageProps<'/validat
     return { key: st.idx, state: st.state, title: st.nameL, lines: [st.assignee, `${st.stateLabel} ${st.dateF}`.trim()] };
   });
 
+  // The decision on the step shown: approve (main action), reject, delegate, recall; or, for whoever does not hold the
+  // step, the hand-over and the recall.
+  const decision = canAct ? {
+    primary: <ActionButton className="btn btn-primary" disabled={!!publishDenied} title={publishDenied} action={decideStep.bind(null, r.id, true, r.step)} after={href(filter, r.id, page)}><Icon name="tick" size={14} sw={1.8} />{t.approve}</ActionButton>,
+    actions: <>
+      {r.step > 0 && <DialogButton spec={{ kind: 'reject', ...closeSpec }} icon="close" deniedTitle={approveDenied}>{t.reject}</DialogButton>}
+      <DialogButton spec={{ kind: 'delegate', workflowId: r.id, stepName: r.stepName, step: r.step, excluded }} deniedTitle={lockText}>{t.delegate}</DialogButton>
+      {recallBtn}
+    </>,
+  } : { actions: <>{reassignBtn}{recallBtn}</> };
+
   return (
-    <div className="screen" style={{ display: 'flex', minWidth: 0 }} data-screen-label="Validations">
+    <>
+    {header('circuits', { crumbs: [t.wf_circuits, filterLabel(filter)], ...decision })}
+    <div className="screen panes" data-screen-label="Validations">
       <aside className={styles.side}>
-        {views('circuits')}
-        <div style={{ padding: '8px 12px 10px' }}>
-          <Seg
-            name="wfFilter"
+        <div style={{ padding: '12px 12px 10px' }}>
+          <Segmented
+            className={styles.filters}
+            fullWidth
             value={filter}
-            style={{ display: 'flex', width: '100%' }}
-            optStyle={{ flex: '1 1 auto', justifyContent: 'center', padding: '6px 3px', fontSize: 11.5, gap: 4, whiteSpace: 'nowrap' }}
-            options={FILTERS.map((k) => ({ key: k, label: filterLabel(k), count: wf.counts[k], href: href(k, r.id) }))}
+            label={t.wf_circuits}
+            options={FILTERS.map((k) => ({ value: k, label: filterLabel(k), count: wf.counts[k], href: href(k, r.id) }))}
           />
         </div>
         <div className={styles.list}>
@@ -153,7 +192,7 @@ export default async function WorkflowPage({ searchParams }: PageProps<'/validat
         </div>
       </aside>
 
-      <section style={{ flex: 1, minWidth: 0, overflow: 'auto', padding: '20px 28px 28px' }}>
+      <section className={styles.detail}>
         <div style={{ maxWidth: 880, display: 'flex', flexDirection: 'column', gap: 24 }}>
           <div>
             <div className="text-muted" style={{ fontSize: 11 }}>{r.docId} · {t.revision} {r.letter} · {t.requested_by} {r.requester}</div>
@@ -171,16 +210,10 @@ export default async function WorkflowPage({ searchParams }: PageProps<'/validat
             <h2 className="sec-title" style={{ marginBottom: 14 }}>{t.steps}</h2>
             <HStepper items={steps} />
           </section>
-          {canAct && (
+          {canAct && (r.current?.sign || lockText) && (
             <div className="card elev-sm" style={{ padding: '14px 16px', gap: 12 }}>
               {r.current?.sign && <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12.5 }}><Icon name="pen" size={15} style={{ color: 'var(--color-accent)' }} />{t.sign_note}</div>}
               {lockText && <div role="status" style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12.5 }}><Icon name="lock" size={15} style={{ color: 'var(--color-accent)' }} />{lockText} {t.wf_closed_hint}</div>}
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <ActionButton className="btn btn-primary" disabled={!!publishDenied} title={publishDenied} action={decideStep.bind(null, r.id, true, r.step)} after={href(filter, r.id, page)}><Icon name="tick" size={14} sw={1.8} />{t.approve}</ActionButton>
-                {r.step > 0 && <DialogButton spec={{ kind: 'reject', ...closeSpec }} icon="close" deniedTitle={approveDenied}>{t.reject}</DialogButton>}
-                <DialogButton spec={{ kind: 'delegate', workflowId: r.id, stepName: r.stepName, step: r.step, excluded }} className="btn btn-ghost" deniedTitle={lockText}>{t.delegate}</DialogButton>
-                {recallBtn}
-              </div>
             </div>
           )}
           {!canAct && (recallBtn || reassignBtn) && (
@@ -188,7 +221,6 @@ export default async function WorkflowPage({ searchParams }: PageProps<'/validat
               {recallBtn && <div className="text-muted" style={{ fontSize: 12.5 }}>{t.recall_note}</div>}
               {reassignBtn && <div className="text-muted" style={{ fontSize: 12.5 }}>{t.reassign_hint.replace('{who}', r.current!.assignee)}</div>}
               {lockText && <div role="status" style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12.5 }}><Icon name="lock" size={15} style={{ color: 'var(--color-accent)' }} />{lockText} {t.wf_closed_hint}</div>}
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{reassignBtn}{recallBtn}</div>
             </div>
           )}
           {over && (
@@ -219,5 +251,6 @@ export default async function WorkflowPage({ searchParams }: PageProps<'/validat
         </div>
       </section>
     </div>
+    </>
   );
 }

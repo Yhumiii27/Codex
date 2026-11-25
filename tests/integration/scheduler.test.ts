@@ -9,7 +9,7 @@ import { verifyExport } from '@/lib/export-core.mjs';
 import { writeFullExport } from '@/lib/full-export';
 import { LEASE_MS, runTask, schedulerOverview, startScheduler, stopScheduler, TASKS } from '@/lib/scheduler';
 import { schedulerState } from '@/lib/scheduler-state';
-import { submitChange } from '@/lib/vigie';
+import { submitChange } from '@/server/integrations/vigie';
 import { addDoc, fixClock, getChange, journalOf, revisionStatuses, setClock, setupDb } from '../support/db';
 
 // The internal scheduler on a real database (point 38 of docs/reste-a-faire.md; docs/exploitation.md §4): an approved

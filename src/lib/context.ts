@@ -7,6 +7,8 @@ import { getDb, schema as s } from '@/db';
 import { DICT, MATRIX_ROLE, SIM_ROLES, type Lang, type Perm, type SimRole, type T } from './i18n';
 import { promoteDue } from './lifecycle';
 import { schedulerPromotes } from './scheduler-state';
+import { SESSION_COOKIE, roleNow, unseal, type SessionData } from '@/server/integrations/clavis/auth';
+import { authMode, clavisConfig } from '@/server/integrations/clavis/rules';
 
 export const COOKIE_LANG = 'codex-lang';
 export const COOKIE_USER = 'codex-user';
@@ -37,7 +39,7 @@ export type Ctx = {
   functions: (typeof s.functions.$inferSelect)[];
   projects: (typeof s.projects.$inferSelect)[];
   programs: (typeof s.researchPrograms.$inferSelect)[];
-  /** CAPEX of the subsidiaries (mirror of Arche's arche.pub_capex, lib/capex.ts), inactive ones included. */
+  /** CAPEX of the subsidiaries (mirror of Arche's arche.pub_capex, src/server/integrations/arche/capex.ts), inactive ones included. */
   capex: (typeof s.capex.$inferSelect)[];
   perms: Set<Perm>;
   can: (p: Perm) => boolean;
@@ -47,6 +49,23 @@ export type Ctx = {
   screens: Record<Screen, boolean>;
   userName: (id: string | null | undefined) => string;
 };
+
+/** The signed-in person (CODEX_AUTH=clavis) and their role now; else to the sign-in (or the refusal page). */
+async function signedInPerson(jar: Awaited<ReturnType<typeof cookies>>, byId: Map<string, User>): Promise<{ user: User; role: SimRole }> {
+  const cfg = clavisConfig();
+  const session = unseal<SessionData>(cfg.sessionSecret, 'session', jar.get(SESSION_COOKIE)?.value);
+  if (!session) redirect('/auth/connexion');
+  let role: SimRole | null;
+  try {
+    role = await roleNow(session.pid);
+  } catch {
+    redirect('/auth/refus?motif=indisponible');
+  }
+  if (!role) redirect('/auth/refus?motif=acces');
+  const user = [...byId.values()].find((u) => u.clavisPersonId === session.pid && !u.isSystem);
+  if (!user) redirect('/auth/connexion');
+  return { user, role };
+}
 
 /** Everything a request needs to render: language, simulated user and role, reference data and permissions. */
 export const getCtx = cache(async (): Promise<Ctx> => {
@@ -73,11 +92,19 @@ export const getCtx = cache(async (): Promise<Ctx> => {
   // act as: /base-vide says how to fill it (the root layout renders that page instead of the shell, EmptyDatabase).
   if (!users.some((u) => !u.isSystem)) redirect(EMPTY_DATABASE_PATH);
   const byId = new Map(users.map((u) => [u.id, u]));
-  // System actors (Codex, Keystone, Vigie) are never a simulated person: the audit trail keeps them for automatic actions.
-  const fromCookie = byId.get(jar.get(COOKIE_USER)?.value ?? '');
-  const user = (fromCookie && !fromCookie.isSystem ? fromCookie : undefined) ?? byId.get(DEFAULT_USER) ?? users.find((u) => !u.isSystem)!;
-  const cookieRole = jar.get(COOKIE_ROLE)?.value as SimRole | undefined;
-  const role: SimRole = cookieRole && SIM_ROLES.includes(cookieRole) ? cookieRole : SIM_ROLES.includes(user.role as SimRole) ? (user.role as SimRole) : 'collaborateur';
+  let user: User;
+  let role: SimRole;
+  if (authMode() === 'clavis') {
+    // Sign-in through Clavis: the person of the session cookie, and the role IT set in Clavis, read in clavis.pub_acces on
+    // every request (a withdrawn access or a changed role applies at the next page). Anything missing: sign in again.
+    ({ user, role } = await signedInPerson(jar, byId));
+  } else {
+    // System actors (Codex, Keystone, Vigie) are never a simulated person: the audit trail keeps them for automatic actions.
+    const fromCookie = byId.get(jar.get(COOKIE_USER)?.value ?? '');
+    user = (fromCookie && !fromCookie.isSystem ? fromCookie : undefined) ?? byId.get(DEFAULT_USER) ?? users.find((u) => !u.isSystem)!;
+    const cookieRole = jar.get(COOKIE_ROLE)?.value as SimRole | undefined;
+    role = cookieRole && SIM_ROLES.includes(cookieRole) ? cookieRole : SIM_ROLES.includes(user.role as SimRole) ? (user.role as SimRole) : 'collaborateur';
+  }
   const perms = new Set(rows.filter((r) => r.role === MATRIX_ROLE[role] && r.granted).map((r) => r.perm as Perm));
   const fr = lang === 'fr';
   const labels = new Map<string, string>();

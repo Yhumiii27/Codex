@@ -4,7 +4,7 @@ import { schema as s } from '@/db';
 import { decideStep, renameVocabTerm, requestChange, requestValidation, togglePermission, updateType } from '@/lib/actions';
 import { DICT } from '@/lib/i18n';
 import { applyChangeDecision, lockDoc, promoteDue } from '@/lib/lifecycle';
-import { submitChange } from '@/lib/vigie';
+import { submitChange } from '@/server/integrations/vigie';
 import { addDoc, baseOf, fixClock, getDoc, revisionStatuses, setupDb } from '../support/db';
 import { actAs } from '../support/session';
 
