@@ -19,7 +19,7 @@ import { previewKind } from '@/lib/filetypes';
 import { ECR_TAGCLS, PROJECT_PHASES, phaseIndex, phaseLabel } from '@/lib/i18n';
 import { getProject } from '@/server/integrations/keystone';
 import { CONSULT_WINDOW_MINUTES, decisionWait, defaultModifier, draftersOf } from '@/lib/lifecycle';
-import { decisionWaitL, getDoc, namedReaders, listAudit, templateTypesOf, METADATA_ACTIONS, RETENTION_ACTIONS, listChangeRequests, listDocLinks, listRevisions, projectDocs as projectDocsOf, readableBriefs, stateNotice, typeView, docWorkflows, type RevisionView } from '@/lib/queries';
+import { decisionWaitL, getDoc, namedReaders, listAudit, templateTypesOf, METADATA_ACTIONS, RETENTION_ACTIONS, listChangeRequests, listDocLinks, listRevisions, projectDocs as projectDocsOf, stateNotice, typeView, docWorkflows, type RevisionView } from '@/lib/queries';
 import { sameRule } from '@/lib/retention';
 import { previewPlan } from '@/lib/office-preview';
 import { normalizeMime, storedExt } from '@/lib/storage';
@@ -90,7 +90,7 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
   if (doc.id !== id) redirect(`${doc.href}${sp.tab ? `?tab=${encodeURIComponent(sp.tab)}` : ''}`);
 
   const hist = HIST.find((k) => k === sp.hist) ?? 'activity';
-  const [project, revs, workflows, requests, history, consultations, projectDocs, links, readable] = await Promise.all([
+  const [project, revs, workflows, requests, history, consultations, projectDocs, links] = await Promise.all([
     doc.attachment === 'project' && doc.projectCode ? getProject(ctx, doc.projectCode) : null,
     listRevisions(ctx, doc.id),
     docWorkflows(ctx, doc.id),
@@ -99,10 +99,9 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
     // Read only when shown: a record opened often gathers many.
     sp.tab === 'history' && hist === 'consultations' ? listAudit(ctx, { docId: doc.id, consultations: 'only', limit: 200 }) : [],
     doc.attachment === 'project' && doc.projectCode ? projectDocsOf(ctx, doc.projectCode) : [],
-    // Links to documents the user may read only (D-14), and the documents they may read, to link or propose as a
-    // replacement (their ID, title, state and owner only).
+    // Links to documents the user may read only (D-14). The documents to link or propose as a replacement are searched
+    // by the dialogs as the user types (DocPicker, /api/documents/[id]/candidates), never listed here.
     listDocLinks(ctx, doc.id),
-    readableBriefs(ctx),
   ]);
   // Types a template is meant for (« Nouveau depuis un modèle »).
   const tplTypes = doc.typeCode === TEMPLATE_TYPE ? (await templateTypesOf(ctx, [doc.id])).get(doc.id) ?? [] : null;
@@ -206,21 +205,16 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
   const changeBtn = (cls: string, style?: CSSProperties) => canChange && (
     <DialogButton spec={{ kind: 'change', docId: doc.id, title: doc.title, change: 'modification', openRev: openRev ?? undefined }} className={cls} style={style} icon="pen" deniedTitle={changeLock ?? deny('edit')}>{t.request_change}</DialogButton>
   );
-  // A withdrawal may propose the document that replaces this one: an active one the user may read (lib/links.ts). By ID
-  // (readableBriefs).
-  const others = readable.filter((d) => d.id !== doc.id);
-  const replacements = others.filter((d) => d.state === 'active').map((d) => ({ key: d.id, label: `${d.id} · ${d.title}` }));
+  // A withdrawal may propose the document that replaces this one: an active one the user may read (lib/links.ts),
+  // searched in the dialog (lib/queries.ts docCandidates).
   const withdrawBtn = (cls: string, style?: CSSProperties) => canWithdraw && (
-    <DialogButton spec={{ kind: 'change', docId: doc.id, title: doc.title, change: 'obsolescence', replacements }} className={cls} style={style} deniedTitle={changeLock ?? deny('edit')}>{t.request_obsolete}</DialogButton>
+    <DialogButton spec={{ kind: 'change', docId: doc.id, title: doc.title, change: 'obsolescence', replacements: true }} className={cls} style={style} deniedTitle={changeLock ?? deny('edit')}>{t.request_obsolete}</DialogButton>
   );
   // Links (lib/actions.ts addDocLink, removeDocLink): the owner and records managers of both documents, unless a legal
   // hold on either freezes them. A withdrawn document shows what replaces it in its band.
   const replacedBy = links.filter((l) => l.rel === 'replaced_by');
   const linksEditable = mayEditLinks(ctx, doc);
   const linkHold = doc.legalHold ? t.link_hold : undefined;
-  const linkable = others
-    .filter((d) => mayEditLinks(ctx, d) && !links.some((l) => l.doc.id === d.id))
-    .map((d) => ({ key: d.id, label: `${d.id} · ${d.title}`, withdrawn: !!d.obsoleteAt, active: d.state === 'active' }));
   // Periodic review of the revision in force (lib/actions.ts recordReview): its owner, its process owner, records managers.
   // An obsolete or archived document is no longer applied: nothing to review.
   const reviewBtn = (cls: string, style?: CSSProperties) => doc.revInForce && doc.state === 'active' && (
@@ -619,7 +613,7 @@ export default async function DocumentPage({ params, searchParams }: PageProps<'
                     <DialogButton spec={{ kind: 'templateTypes', docId: doc.id, title: doc.title, types: tplTypes, version: doc.version }} icon="pen" deniedTitle={lock ?? (mayLinkTemplate(ctx, doc) ? undefined : deny('edit'))}>{t.template_types}</DialogButton>
                   )}
                   <DialogButton
-                    spec={{ kind: 'link', docId: doc.id, title: doc.title, withdrawn: !!doc.obsoleteAt, active: doc.state === 'active', candidates: linkable }} icon="plus"
+                    spec={{ kind: 'link', docId: doc.id, title: doc.title, withdrawn: !!doc.obsoleteAt, active: doc.state === 'active' }} icon="plus"
                     deniedTitle={deny('edit') ?? (linksEditable ? undefined : t.link_reserved) ?? linkHold}
                   >{t.link_add}</DialogButton>
                   {doc.eventTrigger && (

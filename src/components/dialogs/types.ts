@@ -111,16 +111,16 @@ export type DialogSpec =
    * Change request (ECR) or withdrawal request, both sent to Vigie. `openRev`: for a change asked while a revision is
    * open, that revision and its status (an accepted change waits for its entry into force, or may be grafted onto it
    * while it is drafted, D-26); given to the drafting circle only (lib/access.ts openRevisionView, D-14).
-   * `replacements`: for a withdrawal, the documents that may be proposed to replace this one (active, readable by the
-   * user, lib/links.ts replacementIssue).
+   * `replacements`: for a withdrawal, whether a replacement may be proposed; the documents offered (active, readable
+   * by the user, lib/links.ts replacementIssue) are searched as the user types (DocPicker, lib/queries.ts docCandidates).
    */
-  | { kind: 'change'; docId: string; title: string; change: 'modification' | 'obsolescence'; openRev?: { letter: string; status: 'draft' | 'in_review' | 'approved' }; replacements?: Option[] }
+  | { kind: 'change'; docId: string; title: string; change: 'modification' | 'obsolescence'; openRev?: { letter: string; status: 'draft' | 'in_review' | 'approved' }; replacements?: boolean }
   /**
    * Link the document to another one (lib/actions.ts addDocLink): `withdrawn`, whether Vigie withdrew it (only then is
-   * it « remplacé par »); `active`, neither obsolete nor archived (only then does it replace another); `candidates`, the
-   * documents the user may read and has the link rights on, each with the same flags.
+   * it « remplacé par »); `active`, neither obsolete nor archived (only then does it replace another). The other end is
+   * searched as the user types among the documents they may read and have the link rights on (DocPicker).
    */
-  | { kind: 'link'; docId: string; title: string; withdrawn: boolean; active: boolean; candidates: (Option & { withdrawn: boolean; active: boolean })[] }
+  | { kind: 'link'; docId: string; title: string; withdrawn: boolean; active: boolean }
   /** Hand the current step on: `step` is the step shown, `excluded` the people who may not approve this revision. */
   | { kind: 'delegate'; workflowId: string; stepName: string; step: number; excluded: string[] }
   /** A records manager hands on the current step held by someone else (`holder`), with the rules of a delegation. */

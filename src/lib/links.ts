@@ -87,3 +87,6 @@ export function replacementOutcome(
   if (withdrawn.legalHold || replacement.legalHold) return 'hold';
   return current?.kind === 'replaces' ? 'linked' : 'link';
 }
+
+/** A document a record's dialog may propose (lib/queries.ts docCandidates): `withdrawn` by Vigie, `active` (neither obsolete nor archived). */
+export type DocCandidate = { key: string; label: string; withdrawn: boolean; active: boolean };

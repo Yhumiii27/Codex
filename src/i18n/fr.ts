@@ -41,6 +41,10 @@ export const FR: Record<string, string> = {
   // Side panel and charte components
   Close: 'Fermer',
   'Skip to main content': 'Aller au contenu',
+  // Record dialogs: a document searched as you type (DocPicker)
+  'Search by ID or title…': 'Rechercher par identifiant ou titre…',
+  'The documents could not be read; try again.': 'Les documents n’ont pas pu être lus ; réessayez.',
+  'Only the first {n} matches are shown: narrow the search.': 'Seuls les {n} premiers résultats sont affichés : précisez la recherche.',
 };
 
 /** Sources whose French is the same word: checked as such, never given an entry. */

@@ -3359,3 +3359,23 @@ P0V01 / P0V02 sans rien garder ; simulation des décisions seulement sans la fon
 `/modifications-techniques/<ECR>`. Aucune migration. Tests : `tests/integration/vigie-function.test.ts` (fonction de
 Vigie simulée en PGlite). D10 : confirmations (registre stable, types, `review_due_at`) ; restent les données (sites
 alignés sur Matrix, matricules) et les liens à accorder dans Matrix.
+
+### 20.12 Restes techniques de la liste de Norma (25 nov.)
+
+Demande de l'utilisateur : lancer les points techniques prêts de Codex (CX-006, CX-020, CX-036, CX-038, CX-046 à
+CX-049). Revérifiés dans le code : seuls deux restes ne dépendent d'aucune décision.
+- **Point 47 (CX-047)** : la fiche ne transmet plus à ses dialogues la liste de tous les documents lisibles.
+  « Demander l'obsolescence » et « Ajouter un lien » cherchent pendant la saisie (`src/components/dialogs/DocPicker.tsx`,
+  `GET /api/documents/[id]/candidates`, `docCandidates` de `src/lib/queries.ts` : mêmes documents qu'avant, filtrés en
+  SQL, 20 par réponse, `CODEX_RATE_LOOKUPS`). Tests : `tests/integration/doc-candidates.test.ts` (comparés à l'ancienne
+  liste, `readableBriefs`, pour chaque personne). Reste : le layout rendu à chaque chargement complet (fonctionnement de
+  Next.js, sans manque constaté).
+- **Point 49 (CX-049)** : une erreur du navigateur reçoit une référence (`nav-…`) et est écrite au journal technique
+  (`src/lib/client-errors.ts`, `src/lib/client-error-report.ts`, `POST /api/client-errors`, `CODEX_RATE_CLIENT_ERRORS` ;
+  `docs/exploitation.md` §3). Tests : `tests/unit/client-errors.test.ts`, `tests/integration/client-errors.test.ts`.
+  Reste : métriques et alertes, selon l'hébergement (M22).
+- Non repris, faute de décision : réservation d'un brouillon (point 20, O-09), refus d'un modèle prévu pour d'autres
+  types et exclusion du sous-type « Formulaire » (point 6, O-09, modèles réels G06), suppression des orphelins sur
+  SharePoint (point 36, O-01, SharePoint non activé, D-28), relances et envois sortants (point 38, M19, T-01, O-03,
+  O-10), dépôt en flux avec l'import par morceaux (point 46, points 98 et 106, O-01, O-11) et essai sous WebKit (macOS),
+  chiffrement, copie hors du serveur et durées de la sauvegarde (point 48, M22, point 88).
