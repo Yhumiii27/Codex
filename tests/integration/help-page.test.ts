@@ -2,6 +2,7 @@ import { createElement, type ReactElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import HelpPage, { generateMetadata } from '@/app/aide/page';
+import { FR } from '@/i18n/fr';
 import { DICT, HELP, type Lang } from '@/lib/i18n';
 import { setupDb } from '../support/db';
 import type { Person } from '../support/fixtures';
@@ -83,7 +84,8 @@ describe('Help page', () => {
     // A renamed button would leave the help pointing at a label that no longer exists.
     const quoted = (s: string, lang: Lang) => [...s.matchAll(lang === 'fr' ? /« ([^»]+) »/g : /“([^”]+)”/g)].map((m) => m[1]);
     for (const lang of ['fr', 'en'] as const) {
-      const values = new Set(Object.values(DICT[lang]));
+      // The labels of the keyed dictionary, and those of the screens moved to English sources (src/i18n/fr.ts, CX-N01).
+      const values = new Set([...Object.values(DICT[lang]), ...(lang === 'fr' ? Object.values(FR) : Object.keys(FR).map((x) => x.replace(/#[a-z][\w-]*$/, '')))]);
       const all = HELP[lang].topics.flatMap((x) => [x.intro, ...x.steps, ...(x.notes ?? []), x.simulated ?? '']).flatMap((s) => quoted(s, lang));
       // Not a label: the comment Codex gives a restored version.
       const missing = all.filter((q) => !values.has(q) && !/^(Restaurée depuis|Restored from) A\.1$/.test(q));
