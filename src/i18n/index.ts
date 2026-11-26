@@ -16,9 +16,16 @@ function fill(text: string, vars?: Vars): string {
   return text.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m));
 }
 
+/**
+ * A context after `#` tells apart two sources that read alike in English and differ in French (`'Approve'` the button,
+ * `'Approve#permission'` the permission, « Valider »): never shown, the English text is what comes before it.
+ */
+const CONTEXT = /#[a-z][\w-]*$/;
+
 /** The text of `source` in `lang`: the source itself in English, its French entry otherwise (the source when missing). */
 export function translate(lang: Lang, source: string, vars?: Vars): string {
-  return fill(lang === 'en' ? source : FR[source] ?? source, vars);
+  const en = source.replace(CONTEXT, '');
+  return fill(lang === 'en' ? en : FR[source] ?? en, vars);
 }
 
 /** A translator bound to one language (server components: `translatorFor(ctx.lang)`). */

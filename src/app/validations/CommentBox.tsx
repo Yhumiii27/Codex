@@ -6,7 +6,8 @@ import { addComment } from '@/lib/actions';
 import { failureText } from '@/lib/errors';
 
 export function CommentBox({ workflowId }: { workflowId: string }) {
-  const { t, toast } = useApp();
+  // A failure's text comes from the shared error messages (lib/errors.ts failureText), still keyed.
+  const { t, tr, toast } = useApp();
   const [text, setText] = useState('');
   const [pending, start] = useTransition();
   const send = () => {
@@ -23,8 +24,8 @@ export function CommentBox({ workflowId }: { workflowId: string }) {
   };
   return (
     <form style={{ display: 'flex', gap: 8 }} onSubmit={(e) => { e.preventDefault(); send(); }}>
-      <input className="input" placeholder={t.add_comment} aria-label={t.add_comment} style={{ flex: 1 }} value={text} onChange={(e) => setText(e.target.value)} />
-      <button type="submit" className="btn btn-secondary" disabled={pending}>{t.send}</button>
+      <input className="input" placeholder={tr('Add a comment…')} aria-label={tr('Add a comment…')} style={{ flex: 1 }} value={text} onChange={(e) => setText(e.target.value)} />
+      <button type="submit" className="btn btn-secondary" disabled={pending}>{tr('Send')}</button>
     </form>
   );
 }

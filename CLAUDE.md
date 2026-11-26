@@ -24,9 +24,16 @@ L'utilisateur écrit en français : réponds en français. L'interface et les do
 l'interface (Norma § 2, CX-N01, en cours) : chaînes sources en anglais `tr('Go to a page…')` traduites par
 `src/i18n/fr.ts` (français par défaut ; `src/i18n/index.ts`, `useApp().tr`, `useI18n()` de `src/i18n/client.tsx` pour
 les composants de la charte, `msg()` pour une source rangée dans une table ; contrôle `tests/unit/i18n-sources.test.ts`).
-La coque (barre latérale, en-tête, recherche de pages, panneau latéral, affichage) est passée ; les écrans lisent encore
-le dictionnaire à clés de `src/lib/i18n.ts` (`t.key`) jusqu'à leur reprise, écran par écran : une clé reprise se retire
-des deux langues.
+Côté serveur : `const tr = translatorFor(ctx.lang)`. Deux sources de même anglais et de français différents se
+départagent par un contexte après `#`, jamais affiché (`tr('Approve#permission')` « Valider », `tr('Approve')`
+« Approuver »). La coque (barre latérale, en-tête, recherche de pages, panneau latéral, affichage) est passée, et ces
+écrans (26 novembre 2026) : accueil (`src/app/page.tsx`), départements (`/departements`, `/departements/[code]`),
+validations (`/validations` : page, `MyChangeRequests`, `CommentBox`), pages introuvables (`not-found.tsx`) et erreur
+d'un écran (`error.tsx`). Y restent lus par clé les seuls vocabulaires partagés avec `src/lib` (noms des facettes
+`FACET_LABEL`, messages d'échec `failureText`, composant `Pager`), repris avec eux. Les autres écrans (explorateur,
+recherche, fiche document, archivage, administration, aide) lisent encore le dictionnaire à clés de `src/lib/i18n.ts`
+(`t.key`) jusqu'à leur reprise, écran par écran : une clé reprise se retire des deux langues dès qu'aucun code ne la lit
+plus.
 
 ## À lire avant de travailler
 

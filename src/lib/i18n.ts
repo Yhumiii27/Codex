@@ -10,9 +10,9 @@ const fr = {
   nav_home:'Accueil', nav_explorer:'Explorateur', nav_search:'Recherche', nav_workflow:'Validations', nav_retention:'Archivage & rétention', nav_admin:'Administration',
   search_ph:'Rechercher un document, une référence, un mot-clé…', notes:'Notes de conception',
   role_collaborateur:'Collaboratrice', role_validateur:'Manager validatrice', role_auditeur:'Audit & conformité', role_gestionnaire:'Gestionnaire documentaire',
-  hello:'Bonjour', home_sub:'Voici ce qui demande votre attention.', new_from_tpl:'Nouveau depuis un modèle', upload:'Déposer un fichier', adv_search:'Recherche avancée',
-  kpi_todo:'À valider', kpi_todo_sub:'circuits en attente de votre décision', kpi_exp:'Échéances sous 90 jours', kpi_exp_sub:'conservation, expiration ou revue à échéance', kpi_in_force:'Mis en vigueur cette semaine', kpi_in_force_sub:'nouvelles révisions entrées en vigueur',
-  todo:'À traiter', recents:'Documents récents', activity:'Activité du groupe', see_all:'Tout voir', open:'Ouvrir', due:'Échéance', requested_by:'Demandé par', step:'Étape', until:'Conservation jusqu’au',
+  hello:'Bonjour', new_from_tpl:'Nouveau depuis un modèle', upload:'Déposer un fichier', adv_search:'Recherche avancée',
+  
+  todo:'À traiter', recents:'Documents récents', activity:'Activité du groupe', open:'Ouvrir', due:'Échéance', requested_by:'Demandé par', step:'Étape', until:'Conservation jusqu’au',
   type:'Type', status:'Statut', owner:'Propriétaire', modified:'Modifié', retention:'Rétention', doc_type:'Type de document', all:'Tous', docs:'documents', cancel:'Annuler', create:'Créer', close:'Fermer', ref:'Référence', conf:'Confidentialité',
   act_upload:'Dépôt', act_edit:'Modification', act_request:'Demande de validation', act_sign:'Signature', act_download:'Téléchargement', act_consult:'Consultation de la fiche', act_view:'Consultation du fichier', act_approve:'Approbation', act_archive:'Archivage',
   x_renew:'Renouveler', x_review:'Réviser', x_archive:'Archiver', x_destroy:'Détruire',
@@ -20,7 +20,7 @@ const fr = {
   classification:'Plan de classement', all_docs:'Tous les documents', new_doc_btn:'Nouveau', f_all:'Tous', f_draft:'Brouillons', f_archived:'Archivés', open_record:'Ouvrir la fiche', download:'Télécharger', quick_view:'Aperçu rapide',
   back:'Explorateur', copy_link:'Copier le lien du document', tab_meta:'Fiche', tab_approval:'Validation', tab_history:'Historique', hist_activity:'Activité', hist_metadata:'Métadonnées', hist_consultations:'Consultations', hist_consultations_note:'Une entrée par personne, fiche ou version consultée et période de {n} minutes.', hist_empty:'Aucune entrée.', page:'Page', of:'sur', preview_note:'Aperçu PDF généré par le service de conversion', keywords:'Mots-clés', language:'Langue', lang_fr:'Français', lang_en:'Anglais', edit_meta:'Modifier les métadonnées', current:'Courante', compare:'Comparer', restore:'Restaurer', no_workflow:'Aucun circuit en cours pour ce document.', by:'par', hold:'Gel juridique', hold_off:'Aucun', created:'Créé le',
   saved:'Recherches enregistrées', filters:'Filtres', clear:'Effacer', results:'résultats', result_one:'résultat', export_list:'Exporter la liste', no_results:'Aucun document ne correspond à ces critères.',
-  wf_mine:'À valider', wf_active:'En cours', wf_done:'Terminées', wf_finished:'Terminé', approve:'Approuver', reject:'Rejeter', delegate:'Déléguer', comments:'Commentaires', add_comment:'Ajouter un commentaire…', steps:'Étapes du circuit', sign_note:'Signature électronique avancée (eIDAS) requise à cette étape.', st_done:'Fait', st_current:'En cours', st_todo:'À venir', wf_empty:'Aucun circuit dans cette vue.', document:'Document', send:'Envoyer',
+  wf_done:'Terminées', wf_finished:'Terminé', approve:'Approuver', reject:'Rejeter', delegate:'Déléguer', comments:'Commentaires', steps:'Étapes du circuit', st_done:'Fait', st_current:'En cours', st_todo:'À venir', document:'Document', send:'Envoyer',
   ret_due:'Échéances', ret_rules:'Règles de conservation', ret_archives:'Archives', end_date:'Fin de conservation', proposed:'Action proposée', archive_sel:'Archiver la sélection', hold_sel:'Appliquer un gel juridique', selected:'sélectionné(s)', duration:'Durée', trigger:'Déclencheur', outcome:'Sort final', types_covered:'Types couverts', archived_on:'Archivé le', consult:'Consulter', days_left:'j restants',
   ad_roles:'Rôles & droits', ad_audit:'Journal d’audit', manager:'Responsable', count:'Documents', role:'Rôle', new_template:'Nouveau modèle', add_value:'Ajouter une valeur', export_csv:'Exporter (CSV)', when:'Horodatage', user:'Utilisateur', action:'Action', detail:'Détail', matrix_hint:'Cliquez une cellule pour accorder ou retirer le droit.',
   new_doc:'Nouveau document', choose_tpl:'Choisissez un modèle',
@@ -35,7 +35,7 @@ const fr = {
   keywords_hint:'Séparés par des virgules', request_title:'Demander une validation', circuit:'Circuit',
   delegate_title:'Déléguer l’étape', delegate_to:'Déléguer à',
   hold_on:'Actif depuis le', link_copied:'Lien copié dans le presse-papiers', not_allowed:'Droit requis', no_file:'Aucun fichier joint à cette version — aperçu de démonstration.',
-  saved_ok:'Modifications enregistrées', page_not_found:'Page introuvable', page_not_found_hint:'Cette adresse ne correspond à aucun écran de Codex.', forbidden:'Vous n’avez pas accès à cet écran avec le rôle simulé.',
+  saved_ok:'Modifications enregistrées', forbidden:'Vous n’avez pas accès à cet écran avec le rôle simulé.',
   label_fr:'Libellé (FR)', label_en:'Libellé (EN)',
   years:'Durée (années)', disposition:'Action à échéance', rule_id:'Code',
   compare_title:'Comparer les versions', current_version:'Version courante', selected_version:'Version sélectionnée', size:'Taille', pages:'Pages', author:'Auteur', date:'Date',
@@ -95,8 +95,8 @@ const fr = {
   tab_revisions:'Révisions', tab_requests:'Demandes', rev_short:'Rév.', in_progress:'en cours', project_docs:'Documents du projet', no_version:'Aucune version de travail déposée.',
   locked_obsolete:'Document obsolète : modification impossible.', no_requests:'Aucune demande de modification ou de retrait pour ce document.',
   dl_expiry:'Expire le', dl_review:'Revue prévue le', ax_department_short:'Dépt.', department_short:'Département', no_attachment:'Sans rattachement', project_program:'Projet / programme', retention_short:'Conservation',
-  wf_circuits:'Circuits', wf_vigie:'Mes demandes Vigie', vigie_empty:'Aucune demande de modification ou de retrait envoyée à Vigie.', ecr_sent_on:'Envoyée le', ecr_decided_on:'Décision de Vigie', ecr_note:'Note de Vigie', ecr_wait_vigie:'En attente de la décision de Vigie.',
-  wf_requested:'Mes demandes', due_kind:'Nature', due_retention:'Conservation', due_expiry:'Expiration', due_review:'Révision périodique',
+  
+  due_kind:'Nature', due_retention:'Conservation', due_expiry:'Expiration', due_review:'Révision périodique',
   all_families:'Toutes les familles', types_count:'types', inactive:'Inactif', people:'Personnes', function_label:'Fonction', scope:'Portée',
   org_provisional:'Valeurs provisoires, en attente de l’organigramme. Le code à 3 lettres du département entre dans l’identifiant des documents sans rattachement : il ne change jamais. Libellés modifiables ; une valeur utilisée se désactive au lieu d’être supprimée.',
   // Rules and states added after review
@@ -109,19 +109,19 @@ const fr = {
   matrix_not_enforced:'Cellules grisées : droit sans action dans Codex (Détruire) ou rôle sans équivalent simulé (Lecteur, Administrateur).',
   prev_page:'Page précédente', next_page:'Page suivante', preview_loading:'Chargement de l’aperçu…', original_file:'Fichier d’origine', preview_unavailable:'Aperçu indisponible pour ce format — téléchargez le fichier.',
   conf_hint_conf:'Visible du département ou de l’équipe projet ; des lecteurs désignés peuvent s’ajouter sur la fiche du document.',
-  wf_closed_hint:'Document verrouillé : le circuit reprendra une fois le verrou levé.',
+  
   piece_type_mismatch:'Cette pièce attend un document de type',
   obsolete_since:'Obsolète depuis le', do_not_apply:'ne plus appliquer',
   act_perm:'Droit modifié', act_org_add:'Valeur d’organisation ajoutée', act_holder_add:'Titulaire ajouté', act_holder_remove:'Titulaire retiré', act_type:'Type modifié', act_comment:'Commentaire', act_export:'Export CSV',
   target:'Objet', target_permission:'Droit', target_export:'Export', active_label:'Actif', export_rows:'lignes', export_full:'journal complet', export_unfiltered:'sans filtre', export_interrupted:'interrompu après',
   // « À traiter » (G19)
-  todo_empty:'Rien à traiter pour le moment.', todo_eco:'à rédiger', todo_rejected:'renvoyée en rédaction par', todo_draft:'en brouillon, jamais soumise à validation', todo_assigned:'confiée à', todo_graft:'greffe possible sur la révision',
+  todo_eco:'à rédiger', todo_rejected:'renvoyée en rédaction par', todo_draft:'en brouillon, jamais soumise à validation', todo_assigned:'confiée à', todo_graft:'greffe possible sur la révision',
   todo_recalled:'demande de validation rappelée par',
   // Rejet motivé et rappel d'une demande de validation
   reject_title:'Rejeter l’étape', reject_hint:'La révision repart en rédaction. Le motif est ajouté aux commentaires du circuit et au journal ; l’auteur et le propriétaire le retrouvent sur la fiche et dans « À traiter ».',
   reason_optional:'Motif (facultatif)', reason_required:'Le motif du rejet est obligatoire.', reason_too_long:'Motif trop long : 2 000 caractères au plus.',
   recall:'Rappeler la demande', recall_title:'Rappeler la demande de validation', recall_hint:'Le circuit s’arrête et la révision revient en rédaction : les valideurs n’ont plus d’étape à décider. Vous pourrez la soumettre de nouveau.',
-  recall_note:'Vous pouvez rappeler cette demande tant que la dernière approbation n’est pas faite : la révision reviendra en rédaction.',
+  
   wf_recalled:'Rappelé', act_recall:'Rappel de la demande de validation',
   // Recherches enregistrées personnelles et partagées
   search_save:'Enregistrer la recherche', search_label:'Libellé', search_criteria:'Critères', search_scope:'Visible par',
@@ -140,14 +140,14 @@ const fr = {
   facet_more:'de plus',
   // Pages par département (G12)
   nav_departments:'Départements',
-  dept_hint:'Départements provisoires, en attente de l’organigramme. Les filtres mis en avant suivent un réglage par défaut : le choix propre à chaque métier viendra du recueil des besoins par département.',
-  dept_search:'Rechercher dans le département', dept_unknown:'Ce département n’existe pas.',
-  dept_in_force:'Documents en vigueur', dept_in_force_sub:'que vous pouvez lire dans ce département', dept_wf:'Circuits en cours', dept_wf_sub:'que vous suivez sur ses documents',
-  dept_in_force_empty:'Aucun document en vigueur que vous puissiez lire dans ce département.', dept_wf_empty:'Aucun circuit en cours que vous suiviez sur les documents du département.',
-  dept_due_empty:'Aucune échéance dans les 90 jours.', dept_saved_empty:'Aucune recherche partagée avec ce département ou avec le groupe.',
-  featured_filters:'Filtres mis en avant', featured_set:'Régler', featured_default:'Filtres par défaut', featured_none:'Aucun',
-  dept_hint_set:'Départements provisoires, en attente de l’organigramme. Les filtres mis en avant ont été réglés pour ce département dans Administration ; le choix propre à chaque métier attend le recueil des besoins par département.',
-  featured_empty:'Aucune valeur à mettre en avant dans les documents que vous pouvez lire.', featured_none_set:'Aucun filtre mis en avant pour ce département.',
+  
+  
+  
+  
+  
+  featured_filters:'Filtres mis en avant', featured_default:'Filtres par défaut', featured_none:'Aucun',
+  
+  
   featured_follow_default:'Suivre les filtres par défaut',
   featured_add:'Ajouter un filtre', featured_invalid:'Filtres non valides : 6 au plus, chacun une seule fois.',
   featured_hint:'Sur la page du département, chaque filtre donne ses valeurs les plus fréquentes, avec un lien vers la recherche filtrée. Le choix propre à chaque métier viendra du recueil des besoins par département.',
@@ -383,7 +383,7 @@ const fr = {
   org_not_found:'Cette valeur n’existe plus : rechargez la page.',
   department_inactive:'Ce département est désactivé : il n’est plus proposé, sauf là où il figure déjà.',
   site_inactive:'Ce site est désactivé : il n’est plus proposé, sauf là où il figure déjà.',
-  dept_inactive_hint:'Ce département est désactivé : il n’est plus proposé pour un nouveau document ; ses documents restent consultables ici.',
+  
   act_retention:'Classe de conservation modifiée', act_retention_type:'Règle du type appliquée', act_retention_event:'Date d’événement de conservation', act_retention_applied:'Règle de conservation appliquée aux documents',
   retention_override:'Dérogation', retention_follows_type:'Règle du type', retention_override_label:'Dérogation à la règle du type', retention_type_rule:'Règle du type', retention_docs:'Documents mis à jour',
   retention_event_at:'Date de l’événement déclencheur', until_event_missing:'Date de l’événement à saisir', until_no_duration:'Durée à fixer',
@@ -482,9 +482,9 @@ const en: Dict = {
   nav_home:'Home', nav_explorer:'Browse', nav_search:'Search', nav_workflow:'Approvals', nav_retention:'Archiving & retention', nav_admin:'Administration',
   search_ph:'Search documents, references, keywords…', notes:'Design notes',
   role_collaborateur:'Employee', role_validateur:'Approving manager', role_auditeur:'Audit & compliance', role_gestionnaire:'Records manager',
-  hello:'Good morning', home_sub:'Here is what needs your attention.', new_from_tpl:'New from template', upload:'Upload a file', adv_search:'Advanced search',
-  kpi_todo:'To approve', kpi_todo_sub:'workflows waiting for your decision', kpi_exp:'Due within 90 days', kpi_exp_sub:'retention, expiry or review falling due', kpi_in_force:'In force this week', kpi_in_force_sub:'new revisions entered into force',
-  todo:'To do', recents:'Recent documents', activity:'Group activity', see_all:'See all', open:'Open', due:'Due', requested_by:'Requested by', step:'Step', until:'Retained until',
+  hello:'Good morning', new_from_tpl:'New from template', upload:'Upload a file', adv_search:'Advanced search',
+  
+  todo:'To do', recents:'Recent documents', activity:'Group activity', open:'Open', due:'Due', requested_by:'Requested by', step:'Step', until:'Retained until',
   type:'Type', status:'Status', owner:'Owner', modified:'Modified', retention:'Retention', doc_type:'Document type', all:'All', docs:'documents', cancel:'Cancel', create:'Create', close:'Close', ref:'Reference', conf:'Confidentiality',
   act_upload:'Upload', act_edit:'Edit', act_request:'Approval request', act_sign:'Signed', act_download:'Download', act_consult:'Record opened', act_view:'File viewed', act_approve:'Approved', act_archive:'Archived',
   x_renew:'Renew', x_review:'Review', x_archive:'Archive', x_destroy:'Destroy',
@@ -492,7 +492,7 @@ const en: Dict = {
   classification:'Classification plan', all_docs:'All documents', new_doc_btn:'New', f_all:'All', f_draft:'Drafts', f_archived:'Archived', open_record:'Open record', download:'Download', quick_view:'Quick view',
   back:'Browser', copy_link:'Copy the document link', tab_meta:'Record', tab_approval:'Approval', tab_history:'History', hist_activity:'Activity', hist_metadata:'Metadata', hist_consultations:'Consultations', hist_consultations_note:'One entry per person, record or version viewed and {n}-minute period.', hist_empty:'No entries.', page:'Page', of:'of', preview_note:'PDF preview generated by the conversion service', keywords:'Keywords', language:'Language', lang_fr:'French', lang_en:'English', edit_meta:'Edit metadata', current:'Current', compare:'Compare', restore:'Restore', no_workflow:'No approval workflow in progress for this document.', by:'by', hold:'Legal hold', hold_off:'None', created:'Created',
   saved:'Saved searches', filters:'Filters', clear:'Clear', results:'results', result_one:'result', export_list:'Export list', no_results:'No document matches these criteria.',
-  wf_mine:'For me', wf_active:'In progress', wf_done:'Completed', wf_finished:'Completed', approve:'Approve', reject:'Reject', delegate:'Delegate', comments:'Comments', add_comment:'Add a comment…', steps:'Workflow steps', sign_note:'Advanced electronic signature (eIDAS) required at this step.', st_done:'Done', st_current:'In progress', st_todo:'Upcoming', wf_empty:'No workflow in this view.', document:'Document', send:'Send',
+  wf_done:'Completed', wf_finished:'Completed', approve:'Approve', reject:'Reject', delegate:'Delegate', comments:'Comments', steps:'Workflow steps', st_done:'Done', st_current:'In progress', st_todo:'Upcoming', document:'Document', send:'Send',
   ret_due:'Deadlines', ret_rules:'Retention rules', ret_archives:'Archives', end_date:'Retention end', proposed:'Proposed action', archive_sel:'Archive selection', hold_sel:'Apply legal hold', selected:'selected', duration:'Duration', trigger:'Trigger', outcome:'Final outcome', types_covered:'Document types', archived_on:'Archived on', consult:'View', days_left:'days left',
   ad_roles:'Roles & permissions', ad_audit:'Audit log', manager:'Manager', count:'Documents', role:'Role', new_template:'New template', add_value:'Add a value', export_csv:'Export (CSV)', when:'Timestamp', user:'User', action:'Action', detail:'Detail', matrix_hint:'Click a cell to grant or revoke the permission.',
   new_doc:'New document', choose_tpl:'Choose a template',
@@ -507,7 +507,7 @@ const en: Dict = {
   keywords_hint:'Comma-separated', request_title:'Request approval', circuit:'Workflow',
   delegate_title:'Delegate the step', delegate_to:'Delegate to',
   hold_on:'Active since', link_copied:'Link copied to the clipboard', not_allowed:'Permission required', no_file:'No file attached to this version — demo preview.',
-  saved_ok:'Changes saved', page_not_found:'Page not found', page_not_found_hint:'This address matches no screen of Codex.', forbidden:'The simulated role cannot access this screen.',
+  saved_ok:'Changes saved', forbidden:'The simulated role cannot access this screen.',
   label_fr:'Label (FR)', label_en:'Label (EN)',
   years:'Duration (years)', disposition:'Action when due', rule_id:'Code',
   compare_title:'Compare versions', current_version:'Current version', selected_version:'Selected version', size:'Size', pages:'Pages', author:'Author', date:'Date',
@@ -567,8 +567,8 @@ const en: Dict = {
   tab_revisions:'Revisions', tab_requests:'Requests', rev_short:'Rev.', in_progress:'in progress', project_docs:'Project documents', no_version:'No working version uploaded yet.',
   locked_obsolete:'Obsolete document: it cannot be changed.', no_requests:'No change or withdrawal request for this document.',
   dl_expiry:'Expires', dl_review:'Review due', ax_department_short:'Dept.', department_short:'Department', no_attachment:'Not attached', project_program:'Project / programme', retention_short:'Retention',
-  wf_circuits:'Workflows', wf_vigie:'My Vigie requests', vigie_empty:'No change or withdrawal request sent to Vigie.', ecr_sent_on:'Sent on', ecr_decided_on:'Vigie decision', ecr_note:'Vigie note', ecr_wait_vigie:'Waiting for Vigie’s decision.',
-  wf_requested:'My requests', due_kind:'Kind', due_retention:'Retention', due_expiry:'Expiry', due_review:'Periodic review',
+  
+  due_kind:'Kind', due_retention:'Retention', due_expiry:'Expiry', due_review:'Periodic review',
   all_families:'All families', types_count:'types', inactive:'Inactive', people:'People', function_label:'Function', scope:'Scope',
   org_provisional:'Provisional values, pending the organisation chart. The 3-letter department code is part of the ID of documents without attachment: it never changes. Labels can be edited; a value in use is made inactive instead of being deleted.',
   // Rules and states added after review
@@ -581,19 +581,19 @@ const en: Dict = {
   matrix_not_enforced:'Greyed cells: permission with no action in Codex (Destroy) or role with no simulated equivalent (Reader, Administrator).',
   prev_page:'Previous page', next_page:'Next page', preview_loading:'Loading the preview…', original_file:'Original file', preview_unavailable:'No preview for this format — download the file.',
   conf_hint_conf:'Visible to the department or project team; named readers can be added on the document record.',
-  wf_closed_hint:'Locked document: the workflow resumes once the lock is lifted.',
+  
   piece_type_mismatch:'This piece expects a document of type',
   obsolete_since:'Obsolete since', do_not_apply:'no longer applicable',
   act_perm:'Permission changed', act_org_add:'Organisation value added', act_holder_add:'Holder added', act_holder_remove:'Holder removed', act_type:'Type changed', act_comment:'Comment', act_export:'CSV export',
   target:'Target', target_permission:'Permission', target_export:'Export', active_label:'Active', export_rows:'rows', export_full:'full log', export_unfiltered:'no filter', export_interrupted:'interrupted after',
   // « À traiter » (G19)
-  todo_empty:'Nothing to do for now.', todo_eco:'to draft', todo_rejected:'sent back to drafting by', todo_draft:'drafted, never sent for approval', todo_assigned:'assigned to', todo_graft:'may be grafted onto revision',
+  todo_eco:'to draft', todo_rejected:'sent back to drafting by', todo_draft:'drafted, never sent for approval', todo_assigned:'assigned to', todo_graft:'may be grafted onto revision',
   todo_recalled:'approval request recalled by',
   // Reasoned rejection and recall of an approval request
   reject_title:'Reject the step', reject_hint:'The revision goes back to drafting. The reason is added to the workflow comments and to the audit trail; the author and the owner find it on the record and in “To do”.',
   reason_optional:'Reason (optional)', reason_required:'A reason is required to reject.', reason_too_long:'Reason too long: 2,000 characters at most.',
   recall:'Recall the request', recall_title:'Recall the approval request', recall_hint:'The workflow stops and the revision goes back to drafting: the approvers no longer have a step to decide. You may send it for approval again.',
-  recall_note:'You may recall this request until the last approval is given: the revision will go back to drafting.',
+  
   wf_recalled:'Recalled', act_recall:'Approval request recalled',
   // Personal and shared saved searches
   search_save:'Save search', search_label:'Name', search_criteria:'Criteria', search_scope:'Visible to',
@@ -612,14 +612,14 @@ const en: Dict = {
   facet_more:'more',
   // Department pages (G12)
   nav_departments:'Departments',
-  dept_hint:'Provisional departments, pending the organisation chart. The featured filters follow a default setting: the choice for each business will come from the survey of each department’s needs.',
-  dept_search:'Search the department', dept_unknown:'This department does not exist.',
-  dept_in_force:'Documents in force', dept_in_force_sub:'you may read in this department', dept_wf:'Running workflows', dept_wf_sub:'you follow on its documents',
-  dept_in_force_empty:'No document in force you may read in this department.', dept_wf_empty:'No running workflow you follow on the department’s documents.',
-  dept_due_empty:'Nothing due within 90 days.', dept_saved_empty:'No search shared with this department or with the group.',
-  featured_filters:'Featured filters', featured_set:'Set', featured_default:'Default filters', featured_none:'None',
-  dept_hint_set:'Provisional departments, pending the organisation chart. The featured filters were set for this department in Administration; the choice for each business awaits the survey of each department’s needs.',
-  featured_empty:'No value to feature in the documents you may read.', featured_none_set:'No filter featured for this department.',
+  
+  
+  
+  
+  
+  featured_filters:'Featured filters', featured_default:'Default filters', featured_none:'None',
+  
+  
   featured_follow_default:'Follow the default filters',
   featured_add:'Add a filter', featured_invalid:'Invalid filters: 6 at most, each one once.',
   featured_hint:'On the department page, each filter gives its most frequent values, with a link to the filtered search. The choice for each business will come from the survey of each department’s needs.',
@@ -855,7 +855,7 @@ const en: Dict = {
   org_not_found:'This value no longer exists: reload the page.',
   department_inactive:'This department is inactive: it is no longer offered, except where it is already set.',
   site_inactive:'This site is inactive: it is no longer offered, except where it is already set.',
-  dept_inactive_hint:'This department is inactive: it is no longer offered for a new document; its documents can still be read here.',
+  
   act_retention:'Retention class changed', act_retention_type:'Type rule applied', act_retention_event:'Retention event date', act_retention_applied:'Retention rule applied to documents',
   retention_override:'Derogation', retention_follows_type:'Type rule', retention_override_label:'Derogation from the type rule', retention_type_rule:'Type rule', retention_docs:'Documents updated',
   retention_event_at:'Date of the trigger event', until_event_missing:'Event date to enter', until_no_duration:'Duration to set',
