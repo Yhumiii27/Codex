@@ -203,7 +203,8 @@ Format d'une entrée :
 - Détails techniques : colonnes utiles de `keystone.pub_projets` : `code` (ex. HLT-026, clé), `numero` (#026), `code_analytique`, `nom`, `client`, `phase_code` / `phase`, `chef_projet_matricule`, `chef_projet_nom`, `ville`, `pays`, `capex_code`, `besoin_ref`, `client_interne`, `filiale_code`, `categorie`, `maj_le` (lecture incrémentale). Un projet clos ou annulé reste publié (phase). Aucune écriture dans Keystone.
 
 ## [2026-11-10] Cursus → Codex — Tous les documents de Cursus stockés dans Codex : catégories du dossier du personnel, dépôt sans circuit, lecture et destruction par l'application (lot 16 de Cursus)
-- Statut : OUVERTE
+- Statut : EN COURS (26/11/2026 : points 1 à 4 livrés par Codex, point 5 livré dans Codex ; restent la confirmation des
+  durées par le DPO, le filtre de `pub_journal` par Matrix et le chiffrement au repos, voir « Réponse de Codex »)
 - Demande : décision de Guillaume du 10/11/2026 : « quel que soit le logiciel de notre suite, tout doit être stocké dans
   Codex ». Cursus déposera chaque pièce justificative de ses dossiers dans Codex et n'en gardera que la référence
   (`ged:<identifiant Codex>`). Il lui faut :
@@ -245,3 +246,39 @@ Format d'une entrée :
   effacement local). Lecture de l'état des documents par `codex.pub_documents` et des catégories par
   `codex.pub_types_document` : liens demandés à Matrix le même jour. Aucune écriture chez Codex hors de son API (M-17).
 - Validé par Guillaume le : 2026-11-10
+- Réponse de Codex (26/11/2026, traitement approuvé par Guillaume le 26/11/2026 ; décision D-32 de `docs/decisions.md`,
+  choix à confirmer ; contrat : `docs/api.md`, « Enregistrements du dossier du personnel (Cursus) ») :
+  - **Identifiants propres à Cursus** : `CODEX_CURSUS_TOKEN` (obligatoire, il désigne Cursus) et, s'il est posé,
+    `CODEX_CURSUS_SECRET` (signature du corps pour le dépôt ; de `<MÉTHODE> <chemin>\n` + corps pour la lecture et la
+    destruction). Les autres applications ne peuvent ni déposer sous `cursus:` ni déposer un enregistrement.
+  - **1. Catégories** : un **type d'enregistrement** `DPE` « Dossier du personnel — enregistrement » (département `RHU`,
+    sans circuit, Confidentiel ou Très confidentiel), plutôt que des sous-types de RHF ; ses onze sous-types sont les
+    catégories, envoyées par `category` : `absence`, `identity` (passeport, visa), `vaccination`,
+    `training_certificate`, `authorisation`, `travel`, `expense`, `expense_health`, `personal_vehicle`, `opco`,
+    `interview_report`. Confidentialité et conservation par catégorie (`src/lib/records.ts`), **à confirmer par le
+    DPO** ; frais, véhicule et OPCO : jusqu'à la date `expiresAt` calculée par Cursus. Publié dans
+    `codex.pub_types_document` après `npm run registry:apply`.
+  - **2. Dépôt sans circuit** : `POST /api/documents` avec le jeton de Cursus ; `sourceRef` `cursus:piece/<id>`
+    (rejouable : 200 `replayed`), `category`, `subjectMatricule` (`EMP-…`, `I…`, `E…`), `sha256` et fichier obligatoires,
+    `expiresAt` facultatif. Le document `DPE-RHU-nnnn` naît **en vigueur** (révision A, une version), propriétaire le
+    compte de service `cursus` ; rien ne le modifie dans Codex. Réponse 201 `{"id","revision":"A","status":"in_force",…}`.
+  - **3. Lecture** : `GET /api/documents/{id}/file` avec le jeton de Cursus : le fichier tel que déposé, `Content-Type`,
+    `X-Codex-SHA256`, vérifié pendant l'envoi ; chaque lecture journalisée (« Téléchargement », acteur `cursus`, détail
+    `A · cursus:piece/<id>`) ; 404 pour tout document hors `cursus:`.
+  - **4. Destruction** : `POST /api/documents/{id}/destroy` `{"reason":"retrait"|"conservation"|"effacement"}` : document,
+    révisions, versions et fichiers détruits ; trace sans contenu (`codex.destroyed_documents`) et entrée « Destruction »
+    au journal ; 409 `legal_hold` sous gel juridique ; rejouable (`alreadyDestroyed`) ; la `sourceRef` détruite ne se
+    redépose pas (410).
+  - **5. Confidentialité** : un Très confidentiel n'est lu dans Codex que par les titulaires de la fonction « Lecteur du
+    dossier du personnel » (désignés par le service RH) et ses lecteurs nommés, pas par les gestionnaires
+    documentaires ; absent de `pub_documents`, `pub_revisions_document`, `pub_validations`. **Reste** : `pub_journal`
+    publie les entrées de tout document (existence, date, `cursus:piece/<id>`) : demande à Matrix en brouillon
+    (`docs/demandes/matrix-lot16-enregistrements.md`, à valider par Guillaume) ; chiffrement au repos propre à Codex non
+    fait (celui du disque du serveur, `docs/stockage-serveur.md`) ; départ du salarié lu dans `cursus.pub_salaries` non
+    fait (Cursus détruit à son terme, motif `conservation`).
+  - **À faire par Cursus (CU-037)** : poser `CODEX_URL`, `CODEX_CURSUS_TOKEN` (et `CODEX_CURSUS_SECRET`) dans son
+    environnement, la même valeur chez Codex ; adapter `server/src/integrations/codex/ged.ts` : dépôt avec `category`,
+    `subjectMatricule`, `sha256`, titre neutre, référence `ged:<id>` gardée ; lecture par `GET …/file` en contrôlant
+    `X-Codex-SHA256` ; destruction par `POST …/destroy` avec le motif ; traiter 410 (déjà détruit) et 409 (gel
+    juridique) ; puis la reprise des pièces locales (dépôt, contrôle de l'empreinte, effacement local). Les lectures de
+    `codex.pub_types_document` (catégories) restent un lien à demander à Matrix.

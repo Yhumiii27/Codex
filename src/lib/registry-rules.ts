@@ -1,6 +1,7 @@
 import type { Attachment, Conf, Disposition, Origin, RetentionTrigger } from '@/db/schema';
 import { TEMPLATE_CONTEXT, TEMPLATE_TYPE } from './codes';
 import { ATTACHMENTS, CONF_LEVELS, ORIGINS, type TKey } from './i18n';
+import { HR_RECORD_READER, RECORD_TYPES } from './records';
 import { parseReviewMonths } from './review';
 
 // Pure rules of the register's administration (Administration › Registre des types, Fonctions & circuits): formats of
@@ -21,11 +22,12 @@ export const PROJECT_MANAGER_FUNCTIONS = ['chef_projet', 'validation_client'];
 /** Function the heads of departments are read from (Administration › Organisation). */
 export const DEPARTMENT_HEAD_FUNCTION = 'resp_departement';
 /**
- * Entries the rules of Codex name: the type of templates (context QMS, D-10) and the functions above. They keep their
+ * Entries the rules of Codex name: the type of templates (context QMS, D-10), the record type of the personnel file and
+ * the function of its HR readers (lib/records.ts, D-32), and the functions above. They keep their
  * code and are never deleted, used or not (lib/queries.ts registryUsage counts them as used).
  */
-export const BUILT_IN_TYPES: readonly string[] = [TEMPLATE_TYPE];
-export const BUILT_IN_FUNCTIONS: readonly string[] = [...PROJECT_MANAGER_FUNCTIONS, DEPARTMENT_HEAD_FUNCTION];
+export const BUILT_IN_TYPES: readonly string[] = [TEMPLATE_TYPE, ...RECORD_TYPES];
+export const BUILT_IN_FUNCTIONS: readonly string[] = [...PROJECT_MANAGER_FUNCTIONS, DEPARTMENT_HEAD_FUNCTION, HR_RECORD_READER];
 
 /**
  * Settings of those entries the code relies on, kept whatever the form says. A template has no attachment: attached to a

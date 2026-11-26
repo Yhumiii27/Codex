@@ -540,6 +540,53 @@ Règles de lecture :
 - **Reste** : Matrix accorde à `codex_app` l'exécution de `vigie.pub_creer_demande_modification` et la lecture de
   `vigie.pub_demandes_modification`.
 
+### D-32 — Demande « lot 16 » de Cursus : enregistrements du dossier du personnel déposés, relus et détruits par Cursus
+- **Date** : 26 novembre 2026 (demande de Cursus du 10 novembre, validée par Guillaume le 10 novembre ; traitement
+  approuvé par le propriétaire le 26 novembre).
+- **Décision du propriétaire reprise** (10 novembre, citée dans la demande) : « Codex doit avoir tous les documents ;
+  […] Quel que soit le logiciel de notre suite, tout doit être stocké dans Codex. »
+- **Choix de l'assistant, à confirmer** (la demande laissait chaque point au choix de Codex ; l'option la plus prudente
+  est retenue) :
+  - **Un type d'enregistrement plutôt que des sous-types de RHF** : nouveau type `DPE` « Dossier du personnel —
+    enregistrement » (famille Fonctions support, département `RHU`, sans circuit, Confidentiel ou Très confidentiel),
+    dont les sous-types sont les onze catégories de la demande. RHF garde ses documents approuvés par circuit ; un
+    enregistrement ne s'y mêle pas. Chaque catégorie porte sa confidentialité, sa conservation et l'indication « donnée
+    de santé » (`src/lib/records.ts`, `RECORD_CATEGORIES`) ; **toutes les durées sont à confirmer par le DPO**. La
+    déclaration du salarié est séparée en « Passeport ou visa » (effacé au départ) et « Carnet de vaccination » (5 ans,
+    santé) ; la note de frais, le véhicule personnel et le dossier OPCO se conservent jusqu'à la date que Cursus calcule
+    (`expiresAt`, déclencheur « échéance », 0 an).
+  - **Statut d'un enregistrement** : aucun statut nouveau. Il naît **en vigueur** (révision A en vigueur à la date du
+    dépôt, version unique, fichier `{ID}_A.ext`), comme une reprise, et ne passe jamais par un circuit : ni nouvelle
+    révision, ni modification des métadonnées, des lecteurs ou de la conservation à l'écran, ni demande de modification
+    ou d'obsolescence (« Enregistrement du dossier du personnel tenu par Cursus »). Le type `DPE` n'est pas proposé à la
+    création à l'écran. Les vues `pub_` et la règle « révisions validées par un circuit » (D-11) restent vraies pour les
+    documents ; un enregistrement est une pièce reçue, pas un document approuvé.
+  - **Identifiants propres à Cursus** : `CODEX_CURSUS_TOKEN` (obligatoire, c'est lui qui désigne Cursus) et
+    `CODEX_CURSUS_SECRET` (signature, facultative) ; les références `cursus:…` et le type `DPE` sont refusés au jeton des
+    autres applications, et Cursus ne dépose que des `DPE` sous `cursus:`. Propriétaire : le compte de service `cursus`
+    (acteur système créé au premier dépôt de Cursus, comme l'acteur `matrix` de `codex.pub_editer`), jamais une personne ; journal sous cet acteur.
+  - **Lecteurs des Très confidentiel** : les titulaires de la fonction « Lecteur du dossier du personnel »
+    (`lecteur_dossier_personnel`, Administration › Fonctions & circuits, désignés par le service RH) et les lecteurs
+    nommés ; **pas les gestionnaires documentaires** (`seesAll` ne s'y applique pas), ni le département RH. Les
+    Confidentiel suivent la règle ordinaire (département RHU, lecteurs nommés, gestionnaires). Restent hors de cette
+    règle, comme pour tout document : la sauvegarde, l'export complet et la reprise d'un ensemble (administration,
+    `docs/sauvegarde.md`).
+  - **Destruction** : `POST /api/documents/{id}/destroy` supprime le document, ses révisions, versions, aperçus,
+    lecteurs et liens, puis ses fichiers ; une **trace sans contenu** reste (`destroyed_documents` : identifiant, type,
+    catégorie, référence d'origine, dates, motif, application) et le journal note « Destruction » (le journal n'est
+    jamais réécrit : ses entrées gardent l'identifiant et la référence, ni titre ni fichier). C'est le sort final
+    « détruire » de la conservation, demandé par l'application qui a déposé ; l'exception à « pas de suppression
+    physique » (Norma § 4) est limitée à ces enregistrements. Une référence détruite ne se redépose pas (410). Refus sous
+    gel juridique. Les sauvegardes déjà faites gardent le fichier jusqu'à leur rotation.
+- **Mise en œuvre** : `src/lib/records.ts`, `src/lib/app-records.ts`, `src/lib/importer.ts` (dépôt), routes
+  `src/app/api/documents/route.ts`, `[id]/file`, `[id]/destroy` ; registre (`src/db/registry.ts`, `src/db/seed-org.ts`,
+  `npm run registry:apply`) ; migration `0006_lot16_dossier_personnel` (`documents.subject_matricule`,
+  `destroyed_documents`) ; `docs/api.md` ; `tests/integration/cursus-records.test.ts`.
+- **Reste** : durées et catégories confirmées par le DPO ; départ du salarié lu dans `cursus.pub_salaries` pour la
+  conservation (aujourd'hui saisi à la main ou détruit par Cursus à son terme) ; chiffrement au repos des fichiers
+  (aujourd'hui celui du disque du serveur, `docs/stockage-serveur.md`) ; vues `pub_` à resserrer par Matrix (brouillon
+  `docs/demandes/matrix-lot16-enregistrements.md`).
+
 ## Questions posées restées sans réponse directe
 
 | Date | Question de l'assistant | Suite |

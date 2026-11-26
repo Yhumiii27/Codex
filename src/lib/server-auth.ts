@@ -85,6 +85,26 @@ export function checkBearer(req: Request, endpoint: Endpoint): Response | null {
   return null;
 }
 
+/**
+ * Whether the request carries a bearer token of `endpoint` (one is set and it matches): how POST /api/documents tells
+ * Cursus, which files its records with its own token (CODEX_CURSUS_TOKEN), from the other applications. Nothing is
+ * counted nor logged: the endpoint's own check (checkBearer) follows.
+ */
+export function bearerOf(req: Request, endpoint: Endpoint): boolean {
+  const { tokens } = credentialsOf(endpoint);
+  const m = /^Bearer[ \t]+(\S+)[ \t]*$/i.exec(req.headers.get('authorization') ?? '');
+  return !!m && tokens.length > 0 && matchesOne(m[1], tokens);
+}
+
+/**
+ * First check of a route of Cursus's records (GET /api/documents/{id}/file, POST /api/documents/{id}/destroy): its
+ * token is required (CODEX_CURSUS_TOKEN; without it, 503 even with a secret), then checked as checkBearer does.
+ */
+export function checkCursus(req: Request): Response | null {
+  if (!credentialsOf('cursus').tokens.length) return refused(req, 'cursus', 'disabled', expectedAnswer(json({ error: 'disabled' }, 503)));
+  return checkBearer(req, 'cursus');
+}
+
 // ── Signatures ──────────────────────────────────────────────────────────
 
 export const TIMESTAMP_HEADER = 'x-codex-timestamp';
@@ -103,6 +123,15 @@ export function signRequest(secrets: string | string[], body: Uint8Array | strin
   const timestamp = String(Math.floor(now / 1000));
   const list = Array.isArray(secrets) ? secrets : [secrets];
   return { 'X-Codex-Timestamp': timestamp, 'X-Codex-Signature': list.map((k) => `v1=${signatureOf(k, timestamp, body)}`).join(',') };
+}
+
+/**
+ * What a signature covers on a route about one document (Cursus's file read and destruction): the method and the path,
+ * a line feed, then the raw body (empty for a GET). Two calls about two documents in the same second are two requests,
+ * not a replay; the same call sent again is one.
+ */
+export function routeSigned(method: string, pathname: string, body: Uint8Array = new Uint8Array()): Uint8Array {
+  return new Uint8Array(Buffer.concat([Buffer.from(`${method.toUpperCase()} ${pathname}\n`), Buffer.from(body)]));
 }
 
 export type SignatureCheck = { ok: true; timestamp: number; signature: string } | { ok: false; reason: 'signature_missing' | 'signature_invalid' | 'signature_expired' };

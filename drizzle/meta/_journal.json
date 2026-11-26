@@ -43,6 +43,13 @@
       "when": 1795452733692,
       "tag": "0005_clavis_sign_in",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795685082673,
+      "tag": "0006_lot16_dossier_personnel",
+      "breakpoints": true
     }
   ]
 }

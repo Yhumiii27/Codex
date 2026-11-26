@@ -5,6 +5,7 @@ import { getDb, schema as s, type Db } from '@/db';
 import type { Conf } from '@/db/schema';
 import { TEMPLATE_TYPE } from './codes';
 import type { Ctx } from './context';
+import { CURSUS_ACTOR, HR_RECORD_READER, isRestrictedRecord } from './records';
 
 // Who sees what (docs/modele-cible.md §5).
 
@@ -73,7 +74,7 @@ export async function buildAccessIndex(q: Q, { pending = true, users, docs: scop
     everything ? [undefined] : [...(userIds.length ? [among(who, userIds)] : []), ...(docIds.length ? [among(doc, docIds)] : [])];
   const each = async <T,>(conds: (SQL | undefined)[], read: (c: SQL | undefined) => Promise<T[]>): Promise<T[]> => (await Promise.all(conds.map(read))).flat();
   const running = sql`coalesce(${s.workflows.outcome}, '') = '' and ${s.workflows.step} < (select count(*) from ${s.workflowSteps} y where y.workflow_id = ${s.workflows.id})`;
-  const [readers, revs, waiting, approvers, holders, projects] = await Promise.all([
+  const [readers, revs, waiting, approvers, holders, projects, hr] = await Promise.all([
     each(parts(s.documentReaders.userId, s.documentReaders.docId), (c) => q.select({ docId: s.documentReaders.docId, userId: s.documentReaders.userId }).from(s.documentReaders).where(c)),
     each(parts(s.revisions.modifierId, s.revisions.docId), (c) => q.select({ docId: s.revisions.docId, modifierId: s.revisions.modifierId }).from(s.revisions)
       .where(and(inArray(s.revisions.status, [...OPEN_REVISION]), c))),
@@ -90,7 +91,10 @@ export async function buildAccessIndex(q: Q, { pending = true, users, docs: scop
     each(everything ? [undefined] : [...(userIds.length ? [among(s.functionHolders.userId, userIds)] : []), ...(codes.length ? [among(s.functionHolders.scopeValue, codes)] : [])],
       (c) => q.select({ userId: s.functionHolders.userId, scopeValue: s.functionHolders.scopeValue }).from(s.functionHolders).where(and(isNotNull(s.functionHolders.scopeValue), c))),
     q.select({ code: s.projects.code, managerId: s.projects.managerId }).from(s.projects),
+    // The HR readers of Cursus's highly confidential records (lib/records.ts): a handful of holders, read whole.
+    q.select({ userId: s.functionHolders.userId }).from(s.functionHolders).where(eq(s.functionHolders.functionKey, HR_RECORD_READER)),
   ]);
+  const hrReaders = new Set(hr.map((h) => h.userId));
   const add = (m: Map<string, Set<string>>, k: string, v: string | null) => { if (!v) return; if (!m.has(k)) m.set(k, new Set()); m.get(k)!.add(v); };
   const readersBy = new Map<string, Set<string>>(), modifiersBy = new Map<string, Set<string>>(), designatedBy = new Map<string, Set<string>>();
   const approversBy = new Map<string, Set<string>>(), teamBy = new Map<string, Set<string>>();
@@ -111,6 +115,8 @@ export async function buildAccessIndex(q: Q, { pending = true, users, docs: scop
     designated: (docId: string) => members(designatedBy, docId, docSet.has(docId), 'authors of a waiting change'),
     approvers: (docId: string) => members(approversBy, docId, docSet.has(docId), 'approvers'),
     // The projects table is read whole (a handful of rows): a manager is always known.
+    /** Holds the function of the HR readers of Cursus's highly confidential records (lib/records.ts HR_RECORD_READER). */
+    hrReader: (userId: string): boolean => hrReaders.has(userId),
     team: (projectCode: string | null): Who => (projectCode ? members(teamBy, projectCode, codeSet.has(projectCode), 'project team') : new Members(none, true, null, 'no project')),
   };
 }
@@ -153,6 +159,8 @@ export function readersApply(conf: string): boolean {
  * Outside the drafting circle, the "read" permission of the matrix is required as well.
  */
 export function canRead(ctx: Viewer, d: AccessDoc, ix: AccessIndex): boolean {
+  // A highly confidential record of Cursus: its HR readers and named readers only, records managers included (D-32).
+  if (isRestrictedRecord(d)) return ctx.can('read') && (ix.hrReader(ctx.user.id) || ix.readers(d.id).has(ctx.user.id));
   if (inDraftingCircle(ctx, d, ix)) return true;
   if (!ctx.can('read')) return false;
   const me = ctx.user.id;
@@ -199,6 +207,21 @@ export function draftingCircleSql(v: Viewer): SQL {
  * team is the project's manager and whoever holds a function scoped to the project (buildAccessIndex).
  */
 export function readableSql(v: Viewer, circle: SQL = draftingCircleSql(v)): SQL {
+  return sql`(case when ${restrictedSql} then ${recordReaderSql(v)} else ${readableBaseSql(v, circle)} end)`;
+}
+
+/** A highly confidential record of Cursus (lib/records.ts isRestrictedRecord), as an SQL condition. */
+const restrictedSql = sql`(${docs.ownerId} = ${CURSUS_ACTOR} and ${docs.conf} = 'tres_confidentiel')`;
+
+/** Who reads such a record, as canRead says: its HR readers and named readers, whoever `v` is (records managers too). */
+function recordReaderSql(v: Viewer): SQL {
+  if (!v.can('read')) return sql`false`;
+  const me = v.user.id;
+  return sql`(${me} in (select h.user_id from function_holders h where h.function_key = ${HR_RECORD_READER})
+    or ${docs.id} in (select r.doc_id from document_readers r where r.user_id = ${me}))`;
+}
+
+function readableBaseSql(v: Viewer, circle: SQL): SQL {
   if (v.seesAll) return sql`true`;
   if (!v.can('read')) return circle;
   const me = v.user.id;

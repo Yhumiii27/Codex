@@ -40,9 +40,9 @@ describe('types workbook', () => {
   const rows = typeRows();
   const col = (name: string) => TYPE_COLUMNS.indexOf(name as (typeof TYPE_COLUMNS)[number]);
 
-  it('has one row per type of the register (69), in its order, with every column', () => {
-    expect(TYPES).toHaveLength(69);
-    expect(rows).toHaveLength(69);
+  it('has one row per type of the register (70, DPE of Cursus\'s request « lot 16 » included), in its order, with every column', () => {
+    expect(TYPES).toHaveLength(70);
+    expect(rows).toHaveLength(70);
     expect(rows.map((r) => r[0])).toEqual(TYPES.map((t) => t.code));
     for (const r of rows) expect(r).toHaveLength(TYPE_COLUMNS.length);
     const pol = rows[0];
@@ -76,9 +76,9 @@ describe('types workbook', () => {
     expect(flagged('project_end')).toEqual(expect.arrayContaining(['DQF', 'CER', 'COC', 'HSE', 'PRT', 'SIM']));
   });
 
-  it('flags the 5 types admitting « Public » (O-08), the 3 without circuit (O-06)', () => {
+  it('flags the 5 types admitting « Public » (O-08), the 4 without circuit (O-06; DPE: records, never approved, D-32)', () => {
     expect(flagged('public')).toEqual(['POL', 'REG', 'DTF', 'PUB', 'COL']);
-    expect(flagged('no_circuit')).toEqual(['LET', 'RFQ', 'PHO']);
+    expect(flagged('no_circuit')).toEqual(['DPE', 'LET', 'RFQ', 'PHO']);
   });
 
   it('flags the 4 type codes that are department codes too (question 1 of the register), JUR included', () => {
@@ -105,12 +105,12 @@ describe('check of a types workbook', () => {
 
   it('finds neither error nor difference in the workbook as written', () => {
     const r = checkTypesWorkbook(written);
-    expect(r.rows).toBe(69);
+    expect(r.rows).toBe(70);
     expect(r.errors).toEqual([]);
     expect(r.changes).toEqual([]);
     expect(r.missing).toEqual([]);
     expect(r.added).toEqual([]);
-    expect(r.answers).toEqual({ yes: [], no: [], blank: 69 });
+    expect(r.answers).toEqual({ yes: [], no: [], blank: 70 });
   });
 
   it('reports answers and differences with the code, without deciding anything', () => {
@@ -207,13 +207,13 @@ describe('check of a types workbook', () => {
 describe('check of a functions workbook', () => {
   const written = reviewFiles()['fonctions.csv'];
 
-  it('lists the 16 functions with their holders and finds nothing in the workbook as written', () => {
+  it('lists the 17 functions with their holders and finds nothing in the workbook as written', () => {
     expect(functionRows()).toHaveLength(FUNCTIONS.length);
-    expect(FUNCTIONS).toHaveLength(16);
+    expect(FUNCTIONS).toHaveLength(17);
     const r = checkFunctionsWorkbook(written);
     expect(r.errors).toEqual([]);
     expect(r.changes).toEqual([]);
-    expect(r.answers.blank).toBe(16);
+    expect(r.answers.blank).toBe(17);
     const head = functionRows().find((x) => x[0] === 'resp_departement')!;
     expect(head[FUNCTION_COLUMNS.indexOf('Titulaires')]).toContain('JUR=irahmani (Inès Rahmani)');
   });

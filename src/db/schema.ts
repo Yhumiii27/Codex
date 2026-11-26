@@ -306,6 +306,11 @@ export const documents = codex.table(
     distribution: text('distribution').notNull().default(''),
     reviewMonths: integer('review_months'),
     processCode: text('process_code'),
+    /**
+     * Person a record of the personnel file is about (lib/records.ts, Cursus's request « lot 16 »): Cursus's matricule
+     * EMP-…, or I… / E… for a person on site. Set by the deposit of Cursus only; null for every other document.
+     */
+    subjectMatricule: text('subject_matricule'),
   },
   // A former ID (reclassification, migration) resolves with `aliases @> '["…"]'` (lib/queries.ts getDoc, lib/importer.ts).
   // The uses of a template are counted by template_id (listTemplates).
@@ -314,6 +319,36 @@ export const documents = codex.table(
     index('documents_template').on(t.templateId).where(sql`${t.templateId} is not null`),
     index('documents_capex').on(t.capexCode).where(sql`${t.capexCode} is not null`),
     check('documents_review_months_check', sql`${t.reviewMonths} > 0`),
+    check('documents_subject_matricule_check', sql`${t.subjectMatricule} IS NULL OR ${t.subjectMatricule} ~ '^(EMP-[0-9]{4,}|[IE][0-9]+)$'`),
+    index('documents_subject').on(t.subjectMatricule).where(sql`${t.subjectMatricule} is not null`),
+  ],
+);
+
+/** Why an application destroyed one of its records (lib/records.ts DESTROY_REASONS). */
+export type DestroyReasonCode = 'retrait' | 'conservation' | 'effacement';
+
+/**
+ * Trace of a record destroyed by the application that filed it (POST /api/documents/{id}/destroy, Cursus's request
+ * « lot 16 »): its ID, type, category and source reference, when it was filed and destroyed, why and by which
+ * application — never its title, its person, its file nor anything of its content. The document, its revisions and
+ * working versions are deleted, their files removed from the store; this row keeps the ID and the source reference
+ * from being given again (a deposit replayed after the destruction answers 410).
+ */
+export const destroyedDocuments = codex.table(
+  'destroyed_documents',
+  {
+    id: text('id').primaryKey(),
+    typeCode: text('type_code').notNull(),
+    subtype: text('subtype'),
+    sourceRef: text('source_ref').notNull().unique('destroyed_documents_source_ref_unique'),
+    app: text('app').notNull().references(() => users.id),
+    reason: text('reason').$type<DestroyReasonCode>().notNull(),
+    filedAt: date('filed_at', { mode: 'string' }).notNull(),
+    destroyedAt: timestamp('destroyed_at', { mode: 'string', withTimezone: true }).notNull(),
+  },
+  (t) => [
+    check('destroyed_documents_reason_check', sql`${t.reason} in ('retrait', 'conservation', 'effacement')`),
+    check('destroyed_documents_source_ref_check', sql`${t.sourceRef} ~ '^[a-z][a-z0-9_-]{1,31}:'`),
   ],
 );
 

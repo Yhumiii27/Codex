@@ -9,7 +9,9 @@ export type RegistryType = {
   subtypes: { fr: string; en: string }[]; circuit: string[];
   /** `basis`: what the rule rests on, in French; `basisEn`: its English wording, when written (empty until then). */
   retention: { years: number | null; trigger: RetentionTrigger; disposition: Disposition; basis: string; basisEn?: string };
-  confAllowed: Conf[]; confDefault: Conf; iso?: string; clientDeliverable?: boolean; source: 'deck' | 'keystone' | 'both';
+  confAllowed: Conf[]; confDefault: Conf; iso?: string; clientDeliverable?: boolean;
+  /** `request`: added at the request of another tool of the group (DPE: Cursus, « lot 16 »). */
+  source: 'deck' | 'keystone' | 'both' | 'request';
 };
 
 export const FAMILIES: RegistryFamily[] = [
@@ -708,6 +710,79 @@ export const TYPES: RegistryType[] = [
   "iso": "7.2 Compétences",
   "clientDeliverable": false,
   "source": "deck"
+ },
+ {
+  "code": "DPE",
+  "label_fr": "Dossier du personnel — enregistrement",
+  "label_en": "Personnel file — record",
+  "family": "fonctions_support",
+  "origins": [
+   "interne"
+  ],
+  "attachments": [
+   "none"
+  ],
+  "subtypes": [
+   {
+    "fr": "Justificatif d’absence",
+    "en": "Absence certificate"
+   },
+   {
+    "fr": "Passeport ou visa",
+    "en": "Passport or visa"
+   },
+   {
+    "fr": "Carnet de vaccination",
+    "en": "Vaccination record"
+   },
+   {
+    "fr": "Attestation de formation",
+    "en": "Training certificate"
+   },
+   {
+    "fr": "Titre d’habilitation signé",
+    "en": "Signed authorisation"
+   },
+   {
+    "fr": "Pièce de dossier de déplacement",
+    "en": "Business travel document"
+   },
+   {
+    "fr": "Justificatif de note de frais",
+    "en": "Expense receipt"
+   },
+   {
+    "fr": "Justificatif de note de frais (accès restreint)",
+    "en": "Expense receipt (restricted)"
+   },
+   {
+    "fr": "Carte grise ou assurance du véhicule personnel",
+    "en": "Personal vehicle registration or insurance"
+   },
+   {
+    "fr": "Pièce de dossier OPCO",
+    "en": "OPCO file document"
+   },
+   {
+    "fr": "Compte rendu d’entretien signé",
+    "en": "Signed interview report"
+   }
+  ],
+  "circuit": [],
+  "retention": {
+   "years": 5,
+   "trigger": "employee_departure",
+   "disposition": "destroy",
+   "basis": "Pièces justificatives du dossier du personnel déposées par Cursus (demande « lot 16 ») : durée de chaque catégorie dans src/lib/records.ts, à confirmer par le DPO ; par défaut C. trav. R1221-26 (5 ans après départ) et prescription 5 ans (C. civ. 2224, C. trav. L1134-5)"
+  },
+  "confAllowed": [
+   "confidentiel",
+   "tres_confidentiel"
+  ],
+  "confDefault": "confidentiel",
+  "iso": "7.2 Compétences",
+  "clientDeliverable": false,
+  "source": "request"
  },
  {
   "code": "FIN",

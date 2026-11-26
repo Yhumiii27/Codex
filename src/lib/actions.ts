@@ -16,6 +16,7 @@ import { authMode } from '@/server/integrations/clavis/rules';
 import { addDays, fmtDate, fmtDateTime, fmtSize, loc, localized, nowStamp, parisStamp, parseIsoDay, todayIso } from './format';
 import { ATTACHMENTS, CONF_LEVELS, ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLES, ORIGINS, PERMS, SEARCH_SCOPES, SIM_ROLES, SIMULATED_MATRIX_ROLES, type Perm, type TKey } from './i18n';
 import { addLink, applyChangeDecision, applyPendingDecision, approverCheck, approveRevision, audit, circuitExclusions, catchUpEffectiveDates, journalConsultation, journalLink, linkBetween, lockDoc, lockDocs, lockOf, refreshHeadline, type ModifierSwap, type Tx } from './lifecycle';
+import { isRecordType } from './records';
 import { changes, entryChanges, familyJournal, functionJournal, retentionValue, typeJournal } from './journal-values';
 import { isLinkRel, linkIssue, otherEnd, replacementIssue, storedLink } from './links';
 import { logger, traceAction } from './log';
@@ -307,6 +308,8 @@ function metaChanges(d: DocRow, f: Fields, retention: Partial<Pick<DocRow, 'rete
 function validateFields(ctx: Ctx, f: Fields, current?: Pick<DocRow, 'typeCode' | 'programCode' | 'capexCode' | 'department' | 'site' | 'lang'>): ActionResult | null {
   const type = ctx.typeByCode.get(f.typeCode);
   if (!f.title || !type || !(type.active || type.code === current?.typeCode)) return fail(ctx);
+  // A record of the personnel file is filed by Cursus only (POST /api/documents, lib/records.ts): never on screen.
+  if (isRecordType(f.typeCode)) return fail(ctx, 'record_locked');
   if (!type.origins.includes(f.origin) || !type.attachments.includes(f.attachment)) return fail(ctx, 'type_mismatch');
   if (!type.confAllowed.includes(f.conf)) return fail(ctx, 'conf_not_allowed');
   if (f.attachment === 'project' && !ctx.projects.some((p) => p.code === f.projectCode)) return fail(ctx, 'project_required');
@@ -661,6 +664,8 @@ async function updateMetaNow(fd: FormData): Promise<ActionResult> {
   if (!d) return movedSince(db, ctx, docId, (x) => canRead(ctx, x, ix) && mayEdit(x));
   if (!canRead(ctx, d, ix)) return fail(ctx, 'not_found');
   if (!mayEdit(d)) return fail(ctx, 'not_allowed');
+  // Kept by Cursus, which filed it (lib/records.ts): its metadata and readers do not change in Codex.
+  if (isRecordType(d.typeCode)) return fail(ctx, 'record_locked');
   const lock = lockOf(d);
   if (lock) return fail(ctx, lock);
   if (d.version !== seen) return stale(ctx, seen === null ? null : await lastChangedBy(db, ctx, docId));
@@ -753,6 +758,8 @@ async function setReadersNow(docId: string, userIds: string[], version: number):
   if (!d) return movedSince(db, ctx, docId, (x) => canRead(ctx, x, ix) && mayEdit(x));
   if (!canRead(ctx, d, ix)) return fail(ctx, 'not_found');
   if (!mayEdit(d)) return fail(ctx, 'not_allowed');
+  // Kept by Cursus, which filed it (lib/records.ts): its metadata and readers do not change in Codex.
+  if (isRecordType(d.typeCode)) return fail(ctx, 'record_locked');
   const lock = lockOf(d);
   if (lock) return fail(ctx, lock);
   if (d.version !== seen) return stale(ctx, seen === null ? null : await lastChangedBy(db, ctx, docId));
@@ -1253,6 +1260,8 @@ async function requestChangeNow(docId: string, kind: 'modification' | 'obsolesce
   const res = await db.transaction(async (tx): Promise<Out> => {
     const d = await lockDoc(tx, docId);
     if (!d || !canRead(ctx, d, ix)) return { err: 'not_found' };
+    // A record has no revision to come nor a withdrawal of its own: Cursus removes or destroys it (lib/records.ts).
+    if (isRecordType(d.typeCode)) return { err: 'record_locked' };
     const lock = lockOf(d);
     if (lock) return { err: lock };
     if (!d.revInForce) return { err: 'need_in_force' };
@@ -1635,6 +1644,8 @@ async function setRetentionClassNow(fd: FormData): Promise<ActionResult> {
   if (!d) return movedSince(db, ctx, docId, (x) => canRead(ctx, x, ix));
   if (!canRead(ctx, d, ix)) return fail(ctx, 'not_found');
   if (d.legalHold) return fail(ctx, 'locked_hold');
+  // A record's retention is its category's (lib/records.ts): Cursus destroys it at its term.
+  if (isRecordType(d.typeCode)) return fail(ctx, 'record_locked');
   if (d.version !== seen) return stale(ctx, seen === null ? null : await lastChangedBy(db, ctx, d.id));
   const toType = str(fd, 'mode') === 'type';
   let rule: Pick<DocRow, 'retentionYears' | 'retentionTrigger' | 'retentionDisposition'> | null = null;
