@@ -76,5 +76,10 @@ describe('English source strings', () => {
     expect(translate('fr', 'Close')).toBe('Fermer');
     expect(translate('en', 'Close')).toBe('Close');
     expect(translate('fr', 'Not in the dictionary {n}', { n: 3 })).toBe('Not in the dictionary 3');
+    // A context after # tells two French apart and never shows (« Approuver » the button, « Valider » the permission).
+    expect(translate('fr', 'Approve')).toBe('Approuver');
+    expect(translate('fr', 'Approve#permission')).toBe('Valider');
+    expect(translate('en', 'Approve#permission')).toBe('Approve');
+    expect(translate('fr', 'Not in the dictionary#context')).toBe('Not in the dictionary');
   });
 });

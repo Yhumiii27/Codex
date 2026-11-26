@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { Forbidden } from '@/components/ui/Forbidden';
+import { translatorFor } from '@/i18n';
 import { getCtx } from '@/lib/context';
 import { defaultDepartment } from '@/lib/departments';
 import { screenTitle } from '@/lib/titles';
@@ -12,6 +13,7 @@ export function generateMetadata() {
 export default async function DepartmentsPage() {
   const ctx = await getCtx();
   const code = defaultDepartment(ctx.user.department, ctx.departments);
-  if (!code) return <Forbidden text={ctx.t.dept_unknown} back={ctx.t.back_home} />;
+  const tr = translatorFor(ctx.lang);
+  if (!code) return <Forbidden text={tr('This department does not exist.')} back={tr('Back to home')} />;
   redirect(`/departements/${encodeURIComponent(code)}`);
 }

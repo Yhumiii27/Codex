@@ -15,7 +15,7 @@ import { errorRef } from '@/lib/errors';
  * (node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/error.md).
  */
 export default function ErrorScreen({ error, retry }: { error: Error & { digest?: string }; retry: () => void }) {
-  const { t } = useApp();
+  const { tr } = useApp();
   // A server error carries its reference; one of the browser gets its own, reported to the technical log (lib/client-errors.ts).
   const serverRef = errorRef(error);
   const clientRef = useMemo(() => (serverRef ? null : clientRefFor(error)), [error, serverRef]);
@@ -25,14 +25,14 @@ export default function ErrorScreen({ error, retry }: { error: Error & { digest?
   useEffect(() => { console.error(error); }, [error]);
   return (
     <>
-    <PageHeader title={<><Icon name="info" size={20} style={{ color: 'var(--color-accent)', marginRight: 8, verticalAlign: '-2px' }} />{t.error}</>} />
+    <PageHeader title={<><Icon name="info" size={20} style={{ color: 'var(--color-accent)', marginRight: 8, verticalAlign: '-2px' }} />{tr('Something went wrong')}</>} />
     <div className="screen" role="alert">
       <div style={{ maxWidth: 560 }}>
-        <p className="text-muted" style={{ margin: '0 0 6px', fontSize: 12.5 }}>{ref ? t.error_hint : t.error_browser}</p>
-        {ref && <p style={{ margin: '0 0 14px', fontSize: 12.5 }}><code className="tabnum" style={{ userSelect: 'all' }}>{t.error_ref.replace('{ref}', ref)}</code></p>}
+        <p className="text-muted" style={{ margin: '0 0 6px', fontSize: 12.5 }}>{ref ? tr('Try again. If the error persists, send this reference to the administrator: it locates the error in the server’s technical log.') : tr('The error occurred in the browser. Try again or reload the page.')}</p>
+        {ref && <p style={{ margin: '0 0 14px', fontSize: 12.5 }}><code className="tabnum" style={{ userSelect: 'all' }}>{tr('Ref. {ref}', { ref })}</code></p>}
         <div style={{ display: 'flex', gap: 8, marginTop: ref ? 0 : 8 }}>
-          <button type="button" className="btn btn-secondary" onClick={() => retry()}>{t.retry}</button>
-          <Link href="/" className="btn btn-secondary">{t.back_home}</Link>
+          <button type="button" className="btn btn-secondary" onClick={() => retry()}>{tr('Try again')}</button>
+          <Link href="/" className="btn btn-secondary">{tr('Back to home')}</Link>
         </div>
       </div>
     </div>

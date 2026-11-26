@@ -1,7 +1,8 @@
 import { Fragment } from 'react';
 import Link from 'next/link';
 import { Icon } from '@/components/ui/Icon';
-import { ECR_TAGCLS, type T } from '@/lib/i18n';
+import type { Translate } from '@/i18n';
+import { ECR_TAGCLS } from '@/lib/i18n';
 import type { ChangeRequestView } from '@/lib/queries';
 import styles from './workflow.module.css';
 
@@ -13,34 +14,34 @@ import styles from './workflow.module.css';
  * year: the list holds every request ever sent. The record and Vigie (when its address is configured) are opened from
  * the page header (validations/page.tsx).
  */
-export function MyChangeRequests({ t, requests, selected, href }: { t: T; requests: ChangeRequestView[]; selected: ChangeRequestView | undefined; href: (id: string) => string }) {
+export function MyChangeRequests({ tr, requests, selected, href }: { tr: Translate; requests: ChangeRequestView[]; selected: ChangeRequestView | undefined; href: (id: string) => string }) {
   const c = selected;
   const facts = c
     ? ([
-        [t.ecr_sent_on, c.sentF],
-        [t.ecr_decided_on, c.decidedF],
-        [t.eco_ref, c.ecoRef],
-        [t.modifier, c.modifier],
-        [t.ecr_note, c.decisionNote],
-        [t.replacement_proposed, c.replacement ? `${c.replacement.id} · ${c.replacement.title}` : null],
+        [tr('Sent on'), c.sentF],
+        [tr('Vigie decision'), c.decidedF],
+        [tr('ECO'), c.ecoRef],
+        [tr('Designated author'), c.modifier],
+        [tr('Vigie note'), c.decisionNote],
+        [tr('Proposed replacement'), c.replacement ? `${c.replacement.id} · ${c.replacement.title}` : null],
       ] as const).filter((x): x is readonly [string, string] => !!x[1])
     : [];
   // What the status means now: waiting for Vigie, waiting to apply (in words this reader may be given), or where it went.
   const outcome = !c
     ? null
     : c.status === 'submitted'
-      ? t.ecr_wait_vigie
+      ? tr('Waiting for Vigie’s decision.')
       : c.waitL
-        ? `${t.ecr_pending_apply} : ${c.waitL}.`
+        ? `${tr('Pending application')} : ${c.waitL}.`
         : c.carrier
-          ? `${c.carrier.grafted ? t.change_grafted_on : t.change_opened} ${c.carrier.letter}.`
+          ? `${c.carrier.grafted ? tr('Grafted onto revision') : tr('Opened revision')} ${c.carrier.letter}.`
           : null;
 
   return (
     <div className="screen panes" data-screen-label="Validations">
       <aside className={styles.side}>
         <div className={styles.list} style={{ paddingTop: 10 }}>
-          {requests.length === 0 && <p className="text-muted" style={{ padding: '16px 8px', fontSize: 12.5, margin: 0 }}>{t.vigie_empty}</p>}
+          {requests.length === 0 && <p className="text-muted" style={{ padding: '16px 8px', fontSize: 12.5, margin: 0 }}>{tr('No change or withdrawal request sent to Vigie.')}</p>}
           {requests.map((r) => (
             <Link key={r.id} href={href(r.id)} scroll={false} className={styles.item} style={{ background: r.id === c?.id ? 'color-mix(in srgb,var(--color-accent) 10%,transparent)' : 'transparent' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, width: '100%', minWidth: 0 }}>
@@ -75,7 +76,7 @@ export function MyChangeRequests({ t, requests, selected, href }: { t: T; reques
               {facts.map(([k, v]) => <Fragment key={k}><dt className="text-muted">{k}</dt><dd>{v}</dd></Fragment>)}
             </dl>
             <section>
-              <h2 className="sec-title" style={{ marginBottom: 12 }}>{t.ecr_reason}</h2>
+              <h2 className="sec-title" style={{ marginBottom: 12 }}>{tr('Reason')}</h2>
               <div style={{ fontSize: 13 }}>{c.reason}</div>
               {c.description && <div className="text-muted" style={{ fontSize: 12.5, marginTop: 6, whiteSpace: 'pre-wrap' }}>{c.description}</div>}
             </section>

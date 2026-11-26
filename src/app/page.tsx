@@ -6,7 +6,7 @@ import { Icon } from '@/components/ui/Icon';
 import { ActionLink, ClickRow, DialogButton } from '@/components/ui/client';
 import { PageHeader } from '@/components/shell/PageHeader';
 import { KpiGrid } from '@norma/charte/ds/Kpi';
-import { translate } from '@/i18n';
+import { translatorFor } from '@/i18n';
 import { getCtx } from '@/lib/context';
 import { todayLong } from '@/lib/format';
 import { dueDeadlines, inForceThisWeek, myTodo, recentActivity, recentDocs } from '@/lib/queries';
@@ -25,7 +25,8 @@ export function generateMetadata() {
 
 export default async function HomePage() {
   const ctx = await getCtx();
-  const { t, lang } = ctx;
+  const { lang } = ctx;
+  const tr = translatorFor(lang);
   // Only what the home shows is read (lib/queries.ts): no list of every document.
   const [recents, todo, due, inForceWeek, activity] = await Promise.all([
     recentDocs(ctx, 5),
@@ -41,32 +42,32 @@ export default async function HomePage() {
   // Everything waiting for me, as the sidebar badge and the bell list it (myTodo, handed to them by TodoSync); the KPI
   // counts the approval steps.
   const toApprove = actions.filter((a) => a.kind === 'step').length;
-  const noUpload = ctx.can('upload') ? undefined : `${t.not_allowed} : ${t.perm_upload}`;
+  const noUpload = ctx.can('upload') ? undefined : `${tr('Permission required')} : ${tr('Upload')}`;
 
   return (
     <>
       <TodoSync todo={todo} />
       <PageHeader
-        title={translate(lang, 'Dashboard')}
-        subtitle={<>{t.hello}, {ctx.user.name.split(' ')[0]} · {todayLong(lang)} · {t.home_sub}</>}
+        title={tr('Dashboard')}
+        subtitle={<>{tr('Good morning')}, {ctx.user.name.split(' ')[0]} · {todayLong(lang)} · {tr('Here is what needs your attention.')}</>}
         actions={<>
-          <ActionLink href="/recherche">{t.adv_search}</ActionLink>
-          <DialogButton spec={{ kind: 'new', preset: { mode: 'file' } }} icon="upload" deniedTitle={noUpload}>{t.upload}</DialogButton>
+          <ActionLink href="/recherche">{tr('Advanced search')}</ActionLink>
+          <DialogButton spec={{ kind: 'new', preset: { mode: 'file' } }} icon="upload" deniedTitle={noUpload}>{tr('Upload a file')}</DialogButton>
         </>}
-        primary={<DialogButton spec={{ kind: 'new', preset: { mode: 'template' } }} className="btn btn-primary" icon="plus" iconSw={1.8} deniedTitle={noUpload}>{t.new_from_tpl}</DialogButton>}
+        primary={<DialogButton spec={{ kind: 'new', preset: { mode: 'template' } }} className="btn btn-primary" icon="plus" iconSw={1.8} deniedTitle={noUpload}>{tr('New from template')}</DialogButton>}
       />
       <div className={`screen ${styles.page}`} data-screen-label="Accueil">
         <KpiGrid min={170}>
-          <Kpi href="/validations" ok={ctx.screens.workflow}><div className="coque-kpi-label">{t.kpi_todo}</div><div className="coque-kpi-value">{toApprove}</div><div className="coque-kpi-sub">{t.kpi_todo_sub}</div></Kpi>
-          <Kpi href="/archivage" ok={ctx.screens.retention}><div className="coque-kpi-label">{t.kpi_exp}</div><div className="coque-kpi-value">{due.length}</div><div className="coque-kpi-sub">{t.kpi_exp_sub}</div></Kpi>
-          <Kpi href="/explorateur?status=in_force" ok={ctx.screens.explorer}><div className="coque-kpi-label">{t.kpi_in_force}</div><div className="coque-kpi-value">{inForceWeek}</div><div className="coque-kpi-sub">{t.kpi_in_force_sub}</div></Kpi>
+          <Kpi href="/validations" ok={ctx.screens.workflow}><div className="coque-kpi-label">{tr('To approve')}</div><div className="coque-kpi-value">{toApprove}</div><div className="coque-kpi-sub">{tr('workflows waiting for your decision')}</div></Kpi>
+          <Kpi href="/archivage" ok={ctx.screens.retention}><div className="coque-kpi-label">{tr('Due within 90 days')}</div><div className="coque-kpi-value">{due.length}</div><div className="coque-kpi-sub">{tr('retention, expiry or review falling due')}</div></Kpi>
+          <Kpi href="/explorateur?status=in_force" ok={ctx.screens.explorer}><div className="coque-kpi-label">{tr('In force this week')}</div><div className="coque-kpi-value">{inForceWeek}</div><div className="coque-kpi-sub">{tr('new revisions entered into force')}</div></Kpi>
         </KpiGrid>
 
         <div className={styles.cols}>
           <div className={styles.col}>
             <section>
               {/* The list is whole: no « Tout voir » towards Validations, which only holds the approval steps. */}
-              <div className="sec-head"><h2 className="sec-title">{t.todo}</h2></div>
+              <div className="sec-head"><h2 className="sec-title">{tr('To do')}</h2></div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {actions.map((a) => (
                   <div key={a.key} className={`card ${styles.todo}`}>
@@ -77,22 +78,22 @@ export default async function HomePage() {
                       {/* Why a circuit sent the revision back, on its own line (abridged; the record shows all of it). */}
                       {a.note && <div className="sub" style={{ overflowWrap: 'anywhere', marginTop: 2 }}>{a.note}</div>}
                     </div>
-                    <Link href={a.href} className="btn btn-ghost" style={{ fontSize: 12 }}>{t.open}</Link>
+                    <Link href={a.href} className="btn btn-ghost" style={{ fontSize: 12 }}>{tr('Open')}</Link>
                   </div>
                 ))}
                 {actions.length === 0 && (
                   <div className={`card text-muted ${styles.todo}`}>
                     <Icon name="tick" size={18} style={{ flex: 'none' }} />
-                    <span>{t.todo_empty}</span>
+                    <span>{tr('Nothing to do for now.')}</span>
                   </div>
                 )}
               </div>
             </section>
             <section>
-              <div className="sec-head" style={{ marginBottom: 6 }}><h2 className="sec-title">{t.recents}</h2><Link href="/explorateur" className="sec-link">{t.see_all}</Link></div>
+              <div className="sec-head" style={{ marginBottom: 6 }}><h2 className="sec-title">{tr('Recent documents')}</h2><Link href="/explorateur" className="sec-link">{tr('See all')}</Link></div>
               <div className="codex-table-scroll">
               <table className="table" style={{ fontSize: 13 }}>
-                <thead><tr><th>{t.title_label}</th><th>{t.type}</th><th>{t.revision}</th><th>{t.status}</th><th>{t.modified}</th></tr></thead>
+                <thead><tr><th>{tr('Title')}</th><th>{tr('Type')}</th><th>{tr('Revision')}</th><th>{tr('Status')}</th><th>{tr('Modified')}</th></tr></thead>
                 <tbody>
                   {recents.map((d) => (
                     <ClickRow key={d.id} href={d.href}>
@@ -111,7 +112,7 @@ export default async function HomePage() {
 
           <div className={styles.col}>
             <section>
-              <div className="sec-head"><h2 className="sec-title">{t.ret_due}</h2>{ctx.screens.retention && <Link href="/archivage" className="sec-link">{t.see_all}</Link>}</div>
+              <div className="sec-head"><h2 className="sec-title">{tr('Deadlines')}</h2>{ctx.screens.retention && <Link href="/archivage" className="sec-link">{tr('See all')}</Link>}</div>
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 {due.slice(0, 4).map((d) => (
                   <Link key={`${d.id}:${d.kind}`} href={d.href} className={`link-plain hairline ${styles.expRow}`}>
@@ -125,7 +126,7 @@ export default async function HomePage() {
               </div>
             </section>
             <section>
-              <div className="sec-head"><h2 className="sec-title">{t.activity}</h2>{ctx.screens.admin && <Link href="/administration?tab=audit" className="sec-link">{t.see_all}</Link>}</div>
+              <div className="sec-head"><h2 className="sec-title">{tr('Group activity')}</h2>{ctx.screens.admin && <Link href="/administration?tab=audit" className="sec-link">{tr('See all')}</Link>}</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {activity.map((a) => (
                   <div key={a.id} className="feed">
