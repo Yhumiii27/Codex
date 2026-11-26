@@ -3,7 +3,7 @@ import { schema as s } from '@/db';
 import { GET, HEAD } from '@/app/api/documents/[id]/approval/route';
 import { addComment, decideStep, delegateStep, graftChange, requestValidation } from '@/lib/actions';
 import { COOKIE_LANG, getCtx } from '@/lib/context';
-import { DICT, type SimRole } from '@/lib/i18n';
+import { type SimRole } from '@/lib/i18n';
 import { importDocument } from '@/lib/importer';
 import { applyChangeDecision } from '@/lib/lifecycle';
 import { listAudit } from '@/lib/queries';
@@ -12,6 +12,7 @@ import { addDoc, baseOf, fixClock, getChange, getRevision, journalOf, revisionSt
 import type { Person } from '../support/fixtures';
 import { readPdf } from '../support/pdf';
 import { actAs, cookieStore } from '../support/session';
+import { translatorFor } from '@/i18n';
 
 // Approval record of a revision (« fiche de visa », point 21 of docs/reste-a-faire.md), through its route: the PDF
 // read back as a reader would, field by field; who may have it (canRead, D-14: outside the drafting circle, only a
@@ -25,7 +26,7 @@ vi.mock('next/cache', () => ({ refresh: () => {} }));
 const db = setupDb();
 fixClock(); // 10 October 2026, 10:00 in Paris
 
-const t = DICT.fr;
+const tr = translatorFor('fr');
 const ID = 'PRO-QUA-0001'; // type PRO: head of the QUA department, then the quality manager
 const ECO = 'ECO-2026-010';
 const ECO_GRAFTED = 'ECO-2026-020'; // a second change Vigie accepted while B was drafted, grafted onto it (D-26)
@@ -94,8 +95,8 @@ describe('the approval record of an approved revision', () => {
     ]));
     const body = bodyOf(pdf);
     expect(body).toContain(`Motif du rejet ${REASON}`);
-    expect(body).toContain(t.visa_no_signature);
-    expect(body).not.toContain(t.visa_no_circuit);
+    expect(body).toContain(tr('This record bears no electronic signature: it reproduces what the Codex journal records about the approval of the revision.'));
+    expect(body).not.toContain(tr('No approval workflow is recorded in Codex for this revision.'));
     // W-1 comes before W-2, and the long reason takes the record over a page, each one numbered.
     expect(body.indexOf('Circuit de validation W-1')).toBeLessThan(body.indexOf('Circuit de validation W-2'));
     expect(pdf.pages.length).toBeGreaterThanOrEqual(2);
@@ -119,7 +120,7 @@ describe('the approval record of an approved revision', () => {
     expect(outside).toContain('Déléguée par head à director');
     const a = await fetchRecord('writer2', ID, '?rev=a');
     expect(a).toMatchObject({ status: 200, disposition: `attachment; filename*=UTF-8''${ID}_A_VISA.pdf` });
-    expect(readPdf(a.body).pages.flat()).toEqual(expect.arrayContaining(['Révision A · Remplacé', 'Remplacée le 10/10/2026', t.visa_no_circuit]));
+    expect(readPdf(a.body).pages.flat()).toEqual(expect.arrayContaining(['Révision A · Remplacé', 'Remplacée le 10/10/2026', tr('No approval workflow is recorded in Codex for this revision.')]));
   });
 
   it('to a reader who does not follow a circuit, gives what the application shows them: no comment text, no holder of a step never decided', async () => {
@@ -236,7 +237,7 @@ describe('a revision migrated from the legacy system', () => {
     expect(rows).toEqual(expect.arrayContaining(['Approbation Dans l’ancien système', 'Mise en vigueur 12/03/2025']));
     const body = rows.join(' ');
     expect(body).toContain('Révision reprise de l’ancien système (référence LEG-0042) le 10/10/2026 : son approbation a eu lieu dans l’ancien système.');
-    expect(body).not.toContain(t.visa_no_circuit);
+    expect(body).not.toContain(tr('No approval workflow is recorded in Codex for this revision.'));
   });
 
   it('migrated as a draft then approved by a circuit of Codex: its approval date and circuit, and when it came, not a legacy approval', async () => {

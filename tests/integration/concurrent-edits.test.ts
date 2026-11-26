@@ -4,12 +4,12 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { FILES_DIR, schema as s } from '@/db';
 import { addWorkingVersion, createDocument, recordReview, requestChange, requestValidation, setReaders, updateMeta } from '@/lib/actions';
 import { getCtx } from '@/lib/context';
-import { DICT } from '@/lib/i18n';
 import { audit, refreshHeadline } from '@/lib/lifecycle';
 import { getDoc as getDocView } from '@/lib/queries';
 import { addDoc, baseOf, fixClock, getDoc, getRevision, journalOf, revisionStatuses, setClock, setupDb, viewOf } from '../support/db';
 import type { Person } from '../support/fixtures';
 import { actAs } from '../support/session';
+import { translatorFor } from '@/i18n';
 
 // Concurrent changes from two views of the same record (point 20 of docs/reste-a-faire.md): two people open the record,
 // the first one saves, the second one's dialog is refused as outdated, nothing written, and names who changed it, or the
@@ -38,12 +38,12 @@ afterAll(() => {
   rmSync(FILES_DIR, { recursive: true, force: true });
 });
 
-const t = DICT.fr;
+const tr = translatorFor('fr');
 const ID = 'PRO-QUA-0001'; // addDoc: owned by `owner`, revision A in force
-const stale = (who: string) => ({ ok: false, error: t.stale.replace('{who}', who), stale: true });
-const workingStale = (label: string, who: string) => ({ ok: false, error: t.working_stale.replace('{label}', label).replace('{who}', who), stale: true });
-const validateStale = (label: string, who: string) => ({ ok: false, error: t.validate_stale.replace('{label}', label).replace('{who}', who), stale: true });
-const anon = { ok: false, error: t.stale_anon, stale: true };
+const stale = (who: string) => ({ ok: false, error: tr('This document was changed in the meantime by {who}; reload the record.').replace('{who}', who), stale: true });
+const workingStale = (label: string, who: string) => ({ ok: false, error: tr('Working version {label} was uploaded in the meantime by {who}; reload the record to start from that version.').replace('{label}', label).replace('{who}', who), stale: true });
+const validateStale = (label: string, who: string) => ({ ok: false, error: tr('Working version {label} was uploaded in the meantime by {who}; reload the record to see it before requesting approval.').replace('{label}', label).replace('{who}', who), stale: true });
+const anon = { ok: false, error: tr('This document was changed in the meantime; reload the record.'), stale: true };
 
 function form(fields: Record<string, string | File>): FormData {
   const fd = new FormData();
@@ -110,7 +110,7 @@ describe('updateMeta from an outdated view', () => {
   it('refuses the second of two edits made from the same view, names who saved first, and writes nothing', async () => {
     await addDoc(db(), { id: ID });
     const seen = await viewOf(db(), ID); // the owner and a records manager open the record
-    expect(await saveMeta('owner', seen, { title: 'Titre du propriétaire' })).toEqual({ ok: true, message: t.saved_ok });
+    expect(await saveMeta('owner', seen, { title: 'Titre du propriétaire' })).toEqual({ ok: true, message: tr('Changes saved') });
     const journal = (await journalOf(db(), ID)).length;
     expect(await saveMeta('manager', seen, { title: 'Titre du gestionnaire', keywords: 'levage' })).toEqual(stale('owner'));
     expect(await getDoc(db(), ID)).toMatchObject({ title: 'Titre du propriétaire', keywords: [] });
@@ -181,25 +181,25 @@ describe('updateMeta from an outdated view', () => {
   it('answers a form without its version (a page older than this rule) as outdated, naming nobody', async () => {
     await addDoc(db(), { id: ID });
     actAs('owner');
-    expect(await updateMeta(form({ docId: ID, title: 'Sans version' }))).toEqual({ ok: false, error: t.stale_anon, stale: true });
-    expect(await updateMeta(form({ docId: ID, version: 'abc', title: 'Sans version' }))).toEqual({ ok: false, error: t.stale_anon, stale: true });
+    expect(await updateMeta(form({ docId: ID, title: 'Sans version' }))).toEqual({ ok: false, error: tr('This document was changed in the meantime; reload the record.'), stale: true });
+    expect(await updateMeta(form({ docId: ID, version: 'abc', title: 'Sans version' }))).toEqual({ ok: false, error: tr('This document was changed in the meantime; reload the record.'), stale: true });
     expect((await getDoc(db(), ID)).title).toBe(ID);
   });
 
   it('answers a form on the former ID of a reclassified document as outdated, to its drafting circle only', async () => {
     await addDoc(db(), { id: ID, revisions: [{ letter: 'A', status: 'draft', versions: ['owner'] }] });
     const seen = await viewOf(db(), ID);
-    expect(await saveMeta('manager', seen, { department: 'ING' })).toMatchObject({ ok: true, message: `${t.act_reclass} : PRO-ING-0001` });
+    expect(await saveMeta('manager', seen, { department: 'ING' })).toMatchObject({ ok: true, message: `${tr('Reclassification')} : PRO-ING-0001` });
     expect(await saveMeta('owner', seen, { title: 'Ancien ID' })).toEqual(stale('manager'));
     expect((await getDoc(db(), 'PRO-ING-0001')).title).toBe(ID);
     // Someone who may not read the draft learns nothing of it.
-    expect(await saveMeta('writer', seen, { title: 'Ancien ID' })).toEqual({ ok: false, error: t.not_found });
+    expect(await saveMeta('writer', seen, { title: 'Ancien ID' })).toEqual({ ok: false, error: tr('Document not found.') });
   });
 
   it('still refuses a locked document with its lock, before its version', async () => {
     await addDoc(db(), { id: ID, legalHold: true });
     const seen = await viewOf(db(), ID);
-    expect(await saveMeta('owner', seen, { title: 'Gelé' })).toEqual({ ok: false, error: t.locked_hold });
+    expect(await saveMeta('owner', seen, { title: 'Gelé' })).toEqual({ ok: false, error: tr('Document under legal hold: it cannot be changed.') });
   });
 });
 
@@ -208,7 +208,7 @@ describe('setReaders from an outdated view', () => {
     await addDoc(db(), { id: ID, conf: 'confidentiel' });
     const seen = Number((await viewOf(db(), ID)).version);
     actAs('owner');
-    expect(await setReaders(ID, ['writer2'], seen)).toEqual({ ok: true, message: t.saved_ok });
+    expect(await setReaders(ID, ['writer2'], seen)).toEqual({ ok: true, message: tr('Changes saved') });
     actAs('manager');
     expect(await setReaders(ID, ['engineer'], seen)).toEqual(stale('owner'));
     expect(await readersOf()).toEqual(['writer2']);
@@ -244,12 +244,12 @@ describe('setReaders from an outdated view', () => {
   it('answers a list chosen on the former ID of a reclassified document as outdated, to whoever may still set it only', async () => {
     await addDoc(db(), { id: ID, conf: 'confidentiel', revisions: [{ letter: 'A', status: 'draft', modifierId: 'writer', versions: ['owner'] }] });
     const seen = Number((await viewOf(db(), ID)).version);
-    expect(await saveMeta('manager', await viewOf(db(), ID), { department: 'ING' })).toMatchObject({ ok: true, message: `${t.act_reclass} : PRO-ING-0001` });
+    expect(await saveMeta('manager', await viewOf(db(), ID), { department: 'ING' })).toMatchObject({ ok: true, message: `${tr('Reclassification')} : PRO-ING-0001` });
     actAs('owner');
     expect(await setReaders(ID, ['writer2'], seen)).toEqual(stale('manager'));
     // The designated author reads the draft but may not name its readers: the former ID tells him nothing more.
     actAs('writer');
-    expect(await setReaders(ID, ['writer2'], seen)).toEqual({ ok: false, error: t.not_found });
+    expect(await setReaders(ID, ['writer2'], seen)).toEqual({ ok: false, error: tr('Document not found.') });
     expect(await readersOf('PRO-ING-0001')).toEqual([]);
   });
 });
@@ -309,10 +309,10 @@ describe('addWorkingVersion from an outdated view (D-12)', () => {
   it('answers an upload on the former ID of a reclassified draft as outdated, to its drafting circle only', async () => {
     await addDoc(db(), { id: ID, revisions: [{ letter: 'A', status: 'draft', versions: ['owner'] }] });
     const seen = await viewOf(db(), ID);
-    expect(await saveMeta('manager', seen, { department: 'ING' })).toMatchObject({ ok: true, message: `${t.act_reclass} : PRO-ING-0001` });
+    expect(await saveMeta('manager', seen, { department: 'ING' })).toMatchObject({ ok: true, message: `${tr('Reclassification')} : PRO-ING-0001` });
     expect(await upload('owner', seen)).toEqual(stale('manager'));
     // Outside the drafting circle the draft does not exist, nor does its former ID (D-14).
-    expect(await upload('writer', seen)).toEqual({ ok: false, error: t.not_found });
+    expect(await upload('writer', seen)).toEqual({ ok: false, error: tr('Document not found.') });
     expect(await versions('PRO-ING-0001')).toEqual([['A.1', 'owner']]);
   });
 });

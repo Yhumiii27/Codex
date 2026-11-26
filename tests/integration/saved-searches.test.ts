@@ -4,13 +4,13 @@ import { schema as s } from '@/db';
 import { deleteSavedSearch, saveSearch } from '@/lib/actions';
 import { getCtx } from '@/lib/context';
 import { savedSearchesSeenBy, seesSavedSearch } from '@/lib/access';
-import { DICT } from '@/lib/i18n';
 import { listSavedSearches } from '@/lib/queries';
 import { parseSearch, type Facets, type SearchInput } from '@/lib/search';
 import { addDoc, fixClock, setupDb } from '../support/db';
 import { DEPARTMENTS, PEOPLE, type Person } from '../support/fixtures';
 import { searchChecked } from '../support/search';
 import { actAs } from '../support/session';
+import { translatorFor } from '@/i18n';
 
 // Saved searches of /recherche (point 2 of docs/reste-a-faire.md): whoever may read saves personal searches, seen by
 // them only; records managers and administrators share searches with a department (its members) or the whole group,
@@ -23,7 +23,7 @@ vi.mock('next/cache', () => ({ refresh: () => {} }));
 const db = setupDb();
 fixClock();
 
-const t = DICT.fr;
+const tr = translatorFor('fr');
 const PRO: Facets = { type: ['PRO'] };
 
 async function save(who: Person, label: string, scope = 'personal', department: string | null = null, q = '', facets: Facets = PRO, more: SearchInput = {}) {
@@ -46,7 +46,7 @@ const count = async () => (await db().select().from(s.savedSearches)).length;
 
 describe('saving a search', () => {
   it('keeps the criteria under a label, as a personal search of whoever saves it', async () => {
-    expect(await save('writer', 'Mes procédures', 'personal', null, ' pompe ', { type: ['PRO'], department: ['QUA'] })).toEqual({ ok: true, message: t.search_saved_ok });
+    expect(await save('writer', 'Mes procédures', 'personal', null, ' pompe ', { type: ['PRO'], department: ['QUA'] })).toEqual({ ok: true, message: tr('Search saved') });
     const [row] = await db().select().from(s.savedSearches);
     expect(row).toMatchObject({ label: 'Mes procédures', q: 'pompe', facets: { type: ['PRO'], department: ['QUA'] }, period: null, orderBy: null, ownerId: 'writer', scope: 'personal', department: null });
   });
@@ -75,14 +75,14 @@ describe('saving a search', () => {
   });
 
   it('refuses, with its own message, what a saved search could not keep whole', async () => {
-    expect(await save('writer', 'Trop long', 'personal', null, '', { type: ['PRO'], source: ['x'.repeat(301)] })).toEqual({ ok: false, error: t.search_too_long });
-    expect(await save('writer', 'Trop de valeurs', 'personal', null, '', { keywords: [...Array(51).keys()].map((i) => `k${i}`) })).toEqual({ ok: false, error: t.search_too_long });
-    expect(await save('writer', 'Texte trop long', 'personal', null, 'x'.repeat(201))).toEqual({ ok: false, error: t.search_too_long });
+    expect(await save('writer', 'Trop long', 'personal', null, '', { type: ['PRO'], source: ['x'.repeat(301)] })).toEqual({ ok: false, error: tr('This search goes beyond what a saved search keeps: a text of 200 characters, 50 values per filter, of 300 characters each.') });
+    expect(await save('writer', 'Trop de valeurs', 'personal', null, '', { keywords: [...Array(51).keys()].map((i) => `k${i}`) })).toEqual({ ok: false, error: tr('This search goes beyond what a saved search keeps: a text of 200 characters, 50 values per filter, of 300 characters each.') });
+    expect(await save('writer', 'Texte trop long', 'personal', null, 'x'.repeat(201))).toEqual({ ok: false, error: tr('This search goes beyond what a saved search keeps: a text of 200 characters, 50 values per filter, of 300 characters each.') });
     expect(await count()).toBe(0);
   });
 
   it('saves a period alone, but not an order alone, and drops an invalid period or order', async () => {
-    expect(await save('writer', 'Tri seul', 'personal', null, '', {}, { sort: 'title' })).toEqual({ ok: false, error: t.search_no_criteria });
+    expect(await save('writer', 'Tri seul', 'personal', null, '', {}, { sort: 'title' })).toEqual({ ok: false, error: tr('Pick at least one criterion before saving the search.') });
     expect(await save('writer', 'Période', 'personal', null, '', {}, { period: { field: 'expiry', from: null, to: '2026-12-31' } })).toMatchObject({ ok: true });
     expect(await save('writer', 'Bizarre', 'personal', null, 'pompe', {}, { period: { field: 'issued', from: 'hier', to: null }, sort: 'size' } as unknown as SearchInput)).toMatchObject({ ok: true });
     const rows = await db().select().from(s.savedSearches).orderBy(s.savedSearches.id);
@@ -100,21 +100,21 @@ describe('saving a search', () => {
 
   it('is refused without the read permission', async () => {
     await db().update(s.rolePermissions).set({ granted: false }).where(and(eq(s.rolePermissions.role, 'contributeur'), eq(s.rolePermissions.perm, 'read')));
-    expect(await save('writer', 'Rien')).toEqual({ ok: false, error: `${t.not_allowed} : ${t.perm_read}` });
+    expect(await save('writer', 'Rien')).toEqual({ ok: false, error: `${tr('Permission required')} : ${tr('Read')}` });
     expect(await count()).toBe(0);
   });
 
   it('refuses a missing or too long label, and a search without criteria', async () => {
-    expect(await save('writer', '   ')).toEqual({ ok: false, error: t.search_label_invalid });
-    expect(await save('writer', 'x'.repeat(81))).toEqual({ ok: false, error: t.search_label_invalid });
-    expect(await save('writer', 'Vide', 'personal', null, '  ', {})).toEqual({ ok: false, error: t.search_no_criteria });
+    expect(await save('writer', '   ')).toEqual({ ok: false, error: tr('Give the search a name (80 characters at most).') });
+    expect(await save('writer', 'x'.repeat(81))).toEqual({ ok: false, error: tr('Give the search a name (80 characters at most).') });
+    expect(await save('writer', 'Vide', 'personal', null, '  ', {})).toEqual({ ok: false, error: tr('Pick at least one criterion before saving the search.') });
     // Unknown facets are not criteria.
-    expect(await save('writer', 'Inconnue', 'personal', null, '', { colour: ['red'] } as Facets)).toEqual({ ok: false, error: t.search_no_criteria });
+    expect(await save('writer', 'Inconnue', 'personal', null, '', { colour: ['red'] } as Facets)).toEqual({ ok: false, error: tr('Pick at least one criterion before saving the search.') });
     expect(await count()).toBe(0);
   });
 
   it('refuses an unknown scope', async () => {
-    expect(await save('manager', 'Tous', 'everyone')).toEqual({ ok: false, error: t.error });
+    expect(await save('manager', 'Tous', 'everyone')).toEqual({ ok: false, error: tr('Something went wrong') });
     expect(await count()).toBe(0);
   });
 });
@@ -122,8 +122,8 @@ describe('saving a search', () => {
 describe('sharing a search', () => {
   it('is reserved to records managers and administrators', async () => {
     for (const who of ['writer', 'head', 'auditor'] as const) {
-      expect(await save(who, `${who} groupe`, 'group'), who).toEqual({ ok: false, error: t.not_allowed });
-      expect(await save(who, `${who} QUA`, 'department', 'QUA'), who).toEqual({ ok: false, error: t.not_allowed });
+      expect(await save(who, `${who} groupe`, 'group'), who).toEqual({ ok: false, error: tr('Permission required') });
+      expect(await save(who, `${who} QUA`, 'department', 'QUA'), who).toEqual({ ok: false, error: tr('Permission required') });
     }
     expect(await count()).toBe(0);
     expect(await save('manager', 'Groupe', 'group')).toMatchObject({ ok: true });
@@ -134,8 +134,8 @@ describe('sharing a search', () => {
   });
 
   it('with a department needs a known department', async () => {
-    expect(await save('manager', 'Sans département', 'department', null)).toEqual({ ok: false, error: t.error });
-    expect(await save('manager', 'Inconnu', 'department', 'XYZ')).toEqual({ ok: false, error: t.error });
+    expect(await save('manager', 'Sans département', 'department', null)).toEqual({ ok: false, error: tr('Something went wrong') });
+    expect(await save('manager', 'Inconnu', 'department', 'XYZ')).toEqual({ ok: false, error: tr('Something went wrong') });
     expect(await save('manager', 'Qualité', 'department', 'QUA')).toMatchObject({ ok: true });
     const [row] = await db().select().from(s.savedSearches);
     expect(row).toMatchObject({ scope: 'department', department: 'QUA', ownerId: 'manager' });
@@ -221,7 +221,7 @@ describe('deleting a saved search', () => {
   it('lets the owner delete their personal search', async () => {
     await save('writer', 'Perso writer');
     actAs('writer');
-    expect(await deleteSavedSearch(await idOf('Perso writer'))).toEqual({ ok: true, message: t.search_deleted_ok });
+    expect(await deleteSavedSearch(await idOf('Perso writer'))).toEqual({ ok: true, message: tr('Search deleted') });
     expect(await count()).toBe(0);
   });
 
@@ -230,7 +230,7 @@ describe('deleting a saved search', () => {
     const id = await idOf('Perso writer');
     for (const who of ['writer2', 'owner', 'manager'] as const) {
       actAs(who);
-      expect(await deleteSavedSearch(id), who).toEqual({ ok: false, error: t.search_not_found });
+      expect(await deleteSavedSearch(id), who).toEqual({ ok: false, error: tr('Saved search not found.') });
     }
     expect(await count()).toBe(1);
   });
@@ -241,12 +241,12 @@ describe('deleting a saved search', () => {
     for (const label of ['Groupe', 'Qualité']) {
       for (const who of ['writer', 'head'] as const) {
         actAs(who);
-        expect(await deleteSavedSearch(await idOf(label)), `${who} ${label}`).toEqual({ ok: false, error: t.not_allowed });
+        expect(await deleteSavedSearch(await idOf(label)), `${who} ${label}`).toEqual({ ok: false, error: tr('Permission required') });
       }
     }
     // Outside the department, the department search does not exist.
     actAs('writer2');
-    expect(await deleteSavedSearch(await idOf('Qualité'))).toEqual({ ok: false, error: t.search_not_found });
+    expect(await deleteSavedSearch(await idOf('Qualité'))).toEqual({ ok: false, error: tr('Saved search not found.') });
     expect(await count()).toBe(2);
     actAs('manager');
     expect(await deleteSavedSearch(await idOf('Groupe'))).toMatchObject({ ok: true });
@@ -261,7 +261,7 @@ describe('deleting a saved search', () => {
     const id = await idOf('Perso writer');
     actAs('writer');
     expect(await deleteSavedSearch(id)).toMatchObject({ ok: true });
-    expect(await deleteSavedSearch(id)).toEqual({ ok: false, error: t.search_not_found });
-    expect(await deleteSavedSearch('1' as unknown as number)).toEqual({ ok: false, error: t.search_not_found });
+    expect(await deleteSavedSearch(id)).toEqual({ ok: false, error: tr('Saved search not found.') });
+    expect(await deleteSavedSearch('1' as unknown as number)).toEqual({ ok: false, error: tr('Saved search not found.') });
   });
 });

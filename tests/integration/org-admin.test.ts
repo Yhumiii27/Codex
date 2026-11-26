@@ -3,11 +3,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { schema as s } from '@/db';
 import { addFunctionHolder, addOrgValue, createDocument, deleteOrgValue, requestValidation, saveSearch, updateMeta, updateOrgValue } from '@/lib/actions';
 import { COOKIE_LANG, getCtx } from '@/lib/context';
-import { DICT } from '@/lib/i18n';
 import { importDocument } from '@/lib/importer';
 import { auditDetailL, auditTargetL, departmentPage, orgUsage } from '@/lib/queries';
 import { addDoc, baseOf, fixClock, getDoc, setupDb, viewOf } from '../support/db';
 import { actAs, cookieStore } from '../support/session';
+import { translatorFor } from '@/i18n';
 
 // Administration of the organisation (point 62 of docs/reste-a-faire.md; D-10, D-19): departments and sites are renamed
 // (French and English labels) and made inactive or active again by whoever has the right to administer; a department's
@@ -23,7 +23,7 @@ vi.mock('next/cache', () => ({ refresh: () => {} }));
 const db = setupDb();
 fixClock();
 
-const t = DICT.fr;
+const tr = translatorFor('fr');
 
 function form(fields: Record<string, string>): FormData {
   const fd = new FormData();
@@ -66,7 +66,7 @@ describe('the right to administer', () => {
     const before = await everything();
     for (const who of ['owner', 'researcher', 'auditor'] as const) {
       actAs(who);
-      expect(await call(), who).toEqual({ ok: false, error: t.forbidden });
+      expect(await call(), who).toEqual({ ok: false, error: tr('The simulated role cannot access this screen.') });
     }
     expect(await everything()).toEqual(before);
     actAs('manager');
@@ -80,7 +80,7 @@ describe('renaming', () => {
     await addDoc(db(), { id: 'PRO-QUA-0001' });
     actAs('manager');
     // A code sent along is not read: the department is the one named `original`, and keeps its code.
-    expect(await updateOrgValue('department', orgForm('QUA', { code: 'QAL', labelFr: 'Qualité', labelEn: 'Quality' }))).toEqual({ ok: true, message: t.saved_ok });
+    expect(await updateOrgValue('department', orgForm('QUA', { code: 'QAL', labelFr: 'Qualité', labelEn: 'Quality' }))).toEqual({ ok: true, message: tr('Changes saved') });
     expect(await department('QUA')).toMatchObject({ code: 'QUA', labelFr: 'Qualité', labelEn: 'Quality', active: true });
     expect(await department('QAL')).toBeUndefined();
     expect(await getDoc(db(), 'PRO-QUA-0001')).toMatchObject({ id: 'PRO-QUA-0001', department: 'QUA' });
@@ -90,20 +90,20 @@ describe('renaming', () => {
     expect(entry.data?.changes).toEqual([{ field: 'labelFr', before: 'QUA', after: 'Qualité' }, { field: 'labelEn', before: 'QUA', after: 'Quality' }]);
     const ctx = await getCtx();
     expect(ctx.label('department', 'QUA')).toBe('Qualité');
-    expect(auditTargetL(ctx, 'department', 'QUA')).toBe(`${t.department} · QUA · Qualité`);
-    expect(auditDetailL(ctx, entry)).toBe(`${t.label_fr} : QUA → Qualité ; ${t.label_en} : QUA → Quality`);
+    expect(auditTargetL(ctx, 'department', 'QUA')).toBe(`${tr('Department / Function')} · QUA · Qualité`);
+    expect(auditDetailL(ctx, entry)).toBe(`${tr('Label (FR)')} : QUA → Qualité ; ${tr('Label (EN)')} : QUA → Quality`);
     // The department's page (lot 5) follows.
     expect(await departmentPage(ctx, 'QUA')).toMatchObject({ code: 'QUA', label: 'Qualité', active: true });
   });
 
   it('refuses an empty French label, takes the French one for an empty English label, and journals nothing for no change', async () => {
     actAs('manager');
-    expect(await updateOrgValue('department', orgForm('ING', { labelFr: ' ' }))).toEqual({ ok: false, error: t.reg_label_required, field: 'labelFr' });
+    expect(await updateOrgValue('department', orgForm('ING', { labelFr: ' ' }))).toEqual({ ok: false, error: tr('The label is required.'), field: 'labelFr' });
     expect(await updateOrgValue('department', orgForm('ING', { labelFr: 'Ingénierie', labelEn: '' }))).toMatchObject({ ok: true });
     expect(await department('ING')).toMatchObject({ labelFr: 'Ingénierie', labelEn: 'Ingénierie' });
     expect(await updateOrgValue('department', orgForm('ING', { labelFr: 'Ingénierie', labelEn: 'Ingénierie' }))).toMatchObject({ ok: true });
     expect(await entries('department', 'ING')).toHaveLength(1);
-    expect(await updateOrgValue('department', orgForm('XXX'))).toEqual({ ok: false, error: t.org_not_found });
+    expect(await updateOrgValue('department', orgForm('XXX'))).toEqual({ ok: false, error: tr('This value no longer exists: reload the page.') });
   });
 
   it('gives a site French and English labels, read in the reader’s language; its key stays', async () => {
@@ -150,23 +150,23 @@ describe('a department made inactive', () => {
     expect(await updateOrgValue('department', orgForm('QUA', { labelFr: 'Qualité', labelEn: 'Quality', active: 'off' }))).toMatchObject({ ok: true });
     expect(await department('QUA')).toMatchObject({ active: false });
     const [entry] = await entries('department', 'QUA');
-    expect(auditDetailL(await getCtx(), entry)).toBe(`${t.label_fr} : QUA → Qualité ; ${t.label_en} : QUA → Quality ; ${t.active_label} → ${t.inactive}`);
+    expect(auditDetailL(await getCtx(), entry)).toBe(`${tr('Label (FR)')} : QUA → Qualité ; ${tr('Label (EN)')} : QUA → Quality ; ${tr('Active')} → ${tr('Inactive')}`);
 
     // A new document: refused in the inactive department, under its field; the user's department is not swapped silently.
     actAs('writer');
-    expect(await createDocument(form({ title: 'Procédure', typeCode: 'PRO', department: 'QUA' }))).toEqual({ ok: false, error: t.department_inactive, field: 'department' });
-    expect(await createDocument(form({ title: 'Procédure', typeCode: 'PRO' }))).toEqual({ ok: false, error: t.department_inactive, field: 'department' });
+    expect(await createDocument(form({ title: 'Procédure', typeCode: 'PRO', department: 'QUA' }))).toEqual({ ok: false, error: tr('This department is inactive: it is no longer offered, except where it is already set.'), field: 'department' });
+    expect(await createDocument(form({ title: 'Procédure', typeCode: 'PRO' }))).toEqual({ ok: false, error: tr('This department is inactive: it is no longer offered, except where it is already set.'), field: 'department' });
     expect(await createDocument(form({ title: 'Procédure', typeCode: 'PRO', department: 'ING' }))).toMatchObject({ ok: true });
     // An existing document keeps it through an edit; another one cannot move to it.
     expect(await updateMeta(form({ docId: 'PRO-QUA-0001', version: (await viewOf(db(), 'PRO-QUA-0001')).version, title: 'Procédure qualité' }))).toMatchObject({ ok: true });
     expect(await getDoc(db(), 'PRO-QUA-0001')).toMatchObject({ title: 'Procédure qualité', department: 'QUA' });
-    expect(await updateMeta(form({ docId: 'PRO-ING-0001', version: (await viewOf(db(), 'PRO-ING-0001')).version, department: 'QUA' }))).toEqual({ ok: false, error: t.department_inactive, field: 'department' });
+    expect(await updateMeta(form({ docId: 'PRO-ING-0001', version: (await viewOf(db(), 'PRO-ING-0001')).version, department: 'QUA' }))).toEqual({ ok: false, error: tr('This department is inactive: it is no longer offered, except where it is already set.'), field: 'department' });
 
     // Holders: those named stay (a new one may still be named: next test).
     actAs('manager');
     expect(await db().select().from(s.functionHolders).where(eq(s.functionHolders.scopeValue, 'QUA'))).toHaveLength(1);
     // Searches: none newly shared with it.
-    expect(await saveSearch('Procédures', { q: '', facets: { type: ['PRO'] } }, 'department', 'QUA')).toEqual({ ok: false, error: t.department_inactive });
+    expect(await saveSearch('Procédures', { q: '', facets: { type: ['PRO'] } }, 'department', 'QUA')).toEqual({ ok: false, error: tr('This department is inactive: it is no longer offered, except where it is already set.') });
     expect(await saveSearch('Procédures', { q: '', facets: { type: ['PRO'] } }, 'department', 'ING')).toMatchObject({ ok: true });
 
     // Its page stays, marked, with its documents; the migration still imports into it (legacy documents, D-21).
@@ -195,11 +195,11 @@ describe('a department made inactive', () => {
     actAs('owner');
     const refused = await requestValidation(ID, null, await baseOf(db(), ID));
     expect(refused).toMatchObject({ ok: false });
-    expect(refused.ok ? '' : refused.error).toContain(t.no_holder);
+    expect(refused.ok ? '' : refused.error).toContain(tr('No holder available for the function'));
     // A new head is named for the inactive department, without bringing it back; an unknown department is still refused.
     actAs('manager');
     expect(await addFunctionHolder('resp_departement', 'QUA', 'head')).toEqual({ ok: true });
-    expect(await addFunctionHolder('resp_departement', 'XXX', 'head')).toEqual({ ok: false, error: t.holder_scope_invalid });
+    expect(await addFunctionHolder('resp_departement', 'XXX', 'head')).toEqual({ ok: false, error: tr('This department, project or programme does not exist or is no longer active: reload the page.') });
     expect(await department('QUA')).toMatchObject({ active: false });
     actAs('owner');
     expect(await requestValidation(ID, null, await baseOf(db(), ID))).toMatchObject({ ok: true });
@@ -211,7 +211,7 @@ describe('a department made inactive', () => {
   it('leaves one department active at least: a new document without attachment takes its code', async () => {
     actAs('manager');
     for (const code of ['ING', 'HSE', 'PRJ', 'DIR', 'RDI']) expect(await updateOrgValue('department', orgForm(code, { active: 'off' })), code).toMatchObject({ ok: true });
-    expect(await updateOrgValue('department', orgForm('QUA', { active: 'off' }))).toEqual({ ok: false, error: t.org_last_department });
+    expect(await updateOrgValue('department', orgForm('QUA', { active: 'off' }))).toEqual({ ok: false, error: tr('At least one department must stay active: a new document without attachment takes the code of its department.') });
     await db().insert(s.departments).values({ code: 'LOG', labelFr: 'Logistique', labelEn: 'Logistics', active: false, sort: 9 });
     // Deleting an inactive one changes nothing to the active ones; the last active one is not deleted (it is in use here anyway).
     expect(await deleteOrgValue('department', 'LOG')).toMatchObject({ ok: true });
@@ -227,7 +227,7 @@ describe('a department made inactive', () => {
     expect(await addOrgValue('department', 'LGO', 'Logistique', 'Logistics')).toEqual({ ok: true });
     await db().update(s.departments).set({ active: false }).where(ne(s.departments.code, 'LGO'));
     expect((await orgUsage()).departments.get('LGO')).toBeUndefined();
-    expect(await deleteOrgValue('department', 'LGO')).toEqual({ ok: false, error: t.org_last_department });
+    expect(await deleteOrgValue('department', 'LGO')).toEqual({ ok: false, error: tr('At least one department must stay active: a new document without attachment takes the code of its department.') });
     expect(await department('LGO')).toMatchObject({ active: true });
     expect((await entries('department', 'LGO')).map((e) => e.action)).toEqual(['org_add']);
     // With another one active again, the unused one goes.
@@ -258,7 +258,7 @@ describe('deleting', () => {
     await addLog();
     await use();
     actAs('manager');
-    expect(await deleteOrgValue('department', 'LOG')).toEqual({ ok: false, error: t.org_department_in_use });
+    expect(await deleteOrgValue('department', 'LOG')).toEqual({ ok: false, error: tr('This department is in use (documents, people, function holders, shared searches or IDs already given under its code): it cannot be deleted, only made inactive.') });
     expect(await department('LOG')).toMatchObject({ labelFr: 'Logistique', active: true });
     expect(await entries('department', 'LOG')).toEqual([]);
     expect(await updateOrgValue('department', orgForm('LOG', { labelFr: 'Logistique', labelEn: 'Logistics', active: 'off' }))).toMatchObject({ ok: true });
@@ -268,7 +268,7 @@ describe('deleting', () => {
     actAs('manager');
     expect(await addOrgValue('department', 'lgo', 'Logistique', 'Logistics')).toEqual({ ok: true });
     expect((await orgUsage()).departments.get('LGO')).toBeUndefined();
-    expect(await deleteOrgValue('department', 'LGO')).toEqual({ ok: true, message: t.reg_deleted });
+    expect(await deleteOrgValue('department', 'LGO')).toEqual({ ok: true, message: tr('Deleted.') });
     expect(await department('LGO')).toBeUndefined();
     const journal = await entries('department', 'LGO');
     expect(journal.map((e) => e.action)).toEqual(['org_add', 'org_remove']);
@@ -276,7 +276,7 @@ describe('deleting', () => {
       { field: 'code', before: 'LGO', after: null }, { field: 'labelFr', before: 'Logistique', after: null },
       { field: 'labelEn', before: 'Logistics', after: null }, { field: 'active', before: true, after: null },
     ]);
-    expect(await deleteOrgValue('department', 'LGO')).toEqual({ ok: false, error: t.org_not_found });
+    expect(await deleteOrgValue('department', 'LGO')).toEqual({ ok: false, error: tr('This value no longer exists: reload the page.') });
   });
 
   it('gives a value added after a deletion a rank of its own: renaming or retiring leaves the order as it was', async () => {
@@ -329,12 +329,12 @@ describe('deleting', () => {
     await db().update(s.documents).set({ site: 'lyon' }).where(eq(s.documents.id, 'PRO-QUA-0001'));
     await db().update(s.users).set({ site: 'le_havre' }).where(eq(s.users.id, 'pm'));
     actAs('manager');
-    expect(await deleteOrgValue('site', 'lyon')).toEqual({ ok: false, error: t.org_site_in_use });
-    expect(await deleteOrgValue('site', 'le_havre')).toEqual({ ok: false, error: t.org_site_in_use });
+    expect(await deleteOrgValue('site', 'lyon')).toEqual({ ok: false, error: tr('This site is in use (documents or people): it cannot be deleted, only made inactive.') });
+    expect(await deleteOrgValue('site', 'le_havre')).toEqual({ ok: false, error: tr('This site is in use (documents or people): it cannot be deleted, only made inactive.') });
     expect(await addOrgValue('site', '', 'Marseille', '')).toEqual({ ok: true });
-    expect(await deleteOrgValue('site', 'marseille')).toEqual({ ok: true, message: t.reg_deleted });
+    expect(await deleteOrgValue('site', 'marseille')).toEqual({ ok: true, message: tr('Deleted.') });
     expect((await entries('site', 'marseille')).map((e) => e.action)).toEqual(['org_add', 'org_remove']);
-    expect(await deleteOrgValue('town' as 'site', 'lyon')).toEqual({ ok: false, error: t.error });
+    expect(await deleteOrgValue('town' as 'site', 'lyon')).toEqual({ ok: false, error: tr('Something went wrong') });
   });
 });
 
@@ -345,12 +345,12 @@ describe('a site made inactive', () => {
     await db().update(s.documents).set({ site: 'lyon' }).where(eq(s.documents.id, 'PRO-QUA-0001'));
     actAs('manager');
     expect(await updateOrgValue('site', orgForm('lyon', { labelFr: 'Lyon — siège', labelEn: 'Lyon — head office', active: 'off' }))).toMatchObject({ ok: true });
-    expect(auditDetailL(await getCtx(), (await entries('site', 'lyon'))[0])).toBe(`${t.active_label} → ${t.inactive}`);
+    expect(auditDetailL(await getCtx(), (await entries('site', 'lyon'))[0])).toBe(`${tr('Active')} → ${tr('Inactive')}`);
     actAs('writer');
-    expect(await createDocument(form({ title: 'Procédure', typeCode: 'PRO', site: 'lyon' }))).toEqual({ ok: false, error: t.site_inactive, field: 'site' });
+    expect(await createDocument(form({ title: 'Procédure', typeCode: 'PRO', site: 'lyon' }))).toEqual({ ok: false, error: tr('This site is inactive: it is no longer offered, except where it is already set.'), field: 'site' });
     expect(await createDocument(form({ title: 'Procédure', typeCode: 'PRO', site: 'le_havre' }))).toMatchObject({ ok: true });
     expect(await updateMeta(form({ docId: 'PRO-QUA-0001', version: (await viewOf(db(), 'PRO-QUA-0001')).version, title: 'Procédure qualité', site: 'lyon' }))).toMatchObject({ ok: true });
     expect(await getDoc(db(), 'PRO-QUA-0001')).toMatchObject({ title: 'Procédure qualité', site: 'lyon' });
-    expect(await updateMeta(form({ docId: 'PRO-QUA-0002', version: (await viewOf(db(), 'PRO-QUA-0002')).version, site: 'lyon' }))).toEqual({ ok: false, error: t.site_inactive, field: 'site' });
+    expect(await updateMeta(form({ docId: 'PRO-QUA-0002', version: (await viewOf(db(), 'PRO-QUA-0002')).version, site: 'lyon' }))).toEqual({ ok: false, error: tr('This site is inactive: it is no longer offered, except where it is already set.'), field: 'site' });
   });
 });

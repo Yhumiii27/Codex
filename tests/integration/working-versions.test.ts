@@ -4,12 +4,12 @@ import { asc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { FILES_DIR, schema as s } from '@/db';
 import { addWorkingVersion, createDocument } from '@/lib/actions';
-import { DICT } from '@/lib/i18n';
 import { applyChangeDecision } from '@/lib/lifecycle';
 import { submitChange } from '@/server/integrations/vigie';
 import { addDoc, fixClock, getDoc, journalOf, revisionStatuses, setupDb, viewOf } from '../support/db';
 import type { Person } from '../support/fixtures';
 import { actAs } from '../support/session';
+import { translatorFor } from '@/i18n';
 
 // Creating a document and adding working versions through the Server Actions: the ID is given to the draft at
 // creation (D-09, D-10), working versions A.1, A.2… are kept under the same letter (D-12, docs/modele-cible.md §4) and
@@ -36,7 +36,7 @@ afterAll(() => {
   rmSync(FILES_DIR, { recursive: true, force: true });
 });
 
-const t = DICT.fr;
+const tr = translatorFor('fr');
 const ID = 'PRO-QUA-0001';
 const pdf = (name = 'plan.pdf') => new File(['%PDF-1.4\n1 0 obj << /Type /Pages /Count 2 >> endobj\n%%EOF'], name, { type: 'application/pdf' });
 
@@ -71,7 +71,7 @@ async function versions(docId = ID) {
 describe('createDocument (D-09, D-10)', () => {
   it('gives the draft its ID at creation, with revision A and working version A.1', async () => {
     actAs('owner');
-    expect(await createDocument(form({ title: 'Procédure', typeCode: 'PRO', file: pdf() }))).toEqual({ ok: true, href: `/documents/${ID}?tab=meta`, message: `${t.id_preview} : ${ID}` });
+    expect(await createDocument(form({ title: 'Procédure', typeCode: 'PRO', file: pdf() }))).toEqual({ ok: true, href: `/documents/${ID}?tab=meta`, message: `${tr('Assigned ID')} : ${ID}` });
     expect(await getDoc(db(), ID)).toMatchObject({ ownerId: 'owner', department: 'QUA', status: 'draft', revInForce: null, revWorking: 'A' });
     expect(await revisionStatuses(db(), ID)).toEqual({ A: 'draft' });
     expect(await versions()).toEqual([['A.1', 'owner', `${ID}_A.1.pdf`]]);
@@ -118,17 +118,17 @@ describe('addWorkingVersion (D-12)', () => {
 
   it('is refused outside the drafting circle (D-14)', async () => {
     await addDoc(db(), { id: ID, revisions: [{ letter: 'A', status: 'in_force' }, { letter: 'B', status: 'draft', modifierId: 'writer2' }] });
-    expect(await upload('writer')).toEqual({ ok: false, error: t.not_allowed });
+    expect(await upload('writer')).toEqual({ ok: false, error: tr('Permission required') });
     // A draft that never entered into force does not exist for them.
     await addDoc(db(), { id: 'PRO-QUA-0002', revisions: [{ letter: 'A', status: 'draft' }] });
-    expect(await upload('writer', 'PRO-QUA-0002')).toEqual({ ok: false, error: t.not_found });
+    expect(await upload('writer', 'PRO-QUA-0002')).toEqual({ ok: false, error: tr('Document not found.') });
   });
 
   it('is refused while the revision is under review, and on a locked document', async () => {
     await addDoc(db(), { id: ID, revisions: [{ letter: 'A', status: 'in_review', versions: ['owner'] }] });
-    expect(await upload('owner')).toEqual({ ok: false, error: t.not_draft });
+    expect(await upload('owner')).toEqual({ ok: false, error: tr('This revision is not a draft.') });
     await addDoc(db(), { id: 'PRO-QUA-0002', legalHold: true, revisions: [{ letter: 'A', status: 'draft' }] });
-    expect(await upload('owner', 'PRO-QUA-0002')).toEqual({ ok: false, error: t.locked_hold });
+    expect(await upload('owner', 'PRO-QUA-0002')).toEqual({ ok: false, error: tr('Document under legal hold: it cannot be changed.') });
     expect(await db().select().from(s.workingVersions).where(eq(s.workingVersions.docId, 'PRO-QUA-0002'))).toEqual([]);
   });
 });

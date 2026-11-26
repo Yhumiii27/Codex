@@ -1,13 +1,13 @@
 import { redirect } from 'next/navigation';
 import { Forbidden } from '@/components/ui/Forbidden';
-import { translatorFor } from '@/i18n';
+import { msg, translatorFor } from '@/i18n';
 import { getCtx } from '@/lib/context';
 import { defaultDepartment } from '@/lib/departments';
 import { screenTitle } from '@/lib/titles';
 
 /** /departements opens the page of the user's department (the first one for someone without a department). */
 export function generateMetadata() {
-  return screenTitle('nav_departments');
+  return screenTitle(msg('Departments'));
 }
 
 export default async function DepartmentsPage() {

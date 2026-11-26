@@ -4,11 +4,11 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { FILES_DIR, schema as s } from '@/db';
 import { addWorkingVersion, createDocument, requestValidation, restoreWorkingVersion } from '@/lib/actions';
 import { getCtx } from '@/lib/context';
-import { DICT } from '@/lib/i18n';
 import { auditDetailL, listAudit } from '@/lib/queries';
 import { addDoc, baseOf, fixClock, journalOf, setupDb, viewOf } from '../support/db';
 import type { Person } from '../support/fixtures';
 import { actAs, setLangCookie } from '../support/session';
+import { translate, translatorFor } from '@/i18n';
 
 // « Restaurer » in the Revisions tab (point 65 of docs/reste-a-faire.md): an earlier working version of the revision
 // being drafted becomes its next working version (D-12: nothing is removed), under the same checks as an upload
@@ -35,7 +35,7 @@ afterAll(() => {
   rmSync(FILES_DIR, { recursive: true, force: true });
 });
 
-const t = DICT.fr;
+const tr = translatorFor('fr');
 const ID = 'PRO-QUA-0001';
 const pdf = (body: string, name = 'plan.pdf') => new File([`%PDF-1.4\n% ${body}\n1 0 obj << /Type /Pages /Count 1 >> endobj\n%%EOF`], name, { type: 'application/pdf' });
 
@@ -71,7 +71,7 @@ describe('restoreWorkingVersion (point 65, D-12)', () => {
   it('makes an earlier working version the next one, its file copied, commented and journaled', async () => {
     await draftWithTwo();
     const [a1, a2] = await versions();
-    expect(await restore('owner', 1)).toEqual({ ok: true, href: `/documents/${ID}?tab=versions`, message: t.restored_version.replace('{label}', 'A.3').replace('{from}', 'A.1') });
+    expect(await restore('owner', 1)).toEqual({ ok: true, href: `/documents/${ID}?tab=versions`, message: tr('Working version {label} created from {from}').replace('{label}', 'A.3').replace('{from}', 'A.1') });
     const all = await versions();
     expect(all.map((v) => v.n)).toEqual([1, 2, 3]);
     const a3 = all[2];
@@ -92,46 +92,46 @@ describe('restoreWorkingVersion (point 65, D-12)', () => {
   it('may be done by a records manager, never outside the drafting circle (D-14)', async () => {
     await draftWithTwo();
     // A draft never in force does not exist for someone outside its circle, nor for an auditor.
-    expect(await restore('writer', 1)).toEqual({ ok: false, error: t.not_found });
-    expect(await restore('auditor', 1)).toEqual({ ok: false, error: `${t.not_allowed} : ${t.perm_upload}` });
+    expect(await restore('writer', 1)).toEqual({ ok: false, error: tr('Document not found.') });
+    expect(await restore('auditor', 1)).toEqual({ ok: false, error: `${tr('Permission required')} : ${tr('Upload')}` });
     expect(await restore('manager', 1)).toMatchObject({ ok: true });
     expect((await versions()).map((v) => [v.n, v.authorId])).toEqual([[1, 'owner'], [2, 'owner'], [3, 'manager']]);
   });
 
   it('refuses the last version, a stale view, a revision under review and a locked document, writing nothing', async () => {
     await draftWithTwo();
-    expect(await restore('owner', 2)).toEqual({ ok: false, error: t.restore_latest });
+    expect(await restore('owner', 2)).toEqual({ ok: false, error: tr('This is already the latest working version of the draft.') });
     // A view from before A.2: refused with who uploaded since.
     const old = await baseOf(db(), ID);
     expect(await restore('owner', 1, { ...old!, n: 1 })).toMatchObject({ ok: false, stale: true });
     expect(await restore('owner', 1, null)).toMatchObject({ ok: false, stale: true });
     actAs('owner');
     expect(await requestValidation(ID, null, await baseOf(db(), ID))).toMatchObject({ ok: true });
-    expect(await restore('owner', 1)).toEqual({ ok: false, error: t.not_draft });
+    expect(await restore('owner', 1)).toEqual({ ok: false, error: tr('This revision is not a draft.') });
     expect((await versions()).map((v) => v.n)).toEqual([1, 2]);
 
     await addDoc(db(), { id: 'PRO-QUA-0002', legalHold: true, revisions: [{ letter: 'A', status: 'draft', versions: ['owner', 'owner'] }] });
     actAs('owner');
     const [v1] = await versions('PRO-QUA-0002');
-    expect(await restoreWorkingVersion('PRO-QUA-0002', v1.id, await baseOf(db(), 'PRO-QUA-0002'))).toEqual({ ok: false, error: t.locked_hold });
+    expect(await restoreWorkingVersion('PRO-QUA-0002', v1.id, await baseOf(db(), 'PRO-QUA-0002'))).toEqual({ ok: false, error: tr('Document under legal hold: it cannot be changed.') });
   });
 
   it('restores only a version of the draft revision: a revision in force goes through Vigie (D-16)', async () => {
     await addDoc(db(), { id: ID, revisions: [{ letter: 'A', status: 'in_force', versions: ['owner', 'owner'] }, { letter: 'B', status: 'draft', versions: ['owner'] }] });
     const [a1] = await versions();
     actAs('owner');
-    expect(await restoreWorkingVersion(ID, a1.id, await baseOf(db(), ID))).toEqual({ ok: false, error: t.restore_other_revision });
+    expect(await restoreWorkingVersion(ID, a1.id, await baseOf(db(), ID))).toEqual({ ok: false, error: tr('Only a working version of the draft revision can be restored. Going back to a revision in force is a change request in Vigie.') });
     // Without a draft, nothing to restore into.
     await addDoc(db(), { id: 'PRO-QUA-0002' });
     const [x1] = await versions('PRO-QUA-0002');
-    expect(await restoreWorkingVersion('PRO-QUA-0002', x1.id, null)).toEqual({ ok: false, error: t.need_in_force });
+    expect(await restoreWorkingVersion('PRO-QUA-0002', x1.id, null)).toEqual({ ok: false, error: tr('Only a document in force can be the subject of a change or withdrawal request.') });
     // A version of another document.
-    expect(await restoreWorkingVersion(ID, x1.id, await baseOf(db(), ID))).toEqual({ ok: false, error: t.restore_other_revision });
+    expect(await restoreWorkingVersion(ID, x1.id, await baseOf(db(), ID))).toEqual({ ok: false, error: tr('Only a working version of the draft revision can be restored. Going back to a revision in force is a change request in Vigie.') });
   });
 
   it('refuses a version without file', async () => {
     await addDoc(db(), { id: ID, revisions: [{ letter: 'A', status: 'draft', versions: ['owner', 'owner'] }] });
-    expect(await restore('owner', 1)).toEqual({ ok: false, error: t.restore_no_file });
+    expect(await restore('owner', 1)).toEqual({ ok: false, error: tr('This working version has no file to restore.') });
   });
 });
 
@@ -157,11 +157,11 @@ describe('structured details of every code (point 68)', () => {
     const cases: [object, string, string][] = [
       [{ code: 'version', params: { label: 'A.1', size: 2048, template: 'FRM-QMS-001' } }, 'A.1 · 2,0 Ko · depuis le modèle FRM-QMS-001', 'A.1 · 2.0 KB · from template FRM-QMS-001'],
       [{ code: 'import', params: { ref: 'LEG-1', label: 'B', size: 1024 } }, 'LEG-1 → B · 1,0 Ko', 'LEG-1 → B · 1.0 KB'],
-      [{ code: 'readers', params: { n: 3 } }, `${DICT.fr.readers} (3)`, `${DICT.en.readers} (3)`],
+      [{ code: 'readers', params: { n: 3 } }, `${translate('fr', 'Named readers')} (3)`, `${translate('en', 'Named readers')} (3)`],
       [{ code: 'step_delegated', params: { wf: 'W-1', step: { fr: 'Responsable qualité', en: 'Quality manager' }, to: 'Anne' } }, 'W-1 · Responsable qualité → Anne', 'W-1 · Quality manager → Anne'],
       [{ code: 'step_reassigned', params: { wf: 'W-1', step: { fr: 'Direction', en: 'Management' }, from: 'Paul', to: 'Anne' } }, 'W-1 · Direction : Paul → Anne', 'W-1 · Management: Paul → Anne'],
       [{ code: 'step_transferred', params: { wf: 'W-1', step: { fr: 'Direction', en: 'Management' } } }, 'W-1 · Direction', 'W-1 · Management'],
-      [{ code: 'modifier_swap', params: { ref: 'ECO-1', from: 'Paul', to: 'Anne', denied: true } }, `ECO-1 · Paul → Anne (${DICT.fr.not_allowed} : ${DICT.fr.perm_upload})`, `ECO-1 · Paul → Anne (${DICT.en.not_allowed}: ${DICT.en.perm_upload})`],
+      [{ code: 'modifier_swap', params: { ref: 'ECO-1', from: 'Paul', to: 'Anne', denied: true } }, `ECO-1 · Paul → Anne (${translate('fr', 'Permission required')} : ${translate('fr', 'Upload')})`, `ECO-1 · Paul → Anne (${translate('en', 'Permission required')}: ${translate('en', 'Upload')})`],
     ];
     actAs('manager');
     const fr = await getCtx();

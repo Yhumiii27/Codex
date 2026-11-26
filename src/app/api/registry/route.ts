@@ -1,16 +1,17 @@
 import { createHash } from 'node:crypto';
 import { asc } from 'drizzle-orm';
 import { getDb, schema as s } from '@/db';
-import { CONF_LEVELS, DICT, type TKey } from '@/lib/i18n';
+import { CONF_LEVELS } from '@/lib/i18n';
 import { withRequestLog } from '@/lib/log';
 import { limitRequest } from '@/lib/ratelimit';
 import { checkBearer, credentialsOf } from '@/lib/server-auth';
+import { translate } from '@/i18n';
 
 // Register of document types, read by Keystone (docs/api.md). Read-only; nothing user-specific, so no session is read.
 // Open by default, so that Keystone keeps reading it; CODEX_REGISTRY_TOKEN (and its _NEXT during a rotation) closes it
 // to callers without that bearer token (lib/server-auth.ts).
 
-const labels = (key: string) => ({ fr: DICT.fr[key as TKey] ?? key, en: DICT.en[key as TKey] ?? key });
+const labels = (key: string) => ({ fr: translate('fr', key) ?? key, en: translate('en', key) ?? key });
 
 async function handleGet(req: Request) {
   const denied = checkBearer(req, 'registry');

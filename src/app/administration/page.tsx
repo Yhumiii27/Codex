@@ -14,7 +14,7 @@ import { getCtx, type Ctx } from '@/lib/context';
 import { featuredOf } from '@/lib/departments';
 import { fileRules, fmtMax } from '@/lib/filetypes';
 import { lockOf } from '@/lib/lifecycle';
-import { ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLE_LABEL, MATRIX_ROLES, PERMS, SIMULATED_MATRIX_ROLES, type TKey } from '@/lib/i18n';
+import { ENFORCED_PERMS, MATRIX_ROLE, MATRIX_ROLES, PERMS, SIMULATED_MATRIX_ROLES } from '@/lib/i18n';
 import { AUDIT_ID_MAX, auditPage, getMatrix, integrityL, latestIntegrityCheck, listFunctionHolders, listTemplates, orgUsage, registryUsage, retentionByType, typeView, type AuditFilter, type RegistryUsage } from '@/lib/queries';
 import { fmtDateTime, fmtSize, parisStamp, parseIsoDay } from '@/lib/format';
 import { MAX_PER_RUN, orphanReport, type OrphanScan } from '@/lib/orphans';
@@ -29,23 +29,25 @@ import { FamilyFilter } from './FamilyFilter';
 import { countBy, typeSpec } from './shared';
 import styles from './admin.module.css';
 import { screenTitle } from '@/lib/titles';
+import { msg } from '@/i18n';
+import { ACTIVITY_LABEL, ATTACHMENT_LABEL, FAMILY_GROUP_LABEL, FUNCTION_SCOPE_LABEL, LOCK_LABEL, MATRIX_ROLE_LABEL, ORIGIN_LABEL, PERM_LABEL, SCHEDULE_REASON_LABEL, SCHEDULE_STATUS_LABEL, SCHEDULE_TASK_LABEL, labelOf } from '@/i18n/labels';
 
 const TABS = ['registry', 'functions', 'roles', 'org', 'vocab', 'transfer', 'templates', 'audit'] as const;
 type Tab = (typeof TABS)[number];
-const TAB_LABEL: Record<Tab, TKey> = { registry: 'registry', functions: 'functions_tab', roles: 'ad_roles', org: 'organisation', vocab: 'tab_vocab', transfer: 'tab_transfer', templates: 'templates_qms', audit: 'ad_audit' };
+const TAB_LABEL: Record<Tab, string> = { registry: msg('Type register'), functions: msg('Functions & workflows'), roles: msg('Roles & permissions'), org: msg('Organisation'), vocab: msg('Vocabularies'), transfer: msg('Handover (departure)'), templates: msg('Templates (QMS)'), audit: msg('Audit log') };
 
 const sub = { fontSize: 11 } as const;
 
 export function generateMetadata() {
-  return screenTitle('nav_admin');
+  return screenTitle(msg('Administration'));
 }
 
 export default async function AdminPage({ searchParams }: PageProps<'/administration'>) {
   // One value per parameter: a repeated one (?doc=a&doc=b) keeps its first.
   const sp = oneEach(await searchParams);
   const ctx = await getCtx();
-  const { t, lang } = ctx;
-  if (!ctx.screens.admin) return <Forbidden text={t.forbidden} back={t.back_home} />;
+  const { tr, lang } = ctx;
+  if (!ctx.screens.admin) return <Forbidden text={tr('The simulated role cannot access this screen.')} back={tr('Back to home')} />;
   const tab: Tab = (TABS as readonly string[]).includes(sp.tab ?? '') ? (sp.tab as Tab) : 'registry';
   const family = ctx.families.some((f) => f.key === sp.family) ? sp.family! : '';
   const typesByFamily = countBy(ctx.types, (x) => x.family);
@@ -55,18 +57,18 @@ export default async function AdminPage({ searchParams }: PageProps<'/administra
       {/* Administration (Norma 2.0): its tabs and the register's family filter in the toolbar, each tab's creations in
           the page header (the main one rightmost). */}
       <PageHeader
-        title={t[TAB_LABEL[tab]]}
-        crumbs={[t.nav_admin]}
+        title={tr(TAB_LABEL[tab])}
+        crumbs={[tr('Administration')]}
         actions={<>
-          {tab === 'registry' && <DialogButton spec={{ kind: 'family' }} className="btn btn-secondary" icon="plus" iconSw={1.8}>{t.new_family}</DialogButton>}
-          {tab === 'org' && <DialogButton spec={{ kind: 'org', what: 'site' }} className="btn btn-secondary" icon="plus" iconSw={1.8}>{t.new_site}</DialogButton>}
-          {tab === 'audit' && <ActionLink native href="/api/export/audit" icon="download">{t.export_csv}</ActionLink>}
+          {tab === 'registry' && <DialogButton spec={{ kind: 'family' }} className="btn btn-secondary" icon="plus" iconSw={1.8}>{tr('New family')}</DialogButton>}
+          {tab === 'org' && <DialogButton spec={{ kind: 'org', what: 'site' }} className="btn btn-secondary" icon="plus" iconSw={1.8}>{tr('New site')}</DialogButton>}
+          {tab === 'audit' && <ActionLink native href="/api/export/audit" icon="download">{tr('Export (CSV)')}</ActionLink>}
         </>}
         primary={
-          tab === 'registry' ? <DialogButton spec={{ kind: 'type', family: family || undefined }} className="btn btn-primary" icon="plus" iconSw={1.8}>{t.new_type}</DialogButton>
-          : tab === 'functions' ? <DialogButton spec={{ kind: 'function' }} className="btn btn-primary" icon="plus" iconSw={1.8}>{t.new_function}</DialogButton>
-          : tab === 'org' ? <DialogButton spec={{ kind: 'org', what: 'department' }} className="btn btn-primary" icon="plus" iconSw={1.8}>{t.new_department}</DialogButton>
-          : tab === 'templates' ? <DialogButton spec={{ kind: 'new', preset: { typeCode: 'FRM' } }} className="btn btn-primary" icon="plus" iconSw={1.8}>{t.new_template}</DialogButton>
+          tab === 'registry' ? <DialogButton spec={{ kind: 'type', family: family || undefined }} className="btn btn-primary" icon="plus" iconSw={1.8}>{tr('New type')}</DialogButton>
+          : tab === 'functions' ? <DialogButton spec={{ kind: 'function' }} className="btn btn-primary" icon="plus" iconSw={1.8}>{tr('New function')}</DialogButton>
+          : tab === 'org' ? <DialogButton spec={{ kind: 'org', what: 'department' }} className="btn btn-primary" icon="plus" iconSw={1.8}>{tr('New department')}</DialogButton>
+          : tab === 'templates' ? <DialogButton spec={{ kind: 'new', preset: { typeCode: 'FRM' } }} className="btn btn-primary" icon="plus" iconSw={1.8}>{tr('New template')}</DialogButton>
           : undefined
         }
         toolbar={
@@ -76,17 +78,17 @@ export default async function AdminPage({ searchParams }: PageProps<'/administra
               wrap
               value={tab}
               // The handover is for records managers only (access.ts mayTransferHoldings): the tab is not shown to others.
-              options={TABS.filter((k) => k !== 'transfer' || mayTransferHoldings(ctx)).map((k) => ({ value: k, label: t[TAB_LABEL[k]], href: `/administration${k === 'registry' ? '' : `?tab=${k}`}` }))}
+              options={TABS.filter((k) => k !== 'transfer' || mayTransferHoldings(ctx)).map((k) => ({ value: k, label: tr(TAB_LABEL[k]), href: `/administration${k === 'registry' ? '' : `?tab=${k}`}` }))}
             />
             {tab === 'registry' && (
               <FamilyFilter
                 value={family}
-                ariaLabel={t.family}
-                allLabel={t.all_families}
+                ariaLabel={tr('Family')}
+                allLabel={tr('All families')}
                 options={ctx.families.filter((f) => typesByFamily.has(f.key)).map((f) => ({ key: f.key, label: lang === 'fr' ? f.labelFr : f.labelEn, count: typesByFamily.get(f.key)! }))}
               />
             )}
-            {tab === 'registry' && <FilterNote>{family ? typesByFamily.get(family) ?? 0 : ctx.types.length} {t.types_count}</FilterNote>}
+            {tab === 'registry' && <FilterNote>{family ? typesByFamily.get(family) ?? 0 : ctx.types.length} {tr('types')}</FilterNote>}
           </FilterBar>
         }
       />
@@ -111,7 +113,7 @@ export default async function AdminPage({ searchParams }: PageProps<'/administra
  * the families. An entry something refers to keeps its code and cannot be deleted (lib/queries.ts registryUsage).
  */
 async function Registry({ ctx, family }: { ctx: Ctx; family: string }) {
-  const { t, lang } = ctx;
+  const { tr, lang } = ctx;
   // Counts cover every document, drafts and confidential ones included (administration only).
   const [usage, retention] = await Promise.all([registryUsage(), retentionByType()]);
   const counts = usage.docs.types;
@@ -125,8 +127,8 @@ async function Registry({ ctx, family }: { ctx: Ctx; family: string }) {
       <table className="table" style={{ fontSize: 13 }}>
         <thead>
           <tr>
-            <th>{t.rule_id}</th><th>{t.type}</th><th>{t.family}</th><th>{t.origin}</th><th>{t.attachment}</th><th>{t.circuit}</th>
-            <th>{t.conf}</th><th>{t.retention}</th><th title={t.review_months}>{t.review_short}</th><th>ISO</th><th style={{ textAlign: 'right' }}>{t.count}</th><th><span className="sr-only">{t.col_actions}</span></th>
+            <th>{tr('Code')}</th><th>{tr('Type')}</th><th>{tr('Family')}</th><th>{tr('Origin')}</th><th>{tr('Attachment')}</th><th>{tr('Workflow')}</th>
+            <th>{tr('Confidentiality')}</th><th>{tr('Retention#column')}</th><th title={tr('Review periodicity')}>{tr('Review')}</th><th>ISO</th><th style={{ textAlign: 'right' }}>{tr('Documents')}</th><th><span className="sr-only">{tr('Actions')}</span></th>
           </tr>
         </thead>
         <tbody>
@@ -136,11 +138,11 @@ async function Registry({ ctx, family }: { ctx: Ctx; family: string }) {
               <td style={{ minWidth: 180 }}>
                 <div>{x.label}</div>
                 {x.subtypesL.length > 0 && <div className="text-muted" style={sub}>{x.subtypesL.join(' · ')}</div>}
-                {(x.clientDeliverable || !x.active) && <div className="text-muted" style={sub}>{[x.clientDeliverable && t.client_deliverable, !x.active && t.inactive].filter(Boolean).join(' · ')}</div>}
+                {(x.clientDeliverable || !x.active) && <div className="text-muted" style={sub}>{[x.clientDeliverable && tr('Client deliverable'), !x.active && tr('Inactive')].filter(Boolean).join(' · ')}</div>}
               </td>
               <td className="text-muted">{x.familyLabel}</td>
-              <td className="text-muted">{x.origins.map((o) => t[`or_${o}`]).join(', ')}</td>
-              <td className="text-muted">{x.attachments.map((a) => t[`att_${a}`]).join(', ')}</td>
+              <td className="text-muted">{x.origins.map((o) => labelOf(tr, ORIGIN_LABEL, o)).join(', ')}</td>
+              <td className="text-muted">{x.attachments.map((a) => labelOf(tr, ATTACHMENT_LABEL, a)).join(', ')}</td>
               <td className="text-muted" style={{ minWidth: 160 }}>{x.circuitL}</td>
               <td><div>{x.confDefaultL}</div><div className="text-muted" style={sub}>{x.confL}</div></td>
               <td className="text-muted" style={{ minWidth: 150 }} title={x.basisL || undefined}>{x.retentionL}</td>
@@ -148,17 +150,17 @@ async function Registry({ ctx, family }: { ctx: Ctx; family: string }) {
               <td className="text-muted">{x.iso ?? '—'}</td>
               <td className="tabnum" style={{ textAlign: 'right' }}>{counts.get(x.code) ?? 0}</td>
               <td style={{ textAlign: 'right', width: 44 }}>
-                <DialogButton spec={typeSpec(x, usage.types.has(x.code), retention.get(x.code))} className="btn btn-ghost btn-icon" icon="pen" ariaLabel={`${t.perm_edit} · ${x.code}`} style={{ width: 30, height: 30 }} />
+                <DialogButton spec={typeSpec(x, usage.types.has(x.code), retention.get(x.code))} className="btn btn-ghost btn-icon" icon="pen" ariaLabel={`${tr('Edit#permission')} · ${x.code}`} style={{ width: 30, height: 30 }} />
               </td>
             </tr>
           ))}
-          {types.length === 0 && <tr><td colSpan={12} className="text-muted" style={{ padding: '16px 8px' }}>{t.no_results}</td></tr>}
+          {types.length === 0 && <tr><td colSpan={12} className="text-muted" style={{ padding: '16px 8px' }}>{tr('No document matches these criteria.')}</td></tr>}
         </tbody>
       </table>
-      <section aria-label={t.families_title}>
-        <h2 className="sec-title" style={{ marginBottom: 10 }}>{t.families_title}</h2>
+      <section aria-label={tr('Families')}>
+        <h2 className="sec-title" style={{ marginBottom: 10 }}>{tr('Families')}</h2>
         <table className="table" style={{ fontSize: 13 }}>
-          <thead><tr><th>{t.family}</th><th>{t.key_label}</th><th>{t.family_group}</th><th style={{ textAlign: 'right' }}>{t.types_count}</th><th style={{ textAlign: 'right' }}>{t.count}</th><th><span className="sr-only">{t.col_actions}</span></th></tr></thead>
+          <thead><tr><th>{tr('Family')}</th><th>{tr('Key')}</th><th>{tr('Deck group')}</th><th style={{ textAlign: 'right' }}>{tr('types')}</th><th style={{ textAlign: 'right' }}>{tr('Documents')}</th><th><span className="sr-only">{tr('Actions')}</span></th></tr></thead>
           <tbody>
             {families.map((f) => {
               const label = lang === 'fr' ? f.labelFr : f.labelEn;
@@ -166,13 +168,13 @@ async function Registry({ ctx, family }: { ctx: Ctx; family: string }) {
                 <tr key={f.key}>
                   <td><div>{label}</div>{lang === 'fr' ? <div className="text-muted" style={sub}>{f.labelEn}</div> : <div className="text-muted" style={sub}>{f.labelFr}</div>}</td>
                   <td className="text-muted tabnum">{f.key}</td>
-                  <td className="text-muted nowrap">{t[`grp_${f.grp}` as TKey] ?? f.grp}</td>
+                  <td className="text-muted nowrap">{labelOf(tr, FAMILY_GROUP_LABEL, f.grp)}</td>
                   <td className="tabnum" style={{ textAlign: 'right' }}>{typesByFamily.get(f.key) ?? 0}</td>
                   <td className="tabnum" style={{ textAlign: 'right' }}>{docsByFamily.get(f.key) ?? 0}</td>
                   <td style={{ textAlign: 'right', width: 44 }}>
                     <DialogButton
                       spec={{ kind: 'family', family: { key: f.key, labelFr: f.labelFr, labelEn: f.labelEn, grp: f.grp, used: usage.families.has(f.key) } }}
-                      className="btn btn-ghost btn-icon" icon="pen" ariaLabel={`${t.perm_edit} · ${label}`} style={{ width: 30, height: 30 }}
+                      className="btn btn-ghost btn-icon" icon="pen" ariaLabel={`${tr('Edit#permission')} · ${label}`} style={{ width: 30, height: 30 }}
                     />
                   </td>
                 </tr>
@@ -187,7 +189,7 @@ async function Registry({ ctx, family }: { ctx: Ctx; family: string }) {
 
 /** Functions that approval circuits are made of, their holders, and the circuits of the register. */
 async function Functions({ ctx }: { ctx: Ctx }) {
-  const { t } = ctx;
+  const { tr } = ctx;
   const [fns, usage] = await Promise.all([listFunctionHolders(ctx), registryUsage()]);
   const scopeTitle = (scope: string, v: string) => (scope === 'department' ? ctx.label('department', v) : scope === 'project' ? ctx.label('project', v) : scope === 'research' ? ctx.label('program', v) : v);
   // Distinct circuits of the register, with the types that follow each one.
@@ -200,12 +202,12 @@ async function Functions({ ctx }: { ctx: Ctx }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
       <table className="table" style={{ fontSize: 13 }}>
-        <thead><tr><th>{t.function_label}</th><th>{t.scope}</th><th>{t.holders}</th><th style={{ textAlign: 'right' }}>{t.types_covered}</th><th><span className="sr-only">{t.col_actions}</span></th></tr></thead>
+        <thead><tr><th>{tr('Function')}</th><th>{tr('Scope')}</th><th>{tr('Holders')}</th><th style={{ textAlign: 'right' }}>{tr('Document types')}</th><th><span className="sr-only">{tr('Actions')}</span></th></tr></thead>
         <tbody>
           {fns.map((f) => (
             <tr key={f.key}>
               <td className="nowrap" style={{ verticalAlign: 'top' }}>{f.label}</td>
-              <td className="text-muted nowrap" style={{ verticalAlign: 'top' }}>{t[`scope_${f.scope}`]}</td>
+              <td className="text-muted nowrap" style={{ verticalAlign: 'top' }}>{labelOf(tr, FUNCTION_SCOPE_LABEL, f.scope)}</td>
               <td>
                 <div className={styles.holders}>
                   {f.holders.length === 0 && <span className="text-muted">—</span>}
@@ -213,7 +215,7 @@ async function Functions({ ctx }: { ctx: Ctx }) {
                     <span key={h.id} className={`tag tag-neutral ${styles.holder}`} title={h.scopeValue ? scopeTitle(f.scope, h.scopeValue) : undefined}>
                       {h.user}
                       {f.scope !== 'global' && <span style={{ opacity: 0.7 }}>· {h.scopeL}</span>}
-                      <ActionButton className={styles.remove} ariaLabel={`${t.remove} · ${h.user}`} title={t.remove} action={removeFunctionHolder.bind(null, h.id)}>
+                      <ActionButton className={styles.remove} ariaLabel={`${tr('Remove')} · ${h.user}`} title={tr('Remove')} action={removeFunctionHolder.bind(null, h.id)}>
                         <Icon name="close" size={11} sw={2} />
                       </ActionButton>
                     </span>
@@ -224,11 +226,11 @@ async function Functions({ ctx }: { ctx: Ctx }) {
               <td style={{ textAlign: 'right', verticalAlign: 'top' }}>
                 <div style={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
                   <DialogButton spec={{ kind: 'holder', functionKey: f.key, functionLabel: f.label, scope: f.scope }} className="btn btn-ghost nowrap" icon="plus" iconSw={1.8} style={{ fontSize: 12 }}>
-                    {t.add_holder}
+                    {tr('Add a holder')}
                   </DialogButton>
                   <DialogButton
                     spec={{ kind: 'function', fn: { key: f.key, labelFr: f.labelFr, labelEn: f.labelEn, scope: f.scope, used: usage.functions.has(f.key), held: f.holders.length > 0 } }}
-                    className="btn btn-ghost btn-icon" icon="pen" ariaLabel={`${t.perm_edit} · ${f.label}`} style={{ width: 30, height: 30 }}
+                    className="btn btn-ghost btn-icon" icon="pen" ariaLabel={`${tr('Edit#permission')} · ${f.label}`} style={{ width: 30, height: 30 }}
                   />
                 </div>
               </td>
@@ -238,9 +240,9 @@ async function Functions({ ctx }: { ctx: Ctx }) {
       </table>
       <Programs ctx={ctx} usage={usage} />
       <section>
-        <h2 className="sec-title" style={{ marginBottom: 10 }}>{t.circuit}</h2>
+        <h2 className="sec-title" style={{ marginBottom: 10 }}>{tr('Workflow')}</h2>
         <table className="table" style={{ fontSize: 13 }}>
-          <thead><tr><th>{t.circuit_steps}</th><th>{t.types_covered}</th><th style={{ textAlign: 'right' }}>{t.count}</th></tr></thead>
+          <thead><tr><th>{tr('Workflow steps')}</th><th>{tr('Document types')}</th><th style={{ textAlign: 'right' }}>{tr('Documents')}</th></tr></thead>
           <tbody>
             {[...circuits].sort(([, a], [, b]) => b.codes.length - a.codes.length).map(([key, c]) => (
               <tr key={key || 'none'}>
@@ -261,32 +263,32 @@ async function Functions({ ctx }: { ctx: Ctx }) {
  * programme », whose holders are named above. A closed programme in use is made inactive rather than deleted.
  */
 function Programs({ ctx, usage }: { ctx: Ctx; usage: RegistryUsage }) {
-  const { t } = ctx;
+  const { tr } = ctx;
   return (
-    <section aria-label={t.programs_title}>
+    <section aria-label={tr('Research programmes')}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-        <h2 className="sec-title" style={{ margin: 0 }}>{t.programs_title}</h2>
+        <h2 className="sec-title" style={{ margin: 0 }}>{tr('Research programmes')}</h2>
         <span style={{ flex: 1 }} />
-        <DialogButton spec={{ kind: 'program' }} className="btn btn-secondary" icon="plus" iconSw={1.8} style={{ fontSize: 12 }}>{t.new_program}</DialogButton>
+        <DialogButton spec={{ kind: 'program' }} className="btn btn-secondary" icon="plus" iconSw={1.8} style={{ fontSize: 12 }}>{tr('New programme')}</DialogButton>
       </div>
       <table className="table" style={{ fontSize: 13 }}>
-        <thead><tr><th>{t.rule_id}</th><th>{t.program_name}</th><th>{t.manager}</th><th style={{ textAlign: 'right' }}>{t.count}</th><th><span className="sr-only">{t.col_actions}</span></th></tr></thead>
+        <thead><tr><th>{tr('Code')}</th><th>{tr('Name')}</th><th>{tr('Manager')}</th><th style={{ textAlign: 'right' }}>{tr('Documents')}</th><th><span className="sr-only">{tr('Actions')}</span></th></tr></thead>
         <tbody>
           {ctx.programs.map((p) => (
             <tr key={p.code} style={p.active ? undefined : { opacity: 0.55 }}>
               <td className="nowrap tabnum">{p.code}</td>
-              <td><div>{p.name}</div>{!p.active && <div className="text-muted" style={sub}>{t.inactive}</div>}</td>
+              <td><div>{p.name}</div>{!p.active && <div className="text-muted" style={sub}>{tr('Inactive')}</div>}</td>
               <td className="text-muted">{ctx.userName(p.managerId)}</td>
               <td className="tabnum" style={{ textAlign: 'right' }}>{usage.docs.programs.get(p.code) ?? 0}</td>
               <td style={{ textAlign: 'right', width: 44 }}>
                 <DialogButton
                   spec={{ kind: 'program', program: { code: p.code, name: p.name, managerId: p.managerId, active: p.active, used: usage.programs.has(p.code) } }}
-                  className="btn btn-ghost btn-icon" icon="pen" ariaLabel={`${t.perm_edit} · ${p.code}`} style={{ width: 30, height: 30 }}
+                  className="btn btn-ghost btn-icon" icon="pen" ariaLabel={`${tr('Edit#permission')} · ${p.code}`} style={{ width: 30, height: 30 }}
                 />
               </td>
             </tr>
           ))}
-          {ctx.programs.length === 0 && <tr><td colSpan={5} className="text-muted" style={{ padding: '16px 8px' }}>{t.no_results}</td></tr>}
+          {ctx.programs.length === 0 && <tr><td colSpan={5} className="text-muted" style={{ padding: '16px 8px' }}>{tr('No document matches these criteria.')}</td></tr>}
         </tbody>
       </table>
     </section>
@@ -298,24 +300,24 @@ function Programs({ ctx, usage }: { ctx: Ctx; usage: RegistryUsage }) {
  * Codex checks. The administration cell of one's own role stays granted (no locking oneself out).
  */
 async function Roles({ ctx }: { ctx: Ctx }) {
-  const { t } = ctx;
+  const { tr } = ctx;
   const matrix = await getMatrix();
   const own = MATRIX_ROLE[ctx.role];
   return (
     <>
-      <p className="text-muted" style={{ fontSize: 12, margin: '0 0 4px' }}>{t.matrix_hint}</p>
-      <p className="text-muted" style={{ fontSize: 11, margin: '0 0 10px' }}>{t.matrix_not_enforced}</p>
+      <p className="text-muted" style={{ fontSize: 12, margin: '0 0 4px' }}>{tr('Click a cell to grant or revoke the permission.')}</p>
+      <p className="text-muted" style={{ fontSize: 11, margin: '0 0 10px' }}>{tr('Greyed cells: permission with no action in Codex (Destroy) or role with no simulated equivalent (Reader, Administrator).')}</p>
       <table className="table" style={{ fontSize: 13 }}>
-        <thead><tr><th>{t.role}</th>{PERMS.map((p) => <th key={p} style={{ textAlign: 'center' }}>{t[`perm_${p}`]}</th>)}</tr></thead>
+        <thead><tr><th>{tr('Role')}</th>{PERMS.map((p) => <th key={p} style={{ textAlign: 'center' }}>{labelOf(tr, PERM_LABEL, p)}</th>)}</tr></thead>
         <tbody>
           {MATRIX_ROLES.map((r) => (
             <tr key={r}>
-              <td className="nowrap">{t[MATRIX_ROLE_LABEL[r]]}</td>
+              <td className="nowrap">{labelOf(tr, MATRIX_ROLE_LABEL, r)}</td>
               {PERMS.map((p) => {
                 const on = !!matrix.get(`${r}:${p}`);
-                const label = `${t[MATRIX_ROLE_LABEL[r]]} · ${t[`perm_${p}`]}`;
+                const label = `${labelOf(tr, MATRIX_ROLE_LABEL, r)} · ${labelOf(tr, PERM_LABEL, p)}`;
                 const color = on ? 'var(--color-accent)' : 'var(--color-neutral-700)';
-                const fixed = !SIMULATED_MATRIX_ROLES.includes(r) || !ENFORCED_PERMS.includes(p) ? t.not_enforced : p === 'admin' && r === own ? t.admin_lockout : null;
+                const fixed = !SIMULATED_MATRIX_ROLES.includes(r) || !ENFORCED_PERMS.includes(p) ? tr('Not enforced in the simulation') : p === 'admin' && r === own ? tr('Cannot revoke: your role would lose access to administration.') : null;
                 return (
                   <td key={p} style={{ textAlign: 'center' }}>
                     {fixed
@@ -339,7 +341,7 @@ async function Roles({ ctx }: { ctx: Ctx }) {
  * has its own.
  */
 async function Organisation({ ctx }: { ctx: Ctx }) {
-  const { t, lang } = ctx;
+  const { tr, lang } = ctx;
   // Counts cover every document, drafts and confidential ones included (administration only).
   const [usage, fns] = await Promise.all([orgUsage(), listFunctionHolders(ctx)]);
   const heads = fns.find((f) => f.key === DEPARTMENT_HEAD_FUNCTION)?.holders ?? [];
@@ -347,15 +349,15 @@ async function Organisation({ ctx }: { ctx: Ctx }) {
   return (
     <>
       <p className="text-muted" style={{ fontSize: 12, margin: '0 0 14px', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-        <Icon name="info" size={14} style={{ flex: 'none', marginTop: 1 }} />{t.org_provisional}
+        <Icon name="info" size={14} style={{ flex: 'none', marginTop: 1 }} />{tr('Provisional values, pending the organisation chart. The 3-letter department code is part of the ID of documents without attachment: it never changes. Labels can be edited; a value in use is made inactive instead of being deleted.')}
       </p>
       <div className={styles.split}>
         <section>
-          <h2 className="sec-title" style={{ marginBottom: 10 }}>{t.department}</h2>
+          <h2 className="sec-title" style={{ marginBottom: 10 }}>{tr('Department / Function')}</h2>
           {/* The table scrolls within its column rather than spilling over the sites beside it. */}
           <div className={styles.tableScroll}>
             <table className="table" style={{ fontSize: 13 }}>
-              <thead><tr><th>{t.rule_id}</th><th>{t.label_fr}</th><th>{t.label_en}</th><th>{t.manager}</th><th style={{ textAlign: 'right' }}>{t.people}</th><th style={{ textAlign: 'right' }}>{t.count}</th><th>{t.featured_filters}</th><th><span className="sr-only">{t.col_actions}</span></th></tr></thead>
+              <thead><tr><th>{tr('Code')}</th><th>{tr('Label (FR)')}</th><th>{tr('Label (EN)')}</th><th>{tr('Manager')}</th><th style={{ textAlign: 'right' }}>{tr('People')}</th><th style={{ textAlign: 'right' }}>{tr('Documents')}</th><th>{tr('Featured filters')}</th><th><span className="sr-only">{tr('Actions')}</span></th></tr></thead>
               <tbody>
                 {ctx.departments.map((d) => {
                   const featured = featuredOf(d);
@@ -364,7 +366,7 @@ async function Organisation({ ctx }: { ctx: Ctx }) {
                   return (
                     <tr key={d.code} style={d.active ? undefined : inactive}>
                       <td className="nowrap tabnum"><Link href={`/departements/${encodeURIComponent(d.code)}`} className="link-plain">{d.code}</Link></td>
-                      <td><div>{d.labelFr}</div>{!d.active && <div className="text-muted" style={sub}>{t.inactive}</div>}</td>
+                      <td><div>{d.labelFr}</div>{!d.active && <div className="text-muted" style={sub}>{tr('Inactive')}</div>}</td>
                       <td className="text-muted">{d.labelEn}</td>
                       <td className="text-muted">{heads.filter((h) => h.scopeValue === d.code).map((h) => h.user).join(', ') || '—'}</td>
                       <td className="tabnum" style={{ textAlign: 'right' }}>{used?.people ?? 0}</td>
@@ -372,19 +374,19 @@ async function Organisation({ ctx }: { ctx: Ctx }) {
                       {/* The default facets are named on hover only: every department follows them until it has its own. */}
                       <td style={{ paddingTop: 0, paddingBottom: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                          <span className={`ellipsis${d.featured == null ? ' text-muted' : ''}`} style={{ maxWidth: 180 }} title={featured.map((k) => t[FACET_LABEL[k]]).join(', ') || t.featured_none}>
-                            {d.featured == null ? t.featured_default : featured.map((k) => t[FACET_LABEL[k]]).join(', ') || t.featured_none}
+                          <span className={`ellipsis${d.featured == null ? ' text-muted' : ''}`} style={{ maxWidth: 180 }} title={featured.map((k) => tr(FACET_LABEL[k])).join(', ') || tr('None')}>
+                            {d.featured == null ? tr('Default filters') : featured.map((k) => tr(FACET_LABEL[k])).join(', ') || tr('None')}
                           </span>
                           <DialogButton
                             spec={{ kind: 'featured', department: { code: d.code, label }, featured, isDefault: d.featured == null }}
-                            className="btn btn-ghost btn-icon" icon="pen" ariaLabel={`${t.featured_filters} · ${d.code}`} style={{ width: 28, height: 28, flex: 'none' }}
+                            className="btn btn-ghost btn-icon" icon="pen" ariaLabel={`${tr('Featured filters')} · ${d.code}`} style={{ width: 28, height: 28, flex: 'none' }}
                           />
                         </div>
                       </td>
                       <td style={{ textAlign: 'right', width: 44 }}>
                         <DialogButton
                           spec={{ kind: 'org', what: 'department', value: { id: d.code, labelFr: d.labelFr, labelEn: d.labelEn, active: d.active, used: inUse(used) } }}
-                          className="btn btn-ghost btn-icon" icon="pen" ariaLabel={`${t.perm_edit} · ${d.code}`} style={{ width: 30, height: 30 }}
+                          className="btn btn-ghost btn-icon" icon="pen" ariaLabel={`${tr('Edit#permission')} · ${d.code}`} style={{ width: 30, height: 30 }}
                         />
                       </td>
                     </tr>
@@ -395,9 +397,9 @@ async function Organisation({ ctx }: { ctx: Ctx }) {
           </div>
         </section>
         <section>
-          <h2 className="sec-title" style={{ marginBottom: 10 }}>{t.site_label}</h2>
+          <h2 className="sec-title" style={{ marginBottom: 10 }}>{tr('Site')}</h2>
           <table className="table" style={{ fontSize: 13 }}>
-            <thead><tr><th>{t.site_label}</th><th style={{ textAlign: 'right' }}>{t.people}</th><th style={{ textAlign: 'right' }}>{t.count}</th><th><span className="sr-only">{t.col_actions}</span></th></tr></thead>
+            <thead><tr><th>{tr('Site')}</th><th style={{ textAlign: 'right' }}>{tr('People')}</th><th style={{ textAlign: 'right' }}>{tr('Documents')}</th><th><span className="sr-only">{tr('Actions')}</span></th></tr></thead>
             <tbody>
               {ctx.sites.map((x) => {
                 const label = ctx.label('site', x.key);
@@ -407,14 +409,14 @@ async function Organisation({ ctx }: { ctx: Ctx }) {
                   <tr key={x.key} style={x.active ? undefined : inactive}>
                     <td>
                       <div>{label}</div>
-                      <div className="text-muted" style={sub}>{[other !== label && other, x.key, !x.active && t.inactive].filter(Boolean).join(' · ')}</div>
+                      <div className="text-muted" style={sub}>{[other !== label && other, x.key, !x.active && tr('Inactive')].filter(Boolean).join(' · ')}</div>
                     </td>
                     <td className="tabnum" style={{ textAlign: 'right' }}>{used?.people ?? 0}</td>
                     <td className="tabnum" style={{ textAlign: 'right' }}>{used?.documents ?? 0}</td>
                     <td style={{ textAlign: 'right', width: 44 }}>
                       <DialogButton
                         spec={{ kind: 'org', what: 'site', value: { id: x.key, labelFr: x.labelFr, labelEn: x.labelEn, active: x.active, used: inUse(used) } }}
-                        className="btn btn-ghost btn-icon" icon="pen" ariaLabel={`${t.perm_edit} · ${label}`} style={{ width: 30, height: 30 }}
+                        className="btn btn-ghost btn-icon" icon="pen" ariaLabel={`${tr('Edit#permission')} · ${label}`} style={{ width: 30, height: 30 }}
                       />
                     </td>
                   </tr>
@@ -433,11 +435,11 @@ async function Organisation({ ctx }: { ctx: Ctx }) {
  * its owner or a records manager sets here or on its record (lib/actions.ts setTemplateTypes).
  */
 async function Templates({ ctx }: { ctx: Ctx }) {
-  const { t } = ctx;
+  const { tr } = ctx;
   const tpls = await listTemplates(ctx);
   return (
     <table className="table" style={{ fontSize: 13 }}>
-      <thead><tr><th>{t.ref}</th><th>{t.title_label}</th><th>{t.revision}</th><th>{t.owner}</th><th>{t.department}</th><th>{t.template_types}</th><th style={{ textAlign: 'right' }} title={t.tpl_uses_hint}>{t.uses}</th><th><span className="sr-only">{t.col_actions}</span></th></tr></thead>
+      <thead><tr><th>{tr('Reference')}</th><th>{tr('Title')}</th><th>{tr('Revision')}</th><th>{tr('Owner')}</th><th>{tr('Department / Function')}</th><th>{tr('Target types')}</th><th style={{ textAlign: 'right' }} title={tr('Documents created from this template, among those you may read')}>{tr('Uses')}</th><th><span className="sr-only">{tr('Actions')}</span></th></tr></thead>
       <tbody>
         {tpls.map((x) => {
           const href = `/documents/${encodeURIComponent(x.id)}`;
@@ -453,14 +455,14 @@ async function Templates({ ctx }: { ctx: Ctx }) {
               <td className="tabnum" style={{ textAlign: 'right' }}>{x.uses}</td>
               <td className="nowrap" style={{ textAlign: 'right' }}>
                 {mayLinkTemplate(ctx, x) && (
-                  <DialogButton spec={{ kind: 'templateTypes', docId: x.id, title: x.label, types: x.types, version: x.version }} className="btn btn-ghost" style={{ fontSize: 12 }} deniedTitle={lock ? t[lock] : undefined}>{t.template_types}</DialogButton>
+                  <DialogButton spec={{ kind: 'templateTypes', docId: x.id, title: x.label, types: x.types, version: x.version }} className="btn btn-ghost" style={{ fontSize: 12 }} deniedTitle={lock ? tr(LOCK_LABEL[lock]) : undefined}>{tr('Target types')}</DialogButton>
                 )}
-                <Link href={href} className="btn btn-ghost" style={{ fontSize: 12 }}>{t.open_record}</Link>
+                <Link href={href} className="btn btn-ghost" style={{ fontSize: 12 }}>{tr('Open record')}</Link>
               </td>
             </tr>
           );
         })}
-        {tpls.length === 0 && <tr><td colSpan={8} className="text-muted" style={{ padding: '16px 8px' }}>{t.no_results}</td></tr>}
+        {tpls.length === 0 && <tr><td colSpan={8} className="text-muted" style={{ padding: '16px 8px' }}>{tr('No document matches these criteria.')}</td></tr>}
       </tbody>
     </table>
   );
@@ -471,17 +473,17 @@ async function Templates({ ctx }: { ctx: Ctx }) {
  * the scan refuses are recorded: a scan left off by the configuration is said here, not only in the server log.
  */
 function FilesPolicy({ ctx }: { ctx: Ctx }) {
-  const { t, lang } = ctx;
+  const { tr, lang } = ctx;
   const rules = fileRules(process.env);
   const av = antivirusStatus();
   return (
     <p className={`${styles.filesPolicy} text-muted`}>
-      <strong>{t.files_policy}</strong>
-      <span>{t.file_max_hint.replace('{max}', fmtMax(rules.maxBytes, lang))}</span>
-      <span title={rules.extensions.join(' ')}>{t.files_formats.replace('{n}', String(rules.extensions.length))}</span>
+      <strong>{tr('Uploaded files')}</strong>
+      <span>{tr('{max} at most').replace('{max}', fmtMax(rules.maxBytes, lang))}</span>
+      <span title={rules.extensions.join(' ')}>{tr('{n} accepted formats').replace('{n}', String(rules.extensions.length))}</span>
       {av
-        ? <span>{t.av_on.replace('{address}', av.address)} · {av.onError === 'accept' ? t.av_on_error_accept : t.av_on_error_refuse}</span>
-        : <span className={styles.filesOff}>{t.av_off}</span>}
+        ? <span>{tr('virus scanning by clamd ({address})').replace('{address}', av.address)} · {av.onError === 'accept' ? tr('file accepted unscanned when the scan fails') : tr('upload refused when the scan fails')}</span>
+        : <span className={styles.filesOff}>{tr('virus scanning off (CODEX_CLAMD not set)')}</span>}
     </p>
   );
 }
@@ -491,25 +493,25 @@ function FilesPolicy({ ctx }: { ctx: Ctx }) {
  * removed), then the list and the button that removes those of the local store. SharePoint's are listed only (O-01).
  */
 async function Orphans({ ctx, open }: { ctx: Ctx; open: boolean }) {
-  const { t, lang } = ctx;
+  const { tr, lang } = ctx;
   if (!open) {
     return (
       <p className={`${styles.filesPolicy} text-muted`}>
-        <strong>{t.orphans_title}</strong>
-        <Link href="/administration?tab=audit&orphans=1" className="link-plain" scroll={false}>{t.orphans_find}</Link>
+        <strong>{tr('Orphan files')}</strong>
+        <Link href="/administration?tab=audit&orphans=1" className="link-plain" scroll={false}>{tr('Look for them')}</Link>
       </p>
     );
   }
   const report = await orphanReport();
   const h = String(report.graceHours);
   const counts = (x: OrphanScan) => [
-    t.orphans_found.replace('{h}', h).replace('{n}', String(x.orphans.length)).replace('{size}', fmtSize(x.bytes, lang)),
-    ...(x.recent ? [t.orphans_recent.replace('{n}', String(x.recent))] : []),
-    ...(x.foreign ? [t.orphans_foreign.replace('{n}', String(x.foreign))] : []),
+    tr('Orphans older than {h} h: {n} ({size})').replace('{h}', h).replace('{n}', String(x.orphans.length)).replace('{size}', fmtSize(x.bytes, lang)),
+    ...(x.recent ? [tr('recent, kept: {n}').replace('{n}', String(x.recent))] : []),
+    ...(x.foreign ? [tr('other files, left in place: {n}').replace('{n}', String(x.foreign))] : []),
   ].join(' · ');
   const list = (x: OrphanScan) => x.orphans.length > 0 && (
     <table className={`table ${styles.orphanTable}`}>
-      <thead><tr><th>{t.file}</th><th>{t.size}</th><th>{t.orphans_touched}</th></tr></thead>
+      <thead><tr><th>{tr('File')}</th><th>{tr('Size')}</th><th>{tr('Last written')}</th></tr></thead>
       <tbody>
         {x.orphans.slice(0, MAX_PER_RUN).map((f) => (
           <tr key={f.key}>
@@ -518,7 +520,7 @@ async function Orphans({ ctx, open }: { ctx: Ctx; open: boolean }) {
             <td className="nowrap tabnum text-muted">{fmtDateTime(parisStamp(new Date(f.touched).toISOString()), lang)}</td>
           </tr>
         ))}
-        {x.orphans.length > MAX_PER_RUN && <tr><td colSpan={3} className="text-muted">{t.orphans_more.replace('{n}', String(x.orphans.length - MAX_PER_RUN))}</td></tr>}
+        {x.orphans.length > MAX_PER_RUN && <tr><td colSpan={3} className="text-muted">{tr('… and {n} more, at the next run').replace('{n}', String(x.orphans.length - MAX_PER_RUN))}</td></tr>}
       </tbody>
     </table>
   );
@@ -526,26 +528,26 @@ async function Orphans({ ctx, open }: { ctx: Ctx; open: boolean }) {
   const shown = report.local.orphans.slice(0, MAX_PER_RUN).map((f) => f.key);
   const n = shown.length;
   return (
-    <section className={styles.orphans} aria-label={t.orphans_title}>
+    <section className={styles.orphans} aria-label={tr('Orphan files')}>
       <div className={styles.orphansHead}>
-        <strong>{t.orphans_title}</strong>
+        <strong>{tr('Orphan files')}</strong>
         <span style={{ flex: 1 }} />
         {n > 0 && (
-          <ActionButton action={purgeOrphanFiles.bind(null, shown)} className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} confirm={t.orphans_confirm.replace('{n}', String(n))} after="/administration?tab=audit&orphans=1">
-            {t.orphans_delete.replace('{n}', String(n))}
+          <ActionButton action={purgeOrphanFiles.bind(null, shown)} className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} confirm={tr('Permanently remove the listed orphan files ({n}) from local storage? Each file is checked again just before, and the removal is journaled.').replace('{n}', String(n))} after="/administration?tab=audit&orphans=1">
+            {tr('Remove these files ({n})').replace('{n}', String(n))}
           </ActionButton>
         )}
-        <Link href="/administration?tab=audit" className="btn btn-ghost" style={{ fontSize: 12 }} scroll={false}>{t.close}</Link>
+        <Link href="/administration?tab=audit" className="btn btn-ghost" style={{ fontSize: 12 }} scroll={false}>{tr('Close')}</Link>
       </div>
-      <p className="text-muted">{t.orphans_hint.replace('{h}', h)}</p>
-      <p><span className={styles.orphanStore}>{t.orphans_store_local}</span>{report.local.orphans.length || report.local.recent || report.local.foreign ? counts(report.local) : t.orphans_none}</p>
+      <p className="text-muted">{tr('Stored files that no working version refers to (interrupted upload, unfinished rename). This search removes nothing. A file written less than {h} h ago is never counted: it may belong to an upload in progress.').replace('{h}', h)}</p>
+      <p><span className={styles.orphanStore}>{tr('Local storage')}</span>{report.local.orphans.length || report.local.recent || report.local.foreign ? counts(report.local) : tr('No orphan file.')}</p>
       {list(report.local)}
       {report.sharepoint && (
         'error' in report.sharepoint
-          ? <p><span className={styles.orphanStore}>{t.orphans_store_sharepoint}</span><span className={styles.filesOff}>{t.orphans_sp_error}</span></p>
+          ? <p><span className={styles.orphanStore}>{tr('SharePoint (_staging folder)')}</span><span className={styles.filesOff}>{tr('SharePoint could not be listed: see the server log.')}</span></p>
           : (
             <>
-              <p><span className={styles.orphanStore}>{t.orphans_store_sharepoint}</span>{counts(report.sharepoint)} · <span className="text-muted">{t.orphans_sp_list_only}</span></p>
+              <p><span className={styles.orphanStore}>{tr('SharePoint (_staging folder)')}</span>{counts(report.sharepoint)} · <span className="text-muted">{tr('Listed only: removal on SharePoint waits for a trial on a real tenant (O-01).')}</span></p>
               {list(report.sharepoint)}
             </>
           )
@@ -559,25 +561,25 @@ async function Orphans({ ctx, open }: { ctx: Ctx; open: boolean }) {
  * (?provisional=1, nothing changes), then the list and the button that renames those listed.
  */
 async function Provisional({ ctx, open }: { ctx: Ctx; open: boolean }) {
-  const { t, lang } = ctx;
+  const { tr, lang } = ctx;
   if (!open) {
     return (
       <p className={`${styles.filesPolicy} text-muted`}>
-        <strong>{t.prov_title}</strong>
-        <Link href="/administration?tab=audit&provisional=1" className="link-plain" scroll={false}>{t.prov_find}</Link>
+        <strong>{tr('Files under a provisional name')}</strong>
+        <Link href="/administration?tab=audit&provisional=1" className="link-plain" scroll={false}>{tr('Look for them')}</Link>
       </p>
     );
   }
   const report = await provisionalReport();
   const h = String(report.graceHours);
   const counts = (x: ProvisionalScan) => [
-    t.prov_found.replace('{n}', String(x.due.length)),
-    ...(x.recent ? [t.prov_recent.replace('{n}', String(x.recent))] : []),
-    ...(x.missing ? [t.prov_missing.replace('{n}', String(x.missing))] : []),
+    tr('To rename: {n}').replace('{n}', String(x.due.length)),
+    ...(x.recent ? [tr('recent, left: {n}').replace('{n}', String(x.recent))] : []),
+    ...(x.missing ? [tr('file missing from storage, left: {n}').replace('{n}', String(x.missing))] : []),
   ].join(' · ');
   const list = (x: ProvisionalScan) => x.due.length > 0 && (
     <table className={`table ${styles.orphanTable}`}>
-      <thead><tr><th>{t.file}</th><th>{t.prov_new_name}</th><th>{t.orphans_touched}</th></tr></thead>
+      <thead><tr><th>{tr('File')}</th><th>{tr('Name given')}</th><th>{tr('Last written')}</th></tr></thead>
       <tbody>
         {x.due.slice(0, MAX_PER_RUN).map((f) => (
           <tr key={`${f.versionId}`}>
@@ -586,7 +588,7 @@ async function Provisional({ ctx, open }: { ctx: Ctx; open: boolean }) {
             <td className="nowrap tabnum text-muted">{f.touched == null ? '—' : fmtDateTime(parisStamp(new Date(f.touched).toISOString()), lang)}</td>
           </tr>
         ))}
-        {x.due.length > MAX_PER_RUN && <tr><td colSpan={3} className="text-muted">{t.orphans_more.replace('{n}', String(x.due.length - MAX_PER_RUN))}</td></tr>}
+        {x.due.length > MAX_PER_RUN && <tr><td colSpan={3} className="text-muted">{tr('… and {n} more, at the next run').replace('{n}', String(x.due.length - MAX_PER_RUN))}</td></tr>}
       </tbody>
     </table>
   );
@@ -596,26 +598,26 @@ async function Provisional({ ctx, open }: { ctx: Ctx; open: boolean }) {
   const n = shown.length;
   const any = (x: ProvisionalScan) => x.due.length || x.recent || x.missing;
   return (
-    <section className={styles.orphans} aria-label={t.prov_title}>
+    <section className={styles.orphans} aria-label={tr('Files under a provisional name')}>
       <div className={styles.orphansHead}>
-        <strong>{t.prov_title}</strong>
+        <strong>{tr('Files under a provisional name')}</strong>
         <span style={{ flex: 1 }} />
         {n > 0 && (
-          <ActionButton action={renameProvisionalFiles.bind(null, shown)} className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} confirm={t.prov_confirm.replace('{n}', String(n))} after="/administration?tab=audit&provisional=1">
-            {t.prov_rename.replace('{n}', String(n))}
+          <ActionButton action={renameProvisionalFiles.bind(null, shown)} className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} confirm={tr('Give the listed files ({n}) their name {ID}_{version}? Each one is checked again just before; the rename is journaled.').replace('{n}', String(n))} after="/administration?tab=audit&provisional=1">
+            {tr('Rename these files ({n})').replace('{n}', String(n))}
           </ActionButton>
         )}
-        <Link href="/administration?tab=audit" className="btn btn-ghost" style={{ fontSize: 12 }} scroll={false}>{t.close}</Link>
+        <Link href="/administration?tab=audit" className="btn btn-ghost" style={{ fontSize: 12 }} scroll={false}>{tr('Close')}</Link>
       </div>
-      <p className="text-muted">{t.prov_hint.replace('{h}', h)}</p>
-      <p><span className={styles.orphanStore}>{t.orphans_store_local}</span>{any(report.local) ? counts(report.local) : t.prov_none}</p>
+      <p className="text-muted">{tr('Files whose record is written but which never got their name {ID}_{version} (an upload interrupted between the record and the rename, storage out of reach). They are still served as usual. This search changes nothing. A file touched less than {h} h ago is not counted: a rename may be running.').replace('{h}', h)}</p>
+      <p><span className={styles.orphanStore}>{tr('Local storage')}</span>{any(report.local) ? counts(report.local) : tr('No file under a provisional name.')}</p>
       {list(report.local)}
       {report.sharepoint && (
         'error' in report.sharepoint
-          ? <p><span className={styles.orphanStore}>{t.orphans_store_sharepoint}</span><span className={styles.filesOff}>{t.orphans_sp_error}</span></p>
+          ? <p><span className={styles.orphanStore}>{tr('SharePoint (_staging folder)')}</span><span className={styles.filesOff}>{tr('SharePoint could not be listed: see the server log.')}</span></p>
           : (
             <>
-              <p><span className={styles.orphanStore}>{t.orphans_store_sharepoint}</span>{any(report.sharepoint) ? counts(report.sharepoint) : t.prov_none} · <span className="text-muted">{t.prov_sp_untested}</span></p>
+              <p><span className={styles.orphanStore}>{tr('SharePoint (_staging folder)')}</span>{any(report.sharepoint) ? counts(report.sharepoint) : tr('No file under a provisional name.')} · <span className="text-muted">{tr('Renamed on SharePoint through the same interface as uploads, not yet tried on a real tenant (O-01).')}</span></p>
               {list(report.sharepoint)}
             </>
           )
@@ -629,7 +631,7 @@ async function Provisional({ ctx, open }: { ctx: Ctx; open: boolean }) {
  * (?backups=1), with what each holds and the button that backs up now. Restoring is a command (npm run restore).
  */
 async function Backups({ ctx, open }: { ctx: Ctx; open: boolean }) {
-  const { t, lang } = ctx;
+  const { tr, lang } = ctx;
   const when = (iso: string | null) => (iso ? fmtDateTime(parisStamp(iso), lang) : '—');
   if ((await backupKind()) === 'files') return <FilesBackups ctx={ctx} open={open} />;
   if (!open) {
@@ -637,44 +639,44 @@ async function Backups({ ctx, open }: { ctx: Ctx; open: boolean }) {
     const latest = all?.[0];
     return (
       <p className={`${styles.filesPolicy} text-muted`}>
-        <strong>{t.backup_title}</strong>
-        {all ? <span>{latest ? t.backup_last.replace('{date}', when(latest.createdAt)) : t.backup_none}</span> : <span className={styles.filesOff}>{t.backup_list_error}</span>}
-        <Link href="/administration?tab=audit&backups=1" className="link-plain" scroll={false}>{t.backup_show}</Link>
+        <strong>{tr('Backups')}</strong>
+        {all ? <span>{latest ? tr('latest: {date}').replace('{date}', when(latest.createdAt)) : tr('No backup.')}</span> : <span className={styles.filesOff}>{tr('The backup directory could not be read: see the server log.')}</span>}
+        <Link href="/administration?tab=audit&backups=1" className="link-plain" scroll={false}>{tr('Show')}</Link>
       </p>
     );
   }
   const { dir, keep } = backupSettings();
   const list = await backupList();
   return (
-    <section className={styles.orphans} aria-label={t.backup_title}>
+    <section className={styles.orphans} aria-label={tr('Backups')}>
       <div className={styles.orphansHead}>
-        <strong>{t.backup_title}</strong>
+        <strong>{tr('Backups')}</strong>
         <span style={{ flex: 1 }} />
-        <ActionButton action={backUpData} className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} confirm={t.backup_confirm.replace('{dir}', dir).replaceAll('{n}', String(keep))} after="/administration?tab=audit&backups=1">
-          {t.backup_create}
+        <ActionButton action={backUpData} className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} confirm={tr('Back up the database and files now? Writes wait while the database is copied (a few seconds). The archive is written to {dir}; the {n} most recent and the latest of each of the last {n} days are kept, the others removed.').replace('{dir}', dir).replaceAll('{n}', String(keep))} after="/administration?tab=audit&backups=1">
+          {tr('Back up now')}
         </ActionButton>
-        <Link href="/administration?tab=audit" className="btn btn-ghost" style={{ fontSize: 12 }} scroll={false}>{t.close}</Link>
+        <Link href="/administration?tab=audit" className="btn btn-ghost" style={{ fontSize: 12 }} scroll={false}>{tr('Close')}</Link>
       </div>
-      <p className="text-muted">{t.backup_hint.replace('{dir}', dir).replaceAll('{n}', String(keep))}</p>
+      <p className="text-muted">{tr('Archive of the database and of the files it refers to, with a manifest and the SHA-256 of each item, in {dir}; the {n} most recent and the latest of each of the last {n} days are kept. At most one backup per quarter of an hour from the application. Restoring is done with the server stopped, from the command line (npm run restore, docs/sauvegarde.md). No backup is scheduled: how often, and where archives are kept, remain to be decided.').replace('{dir}', dir).replaceAll('{n}', String(keep))}</p>
       {!list
-        ? <p className={styles.filesOff}>{t.backup_list_error}</p>
+        ? <p className={styles.filesOff}>{tr('The backup directory could not be read: see the server log.')}</p>
         : list.length === 0
-        ? <p>{t.backup_none}</p>
+        ? <p>{tr('No backup.')}</p>
         : (
           <table className={`table ${styles.orphanTable}`}>
-            <thead><tr><th>{t.when}</th><th>{t.backup_col_by}</th><th style={{ textAlign: 'right' }}>{t.count}</th><th>{t.backup_col_files}</th><th>{t.backup_archive_size}</th></tr></thead>
+            <thead><tr><th>{tr('Timestamp')}</th><th>{tr('Made by')}</th><th style={{ textAlign: 'right' }}>{tr('Documents')}</th><th>{tr('Files')}</th><th>{tr('Archive#backup')}</th></tr></thead>
             <tbody>
               {list.map((b) => {
                 const m = b.manifest;
                 return (
                   <tr key={b.name}>
                     <td className="nowrap tabnum" title={b.name}>{when(b.createdAt)}</td>
-                    <td>{m ? (m.mode === 'online' ? ctx.userName(m.by) : t.backup_by_cli) : <span className={styles.filesOff}>{t.backup_unreadable}</span>}</td>
+                    <td>{m ? (m.mode === 'online' ? ctx.userName(m.by) : tr('command line')) : <span className={styles.filesOff}>{tr('unreadable manifest')}</span>}</td>
                     <td className="tabnum" style={{ textAlign: 'right' }}>{m ? m.counts.documents : '—'}</td>
                     <td className="tabnum">
                       {m ? `${m.files.count} (${fmtSize(m.files.bytes, lang)})` : '—'}
-                      {m && m.files.missing.length > 0 && <span className={styles.filesOff}> · {t.backup_missing_n.replace('{n}', String(m.files.missing.length))}</span>}
-                      {m && m.files.sharepoint > 0 && <span className="text-muted"> · {t.backup_sharepoint_n.replace('{n}', String(m.files.sharepoint))}</span>}
+                      {m && m.files.missing.length > 0 && <span className={styles.filesOff}> · {tr('missing from storage: {n}').replace('{n}', String(m.files.missing.length))}</span>}
+                      {m && m.files.sharepoint > 0 && <span className="text-muted"> · {tr('on SharePoint, not included: {n}').replace('{n}', String(m.files.sharepoint))}</span>}
                     </td>
                     <td className="nowrap tabnum text-muted">{fmtSize(b.size, lang)}</td>
                   </tr>
@@ -693,56 +695,56 @@ async function Backups({ ctx, open }: { ctx: Ctx; open: boolean }) {
  * the files the store lacks.
  */
 async function FilesBackups({ ctx, open }: { ctx: Ctx; open: boolean }) {
-  const { t, lang } = ctx;
+  const { tr, lang } = ctx;
   const when = (iso: string | null) => (iso ? fmtDateTime(parisStamp(iso), lang) : '—');
   if (!open) {
     const all = await filesBackupList(false);
     const latest = all?.[0];
     return (
       <p className={`${styles.filesPolicy} text-muted`}>
-        <strong>{t.backup_title}</strong>
-        <span>{t.backup_files_scope}</span>
-        {all ? <span>{latest ? t.backup_last.replace('{date}', when(latest.createdAt)) : t.backup_none}</span> : <span className={styles.filesOff}>{t.backup_list_error}</span>}
-        <Link href="/administration?tab=audit&backups=1" className="link-plain" scroll={false}>{t.backup_show}</Link>
+        <strong>{tr('Backups')}</strong>
+        <span>{tr('files only')}</span>
+        {all ? <span>{latest ? tr('latest: {date}').replace('{date}', when(latest.createdAt)) : tr('No backup.')}</span> : <span className={styles.filesOff}>{tr('The backup directory could not be read: see the server log.')}</span>}
+        <Link href="/administration?tab=audit&backups=1" className="link-plain" scroll={false}>{tr('Show')}</Link>
       </p>
     );
   }
   const { dir, keep } = backupSettings();
   const list = await filesBackupList();
   return (
-    <section className={styles.orphans} aria-label={t.backup_title}>
+    <section className={styles.orphans} aria-label={tr('Backups')}>
       <div className={styles.orphansHead}>
-        <strong>{t.backup_title}</strong>
-        <span className="text-muted">{t.backup_files_scope}</span>
+        <strong>{tr('Backups')}</strong>
+        <span className="text-muted">{tr('files only')}</span>
         <span style={{ flex: 1 }} />
-        <ActionButton action={backUpData} className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} confirm={t.backup_files_confirm.replace('{dir}', dir).replaceAll('{n}', String(keep))} after="/administration?tab=audit&backups=1">
-          {t.backup_create}
+        <ActionButton action={backUpData} className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} confirm={tr('Copy the new files to {dir} now? Only the files not backed up yet are copied; the {n} most recent states and the latest of each of the last {n} days are kept.').replace('{dir}', dir).replaceAll('{n}', String(keep))} after="/administration?tab=audit&backups=1">
+          {tr('Back up now')}
         </ActionButton>
-        <ActionButton action={restoreBackedUpFiles} className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 10px' }} confirm={t.backup_restore_files_confirm} after="/administration?tab=audit&backups=1">
-          {t.backup_restore_files}
+        <ActionButton action={restoreBackedUpFiles} className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 10px' }} confirm={tr('Put back into storage, from the backup, the files the database refers to and that are missing there? No file present is replaced or removed. To do after the database was restored or the volume of the files lost.')} after="/administration?tab=audit&backups=1">
+          {tr('Put back missing files')}
         </ActionButton>
-        <Link href="/administration?tab=audit" className="btn btn-ghost" style={{ fontSize: 12 }} scroll={false}>{t.close}</Link>
+        <Link href="/administration?tab=audit" className="btn btn-ghost" style={{ fontSize: 12 }} scroll={false}>{tr('Close')}</Link>
       </div>
-      <p className="text-muted">{t.backup_files_hint.replace('{dir}', dir).replaceAll('{n}', String(keep))}</p>
+      <p className="text-muted">{tr('The database is on the shared PostgreSQL server: it is backed up with the server’s tools (pg_dump, every night). Here, Codex backs up the files it refers to, in {dir}: each file is copied once, checked by its SHA-256, and each backup keeps the state of the library at that instant; the {n} most recent states and the latest of each of the last {n} days are kept. At most one backup per quarter of an hour from the application; how often it runs by itself is set by CODEX_SCHEDULE_BACKUP. Put this folder on another disk than the files, and copy it off the server (docs/stockage-serveur.md).').replace('{dir}', dir).replaceAll('{n}', String(keep))}</p>
       {!list
-        ? <p className={styles.filesOff}>{t.backup_list_error}</p>
+        ? <p className={styles.filesOff}>{tr('The backup directory could not be read: see the server log.')}</p>
         : list.length === 0
-        ? <p>{t.backup_none}</p>
+        ? <p>{tr('No backup.')}</p>
         : (
           <table className={`table ${styles.orphanTable}`}>
-            <thead><tr><th>{t.when}</th><th>{t.backup_col_by}</th><th style={{ textAlign: 'right' }}>{t.count}</th><th>{t.backup_col_state}</th><th>{t.backup_col_copied}</th></tr></thead>
+            <thead><tr><th>{tr('Timestamp')}</th><th>{tr('Made by')}</th><th style={{ textAlign: 'right' }}>{tr('Documents')}</th><th>{tr('Files listed')}</th><th>{tr('Copied')}</th></tr></thead>
             <tbody>
               {list.map((b) => {
                 const m = b.state;
                 return (
                   <tr key={b.name}>
                     <td className="nowrap tabnum" title={b.name}>{when(b.createdAt)}</td>
-                    <td>{m ? ctx.userName(m.by) : <span className={styles.filesOff}>{t.backup_unreadable}</span>}</td>
+                    <td>{m ? ctx.userName(m.by) : <span className={styles.filesOff}>{tr('unreadable manifest')}</span>}</td>
                     <td className="tabnum" style={{ textAlign: 'right' }}>{m ? m.counts.documents : '—'}</td>
                     <td className="tabnum">
                       {m ? `${m.files.count} (${fmtSize(m.files.bytes, lang)})` : '—'}
-                      {m && m.files.missing.length > 0 && <span className={styles.filesOff}> · {t.backup_missing_n.replace('{n}', String(m.files.missing.length))}</span>}
-                      {m && m.files.altered.length > 0 && <span className={styles.filesOff}> · {t.backup_altered_n.replace('{n}', String(m.files.altered.length))}</span>}
+                      {m && m.files.missing.length > 0 && <span className={styles.filesOff}> · {tr('missing from storage: {n}').replace('{n}', String(m.files.missing.length))}</span>}
+                      {m && m.files.altered.length > 0 && <span className={styles.filesOff}> · {tr('altered, not copied: {n}').replace('{n}', String(m.files.altered.length))}</span>}
                     </td>
                     <td className="nowrap tabnum text-muted">{m ? `${m.files.copied} (${fmtSize(m.files.copiedBytes, lang)})` : '—'}</td>
                   </tr>
@@ -760,26 +762,26 @@ async function FilesBackups({ ctx, open }: { ctx: Ctx; open: boolean }) {
  * whose files it found altered or missing (links to their record), and the button that checks every file again.
  */
 async function Integrity({ ctx }: { ctx: Ctx }) {
-  const { t, lang } = ctx;
+  const { tr, lang } = ctx;
   const last = await latestIntegrityCheck();
   const x = last?.integrity;
-  const items = x ? [...x.altered.map((v) => ({ ...v, kind: t.integrity_altered })), ...x.missing.map((v) => ({ ...v, kind: t.integrity_missing }))] : [];
+  const items = x ? [...x.altered.map((v) => ({ ...v, kind: tr('altered') })), ...x.missing.map((v) => ({ ...v, kind: tr('missing from storage') }))] : [];
   return (
-    <section className={styles.orphans} aria-label={t.integrity_title}>
+    <section className={styles.orphans} aria-label={tr('File integrity')}>
       <div className={styles.orphansHead}>
-        <strong>{t.integrity_title}</strong>
+        <strong>{tr('File integrity')}</strong>
         <span className={x && (x.alteredCount || x.missingCount || x.failed) ? styles.filesOff : 'text-muted'}>
-          {last && x ? `${t.integrity_last.replace('{date}', fmtDateTime(parisStamp(last.at), lang))} · ${integrityL(ctx, x)}` : t.integrity_never}
+          {last && x ? `${tr('last check: {date}').replace('{date}', fmtDateTime(parisStamp(last.at), lang))} · ${integrityL(ctx, x)}` : tr('Never checked.')}
         </span>
         <span style={{ flex: 1 }} />
-        <ActionButton action={checkFileIntegrity} className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} confirm={t.integrity_confirm} after="/administration?tab=audit">
-          {t.integrity_check}
+        <ActionButton action={checkFileIntegrity} className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} confirm={tr('Read every stored file again and compare each one with the SHA-256 fingerprint recorded at its upload? This takes as long as reading every file; nothing is changed or removed, the outcome is journaled.')} after="/administration?tab=audit">
+          {tr('Check now')}
         </ActionButton>
       </div>
-      <p className="text-muted">{t.integrity_hint}</p>
+      <p className="text-muted">{tr('Every file gets a SHA-256 fingerprint when uploaded. This check reads every stored file again and reports those whose content no longer matches (altered) or that are missing; it records the fingerprint of files uploaded before it was computed. A full download is checked on the way too: an altered file is cut short and journaled. Server stopped: npm run integrity.')}</p>
       {items.length > 0 && (
         <table className={`table ${styles.orphanTable}`}>
-          <thead><tr><th>{t.document}</th><th>{t.working_version}</th><th>{t.integrity_finding}</th></tr></thead>
+          <thead><tr><th>{tr('Document')}</th><th>{tr('Working version')}</th><th>{tr('Finding')}</th></tr></thead>
           <tbody>
             {items.map((v) => (
               <tr key={`${v.kind}-${v.v}`}>
@@ -800,12 +802,12 @@ async function Integrity({ ctx }: { ctx: Ctx }) {
  * is written (GET /api/export/full, journaled at its start and end).
  */
 function FullExport({ ctx }: { ctx: Ctx }) {
-  const { t } = ctx;
+  const { tr } = ctx;
   return (
     <p className={`${styles.filesPolicy} text-muted`}>
-      <strong>{t.export_all_title}</strong>
-      <a href="/api/export/full" className="link-plain" download>{t.export_all_download}</a>
-      <span>{t.export_all_hint}</span>
+      <strong>{tr('Full export')}</strong>
+      <a href="/api/export/full" className="link-plain" download>{tr('Download the archive (ZIP)')}</a>
+      <span>{tr('All the data (documents, revisions, working versions, circuits, Vigie requests, links, register, organisation, journal) and every file, drafts and confidential documents included, with a manifest and the SHA-256 of each item: to leave Codex or feed another system. Format: docs/export.md. The start and the end of the export are journaled. Server stopped: npm run export.')}</span>
     </p>
   );
 }
@@ -819,18 +821,18 @@ function fmtInterval(ms: number, lang: 'fr' | 'en'): string {
 
 /** The figures of a task's last run, in the reader's language (lib/scheduler.ts TASKS). */
 function runSummary(ctx: Ctx, x: TaskView): string {
-  const { t, lang } = ctx;
-  if (x.error === 'interrupted') return t.sched_interrupted;
+  const { tr, lang } = ctx;
+  if (x.error === 'interrupted') return tr('interrupted (server stopped during the run)');
   if (x.status === 'error') return x.error ?? '';
   const sum = x.summary ?? {};
-  const n = (key: TKey, v: unknown) => (typeof v === 'number' ? t[key].replace('{n}', String(v)) : null);
+  const n = (key: string, v: unknown) => (typeof v === 'number' ? tr(key).replace('{n}', String(v)) : null);
   const parts = [
-    n('sched_sum_promoted', sum.promoted), n('sched_sum_decisions', sum.decisions),
-    n('sched_sum_renamed', sum.renamed), n('sched_sum_provisional', sum.provisional),
-    n('sched_sum_removed', sum.removed), sum.bytes ? fmtSize(Number(sum.bytes), lang) : null, sum.failed ? n('sched_sum_failed', sum.failed) : null, n('sched_sum_left', sum.left),
-    n('sched_sum_checked', sum.checked), sum.altered ? n('sched_sum_altered', sum.altered) : null, sum.missing ? n('sched_sum_missing', sum.missing) : null,
-    typeof sum.archive === 'string' ? t.sched_sum_archive.replace('{v}', sum.archive) : null, sum.size ? fmtSize(Number(sum.size), lang) : null, n('sched_sum_files', sum.files),
-    typeof sum.reason === 'string' && `sched_reason_${sum.reason}` in t ? t[`sched_reason_${sum.reason}` as TKey] : null,
+    n(msg('entered into force: {n}'), sum.promoted), n(msg('decisions applied: {n}'), sum.decisions),
+    n(msg('files renamed: {n}'), sum.renamed), n(msg('still provisional: {n}'), sum.provisional),
+    n(msg('files removed: {n}'), sum.removed), sum.bytes ? fmtSize(Number(sum.bytes), lang) : null, sum.failed ? n(msg('failures: {n}'), sum.failed) : null, n(msg('orphans left: {n}'), sum.left),
+    n(msg('files checked: {n}'), sum.checked), sum.altered ? n(msg('altered: {n}'), sum.altered) : null, sum.missing ? n(msg('missing: {n}'), sum.missing) : null,
+    typeof sum.archive === 'string' ? tr('archive: {v}').replace('{v}', sum.archive) : null, sum.size ? fmtSize(Number(sum.size), lang) : null, n(msg('files: {n}'), sum.files),
+    typeof sum.reason === 'string' && Object.hasOwn(SCHEDULE_REASON_LABEL, sum.reason) ? labelOf(tr, SCHEDULE_REASON_LABEL, sum.reason) : null,
   ];
   return parts.filter(Boolean).join(' · ');
 }
@@ -840,27 +842,27 @@ function runSummary(ctx: Ctx, x: TaskView): string {
  * next. The settings are this process's variables; the runs, those any process on the database made.
  */
 async function Scheduler({ ctx }: { ctx: Ctx }) {
-  const { t, lang } = ctx;
+  const { tr, lang } = ctx;
   // The figures of each run to records managers only (summaryShown, D-14).
   const view = await schedulerOverview(ctx);
   const when = (ts: string | null) => (ts ? fmtDateTime(parisStamp(ts), lang) : null);
   return (
-    <section className={styles.orphans} aria-label={t.sched_title}>
-      <div className={styles.orphansHead}><strong>{t.sched_title}</strong></div>
-      <p className="text-muted">{t.sched_hint}</p>
-      {!view.enabled ? <p className={styles.filesOff}>{t.sched_off}</p> : !view.started && <p className={styles.filesOff}>{t.sched_not_started}</p>}
+    <section className={styles.orphans} aria-label={tr('Scheduler')}>
+      <div className={styles.orphansHead}><strong>{tr('Scheduler')}</strong></div>
+      <p className="text-muted">{tr('Tasks the server runs by itself at a regular interval, each set by its environment variable (docs/exploitation.md §4). Only the deferred entry into force is on by default; the maintenance tasks wait for the hosting choices. Each run is written to the technical log, and what it changes to the audit trail, under the Codex actor.')}</p>
+      {!view.enabled ? <p className={styles.filesOff}>{tr('Scheduler off (CODEX_SCHEDULER=off): approved revisions enter into force on their date only when a page is opened.')}</p> : !view.started && <p className={styles.filesOff}>{tr('The scheduler does not run in this process: approved revisions enter into force when a page is opened.')}</p>}
       <table className={`table ${styles.orphanTable}`}>
-        <thead><tr><th>{t.sched_col_task}</th><th>{t.sched_col_every}</th><th>{t.sched_col_last}</th><th>{t.sched_col_result}</th><th>{t.sched_col_next}</th></tr></thead>
+        <thead><tr><th>{tr('Task')}</th><th>{tr('Frequency')}</th><th>{tr('Last run')}</th><th>{tr('Result')}</th><th>{tr('Next')}</th></tr></thead>
         <tbody>
           {view.tasks.map((x) => (
             <tr key={x.task}>
-              <td>{t[`sched_task_${x.task}` as TKey]}<div className="text-muted" style={sub}>{x.env}</div></td>
-              <td className="nowrap">{x.interval == null ? <span className="text-muted">{t.sched_disabled}</span> : t.sched_every.replace('{d}', fmtInterval(x.interval, lang))}</td>
-              <td className="nowrap tabnum">{when(x.lastStart) ?? <span className="text-muted">{t.sched_never}</span>}</td>
+              <td>{labelOf(tr, SCHEDULE_TASK_LABEL, x.task)}<div className="text-muted" style={sub}>{x.env}</div></td>
+              <td className="nowrap">{x.interval == null ? <span className="text-muted">{tr('off')}</span> : tr('every {d}').replace('{d}', fmtInterval(x.interval, lang))}</td>
+              <td className="nowrap tabnum">{when(x.lastStart) ?? <span className="text-muted">{tr('never')}</span>}</td>
               <td className={x.status === 'error' ? styles.filesOff : undefined}>
-                {x.status && <>{t[`sched_st_${x.status}` as TKey]}{runSummary(ctx, x) && ` · ${runSummary(ctx, x)}`}</>}
+                {x.status && <>{labelOf(tr, SCHEDULE_STATUS_LABEL, x.status)}{runSummary(ctx, x) && ` · ${runSummary(ctx, x)}`}</>}
               </td>
-              <td className="nowrap tabnum">{x.interval == null ? '—' : when(x.next) ?? <span className="text-muted">{t.sched_next_first}</span>}</td>
+              <td className="nowrap tabnum">{x.interval == null ? '—' : when(x.next) ?? <span className="text-muted">{tr('at the first look')}</span>}</td>
             </tr>
           ))}
         </tbody>
@@ -874,7 +876,7 @@ async function Scheduler({ ctx }: { ctx: Ctx }) {
  * auditPage), the filters and the page in the URL; the CSV export above it gives the whole journal.
  */
 async function Audit({ ctx, sp }: { ctx: Ctx; sp: Record<string, string | undefined> }) {
-  const { t, lang } = ctx;
+  const { tr, lang } = ctx;
   const day = (v?: string) => (v && parseIsoDay(v) === v ? v : undefined);
   // An entry of the journal: its ID, a serial of the database (int4).
   const entry = (v?: string) => (v && /^\d{1,10}$/.test(v) && Number(v) <= AUDIT_ID_MAX ? Number(v) : undefined);
@@ -887,7 +889,7 @@ async function Audit({ ctx, sp }: { ctx: Ctx; sp: Record<string, string | undefi
     return `/administration?${p}`;
   };
   const people = [...ctx.users.values()].sort((a, b) => a.name.localeCompare(b.name, lang));
-  const actions = (Object.keys(t) as string[]).filter((k) => k.startsWith('act_')).map((k) => ({ key: k.slice(4), label: t[k as TKey] })).sort((a, b) => a.label.localeCompare(b.label, lang));
+  const actions = Object.keys(ACTIVITY_LABEL).map((k) => ({ key: k, label: labelOf(tr, ACTIVITY_LABEL, k) })).sort((a, b) => a.label.localeCompare(b.label, lang));
   const step = { fontSize: 12, padding: '4px 10px' };
   return (
     <>
@@ -902,23 +904,23 @@ async function Audit({ ctx, sp }: { ctx: Ctx; sp: Record<string, string | undefi
       <div key={JSON.stringify(f)}>
         <Form action="/administration" scroll={false} className={styles.auditFilters}>
           <input type="hidden" name="tab" value="audit" />
-          <input className="input" name="doc" defaultValue={f.doc ?? ''} placeholder={t.audit_filter_doc} aria-label={t.audit_filter_doc} style={{ width: 200 }} />
-          <select className="input" name="who" defaultValue={f.who ?? ''} aria-label={t.user} style={{ width: 'auto' }}>
-            <option value="">{t.audit_all_users}</option>
+          <input className="input" name="doc" defaultValue={f.doc ?? ''} placeholder={tr('Document or target')} aria-label={tr('Document or target')} style={{ width: 200 }} />
+          <select className="input" name="who" defaultValue={f.who ?? ''} aria-label={tr('User')} style={{ width: 'auto' }}>
+            <option value="">{tr('Everyone')}</option>
             {people.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
           </select>
-          <select className="input" name="act" defaultValue={f.action ?? ''} aria-label={t.action} style={{ width: 'auto' }}>
-            <option value="">{t.audit_all_actions}</option>
+          <select className="input" name="act" defaultValue={f.action ?? ''} aria-label={tr('Action')} style={{ width: 'auto' }}>
+            <option value="">{tr('All actions')}</option>
             {actions.map((a) => <option key={a.key} value={a.key}>{a.label}</option>)}
           </select>
-          <label className={styles.auditDay}><span className="text-muted">{t.audit_from}</span><input className="input" type="date" name="from" defaultValue={f.from ?? ''} max={f.to} /></label>
-          <label className={styles.auditDay}><span className="text-muted">{t.audit_to}</span><input className="input" type="date" name="to" defaultValue={f.to ?? ''} min={f.from} /></label>
-          <button type="submit" className="btn btn-secondary" style={step}>{t.apply}</button>
-          {filtered && <Link href="/administration?tab=audit" className="btn btn-ghost" style={{ fontSize: 12 }}>{t.clear}</Link>}
+          <label className={styles.auditDay}><span className="text-muted">{tr('From')}</span><input className="input" type="date" name="from" defaultValue={f.from ?? ''} max={f.to} /></label>
+          <label className={styles.auditDay}><span className="text-muted">{tr('To')}</span><input className="input" type="date" name="to" defaultValue={f.to ?? ''} min={f.from} /></label>
+          <button type="submit" className="btn btn-secondary" style={step}>{tr('Apply')}</button>
+          {filtered && <Link href="/administration?tab=audit" className="btn btn-ghost" style={{ fontSize: 12 }}>{tr('Clear')}</Link>}
         </Form>
       </div>
       <table className="table" style={{ fontSize: 13 }}>
-        <thead><tr><th>{t.when}</th><th>{t.user}</th><th>{t.action}</th><th>{t.target}</th><th>{t.detail}</th></tr></thead>
+        <thead><tr><th>{tr('Timestamp')}</th><th>{tr('User')}</th><th>{tr('Action')}</th><th>{tr('Target')}</th><th>{tr('Detail')}</th></tr></thead>
         <tbody>
           {rows.map((a) => (
             <tr key={a.id}>
@@ -930,19 +932,19 @@ async function Audit({ ctx, sp }: { ctx: Ctx; sp: Record<string, string | undefi
               <td className="text-muted">{a.detail}</td>
             </tr>
           ))}
-          {rows.length === 0 && <tr><td colSpan={5} className="text-muted" style={{ padding: '16px 8px' }}>{t.audit_none}</td></tr>}
+          {rows.length === 0 && <tr><td colSpan={5} className="text-muted" style={{ padding: '16px 8px' }}>{tr('No entry matches these criteria.')}</td></tr>}
         </tbody>
       </table>
       {(newer != null || older != null || at.before != null || at.after != null) && (
-        <nav aria-label={t.pages_nav} className={styles.auditPager}>
-          {(at.before != null || at.after != null) && <Link href={href({})} className="btn btn-ghost" style={{ fontSize: 12 }}>{t.audit_latest}</Link>}
+        <nav aria-label={tr('Pages')} className={styles.auditPager}>
+          {(at.before != null || at.after != null) && <Link href={href({})} className="btn btn-ghost" style={{ fontSize: 12 }}>{tr('Most recent')}</Link>}
           <span style={{ flex: 1 }} />
           {newer != null
-            ? <Link href={href({ after: String(newer) })} rel="prev" className="btn btn-secondary" style={step}><Icon name="chevronLeft" size={14} />{t.audit_newer}</Link>
-            : <span className="btn btn-secondary" style={{ ...step, opacity: 0.45, cursor: 'default' }} aria-disabled="true"><Icon name="chevronLeft" size={14} />{t.audit_newer}</span>}
+            ? <Link href={href({ after: String(newer) })} rel="prev" className="btn btn-secondary" style={step}><Icon name="chevronLeft" size={14} />{tr('Newer')}</Link>
+            : <span className="btn btn-secondary" style={{ ...step, opacity: 0.45, cursor: 'default' }} aria-disabled="true"><Icon name="chevronLeft" size={14} />{tr('Newer')}</span>}
           {older != null
-            ? <Link href={href({ before: String(older) })} rel="next" className="btn btn-secondary" style={step}>{t.audit_older}<Icon name="chevronRight" size={14} /></Link>
-            : <span className="btn btn-secondary" style={{ ...step, opacity: 0.45, cursor: 'default' }} aria-disabled="true">{t.audit_older}<Icon name="chevronRight" size={14} /></span>}
+            ? <Link href={href({ before: String(older) })} rel="next" className="btn btn-secondary" style={step}>{tr('Older')}<Icon name="chevronRight" size={14} /></Link>
+            : <span className="btn btn-secondary" style={{ ...step, opacity: 0.45, cursor: 'default' }} aria-disabled="true">{tr('Older')}<Icon name="chevronRight" size={14} /></span>}
         </nav>
       )}
     </>

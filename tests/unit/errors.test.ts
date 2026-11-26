@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { errorRef, failureText } from '@/lib/errors';
-import { DICT } from '@/lib/i18n';
+import { translatorFor } from '@/i18n';
 
 // What the user is shown of an unexpected error (lib/errors.ts, point 44 of docs/reste-a-faire.md): the reference the
 // technical log carries, never the message.
@@ -23,8 +23,8 @@ describe('errorRef', () => {
 describe('failureText', () => {
   it('adds the reference in the user’s language, never the message', () => {
     const err = Object.assign(new Error('Failed query: select * from documents'), { digest: 'abc-1' });
-    expect(failureText(DICT.fr, err)).toBe('Une erreur est survenue · Réf. abc-1');
-    expect(failureText(DICT.en, err)).toBe('Something went wrong · Ref. abc-1');
-    expect(failureText(DICT.fr, new Error('disk full'))).toBe('Une erreur est survenue');
+    expect(failureText(translatorFor('fr'), err)).toBe('Une erreur est survenue · Réf. abc-1');
+    expect(failureText(translatorFor('en'), err)).toBe('Something went wrong · Ref. abc-1');
+    expect(failureText(translatorFor('fr'), new Error('disk full'))).toBe('Une erreur est survenue');
   });
 });

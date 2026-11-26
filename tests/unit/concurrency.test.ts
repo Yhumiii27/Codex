@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { changeAuthor, seenVersion, seenWorkingBase, staleText, workingIssue, workingStaleText } from '@/lib/concurrency';
-import { DICT } from '@/lib/i18n';
+import { translatorFor } from '@/i18n';
 
 // Concurrent changes from two views of the same record (point 20 of docs/reste-a-faire.md): what a dialog sends back
 // of the view it was opened from, when an upload or an approval request must not pass over a working version uploaded
@@ -81,19 +81,19 @@ describe('changeAuthor: who made the last change, among the entries of its trans
 
 describe('messages', () => {
   it('names who changed the record and asks to reload it, in both languages', () => {
-    expect(staleText(DICT.fr, 'Claire Bardet')).toBe('Ce document a été modifié entre-temps par Claire Bardet ; rechargez la fiche.');
-    expect(staleText(DICT.en, 'Claire Bardet')).toBe('This document was changed in the meantime by Claire Bardet; reload the record.');
-    expect(staleText(DICT.fr, null)).toBe('Ce document a été modifié entre-temps ; rechargez la fiche.');
-    expect(staleText(DICT.en, null)).toBe('This document was changed in the meantime; reload the record.');
+    expect(staleText(translatorFor('fr'), 'Claire Bardet')).toBe('Ce document a été modifié entre-temps par Claire Bardet ; rechargez la fiche.');
+    expect(staleText(translatorFor('en'), 'Claire Bardet')).toBe('This document was changed in the meantime by Claire Bardet; reload the record.');
+    expect(staleText(translatorFor('fr'), null)).toBe('Ce document a été modifié entre-temps ; rechargez la fiche.');
+    expect(staleText(translatorFor('en'), null)).toBe('This document was changed in the meantime; reload the record.');
   });
 
   it('names the working version uploaded since and its author', () => {
-    expect(workingStaleText(DICT.fr, 'A.3', 'Gabriel Comte')).toBe('La version de travail A.3 a été déposée entre-temps par Gabriel Comte ; rechargez la fiche pour partir de cette version.');
-    expect(workingStaleText(DICT.en, 'A.3', 'Gabriel Comte')).toBe('Working version A.3 was uploaded in the meantime by Gabriel Comte; reload the record to start from that version.');
+    expect(workingStaleText(translatorFor('fr'), 'A.3', 'Gabriel Comte')).toBe('La version de travail A.3 a été déposée entre-temps par Gabriel Comte ; rechargez la fiche pour partir de cette version.');
+    expect(workingStaleText(translatorFor('en'), 'A.3', 'Gabriel Comte')).toBe('Working version A.3 was uploaded in the meantime by Gabriel Comte; reload the record to start from that version.');
   });
 
   it('asks to see that version before requesting approval of the revision', () => {
-    expect(workingStaleText(DICT.fr, 'C.3', 'Lucas Fabre', 'validate')).toBe('La version de travail C.3 a été déposée entre-temps par Lucas Fabre ; rechargez la fiche pour la voir avant de demander la validation.');
-    expect(workingStaleText(DICT.en, 'C.3', 'Lucas Fabre', 'validate')).toBe('Working version C.3 was uploaded in the meantime by Lucas Fabre; reload the record to see it before requesting approval.');
+    expect(workingStaleText(translatorFor('fr'), 'C.3', 'Lucas Fabre', 'validate')).toBe('La version de travail C.3 a été déposée entre-temps par Lucas Fabre ; rechargez la fiche pour la voir avant de demander la validation.');
+    expect(workingStaleText(translatorFor('en'), 'C.3', 'Lucas Fabre', 'validate')).toBe('Working version C.3 was uploaded in the meantime by Lucas Fabre; reload the record to see it before requesting approval.');
   });
 });

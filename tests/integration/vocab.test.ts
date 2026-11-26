@@ -3,12 +3,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { schema as s } from '@/db';
 import { addVocabTerm, adoptSubtype, createDocument, mergeVocabTerms, renameVocabTerm, updateMeta } from '@/lib/actions';
 import { getCtx } from '@/lib/context';
-import { DICT } from '@/lib/i18n';
 import { importDocument } from '@/lib/importer';
 import { vocabOverview, vocabSuggestions } from '@/lib/queries';
 import { addDoc, fixClock, getDoc, setupDb, viewOf } from '../support/db';
 import type { Person } from '../support/fixtures';
 import { actAs } from '../support/session';
+import { translatorFor } from '@/i18n';
 
 // Controlled vocabularies (point 59 of docs/reste-a-faire.md, MET-07, G32, G40, A21): the source organisation and the
 // keywords read against their terms (a spelling takes the term's, a new value is added only once confirmed, or by the
@@ -22,7 +22,7 @@ vi.mock('next/cache', () => ({ refresh: () => {} }));
 
 const db = setupDb();
 fixClock();
-const t = DICT.fr;
+const tr = translatorFor('fr');
 
 function form(fields: Record<string, string | string[]>): FormData {
   const fd = new FormData();
@@ -44,10 +44,10 @@ const docs = async () => (await db().select().from(s.documents)).map((d) => [d.i
 describe('forms: terms read against the vocabularies', () => {
   it('asks to confirm a new term, writes nothing until then, and adds it once confirmed, journaled', async () => {
     expect(await letter({ sourceOrg: 'Nordvolt', keywords: 'levage' })).toEqual({
-      ok: false, error: t.vocab_confirm_new.replace('{terms}', '« Nordvolt »'), field: 'sourceOrg', confirm: '["Nordvolt"]',
+      ok: false, error: tr('New term, to confirm before adding it to the vocabulary: {terms}.').replace('{terms}', '« Nordvolt »'), field: 'sourceOrg', confirm: '["Nordvolt"]',
     });
     expect(await letter({ sourceOrg: 'Nordvolt', keywords: 'levage', confirmTerm: 'nordvolt' })).toEqual({
-      ok: false, error: t.vocab_confirm_new.replace('{terms}', '« levage »'), field: 'keywords', confirm: '["levage"]',
+      ok: false, error: tr('New term, to confirm before adding it to the vocabulary: {terms}.').replace('{terms}', '« levage »'), field: 'keywords', confirm: '["levage"]',
     });
     expect(await docs()).toEqual([]);
     expect(await terms(s.sourceOrgs)).toEqual([]);
@@ -74,13 +74,13 @@ describe('forms: terms read against the vocabularies', () => {
   });
 
   it('accepts fr, en or no language, and refuses any other, but where the document already has it', async () => {
-    expect(await letter({ sourceOrg: 'X', confirmTerm: 'X', lang: 'de' })).toEqual({ ok: false, error: t.lang_invalid, field: 'lang' });
+    expect(await letter({ sourceOrg: 'X', confirmTerm: 'X', lang: 'de' })).toEqual({ ok: false, error: tr('Language not allowed: French, English or none.'), field: 'lang' });
     expect(await letter({ sourceOrg: 'X', confirmTerm: 'X', lang: ' EN ' })).toMatchObject({ ok: true });
     expect((await getDoc(db(), 'COR-QUA-0001')).lang).toBe('en');
     await addDoc(db(), { id: 'PRO-QUA-0001' });
     await db().update(s.documents).set({ lang: 'de' }).where(eq(s.documents.id, 'PRO-QUA-0001'));
     expect(await edit('PRO-QUA-0001', { title: 'Procédure', lang: 'de' })).toMatchObject({ ok: true });
-    expect(await edit('PRO-QUA-0001', { title: 'Procédure', lang: 'it' })).toEqual({ ok: false, error: t.lang_invalid, field: 'lang' });
+    expect(await edit('PRO-QUA-0001', { title: 'Procédure', lang: 'it' })).toEqual({ ok: false, error: tr('Language not allowed: French, English or none.'), field: 'lang' });
   });
 
   it('writes a sub-type in its type’s spelling, and keeps a value outside the list (the list stays open)', async () => {
@@ -110,7 +110,7 @@ describe('forms: a term the user is not offered is answered as an unknown one (D
     await hiddenTerm();
     const hidden = await letter({ sourceOrg: 'X', confirmTerm: 'X', keywords: 'PROJET HELIOS' }, 'writer');
     const unknown = await letter({ sourceOrg: 'X', confirmTerm: 'X', keywords: 'inconnu' }, 'writer');
-    expect(hidden).toEqual({ ok: false, error: t.vocab_confirm_new.replace('{terms}', '« PROJET HELIOS »'), field: 'keywords', confirm: '["PROJET HELIOS"]' });
+    expect(hidden).toEqual({ ok: false, error: tr('New term, to confirm before adding it to the vocabulary: {terms}.').replace('{terms}', '« PROJET HELIOS »'), field: 'keywords', confirm: '["PROJET HELIOS"]' });
     expect(strip(hidden)).toBe(strip(unknown));
     expect(await letter({ sourceOrg: 'X', confirmTerm: ['X', 'PROJET HELIOS'], keywords: 'PROJET HELIOS' }, 'writer')).toMatchObject({ ok: true });
     const [made] = (await docs()).filter(([id]) => id !== 'PRO-QUA-0009');
@@ -131,7 +131,7 @@ describe('forms: a term the user is not offered is answered as an unknown one (D
     await hiddenTerm();
     await addDoc(db(), { id: 'PRO-QUA-0001', ownerId: 'writer' });
     expect(await edit('PRO-QUA-0001', { title: 'Procédure', keywords: 'Projet Hélios' }, 'writer')).toEqual({
-      ok: false, error: t.vocab_confirm_new.replace('{terms}', '« Projet Hélios »'), field: 'keywords', confirm: '["Projet Hélios"]',
+      ok: false, error: tr('New term, to confirm before adding it to the vocabulary: {terms}.').replace('{terms}', '« Projet Hélios »'), field: 'keywords', confirm: '["Projet Hélios"]',
     });
     expect(await edit('PRO-QUA-0001', { title: 'Procédure', keywords: 'Projet Hélios', confirmTerm: 'Projet Hélios' }, 'writer')).toMatchObject({ ok: true });
     expect(await edit('PRO-QUA-0001', { title: 'Procédure bis', keywords: 'Projet Hélios' }, 'writer')).toMatchObject({ ok: true });
@@ -142,10 +142,10 @@ describe('forms: a term the user is not offered is answered as an unknown one (D
 describe('Administration › Vocabulaires', () => {
   it('adds a term, and refuses another spelling of an existing one', async () => {
     actAs('manager');
-    expect(await addVocabTerm('source_org', ' Bureau  Veritas ')).toEqual({ ok: true, message: t.vocab_added });
-    expect(await addVocabTerm('source_org', 'BUREAU VÉRITAS')).toEqual({ ok: false, error: t.vocab_name_taken, field: 'name' });
-    expect(await addVocabTerm('keyword', 'bureau veritas')).toEqual({ ok: true, message: t.vocab_added });
-    expect(await addVocabTerm('nope', 'x')).toEqual({ ok: false, error: t.error });
+    expect(await addVocabTerm('source_org', ' Bureau  Veritas ')).toEqual({ ok: true, message: tr('Term added.') });
+    expect(await addVocabTerm('source_org', 'BUREAU VÉRITAS')).toEqual({ ok: false, error: tr('A term already has this name (case, accents and blanks aside).'), field: 'name' });
+    expect(await addVocabTerm('keyword', 'bureau veritas')).toEqual({ ok: true, message: tr('Term added.') });
+    expect(await addVocabTerm('nope', 'x')).toEqual({ ok: false, error: tr('Something went wrong') });
     expect((await terms(s.sourceOrgs)).map((x) => x.name)).toEqual(['Bureau Veritas']);
   });
 
@@ -156,7 +156,7 @@ describe('Administration › Vocabulaires', () => {
     await db().update(s.documents).set({ origin: 'externe', sourceOrg: 'SIEMENS' });
     const [term] = await db().select().from(s.sourceOrgs);
     actAs('manager');
-    expect(await renameVocabTerm('source_org', term.id, 'Siemens AG')).toEqual({ ok: true, message: `${t.saved_ok} · ${t.vocab_docs_changed.replace('{n}', '1')} · ${t.retention_held_kept.replace('{n}', '1')}` });
+    expect(await renameVocabTerm('source_org', term.id, 'Siemens AG')).toEqual({ ok: true, message: `${tr('Changes saved')} · ${tr('{n} document(s) updated').replace('{n}', '1')} · ${tr('{n} document(s) under legal hold unchanged').replace('{n}', '1')}` });
     expect(await docs()).toEqual(expect.arrayContaining([['COR-QUA-0001', 'Siemens AG', []], ['COR-QUA-0002', 'SIEMENS', []]]));
     expect(await terms(s.sourceOrgs)).toEqual([{ name: 'Siemens AG', key: 'siemens ag', aliases: ['Siemens'] }]);
     const [applied] = await db().select().from(s.auditLog).where(eq(s.auditLog.action, 'vocab_apply'));
@@ -178,19 +178,19 @@ describe('Administration › Vocabulaires', () => {
     const all = await db().select().from(s.keywordTerms);
     const dup = all.find((x) => x.name === 'Soudage')!, into = all.find((x) => x.name === 'soudure')!;
     actAs('manager');
-    expect(await mergeVocabTerms('keyword', dup.id, dup.id)).toEqual({ ok: false, error: t.vocab_merge_self });
+    expect(await mergeVocabTerms('keyword', dup.id, dup.id)).toEqual({ ok: false, error: tr('Choose another term.') });
     expect(await mergeVocabTerms('keyword', dup.id, into.id)).toMatchObject({ ok: true });
     expect((await getDoc(db(), 'PRO-QUA-0001')).keywords).toEqual(['soudure', 'acier']);
     expect(await terms(s.keywordTerms)).toEqual([{ name: 'soudure', key: 'soudure', aliases: ['Soudage'] }]);
-    expect(await mergeVocabTerms('keyword', dup.id, into.id)).toEqual({ ok: false, error: t.vocab_not_found });
+    expect(await mergeVocabTerms('keyword', dup.id, into.id)).toEqual({ ok: false, error: tr('Term not found: it may have been merged or renamed.') });
   });
 
   it('adopts a sub-type into its type, once', async () => {
     actAs('manager');
-    expect(await adoptSubtype('PRO', ' Mode  opératoire ')).toEqual({ ok: true, message: t.subtype_adopted.replace('{value}', 'Mode opératoire').replace('{type}', 'PRO') });
+    expect(await adoptSubtype('PRO', ' Mode  opératoire ')).toEqual({ ok: true, message: tr('Sub-type “{value}” added to type {type}.').replace('{value}', 'Mode opératoire').replace('{type}', 'PRO') });
     const [pro] = await db().select().from(s.docTypes).where(eq(s.docTypes.code, 'PRO'));
     expect(pro.subtypes).toEqual([{ fr: 'Mode opératoire', en: 'Mode opératoire' }]);
-    expect(await adoptSubtype('PRO', 'MODE OPERATOIRE')).toEqual({ ok: false, error: t.subtype_listed });
+    expect(await adoptSubtype('PRO', 'MODE OPERATOIRE')).toEqual({ ok: false, error: tr('This sub-type is already in the type’s list.') });
     const [entry] = await db().select().from(s.auditLog).where(eq(s.auditLog.action, 'type'));
     expect(entry).toMatchObject({ targetKind: 'type', targetId: 'PRO' });
   });
@@ -201,10 +201,10 @@ describe('Administration › Vocabulaires', () => {
     const [a, b] = await db().select().from(s.keywordTerms);
     for (const who of ['owner', 'head', 'auditor'] as const) {
       actAs(who);
-      expect(await addVocabTerm('keyword', 'c')).toEqual({ ok: false, error: t.forbidden });
-      expect(await renameVocabTerm('keyword', a.id, 'c')).toEqual({ ok: false, error: t.forbidden });
-      expect(await mergeVocabTerms('keyword', a.id, b.id)).toEqual({ ok: false, error: t.forbidden });
-      expect(await adoptSubtype('PRO', 'c')).toEqual({ ok: false, error: t.forbidden });
+      expect(await addVocabTerm('keyword', 'c')).toEqual({ ok: false, error: tr('The simulated role cannot access this screen.') });
+      expect(await renameVocabTerm('keyword', a.id, 'c')).toEqual({ ok: false, error: tr('The simulated role cannot access this screen.') });
+      expect(await mergeVocabTerms('keyword', a.id, b.id)).toEqual({ ok: false, error: tr('The simulated role cannot access this screen.') });
+      expect(await adoptSubtype('PRO', 'c')).toEqual({ ok: false, error: tr('The simulated role cannot access this screen.') });
     }
     expect((await terms(s.keywordTerms)).map((x) => x.name)).toEqual(['a', 'b']);
   });

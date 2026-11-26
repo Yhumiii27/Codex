@@ -1,8 +1,9 @@
 import type { Attachment, Conf, Disposition, Origin, RetentionTrigger } from '@/db/schema';
 import { TEMPLATE_CONTEXT, TEMPLATE_TYPE } from './codes';
-import { ATTACHMENTS, CONF_LEVELS, ORIGINS, type TKey } from './i18n';
+import { ATTACHMENTS, CONF_LEVELS, ORIGINS } from './i18n';
 import { HR_RECORD_READER, RECORD_TYPES } from './records';
 import { parseReviewMonths } from './review';
+import { msg } from '@/i18n';
 
 // Pure rules of the register's administration (Administration › Registre des types, Fonctions & circuits): formats of
 // the codes and keys, collisions between the segments of an ID (TYPE-CONTEXTE-SEQ, docs/modele-cible.md §3), and the
@@ -42,15 +43,15 @@ export const BUILT_IN_SCOPES: ReadonlyMap<string, FunctionScope> = new Map<strin
 ]);
 
 /** Why a type named `code` may not admit these attachments (the type of templates: none but « none »), or null. */
-export function builtInTypeIssue(code: string, v: { attachments: readonly Attachment[] }): TKey | null {
+export function builtInTypeIssue(code: string, v: { attachments: readonly Attachment[] }): string | null {
   if (code !== TEMPLATE_TYPE) return null;
-  return v.attachments.length === TEMPLATE_ATTACHMENTS.length && v.attachments.every((a) => TEMPLATE_ATTACHMENTS.includes(a)) ? null : 'reg_template_attachments';
+  return v.attachments.length === TEMPLATE_ATTACHMENTS.length && v.attachments.every((a) => TEMPLATE_ATTACHMENTS.includes(a)) ? null : msg('The type of templates (FRM) stays without attachment: attached to a project or a programme, a template would take its context instead of QMS (D-10).');
 }
 
 /** Why a function keyed `key` may not have this scope (a function the rules of Codex name keeps its own), or null. */
-export function builtInScopeIssue(key: string, scope: FunctionScope): TKey | null {
+export function builtInScopeIssue(key: string, scope: FunctionScope): string | null {
   const fixed = BUILT_IN_SCOPES.get(key);
-  return fixed && fixed !== scope ? 'reg_scope_built_in' : null;
+  return fixed && fixed !== scope ? msg('The scope of this function does not change: the rules of Codex rely on it (the project manager when no holder is named, the heads of departments).') : null;
 }
 
 /** Type code, first segment of an ID: 2 or 3 capital letters, as every code of the register (GA, PO, PRO…). */
@@ -80,51 +81,51 @@ export type CodeSpace = { types: readonly string[]; departments: readonly string
  * docs/registre-points-ouverts.md, not settled, O-05), or two contexts sharing a counter. The types and departments that
  * already share a code (FIN, HSE, COM, JUR) keep it: only a new code, or a code that changes, is checked.
  */
-function clash(code: string, space: CodeSpace, own: keyof CodeSpace): TKey | null {
-  if (code === TEMPLATE_CONTEXT) return 'reg_code_qms';
-  if (space[own].includes(code)) return 'reg_code_taken';
-  const named: [keyof CodeSpace, TKey][] = [['types', 'reg_code_type'], ['departments', 'reg_code_department'], ['programs', 'reg_code_program'], ['projects', 'reg_code_project']];
+function clash(code: string, space: CodeSpace, own: keyof CodeSpace): string | null {
+  if (code === TEMPLATE_CONTEXT) return msg('QMS is the context of templates (FRM-QMS-001): it cannot be used as a code.');
+  if (space[own].includes(code)) return msg('This code is already taken.');
+  const named: [keyof CodeSpace, string][] = [['types', msg('This code already names a document type: in an ID (TYPE-CONTEXT-SEQ), a code names one thing only.')], ['departments', msg('This code already names a department: in an ID (TYPE-CONTEXT-SEQ), a code names one thing only.')], ['programs', msg('This code already names a research programme: in an ID (TYPE-CONTEXT-SEQ), a code names one thing only.')], ['projects', msg('This code already names a project: in an ID (TYPE-CONTEXT-SEQ), a code names one thing only.')]];
   return named.find(([k]) => k !== own && space[k].includes(code))?.[1] ?? null;
 }
 
 /** Why a type code may not be given (`current`: the type's own code, which it keeps whatever the others), or null. */
-export function typeCodeIssue(code: string, space: CodeSpace, current?: string): TKey | null {
-  if (!TYPE_CODE_RE.test(code)) return 'reg_type_code_format';
+export function typeCodeIssue(code: string, space: CodeSpace, current?: string): string | null {
+  if (!TYPE_CODE_RE.test(code)) return msg('Type code: 2 or 3 capital letters.');
   return code === current ? null : clash(code, space, 'types');
 }
 
 /** Why a programme code may not be given, or null. */
-export function programCodeIssue(code: string, space: CodeSpace, current?: string): TKey | null {
-  if (!PROGRAM_CODE_RE.test(code)) return 'reg_program_code_format';
+export function programCodeIssue(code: string, space: CodeSpace, current?: string): string | null {
+  if (!PROGRAM_CODE_RE.test(code)) return msg('Programme code: a capital letter, then 2 to 9 capital letters or digits.');
   return code === current ? null : clash(code, space, 'programs');
 }
 
 /** Why a new department code may not be given, or null (Administration › Organisation). */
-export function departmentCodeIssue(code: string, space: CodeSpace): TKey | null {
-  if (!DEPARTMENT_CODE_RE.test(code)) return 'reg_department_code_format';
+export function departmentCodeIssue(code: string, space: CodeSpace): string | null {
+  if (!DEPARTMENT_CODE_RE.test(code)) return msg('Department code: 3 letters.');
   return clash(code, space, 'departments');
 }
 
 /** Why the key of a family or a function may not be given (`taken`: the keys in use, `current` its own), or null. */
-export function keyIssue(key: string, taken: readonly string[], current?: string): TKey | null {
-  if (!KEY_RE.test(key)) return 'reg_key_format';
-  return key !== current && taken.includes(key) ? 'reg_code_taken' : null;
+export function keyIssue(key: string, taken: readonly string[], current?: string): string | null {
+  if (!KEY_RE.test(key)) return msg('Key: a lower-case letter, then 1 to 39 lower-case letters, digits or _.');
+  return key !== current && taken.includes(key) ? msg('This code is already taken.') : null;
 }
 
 /** A form refused: the message, and the field to show it under when there is one. */
-export type FormIssue = { ok: false; key: TKey; field?: string };
+export type FormIssue = { ok: false; key: string; field?: string };
 export type Parsed<T> = { ok: true; value: T } | FormIssue;
 
 const text = (fd: FormData, k: string) => String(fd.get(k) ?? '').trim();
-const issue = (key: TKey, field?: string): FormIssue => ({ ok: false, key, field });
+const issue = (key: string, field?: string): FormIssue => ({ ok: false, key, field });
 
 /** French label required, English one defaulting to it; both bounded. */
 function labels(fd: FormData, fr = 'labelFr', en = 'labelEn'): Parsed<{ labelFr: string; labelEn: string }> {
   const labelFr = text(fd, fr);
   const labelEn = text(fd, en) || labelFr;
-  if (!labelFr) return issue('reg_label_required', fr);
-  if (labelFr.length > LABEL_MAX) return issue('reg_text_too_long', fr);
-  if (labelEn.length > LABEL_MAX) return issue('reg_text_too_long', en);
+  if (!labelFr) return issue(msg('The label is required.'), fr);
+  if (labelFr.length > LABEL_MAX) return issue(msg('Text too long.'), fr);
+  if (labelEn.length > LABEL_MAX) return issue(msg('Text too long.'), en);
   return { ok: true, value: { labelFr, labelEn } };
 }
 
@@ -168,10 +169,10 @@ export type RetentionRuleValues = { retentionYears: number | null; retentionTrig
  */
 export function parseRetentionRule(fd: FormData): Parsed<RetentionRuleValues> {
   const yearsRaw = text(fd, 'retentionYears');
-  if (yearsRaw && !(/^\d{1,3}$/.test(yearsRaw) && Number(yearsRaw) <= RETENTION_YEARS_MAX)) return issue('reg_years_invalid', 'retentionYears');
+  if (yearsRaw && !(/^\d{1,3}$/.test(yearsRaw) && Number(yearsRaw) <= RETENTION_YEARS_MAX)) return issue(msg('Retention period: a whole number of years, from 0 to 200, or empty.'), 'retentionYears');
   const retentionTrigger = RETENTION_TRIGGERS.find((x) => x === text(fd, 'retentionTrigger'));
   const retentionDisposition = DISPOSITIONS.find((x) => x === text(fd, 'retentionDisposition'));
-  if (!retentionTrigger || !retentionDisposition) return issue('error');
+  if (!retentionTrigger || !retentionDisposition) return issue(msg('Something went wrong'));
   return { ok: true, value: { retentionYears: yearsRaw ? Number(yearsRaw) : null, retentionTrigger, retentionDisposition } };
 }
 
@@ -185,30 +186,30 @@ export function parseTypeForm(fd: FormData, refs: { families: readonly string[];
   const names = labels(fd);
   if (!names.ok) return names;
   const family = text(fd, 'family');
-  if (!refs.families.includes(family)) return issue('reg_family_required', 'family');
+  if (!refs.families.includes(family)) return issue(msg('Choose the family.'), 'family');
   const picked = (k: string) => fd.getAll(k).map(String);
   const origins = ORIGINS.filter((o) => picked('origins').includes(o));
-  if (!origins.length) return issue('reg_origins_required', 'origins');
+  if (!origins.length) return issue(msg('At least one origin allowed.'), 'origins');
   const attachments = ATTACHMENTS.filter((a) => picked('attachments').includes(a));
-  if (!attachments.length) return issue('reg_attachments_required', 'attachments');
+  if (!attachments.length) return issue(msg('At least one attachment allowed.'), 'attachments');
   const subtypes = parseSubtypes(picked('subtypeFr'), picked('subtypeEn'));
-  if (!subtypes) return issue('reg_subtypes_invalid', 'subtypes');
+  if (!subtypes) return issue(msg('Sub-types: 40 at most, of 120 characters each at most.'), 'subtypes');
   // Unknown functions are dropped, each step kept once, in order.
   const circuit = [...new Set(picked('circuit').filter((k) => refs.functions.includes(k)))];
   const confAllowed = CONF_LEVELS.filter((c) => picked('confAllowed').includes(c));
   const confDefault = text(fd, 'confDefault') as Conf;
-  if (!confAllowed.length || !confAllowed.includes(confDefault)) return issue('conf_not_allowed', 'confDefault');
+  if (!confAllowed.length || !confAllowed.includes(confDefault)) return issue(msg('Confidentiality level not allowed for this type.'), 'confDefault');
   // Empty: no periodicity. Otherwise a whole number of months, refused rather than corrected.
   const reviewMonths = parseReviewMonths(text(fd, 'reviewMonths'));
-  if (reviewMonths === undefined) return issue('review_months_invalid', 'reviewMonths');
+  if (reviewMonths === undefined) return issue(msg('Invalid review periodicity: a whole number of months from 1 to 240, or nothing.'), 'reviewMonths');
   const rule = parseRetentionRule(fd);
   if (!rule.ok) return rule;
   const retentionBasis = text(fd, 'retentionBasis');
-  if (retentionBasis.length > BASIS_MAX) return issue('reg_text_too_long', 'retentionBasis');
+  if (retentionBasis.length > BASIS_MAX) return issue(msg('Text too long.'), 'retentionBasis');
   const retentionBasisEn = text(fd, 'retentionBasisEn');
-  if (retentionBasisEn.length > BASIS_MAX) return issue('reg_text_too_long', 'retentionBasisEn');
+  if (retentionBasisEn.length > BASIS_MAX) return issue(msg('Text too long.'), 'retentionBasisEn');
   const iso = text(fd, 'iso');
-  if (iso.length > ISO_MAX) return issue('reg_text_too_long', 'iso');
+  if (iso.length > ISO_MAX) return issue(msg('Text too long.'), 'iso');
   return {
     ok: true,
     value: {
@@ -225,7 +226,7 @@ export function parseFamilyForm(fd: FormData): Parsed<FamilyValues> {
   const names = labels(fd);
   if (!names.ok) return names;
   const grp = FAMILY_GROUPS.find((g) => g === text(fd, 'grp'));
-  if (!grp) return issue('error');
+  if (!grp) return issue(msg('Something went wrong'));
   return { ok: true, value: { key: text(fd, 'key').toLowerCase(), ...names.value, grp } };
 }
 
@@ -235,7 +236,7 @@ export function parseFunctionForm(fd: FormData): Parsed<FunctionValues> {
   const names = labels(fd);
   if (!names.ok) return names;
   const scope = FUNCTION_SCOPES.find((x) => x === text(fd, 'scope'));
-  if (!scope) return issue('error');
+  if (!scope) return issue(msg('Something went wrong'));
   return { ok: true, value: { key: text(fd, 'key').toLowerCase(), ...names.value, scope } };
 }
 
@@ -243,8 +244,8 @@ export type ProgramValues = { code: string; name: string; managerId: string; act
 
 export function parseProgramForm(fd: FormData): Parsed<ProgramValues> {
   const name = text(fd, 'name');
-  if (!name) return issue('reg_label_required', 'name');
-  if (name.length > LABEL_MAX) return issue('reg_text_too_long', 'name');
+  if (!name) return issue(msg('The label is required.'), 'name');
+  if (name.length > LABEL_MAX) return issue(msg('Text too long.'), 'name');
   return { ok: true, value: { code: text(fd, 'code').toUpperCase(), name, managerId: text(fd, 'managerId'), active: fd.get('active') !== 'off' } };
 }
 

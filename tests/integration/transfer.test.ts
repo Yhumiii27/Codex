@@ -3,12 +3,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { schema as s } from '@/db';
 import { reassignStep, transferHoldings } from '@/lib/actions';
 import { getCtx } from '@/lib/context';
-import { DICT } from '@/lib/i18n';
 import { listAudit, transferView } from '@/lib/queries';
 import { submitChange } from '@/server/integrations/vigie';
 import { addDoc, addWorkflow, fixClock, getDoc, getRevision, journalOf, setupDb } from '../support/db';
 import type { Person } from '../support/fixtures';
 import { actAs } from '../support/session';
+import { translatorFor } from '@/i18n';
 
 // Holdings of a person who leaves (point 19 of docs/reste-a-faire.md, A15): Administration › Reprise simulates the transfer
 // (the transfer itself, rolled back), then a records manager confirms that very plan (its digest) and everything goes in
@@ -21,7 +21,7 @@ vi.mock('next/cache', () => ({ refresh: () => {} }));
 
 const db = setupDb();
 fixClock();
-const t = DICT.fr;
+const tr = translatorFor('fr');
 
 async function simulate(from: Person, to: Person | null) {
   actAs('manager');
@@ -62,7 +62,7 @@ describe('transferHoldings', () => {
       ['reader', 'PRO-QUA-0003', true, null],
       ['modifier', String(revB.id), true, null],
     ]);
-    expect(await transferHoldings('writer', 'writer2', plan.digest)).toEqual({ ok: true, message: t.transfer_done.replace('{n}', '5').replace('{to}', 'writer2') });
+    expect(await transferHoldings('writer', 'writer2', plan.digest)).toEqual({ ok: true, message: tr('{n} item(s) transferred to {to}').replace('{n}', '5').replace('{to}', 'writer2') });
     expect((await getDoc(db(), 'PRO-QUA-0001')).ownerId).toBe('writer2');
     expect(await getDoc(db(), 'PRO-QUA-0002')).toMatchObject({ ownerId: 'writer2', legalHold: true });
     const doc3 = await getDoc(db(), 'PRO-QUA-0003');
@@ -92,7 +92,7 @@ describe('transferHoldings', () => {
     // Nothing left: a second confirmation has nothing to hand over.
     const again = await simulate('writer', 'writer2');
     expect(again.items).toEqual([]);
-    expect(await transferHoldings('writer', 'writer2', again.digest)).toEqual({ ok: false, error: t.transfer_nothing });
+    expect(await transferHoldings('writer', 'writer2', again.digest)).toEqual({ ok: false, error: tr('Nothing can be transferred to this replacement.') });
   });
 
   it('a replacement already reader of a document keeps one row', async () => {
@@ -120,7 +120,7 @@ describe('transferHoldings', () => {
       ['holder', String(holder.id), true, null],
     ]);
     expect(await transferHoldings('quality', 'quality2', plan.digest)).toEqual({
-      ok: true, message: `${t.transfer_done.replace('{n}', '2').replace('{to}', 'quality2')} · ${t.transfer_skipped_n.replace('{n}', '2')}`,
+      ok: true, message: `${tr('{n} item(s) transferred to {to}').replace('{n}', '2').replace('{to}', 'quality2')} · ${tr('{n} not transferable, left as they were').replace('{n}', '2')}`,
     });
     const assignee = async (w: string, idx: number) => (await db().select().from(s.workflowSteps).where(and(eq(s.workflowSteps.workflowId, w), eq(s.workflowSteps.idx, idx))))[0].assigneeId;
     expect([await assignee('W-1', 2), await assignee('W-2', 1), await assignee('W-3', 1)]).toEqual(['quality2', 'quality', 'quality']);
@@ -158,7 +158,7 @@ describe('transferHoldings', () => {
     await addDoc(db(), { id: 'PRO-QUA-0001', ownerId: 'writer' });
     const plan = await simulate('writer', 'writer2');
     await addDoc(db(), { id: 'PRO-QUA-0002', ownerId: 'writer' });
-    expect(await transferHoldings('writer', 'writer2', plan.digest)).toEqual({ ok: false, error: t.transfer_changed, stale: true });
+    expect(await transferHoldings('writer', 'writer2', plan.digest)).toEqual({ ok: false, error: tr('Things changed since the simulation: nothing was transferred. Check the new simulation before confirming.'), stale: true });
     expect((await getDoc(db(), 'PRO-QUA-0001')).ownerId).toBe('writer');
     expect(await entries('transfer')).toEqual([]);
     expect(await entries('transfer_summary')).toEqual([]);
@@ -171,12 +171,12 @@ describe('transferHoldings', () => {
     const plan = await simulate('writer', 'writer2');
     for (const [who, role] of [['owner', undefined], ['head', undefined], ['manager', 'validateur']] as const) {
       actAs(who, role);
-      expect(await transferHoldings('writer', 'writer2', plan.digest)).toEqual({ ok: false, error: t.forbidden });
+      expect(await transferHoldings('writer', 'writer2', plan.digest)).toEqual({ ok: false, error: tr('The simulated role cannot access this screen.') });
     }
     actAs('manager');
-    expect(await transferHoldings('writer', 'writer', plan.digest)).toEqual({ ok: false, error: t.transfer_to_invalid });
-    expect(await transferHoldings('writer', 'vigie', plan.digest)).toEqual({ ok: false, error: t.transfer_to_invalid });
-    expect(await transferHoldings('codex', 'writer2', plan.digest)).toEqual({ ok: false, error: t.transfer_from_unknown });
+    expect(await transferHoldings('writer', 'writer', plan.digest)).toEqual({ ok: false, error: tr('Choose a replacement: another person of the group.') });
+    expect(await transferHoldings('writer', 'vigie', plan.digest)).toEqual({ ok: false, error: tr('Choose a replacement: another person of the group.') });
+    expect(await transferHoldings('codex', 'writer2', plan.digest)).toEqual({ ok: false, error: tr('Unknown person.') });
     expect((await getDoc(db(), 'PRO-QUA-0001')).ownerId).toBe('writer');
   });
 
@@ -212,7 +212,7 @@ describe('reassignStep', () => {
   it('lets a records manager hand on a step someone else holds, journaled on the revision', async () => {
     await circuit();
     actAs('manager');
-    expect(await reassignStep('W-1', 'quality2', 1)).toEqual({ ok: true, message: t.reassign_done });
+    expect(await reassignStep('W-1', 'quality2', 1)).toEqual({ ok: true, message: tr('Step reassigned.') });
     expect(await current()).toBe('quality2');
     const [e] = (await journalOf(db(), 'PRO-QUA-0005')).filter((x) => x.action === 'reassign');
     expect(e).toMatchObject({ userId: 'manager', detail: 'W-1 · step 1 : head → quality2', revisionId: (await getRevision(db(), 'PRO-QUA-0005', 'B')).id });
@@ -221,14 +221,14 @@ describe('reassignStep', () => {
   it('keeps delegateStep’s checks', async () => {
     await circuit();
     actAs('manager');
-    expect(await reassignStep('W-1', 'writer', 1)).toEqual({ ok: false, error: t.no_self_approval });
-    expect(await reassignStep('W-1', 'owner', 1)).toEqual({ ok: false, error: t.no_self_approval });
-    expect(await reassignStep('W-1', 'writer2', 1)).toEqual({ ok: false, error: t.delegate_no_approve });
-    expect(await reassignStep('W-1', 'head', 1)).toEqual({ ok: false, error: t.error });
-    expect(await reassignStep('W-1', 'codex', 1)).toEqual({ ok: false, error: t.error });
-    expect(await reassignStep('W-1', 'quality2', 2)).toEqual({ ok: false, error: t.wrong_step });
+    expect(await reassignStep('W-1', 'writer', 1)).toEqual({ ok: false, error: tr('The author or requester of a revision cannot approve it.') });
+    expect(await reassignStep('W-1', 'owner', 1)).toEqual({ ok: false, error: tr('The author or requester of a revision cannot approve it.') });
+    expect(await reassignStep('W-1', 'writer2', 1)).toEqual({ ok: false, error: tr('This person cannot approve with their default role.') });
+    expect(await reassignStep('W-1', 'head', 1)).toEqual({ ok: false, error: tr('Something went wrong') });
+    expect(await reassignStep('W-1', 'codex', 1)).toEqual({ ok: false, error: tr('Something went wrong') });
+    expect(await reassignStep('W-1', 'quality2', 2)).toEqual({ ok: false, error: tr('The workflow moved on in the meantime: the page has been refreshed.') });
     await db().update(s.documents).set({ legalHold: true }).where(eq(s.documents.id, 'PRO-QUA-0005'));
-    expect(await reassignStep('W-1', 'quality2', 1)).toEqual({ ok: false, error: t.locked_hold });
+    expect(await reassignStep('W-1', 'quality2', 1)).toEqual({ ok: false, error: tr('Document under legal hold: it cannot be changed.') });
     expect(await current()).toBe('head');
   });
 
@@ -236,7 +236,7 @@ describe('reassignStep', () => {
     await circuit();
     for (const [who, role] of [['head', undefined], ['writer', undefined], ['manager', 'validateur']] as const) {
       actAs(who, role);
-      expect(await reassignStep('W-1', 'quality2', 1)).toEqual({ ok: false, error: t.forbidden });
+      expect(await reassignStep('W-1', 'quality2', 1)).toEqual({ ok: false, error: tr('The simulated role cannot access this screen.') });
     }
     expect(await current()).toBe('head');
   });

@@ -5,7 +5,7 @@ import { Pager } from '@/components/ui/Pager';
 import { Segmented } from '@norma/charte/ds/Segmented';
 import { FilterBar } from '@norma/charte/ds/FilterBar';
 import { PageHeader } from '@/components/shell/PageHeader';
-import { translate } from '@/i18n';
+import { msg } from '@/i18n';
 import { ClickRow, DialogButton } from '@/components/ui/client';
 import { getCtx, type Ctx } from '@/lib/context';
 import {
@@ -15,6 +15,7 @@ import {
 import { oneEach, pageOf } from '@/lib/search';
 import styles from './explorer.module.css';
 import { screenTitle } from '@/lib/titles';
+import { FILTER_LABEL, labelOf } from '@/i18n/labels';
 
 // Classification axes (docs/modele-cible.md §2), status filters and dates past due of the explorer: lib/queries.ts
 // explorerDocs counts and pages the documents the user may see. Dates past due are the record's indicators
@@ -32,29 +33,29 @@ function href(p: Params) {
 
 /** Node values of an axis in reference order (registry, organisation, projects then programmes), with their labels. */
 function axisNodes(ctx: Ctx, axis: Axis): { key: string; label: string }[] {
-  const { t } = ctx;
+  const { tr } = ctx;
   switch (axis) {
     case 'family': return ctx.families.map((f) => ({ key: f.key, label: ctx.label('family', f.key) }));
     case 'department': return ctx.departments.map((d) => ({ key: d.code, label: ctx.label('department', d.code) }));
     case 'project': return [
       ...ctx.projects.map((p) => ({ key: p.code, label: `${p.code} · ${p.name}` })),
       ...ctx.programs.map((p) => ({ key: p.code, label: `${p.code} · ${p.name}` })),
-      { key: NONE, label: t.no_attachment },
+      { key: NONE, label: tr('Not attached') },
     ];
     case 'type': return ctx.types.map((ty) => ({ key: ty.code, label: ctx.label('type', ty.code) })).sort((a, b) => a.label.localeCompare(b.label, ctx.lang));
-    case 'origin': return [{ key: 'interne', label: t.or_interne }, { key: 'externe', label: t.or_externe }];
+    case 'origin': return [{ key: 'interne', label: tr('Internal') }, { key: 'externe', label: tr('External') }];
   }
 }
 
 export function generateMetadata() {
-  return screenTitle('nav_explorer');
+  return screenTitle(msg('Browse'));
 }
 
 export default async function ExplorerPage({ searchParams }: PageProps<'/explorateur'>) {
   // One value per parameter: a repeated one (?node=a&node=b) keeps its first.
   const sp = oneEach(await searchParams);
   const ctx = await getCtx();
-  const { t, lang } = ctx;
+  const { tr, lang } = ctx;
   const axis: Axis = (AXES as readonly string[]).includes(sp.axis ?? '') ? (sp.axis as Axis) : DEFAULT_AXIS;
   const status: StatusF = (STATUSES as readonly string[]).includes(sp.status ?? '') ? (sp.status as StatusF) : 'all';
   const due: DueF | undefined = (DUES as readonly string[]).includes(sp.due ?? '') ? (sp.due as DueF) : undefined;
@@ -79,7 +80,7 @@ export default async function ExplorerPage({ searchParams }: PageProps<'/explora
       return { ...n, count: counts.get(n.key)!, selected, children };
     });
 
-  const parts = [t.all_docs];
+  const parts = [tr('All documents')];
   if (node) parts.push(nodeLabel(node));
   if (sub) parts.push(ctx.label('type', sub));
   // A file exists once a revision is in force or approved, or once the draft has a working version ("B.2" rather than "B").
@@ -90,7 +91,7 @@ export default async function ExplorerPage({ searchParams }: PageProps<'/explora
   const replacedBy = notice && selDoc?.obsoleteAt ? (await listDocLinks(ctx, selDoc.id)).filter((l) => l.rel === 'replaced_by') : [];
   const here: Params = { ...base, node, sub };
   const atPage: Params = { ...here, page: page > 1 ? String(page) : undefined };
-  const noUpload = ctx.can('upload') ? undefined : `${t.not_allowed} : ${t.perm_upload}`;
+  const noUpload = ctx.can('upload') ? undefined : `${tr('Permission required')} : ${tr('Upload')}`;
   // « Déposer » and « Nouveau » propose what the tree selects (design: « Déposer » in this bar): the department or the
   // family chosen, the type chosen (node of the Type axis, or a type under another node). Only proposals: the dialog
   // keeps what the register and the organisation admit, and the user may change them.
@@ -101,40 +102,40 @@ export default async function ExplorerPage({ searchParams }: PageProps<'/explora
     ...(typeKey && ctx.typeByCode.has(typeKey) ? { typeCode: typeKey } : {}),
   };
   const axisLabel: Record<Axis, { short: string; full: string }> = {
-    family: { short: t.family, full: t.family },
-    department: { short: t.ax_department_short, full: t.department },
-    project: { short: t.project, full: t.project_program },
-    type: { short: t.type, full: t.doc_type },
-    origin: { short: t.origin, full: t.origin },
+    family: { short: tr('Family'), full: tr('Family') },
+    department: { short: tr('Dept.'), full: tr('Department / Function') },
+    project: { short: tr('Project'), full: tr('Project / programme') },
+    type: { short: tr('Type'), full: tr('Document type') },
+    origin: { short: tr('Origin'), full: tr('Origin') },
   };
 
   return (
     <>
       <PageHeader
-        crumbs={[translate(lang, 'Document browser'), ...parts.slice(0, -1)]}
+        crumbs={[tr('Document browser'), ...parts.slice(0, -1)]}
         title={parts[parts.length - 1]}
-        actions={<DialogButton spec={{ kind: 'new', preset: { mode: 'file', ...treePreset } }} icon="upload" deniedTitle={noUpload}>{t.upload}</DialogButton>}
-        primary={<DialogButton spec={{ kind: 'new', preset: treePreset }} className="btn btn-primary" icon="plus" iconSw={1.8} deniedTitle={noUpload}>{t.new_doc_btn}</DialogButton>}
+        actions={<DialogButton spec={{ kind: 'new', preset: { mode: 'file', ...treePreset } }} icon="upload" deniedTitle={noUpload}>{tr('Upload a file')}</DialogButton>}
+        primary={<DialogButton spec={{ kind: 'new', preset: treePreset }} className="btn btn-primary" icon="plus" iconSw={1.8} deniedTitle={noUpload}>{tr('New')}</DialogButton>}
         toolbar={
           <FilterBar>
             <Segmented
               className="codex-seg"
               wrap
-              label={t.status}
+              label={tr('Status')}
               value={status}
-              options={STATUSES.map((k) => ({ value: k, label: t[`f_${k}`], href: href({ ...here, sel, status: k === 'all' ? undefined : k }) }))}
+              options={STATUSES.map((k) => ({ value: k, label: labelOf(tr, FILTER_LABEL, k), href: href({ ...here, sel, status: k === 'all' ? undefined : k }) }))}
             />
           </FilterBar>
         }
       />
     <div className="screen panes" data-screen-label="Explorateur">
-      <aside className={styles.tree} aria-label={t.classification}>
+      <aside className={styles.tree} aria-label={tr('Classification plan')}>
         <div style={{ padding: '14px 14px 10px' }}>
-          <h2 className="sec-title" style={{ marginBottom: 8 }}>{t.classification}</h2>
+          <h2 className="sec-title" style={{ marginBottom: 8 }}>{tr('Classification plan')}</h2>
           <Segmented
             className={styles.axes}
             fullWidth
-            label={t.classification}
+            label={tr('Classification plan')}
             value={axis}
             options={AXES.map((k) => ({
               value: k,
@@ -147,7 +148,7 @@ export default async function ExplorerPage({ searchParams }: PageProps<'/explora
         <div className={styles.treeBody}>
           <Link href={href(base)} className={styles.node} style={{ background: node ? 'transparent' : HOV, color: node ? 'inherit' : 'var(--color-accent)', gap: 8, paddingLeft: 8 }}>
             <Icon name="folder" size={15} style={{ flex: 'none' }} />
-            <span style={{ flex: 1 }}>{t.all_docs}</span>
+            <span style={{ flex: 1 }}>{tr('All documents')}</span>
             <span className="text-muted" style={{ fontSize: 11 }}>{all}</span>
           </Link>
           {treeNodes.map((n) => (
@@ -167,13 +168,13 @@ export default async function ExplorerPage({ searchParams }: PageProps<'/explora
           ))}
         </div>
         <div className={styles.due}>
-          <h2 className="sec-title" style={{ padding: '0 6px', marginBottom: 6 }}>{t.facet_overdue}</h2>
+          <h2 className="sec-title" style={{ padding: '0 6px', marginBottom: 6 }}>{tr('Past due')}</h2>
           {DUES.map((k) => {
             const on = due === k;
             return (
               <Link key={k} href={href({ ...here, sel, due: on ? undefined : k })} scroll={false} aria-current={on ? 'true' : undefined} className={styles.node} style={{ background: on ? HOV : 'transparent', color: on ? 'var(--color-accent)' : 'inherit', gap: 8, paddingLeft: 8 }}>
                 <Icon name="info" size={15} style={{ flex: 'none', opacity: on ? 1 : 0.7 }} />
-                <span className="ellipsis" style={{ flex: 1 }}>{t[`f_${k}`]}</span>
+                <span className="ellipsis" style={{ flex: 1 }}>{labelOf(tr, FILTER_LABEL, k)}</span>
                 <span className="text-muted" style={{ fontSize: 11 }}>{dueCount[k]}</span>
               </Link>
             );
@@ -185,7 +186,7 @@ export default async function ExplorerPage({ searchParams }: PageProps<'/explora
         {/* A page opens at its top: the list is mounted again for each page. */}
         <div key={page} className={styles.listBody}>
           <table className="table" style={{ fontSize: 13 }}>
-            <thead><tr><th>{t.title_label}</th><th>{t.type}</th><th>{t.rev_short}</th><th>{t.status}</th><th>{t.owner}</th><th>{t.modified}</th><th>{t.retention_short}</th></tr></thead>
+            <thead><tr><th>{tr('Title')}</th><th>{tr('Type')}</th><th>{tr('Rev.')}</th><th>{tr('Status')}</th><th>{tr('Owner')}</th><th>{tr('Modified')}</th><th>{tr('Retention')}</th></tr></thead>
             <tbody>
               {rows.map((d) => {
                 const selected = d.id === sel;
@@ -202,13 +203,13 @@ export default async function ExplorerPage({ searchParams }: PageProps<'/explora
                     <td className="text-muted">{d.typeLabel}</td>
                     <td className="text-muted nowrap">
                       <div>{d.rev}</div>
-                      {d.revInForce && d.workingLabel && <div style={{ fontSize: 11 }}>{d.workingLabel} {t.in_progress}</div>}
+                      {d.revInForce && d.workingLabel && <div style={{ fontSize: 11 }}>{d.workingLabel} {tr('in progress')}</div>}
                     </td>
                     <td>
                       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                         <span className={d.tagClass}>{d.statusLabel}</span>
-                        {d.expired && <span className="tag tag-outline">{t.ind_expired}</span>}
-                        {d.reviewOverdue && <span className="tag tag-outline">{t.ind_review_late}</span>}
+                        {d.expired && <span className="tag tag-outline">{tr('Expired#indicator')}</span>}
+                        {d.reviewOverdue && <span className="tag tag-outline">{tr('Review overdue')}</span>}
                       </div>
                     </td>
                     <td>{d.owner}</td>
@@ -220,26 +221,26 @@ export default async function ExplorerPage({ searchParams }: PageProps<'/explora
             </tbody>
           </table>
           <div className={styles.foot}>
-            <div className="text-muted" style={{ fontSize: 11 }}>{total} {t.docs}</div>
-            <Pager t={t} page={page} pages={pages} href={(n) => href({ ...here, sel, page: n > 1 ? String(n) : undefined })} />
+            <div className="text-muted" style={{ fontSize: 11 }}>{total} {tr('documents')}</div>
+            <Pager tr={tr} page={page} pages={pages} href={(n) => href({ ...here, sel, page: n > 1 ? String(n) : undefined })} />
           </div>
         </div>
       </section>
 
       {selDoc && (
-        <aside className={styles.quick} aria-label={t.quick_view}>
+        <aside className={styles.quick} aria-label={tr('Quick view')}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h2 className="sec-title">{t.quick_view}</h2>
-            <Link href={href(atPage)} className="btn btn-ghost btn-icon" style={{ width: 28, height: 28 }} aria-label={t.close} scroll={false}><Icon name="close" size={14} /></Link>
+            <h2 className="sec-title">{tr('Quick view')}</h2>
+            <Link href={href(atPage)} className="btn btn-ghost btn-icon" style={{ width: 28, height: 28 }} aria-label={tr('Close')} scroll={false}><Icon name="close" size={14} /></Link>
           </div>
           <div>
             <div style={{ fontSize: 15, lineHeight: 1.3, marginBottom: 8 }}>{selDoc.title}</div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {selDoc.attachedCode && <span className="tag tag-accent">{selDoc.attachedCode}</span>}
               <span className={selDoc.tagClass}>{selDoc.statusLabel}</span>
-              {selDoc.expired && <span className="tag tag-outline">{t.ind_expired}</span>}
-              {selDoc.reviewOverdue && <span className="tag tag-outline">{t.ind_review_late}</span>}
-              <span className="tag tag-neutral">{t.rev_short} {selDoc.rev}</span>
+              {selDoc.expired && <span className="tag tag-outline">{tr('Expired#indicator')}</span>}
+              {selDoc.reviewOverdue && <span className="tag tag-outline">{tr('Review overdue')}</span>}
+              <span className="tag tag-neutral">{tr('Rev.')} {selDoc.rev}</span>
               <span className="tag tag-neutral">{selDoc.confL}</span>
             </div>
           </div>
@@ -248,30 +249,30 @@ export default async function ExplorerPage({ searchParams }: PageProps<'/explora
               <Icon name={notice.state === 'archived' ? 'archive' : 'info'} size={14} style={{ flex: 'none', marginTop: 1 }} />
               <span>
                 {notice.text}
-                {replacedBy.length > 0 && <> · {t.link_replaced_by} {replacedBy.map((l, i) => <Fragment key={l.id}>{i > 0 && ', '}<Link href={l.doc.href} className={styles.noticeLink} title={l.doc.title}>{l.doc.id}</Link></Fragment>)}</>}
+                {replacedBy.length > 0 && <> · {tr('Replaced by')} {replacedBy.map((l, i) => <Fragment key={l.id}>{i > 0 && ', '}<Link href={l.doc.href} className={styles.noticeLink} title={l.doc.title}>{l.doc.id}</Link></Fragment>)}</>}
               </span>
             </div>
           )}
           <dl className="dl" style={{ gap: '7px 14px', fontSize: 12 }}>
-            <dt className="text-muted">{t.ref}</dt><dd>{selDoc.id}</dd>
-            <dt className="text-muted">{t.type}</dt><dd>{selDoc.typeLabel}{selDoc.subtype ? ` · ${selDoc.subtype}` : ''}</dd>
-            <dt className="text-muted">{t.family}</dt><dd>{selDoc.familyLabel}</dd>
-            <dt className="text-muted">{t.origin}</dt><dd>{selDoc.originL}{selDoc.origin === 'externe' && selDoc.sourceOrg ? ` · ${selDoc.sourceOrg}` : ''}</dd>
-            <dt className="text-muted">{t.attachment}</dt><dd>{selDoc.attachment === 'none' ? selDoc.attachmentL : selDoc.contextL}</dd>
-            <dt className="text-muted">{t.department_short}</dt><dd>{selDoc.departmentL}</dd>
-            {selDoc.site && <><dt className="text-muted">{t.site_label}</dt><dd>{selDoc.siteL}</dd></>}
-            <dt className="text-muted">{t.owner}</dt><dd>{selDoc.owner}</dd>
-            <dt className="text-muted">{t.revision}</dt><dd>{[selDoc.revInForce, selDoc.workingLabel && `${selDoc.workingLabel} ${t.in_progress}`].filter(Boolean).join(' · ') || '—'}</dd>
-            <dt className="text-muted">{t.modified}</dt><dd>{selDoc.modifiedF}</dd>
-            {selDoc.reviewDueAt && <><dt className="text-muted">{t.review_due_at}</dt><dd>{selDoc.reviewDueF}</dd></>}
-            {selDoc.expiresAt && <><dt className="text-muted">{t.expires_at}</dt><dd>{selDoc.expiresF}</dd></>}
-            <dt className="text-muted">{t.retention_short}</dt><dd>{selDoc.retentionL} · {selDoc.untilF}</dd>
+            <dt className="text-muted">{tr('Reference')}</dt><dd>{selDoc.id}</dd>
+            <dt className="text-muted">{tr('Type')}</dt><dd>{selDoc.typeLabel}{selDoc.subtype ? ` · ${selDoc.subtype}` : ''}</dd>
+            <dt className="text-muted">{tr('Family')}</dt><dd>{selDoc.familyLabel}</dd>
+            <dt className="text-muted">{tr('Origin')}</dt><dd>{selDoc.originL}{selDoc.origin === 'externe' && selDoc.sourceOrg ? ` · ${selDoc.sourceOrg}` : ''}</dd>
+            <dt className="text-muted">{tr('Attachment')}</dt><dd>{selDoc.attachment === 'none' ? selDoc.attachmentL : selDoc.contextL}</dd>
+            <dt className="text-muted">{tr('Department')}</dt><dd>{selDoc.departmentL}</dd>
+            {selDoc.site && <><dt className="text-muted">{tr('Site')}</dt><dd>{selDoc.siteL}</dd></>}
+            <dt className="text-muted">{tr('Owner')}</dt><dd>{selDoc.owner}</dd>
+            <dt className="text-muted">{tr('Revision')}</dt><dd>{[selDoc.revInForce, selDoc.workingLabel && `${selDoc.workingLabel} ${tr('in progress')}`].filter(Boolean).join(' · ') || '—'}</dd>
+            <dt className="text-muted">{tr('Modified')}</dt><dd>{selDoc.modifiedF}</dd>
+            {selDoc.reviewDueAt && <><dt className="text-muted">{tr('Review date')}</dt><dd>{selDoc.reviewDueF}</dd></>}
+            {selDoc.expiresAt && <><dt className="text-muted">{tr('Expiry date')}</dt><dd>{selDoc.expiresF}</dd></>}
+            <dt className="text-muted">{tr('Retention')}</dt><dd>{selDoc.retentionL} · {selDoc.untilF}</dd>
           </dl>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <Link href={selDoc.href} className="btn btn-primary">{t.open_record}</Link>
+            <Link href={selDoc.href} className="btn btn-primary">{tr('Open record')}</Link>
             {selHasFile
-              ? <a href={`/api/documents/${encodeURIComponent(selDoc.id)}/file?download=1`} className="btn btn-secondary"><Icon name="download" size={14} />{t.download}</a>
-              : <button type="button" className="btn btn-secondary" aria-disabled title={t.no_version}><Icon name="download" size={14} />{t.download}</button>}
+              ? <a href={`/api/documents/${encodeURIComponent(selDoc.id)}/file?download=1`} className="btn btn-secondary"><Icon name="download" size={14} />{tr('Download')}</a>
+              : <button type="button" className="btn btn-secondary" aria-disabled title={tr('No working version uploaded yet.')}><Icon name="download" size={14} />{tr('Download')}</button>}
           </div>
         </aside>
       )}

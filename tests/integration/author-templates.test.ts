@@ -4,13 +4,13 @@ import { schema as s } from '@/db';
 import { GET } from '@/app/api/export/search/route';
 import { createDocument, deleteType, setTemplateTypes, updateMeta } from '@/lib/actions';
 import { getCtx } from '@/lib/context';
-import { DICT } from '@/lib/i18n';
 import { auditDetailL, listTemplates, registryUsage } from '@/lib/queries';
 import { searchHref } from '@/lib/search';
 import { addDoc, fixClock, getDoc, journalOf, setupDb, viewOf } from '../support/db';
 import type { Person } from '../support/fixtures';
 import { searchChecked } from '../support/search';
 import { actAs } from '../support/session';
+import { translatorFor } from '@/i18n';
 
 // Points 4 and 6 of docs/reste-a-faire.md. The author of a document (MET-10) is a person of the group, by default its
 // creator, or a free text for an external author, chosen at creation and in the metadata, and the record, the search
@@ -24,7 +24,7 @@ vi.mock('next/cache', () => ({ refresh: () => {} }));
 const db = setupDb();
 fixClock();
 
-const t = DICT.fr;
+const tr = translatorFor('fr');
 const TPL = 'FRM-QMS-001';
 
 function form(fields: Record<string, string>): FormData {
@@ -65,10 +65,10 @@ describe('author of a document (MET-10)', () => {
   });
 
   it('refuses an empty choice, a system actor, an unknown person or a text too long, and writes nothing', async () => {
-    expect(await create('writer', { authorKind: 'text', authorText: '  ' })).toEqual({ ok: false, error: t.author_required, field: 'authorText' });
-    expect(await create('writer', { authorKind: 'person', authorId: '' })).toEqual({ ok: false, error: t.author_required, field: 'authorId' });
-    expect(await create('writer', { authorKind: 'person', authorId: 'vigie' })).toEqual({ ok: false, error: t.author_unknown, field: 'authorId' });
-    expect(await create('writer', { authorKind: 'person', authorId: 'nobody' })).toEqual({ ok: false, error: t.author_unknown, field: 'authorId' });
+    expect(await create('writer', { authorKind: 'text', authorText: '  ' })).toEqual({ ok: false, error: tr('Enter the document’s author.'), field: 'authorText' });
+    expect(await create('writer', { authorKind: 'person', authorId: '' })).toEqual({ ok: false, error: tr('Enter the document’s author.'), field: 'authorId' });
+    expect(await create('writer', { authorKind: 'person', authorId: 'vigie' })).toEqual({ ok: false, error: tr('This author is not a person of the group.'), field: 'authorId' });
+    expect(await create('writer', { authorKind: 'person', authorId: 'nobody' })).toEqual({ ok: false, error: tr('This author is not a person of the group.'), field: 'authorId' });
     expect(await create('writer', { authorKind: 'text', authorText: 'x'.repeat(201) })).toMatchObject({ ok: false, field: 'authorText' });
     expect(await db().select().from(s.documents)).toEqual([]);
   });
@@ -106,8 +106,8 @@ describe('author of a document (MET-10)', () => {
 
     const res = await GET(new Request(`http://codex${searchHref({ sort: 'title' }, '/api/export/search')}`));
     const [head, ...rows] = (await res.text()).replace(/^﻿/, '').split('\r\n').filter(Boolean).map((l) => l.split(';'));
-    const col = head.indexOf(t.author_label);
-    expect(col).toBe(head.indexOf(t.owner) + 1);
+    const col = head.indexOf(tr('Author'));
+    expect(col).toBe(head.indexOf(tr('Owner')) + 1);
     expect(Object.fromEntries(rows.map((r) => [r[0], r[col]]))).toEqual({ 'PRO-QUA-0001': 'owner', 'PRO-QUA-0002': 'head', 'PRO-QUA-0003': 'Apave' });
   });
 });
@@ -116,7 +116,7 @@ describe('templates linked to document types (FON-12)', () => {
   it('are linked by the template’s owner or a records manager, journaled, the record’s version raised', async () => {
     await addDoc(db(), { id: TPL, typeCode: 'FRM' });
     const before = (await getDoc(db(), TPL)).version;
-    expect(await linkTypes('owner', ['PRO', 'COR', 'PRO'])).toEqual({ ok: true, message: t.saved_ok });
+    expect(await linkTypes('owner', ['PRO', 'COR', 'PRO'])).toEqual({ ok: true, message: tr('Changes saved') });
     expect(await linksOf()).toEqual(['COR', 'PRO']);
     expect((await getDoc(db(), TPL)).version).toBe(before + 1);
     expect(await linkTypes('manager', ['PRO'])).toMatchObject({ ok: true });
@@ -135,14 +135,14 @@ describe('templates linked to document types (FON-12)', () => {
   it('are refused to anyone else, on a document that is not a template, an unknown type, a locked record or an outdated view', async () => {
     await addDoc(db(), { id: TPL, typeCode: 'FRM' });
     await addDoc(db(), { id: 'PRO-QUA-0001' });
-    expect(await linkTypes('writer', ['PRO'])).toEqual({ ok: false, error: t.not_allowed });
-    expect(await linkTypes('auditor', ['PRO'])).toEqual({ ok: false, error: `${t.not_allowed} : ${t.perm_edit}` });
-    expect(await linkTypes('owner', ['PRO'], 'PRO-QUA-0001')).toEqual({ ok: false, error: t.template_only });
-    expect(await linkTypes('owner', ['XYZ'])).toEqual({ ok: false, error: `${t.template_type_unknown} : XYZ` });
+    expect(await linkTypes('writer', ['PRO'])).toEqual({ ok: false, error: tr('Permission required') });
+    expect(await linkTypes('auditor', ['PRO'])).toEqual({ ok: false, error: `${tr('Permission required')} : ${tr('Edit#permission')}` });
+    expect(await linkTypes('owner', ['PRO'], 'PRO-QUA-0001')).toEqual({ ok: false, error: tr('Only a template (type FRM) has target types') });
+    expect(await linkTypes('owner', ['XYZ'])).toEqual({ ok: false, error: `${tr('Unknown or inactive type')} : XYZ` });
     actAs('owner');
     expect(await setTemplateTypes(TPL, ['PRO'], 0)).toMatchObject({ ok: false, stale: true });
     await db().update(s.documents).set({ legalHold: true }).where(eq(s.documents.id, TPL));
-    expect(await linkTypes('manager', ['PRO'])).toEqual({ ok: false, error: t.locked_hold });
+    expect(await linkTypes('manager', ['PRO'])).toEqual({ ok: false, error: tr('Document under legal hold: it cannot be changed.') });
     expect(await linksOf()).toEqual([]);
     expect((await journalOf(db(), TPL)).filter((e) => e.action === 'edit')).toEqual([]);
   });
@@ -154,7 +154,7 @@ describe('templates linked to document types (FON-12)', () => {
     expect(await linkTypes('owner', ['COR', 'PRO'])).toMatchObject({ ok: true });
     expect(await linksOf()).toEqual(['COR', 'PRO']);
     await db().update(s.docTypes).set({ active: false }).where(eq(s.docTypes.code, 'PID'));
-    expect(await linkTypes('owner', ['PID'])).toEqual({ ok: false, error: `${t.template_type_unknown} : PID` });
+    expect(await linkTypes('owner', ['PID'])).toEqual({ ok: false, error: `${tr('Unknown or inactive type')} : PID` });
   });
 
   it('are listed with the templates, make their types in use in the register, and are dropped when the document is no longer a template', async () => {
@@ -166,7 +166,7 @@ describe('templates linked to document types (FON-12)', () => {
     // A type a template is meant for is in use: it cannot be deleted, only made inactive.
     expect((await registryUsage()).types.has('COR')).toBe(true);
     actAs('manager');
-    expect(await deleteType('COR')).toEqual({ ok: false, error: t.reg_type_in_use });
+    expect(await deleteType('COR')).toEqual({ ok: false, error: tr('This type is used (documents, a piece expected on a project, target type of a template, or the type of templates): its code no longer changes and it cannot be deleted, only made inactive.') });
 
     expect(await saveMeta('owner', TPL, { typeCode: 'PRO' })).toMatchObject({ ok: true });
     expect(await linksOf()).toEqual([]);

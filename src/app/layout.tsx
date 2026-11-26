@@ -11,20 +11,20 @@ import { databaseIsEmpty } from '@/lib/empty-database';
 import type { DialogData } from '@/components/dialogs/types';
 import { interClassName } from '@/fonts/inter';
 import { getCtx } from '@/lib/context';
-import { ERROR_EN, ERROR_FR } from '@/lib/i18n-errors';
 import { fileRules } from '@/lib/filetypes';
-import { CONF_LEVELS, MATRIX_ROLE, type SimRole, type TKey } from '@/lib/i18n';
+import { CONF_LEVELS, MATRIX_ROLE, type SimRole } from '@/lib/i18n';
 import { keystoneUrl } from '@/server/integrations/keystone';
 import { authMode } from '@/server/integrations/clavis/rules';
 import { themeFromCookies } from '@/lib/theme';
 import { translate } from '@/i18n';
 import { getMatrix, listTemplates, myTodo, recentActivity, typeView, vocabSuggestions } from '@/lib/queries';
+import { CONF_LABEL, ROLE_LABEL, labelOf } from '@/i18n/labels';
 
 /** Title and description in the user's language; each screen names itself (lib/titles.ts screenTitle, WCAG 2.4.2). */
 export async function generateMetadata(): Promise<Metadata> {
-  if (await databaseIsEmpty()) return { title: `${ERROR_FR.empty_title} · ${ERROR_EN.empty_title} — Codex` };
-  const { t, lang } = await getCtx();
-  return { title: `${t.title_suffix} — ${translate(lang, 'Group DMS')}`, description: t.app_description };
+  if (await databaseIsEmpty()) return { title: `${translate('fr', 'Codex’s database is empty')} · ${translate('en', 'Codex’s database is empty')} — Codex` };
+  const { tr } = await getCtx();
+  return { title: `${tr('Codex')} — ${tr('Group DMS')}`, description: tr('Document management for the group') };
 }
 
 export default async function RootLayout({ children }: LayoutProps<'/'>) {
@@ -61,7 +61,7 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
     projects: ctx.projects.map((x) => ({ key: x.code, label: x.name })),
     programs: ctx.programs.map((x) => ({ key: x.code, label: x.name, active: x.active })),
     capex: ctx.capex.map((x) => ({ key: x.code, label: x.subsidiary ? `${x.name} — ${x.subsidiary}` : x.name, active: x.active })),
-    confs: CONF_LEVELS.map((c) => ({ key: c, label: ctx.t[`conf_${c}` as TKey] })),
+    confs: CONF_LEVELS.map((c) => ({ key: c, label: labelOf(ctx.tr, CONF_LABEL, c) })),
     users: [...ctx.users.values()].filter((u) => !u.isSystem).sort((a, b) => a.name.localeCompare(b.name, ctx.lang))
       .map((u) => ({ id: u.id, name: u.name, initials: u.initials, role: u.role, department: u.department, approver: !!matrix.get(`${MATRIX_ROLE[u.role as SimRole]}:approve`) })),
     functions: ctx.functions.map((x) => ({ key: x.key, label: fr ? x.labelFr : x.labelEn, scope: x.scope })),
@@ -77,11 +77,11 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
     <html lang={ctx.lang} className={interClassName} data-theme={theme}>
       <body>
         <AppProvider
-          t={ctx.t} lang={ctx.lang} data={data} todo={todo} theme={theme}
+          lang={ctx.lang} data={data} todo={todo} theme={theme}
           recent={recent.map((a) => ({ id: a.id, when: a.when, user: a.user, actionLabel: a.actionLabel, ref: a.currentId ?? a.ref, href: a.href }))}
         >
           {/* The common shell (Norma 2.0): skip link first, sidebar, then <main id="main-content"> holding the screen. */}
-          <Shell sidebar={{ screens: ctx.screens, user: { name: ctx.user.name, initials: ctx.user.initials }, roleTitle: ctx.t[`role_${ctx.role}`], keystoneUrl: keystoneUrl(), signOut: authMode() === 'clavis' }}>
+          <Shell sidebar={{ screens: ctx.screens, user: { name: ctx.user.name, initials: ctx.user.initials }, roleTitle: labelOf(ctx.tr, ROLE_LABEL, ctx.role), keystoneUrl: keystoneUrl(), signOut: authMode() === 'clavis' }}>
             {children}
           </Shell>
         </AppProvider>

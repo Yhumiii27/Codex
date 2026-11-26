@@ -4,7 +4,8 @@ import { asc } from 'drizzle-orm';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { getDb, schema as s } from '@/db';
-import { DICT, MATRIX_ROLE, SIM_ROLES, type Lang, type Perm, type SimRole, type T } from './i18n';
+import { MATRIX_ROLE, SIM_ROLES, type Lang, type Perm, type SimRole } from './i18n';
+import { translatorFor, type Translate } from '@/i18n';
 import { promoteDue } from './lifecycle';
 import { schedulerPromotes } from './scheduler-state';
 import { SESSION_COOKIE, roleNow, unseal, type SessionData } from '@/server/integrations/clavis/auth';
@@ -25,7 +26,8 @@ export type LabelAxis = 'department' | 'site' | 'family' | 'type' | 'function' |
 export type Ctx = {
   lang: Lang;
   L: 0 | 1;
-  t: T;
+  /** The interface strings in the user's language (English sources, src/i18n). */
+  tr: Translate;
   user: User;
   role: SimRole;
   users: Map<string, User>;
@@ -117,7 +119,7 @@ export const getCtx = cache(async (): Promise<Ctx> => {
   programs.forEach((x) => labels.set(`program:${x.code}`, x.name));
   capex.forEach((x) => labels.set(`capex:${x.code}`, x.name));
   return {
-    lang, L: fr ? 0 : 1, t: DICT[lang], user, role, users: byId, departments, sites, families, types,
+    lang, L: fr ? 0 : 1, tr: translatorFor(lang), user, role, users: byId, departments, sites, families, types,
     typeByCode: new Map(types.map((x) => [x.code, x])), functions, projects, programs, capex, perms,
     label: (axis, key) => (key ? labels.get(`${axis}:${key}`) ?? key : '—'),
     can: (p) => perms.has(p),

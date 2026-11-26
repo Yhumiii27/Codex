@@ -87,7 +87,7 @@ export async function compareVersions(ctx: Ctx, docId: string, a: number, b: num
   if (state.running >= MAX_RUNNING) return 'busy';
   state.running++;
   try {
-    const labels = { sheet: ctx.t.compare_sheet, slide: ctx.t.compare_slide };
+    const labels = { sheet: ctx.tr('Sheet'), slide: ctx.tr('Slide') };
     // One after the other: two large PDFs at once would double the memory taken.
     const ta = await textOf(va, labels);
     const tb = a === b ? ta : await textOf(vb, labels);

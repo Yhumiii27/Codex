@@ -1,4 +1,4 @@
-import type { T } from './i18n';
+import type { Translate } from '@/i18n';
 
 // What the user is shown of an unexpected error (point 44 of docs/reste-a-faire.md): never its message, which may name
 // a table, a path or a value, but a reference to give the administrator, who finds the error with it in the technical
@@ -15,7 +15,7 @@ export function errorRef(err: unknown): string | null {
 }
 
 /** « Une erreur est survenue · Réf. … » for a toast or a dialog, the plain message when there is no reference. */
-export function failureText(t: T, err: unknown): string {
+export function failureText(tr: Translate, err: unknown): string {
   const ref = errorRef(err);
-  return ref ? `${t.error} · ${t.error_ref.replace('{ref}', ref)}` : t.error;
+  return ref ? `${tr('Something went wrong')} · ${tr('Ref. {ref}').replace('{ref}', ref)}` : tr('Something went wrong');
 }

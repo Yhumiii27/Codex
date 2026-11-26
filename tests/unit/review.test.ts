@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { addMonths } from '@/lib/format';
-import { DICT } from '@/lib/i18n';
 import { circuitDaysLate, isCircuitLate, isExpired, isReviewOverdue, nextReviewDate, parseReviewMonths, REVIEW_MONTHS_MAX, reviewAfter, reviewDueHint } from '@/lib/review';
+import { translate, translatorFor } from '@/i18n';
 
 // Expiry and periodic review (point 13 of docs/reste-a-faire.md, G36, G37): indicators without a new status (D-17),
 // the next review date of « Revue effectuée » and the periodicity of a type.
@@ -21,10 +21,10 @@ describe('isExpired', () => {
 
   it('is worded on the end of validity: the expiry day was still valid, so never « expired since » that day', () => {
     for (const [lang, until] of [['fr', 'valable jusqu’au'], ['en', 'valid until']] as const) {
-      const t = DICT[lang];
-      expect(t.dl_expired, lang).toContain(until);
-      expect(t.notice_expired, lang).toContain(`${until} {date}`);
-      expect(`${t.dl_expired} ${t.notice_expired}`, lang).not.toMatch(/depuis|since/i);
+      const tr = translatorFor(lang);
+      expect(tr('Expired, valid until'), lang).toContain(until);
+      expect(tr('Document expired, valid until {date}'), lang).toContain(`${until} {date}`);
+      expect(`${tr('Expired, valid until')} ${tr('Document expired, valid until {date}')}`, lang).not.toMatch(/depuis|since/i);
     }
   });
 
@@ -103,12 +103,12 @@ describe('nextReviewDate (« Revue effectuée »)', () => {
 
 describe('reviewDueHint (review date of the create and metadata dialogs)', () => {
   it('before any entry into force, announces the date the periodicity will set', () => {
-    expect(reviewDueHint(36, false)).toBe('review_due_periodic');
+    expect(reviewDueHint(36, false)).toBe('Left empty, it is set on entry into force, {n} months later (the type’s periodicity).');
   });
 
   it('on a document in force, promises no date: emptying it plans no review until the next revision', () => {
-    expect(reviewDueHint(36, true)).toBe('review_due_periodic_in_force');
-    expect(DICT.fr.review_due_periodic_in_force).toContain('aucune revue n’est planifiée');
+    expect(reviewDueHint(36, true)).toBe('Left empty, no review is planned: the date is only set when a next revision enters into force, {n} months later (the type’s periodicity).');
+    expect(translate('fr', 'Left empty, no review is planned: the date is only set when a next revision enters into force, {n} months later (the type’s periodicity).')).toContain('aucune revue n’est planifiée');
   });
 
   it('says nothing without a periodicity', () => {

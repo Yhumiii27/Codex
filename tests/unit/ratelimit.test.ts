@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DICT } from '@/lib/i18n';
 import { clientAddress, countTokenFailure, limitReader, limitRequest, limitWrite, MAX_KEYS, parseRule, RATE_LIMITS, ruleFor, take, tokenFailuresExceeded, trustProxy, waitFor } from '@/lib/ratelimit';
+import { translatorFor } from '@/i18n';
 
 // The in-memory rate limiter (src/lib/ratelimit.ts, point 24 of docs/reste-a-faire.md): token buckets per family and
 // key, rules from the environment, client keys. Counters are emptied before each test (tests/support/setup.ts).
@@ -182,33 +182,33 @@ describe('limitReader', () => {
 
   it('answers in the reader’s language, per user', async () => {
     vi.stubEnv('CODEX_RATE_FILES', '1/1m');
-    expect(limitReader(req('10.0.0.1'), 'files', 'jholt', DICT.fr)).toBeNull();
-    const fr = limitReader(req('10.0.0.1'), 'files', 'jholt', DICT.fr)!;
+    expect(limitReader(req('10.0.0.1'), 'files', 'jholt', translatorFor('fr'))).toBeNull();
+    const fr = limitReader(req('10.0.0.1'), 'files', 'jholt', translatorFor('fr'))!;
     expect(fr.status).toBe(429);
     expect(fr.headers.get('content-type')).toBe('text/plain; charset=utf-8');
     expect(fr.headers.get('cache-control')).toBe('no-store');
     expect(await fr.text()).toMatch(/^Trop de demandes en peu de temps : réessayez dans \d+\u00a0s\.$/);
-    expect(await limitReader(req('10.0.0.1'), 'files', 'jholt', DICT.en)!.text()).toMatch(/^Too many requests in a short time: try again in \d+\u00a0s\.$/);
+    expect(await limitReader(req('10.0.0.1'), 'files', 'jholt', translatorFor('en'))!.text()).toMatch(/^Too many requests in a short time: try again in \d+\u00a0s\.$/);
     // Another address does not help the same user; another user has their own budget.
-    expect(limitReader(req('10.0.0.9'), 'files', 'jholt', DICT.fr)?.status).toBe(429);
-    expect(limitReader(req('10.0.0.1'), 'files', 'gcomte', DICT.fr)).toBeNull();
+    expect(limitReader(req('10.0.0.9'), 'files', 'jholt', translatorFor('fr'))?.status).toBe(429);
+    expect(limitReader(req('10.0.0.1'), 'files', 'gcomte', translatorFor('fr'))).toBeNull();
   });
 
   it('without a trusted proxy, an address (maybe forged) holds back no one; behind one, it caps every user it carries', () => {
     vi.stubEnv('CODEX_RATE_EXPORTS', '2/1m');
-    for (const user of ['cbardet', 'gcomte', 'jwagner']) expect(limitReader(req('10.0.0.1'), 'exports', user, DICT.fr), user).toBeNull();
+    for (const user of ['cbardet', 'gcomte', 'jwagner']) expect(limitReader(req('10.0.0.1'), 'exports', user, translatorFor('fr')), user).toBeNull();
     vi.stubEnv('CODEX_TRUST_PROXY', '1');
-    expect(limitReader(req('10.0.0.5'), 'exports', 'jholt', DICT.fr)).toBeNull();
-    expect(limitReader(req('10.0.0.5'), 'exports', 'cbardet', DICT.fr)).toBeNull();
+    expect(limitReader(req('10.0.0.5'), 'exports', 'jholt', translatorFor('fr'))).toBeNull();
+    expect(limitReader(req('10.0.0.5'), 'exports', 'cbardet', translatorFor('fr'))).toBeNull();
     // The address has used its two: a third user from it waits, and spends nothing of their own budget.
-    expect(limitReader(req('10.0.0.5'), 'exports', 'gcomte', DICT.fr)?.status).toBe(429);
+    expect(limitReader(req('10.0.0.5'), 'exports', 'gcomte', translatorFor('fr'))?.status).toBe(429);
     expect(waitFor('exports', 'user:gcomte', { limit: 2, windowMs: 60_000 })).toBe(0);
-    expect(limitReader(req('10.0.0.6'), 'exports', 'gcomte', DICT.fr)).toBeNull();
+    expect(limitReader(req('10.0.0.6'), 'exports', 'gcomte', translatorFor('fr'))).toBeNull();
   });
 
   it('lets everything through when the family is off', () => {
     vi.stubEnv('CODEX_RATE_EXPORTS', 'off');
-    for (let i = 0; i < 100; i++) expect(limitReader(req('10.0.0.1'), 'exports', 'cbardet', DICT.fr)).toBeNull();
+    for (let i = 0; i < 100; i++) expect(limitReader(req('10.0.0.1'), 'exports', 'cbardet', translatorFor('fr'))).toBeNull();
   });
 });
 

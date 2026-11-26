@@ -7,7 +7,7 @@ import { readersApply } from './access';
 import { contextOf, nextDocId, reserveDocId, seqWidth } from './codification';
 import { dateIssues, dateIssueText } from './dates';
 import { parseIsoDay, todayIso } from './format';
-import { ATTACHMENTS, CONF_LEVELS, DICT, ORIGINS } from './i18n';
+import { ATTACHMENTS, CONF_LEVELS, ORIGINS } from './i18n';
 import { audit, refreshHeadline, type Tx } from './lifecycle';
 import { logger } from './log';
 import { sameFiles } from './queries';
@@ -16,6 +16,7 @@ import { sameRule } from './retention';
 import { checkFile, discardFile, FileRejectedError, fileColumns, nameStoredFile, stageFile, type CheckedFile, type FileRejection, type StagedFile } from './storage';
 import { addTerms, loadTerms, readTerms } from './vocab';
 import { canonicalSubtype, cleanTerm, docLang, VOCAB_MAX } from './vocab-rules';
+import { translate, translatorFor } from '@/i18n';
 
 // Integration endpoints (docs/api.md; their authentication: lib/server-auth.ts): the
 // import of one legacy document for the migration tool (POST /api/import), and the deposit of one new document by
@@ -57,13 +58,13 @@ const MESSAGES: Record<string, string> = {
   unknown_department: 'Département inconnu.',
   unknown_site: 'Site inconnu.',
   unknown_user: 'Utilisateur inconnu.',
-  type_mismatch: DICT.fr.type_mismatch,
-  conf_not_allowed: DICT.fr.conf_not_allowed,
-  project_required: DICT.fr.project_required,
-  program_required: DICT.fr.program_required,
-  capex_required: DICT.fr.capex_required,
+  type_mismatch: translate('fr', 'This type does not admit this origin or attachment.'),
+  conf_not_allowed: translate('fr', 'Confidentiality level not allowed for this type.'),
+  project_required: translate('fr', 'Choose the project.'),
+  program_required: translate('fr', 'Choose the research programme.'),
+  capex_required: translate('fr', 'Choose the CAPEX.'),
   capex_unknown: 'CAPEX inconnu de Codex ou plus publié par Arche (liste lue dans arche.pub_capex).',
-  source_required: DICT.fr.source_required,
+  source_required: translate('fr', 'The source organisation is required for an external document.'),
   readers_conf: 'Lecteurs désignés réservés aux documents confidentiels ou très confidentiels.',
   not_allowed: 'Champ réservé à la reprise de l’existant (POST /api/import) : un document déposé par une application commence en brouillon A.1 et passe par un circuit.',
   invalid_source_ref: 'Référence d’origine attendue : <application>:<référence> (ex. arche:dossier/CPX-APM-2026-01/business_case/v2), 200 caractères au plus.',
@@ -309,7 +310,7 @@ function parseImportMeta(raw: unknown, refs: Refs, o: { systemOwner?: string } =
     const effective = rec.inForceAt ? { letter, at: rec.inForceAt } : null;
     const from = rec.issuedAt ? null : rec.inForceAt ?? today;
     for (const i of dateIssues({ issuedAt: rec.issuedAt, issueFrom: from, effective, reviewDueAt: f.reviewDueAt, expiresAt: f.expiresAt, receivedAt: value.receivedAt }, today)) {
-      issues.push({ field: i.field === 'effective' ? 'inForceAt' : i.field, code: i.rule, message: dateIssueText(DICT.fr, 'fr', i) });
+      issues.push({ field: i.field === 'effective' ? 'inForceAt' : i.field, code: i.rule, message: dateIssueText(translatorFor('fr'), 'fr', i) });
     }
   }
 

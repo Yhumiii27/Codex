@@ -30,8 +30,7 @@
 
 import { randomBytes } from 'node:crypto';
 import type { Browser, BrowserContext, Locator, Page } from 'playwright-core';
-import { DICT } from '../src/lib/i18n';
-import { translate } from '../src/i18n/index';
+import { translate, translatorFor } from '../src/i18n/index';
 import { launchChromium, pageAction, serverLogTail, startServer, stopServer, waitHealthy } from './codex-browser.mjs';
 
 const PATHS = ['approbation', 'rejet', 'rappel', 'vigie', 'import'] as const;
@@ -55,7 +54,7 @@ if (
   process.exit(2);
 }
 
-const t = DICT.fr;
+const tr = translatorFor('fr');
 const TIMEOUT = 60_000;
 /** Import token of this run's server only (CODEX_IMPORT_TOKEN): 43 random characters, never written anywhere. */
 const IMPORT_TOKEN = randomBytes(32).toString('base64url');
@@ -156,17 +155,17 @@ async function createDoc(r: Run, userId: string, title: string): Promise<string>
   const { page } = r;
   await actAs(r, userId);
   await open(page, `${r.base}/`);
-  await page.getByRole('button', { name: t.upload, exact: true }).first().click();
+  await page.getByRole('button', { name: tr('Upload a file'), exact: true }).first().click();
   const create = page.getByRole('dialog');
   await create.waitFor({ timeout: TIMEOUT });
-  await create.getByText(t.from_file, { exact: true }).click();
+  await create.getByText(tr('From a file'), { exact: true }).click();
   await create.locator('input[type="file"]').setInputFiles({ name: 'essai-e2e.pdf', mimeType: 'application/pdf', buffer: pdfWithPages(3) });
   await create.locator('input[name="title"]').fill(title);
-  await create.getByLabel(t.family, { exact: true }).selectOption('gouvernance_management');
-  await create.getByLabel(t.type, { exact: true }).selectOption('PRO');
+  await create.getByLabel(tr('Family'), { exact: true }).selectOption('gouvernance_management');
+  await create.getByLabel(tr('Type'), { exact: true }).selectOption('PRO');
   await Promise.all([
     page.waitForURL(/\/documents\/[^/?]+/, { timeout: TIMEOUT }),
-    create.getByRole('button', { name: t.create_doc }).click(),
+    create.getByRole('button', { name: tr('Create document') }).click(),
   ]);
   const docId = decodeURIComponent(new URL(page.url()).pathname.split('/')[2]);
   check(/^PRO-[A-Z]{3}-\d{4}$/.test(docId), `identifiant attribué inattendu : ${docId}`);
@@ -177,10 +176,10 @@ async function createDoc(r: Run, userId: string, title: string): Promise<string>
 async function askValidation(r: Run, docId: string): Promise<string> {
   const { page } = r;
   await open(page, record(r, docId));
-  const ask = await dialogOf(page, t.request_validation);
+  const ask = await dialogOf(page, tr('Request approval#action'));
   await Promise.all([
     page.waitForURL(/\/validations\?.*r=/, { timeout: TIMEOUT }),
-    ask.getByRole('button', { name: t.request_validation, exact: true }).click(),
+    ask.getByRole('button', { name: tr('Request approval#action'), exact: true }).click(),
   ]);
   const wf = new URL(page.url()).searchParams.get('r')!;
   check(/^W-/.test(wf), `circuit inattendu : ${wf}`);
@@ -195,7 +194,7 @@ async function holderOf(r: Run, wf: string): Promise<[string, string] | null> {
     const lines = [...document.querySelectorAll('section div.text-muted')];
     const line = lines.find((x) => x.textContent?.trim() === current);
     return line?.previousElementSibling?.textContent?.trim() ?? null;
-  }, t.st_current);
+  }, tr('In progress'));
   if (!holder) return null;
   const id = r.who.get(holder);
   check(id, `titulaire de l’étape introuvable dans le menu du profil : ${holder}`);
@@ -206,9 +205,9 @@ async function holderOf(r: Run, wf: string): Promise<[string, string] | null> {
 async function uploadVersion(r: Run, userId: string, docId: string, note: string) {
   await actAs(r, userId);
   await open(r.page, record(r, docId));
-  const dialog = await dialogOf(r.page, t.new_working_version);
+  const dialog = await dialogOf(r.page, tr('New working version'));
   await dialog.locator('input[type="file"]').setInputFiles({ name: `essai-e2e-${note}.pdf`, mimeType: 'application/pdf', buffer: pdfWithPages(2, note) });
-  await submit(r.page, dialog, t.upload);
+  await submit(r.page, dialog, tr('Upload a file'));
 }
 
 /** D-14: someone outside the drafting circle gets « no access » on the record of a draft, and 404 on its file. */
@@ -216,7 +215,7 @@ async function draftHidden(r: Run, docId: string, title: string, userId = OUTSID
   await actAs(r, userId);
   await open(r.page, record(r, docId));
   const text = await mainText(r.page);
-  check(text.includes(t.no_access) && !text.includes(title), `${userId} voit la fiche du brouillon ${docId}`);
+  check(text.includes(tr('You do not have access to this document.')) && !text.includes(title), `${userId} voit la fiche du brouillon ${docId}`);
   const file = await r.ctx.request.get(`${r.base}/api/documents/${encodeURIComponent(docId)}/file`);
   check(file.status() === 404, `${userId} : fichier du brouillon ${docId} servi (HTTP ${file.status()})`);
 }
@@ -254,8 +253,8 @@ async function approbation(r: Run) {
   await open(page, record(r, docId));
   await page.locator('iframe').first().waitFor({ timeout: TIMEOUT });
   for (let p = 2; p <= 3; p++) {
-    await page.getByRole('button', { name: t.next_page, exact: true }).click();
-    await page.getByText(`${t.page} ${p} ${t.of} 3`, { exact: true }).waitFor({ timeout: TIMEOUT });
+    await page.getByRole('button', { name: tr('Next page'), exact: true }).click();
+    await page.getByText(`${tr('Page')} ${p} ${tr('of')} 3`, { exact: true }).waitFor({ timeout: TIMEOUT });
     await page.waitForTimeout(500);
   }
   page.off('response', onFile);
@@ -277,11 +276,11 @@ async function approbation(r: Run) {
     const [name, id] = holder;
     await actAs(r, id);
     await open(page, `${r.base}/validations?f=mine&r=${encodeURIComponent(wf)}`);
-    const approve = page.getByRole('button', { name: t.approve, exact: true });
-    check(await approve.count(), `${name} ne voit pas « ${t.approve} »`);
+    const approve = page.getByRole('button', { name: tr('Approve'), exact: true });
+    check(await approve.count(), `${name} ne voit pas « ${tr('Approve')} »`);
     await approve.first().click();
     await page.waitForLoadState('networkidle', { timeout: TIMEOUT });
-    await page.getByRole('button', { name: t.approve, exact: true }).waitFor({ state: 'detached', timeout: TIMEOUT });
+    await page.getByRole('button', { name: tr('Approve'), exact: true }).waitFor({ state: 'detached', timeout: TIMEOUT });
     done(r, `étape ${n + 1} approuvée par ${name} (${id})`);
   }
 
@@ -289,13 +288,13 @@ async function approbation(r: Run) {
   await actAs(r, 'cbardet');
   await open(page, record(r, docId));
   const text = await mainText(page);
-  check(text.includes(t.st_in_force) && !text.includes(t.no_rev_in_force), `la fiche ne montre pas « ${t.st_in_force} »`);
+  check(text.includes(tr('In force')) && !text.includes(tr('No revision in force')), `la fiche ne montre pas « ${tr('In force')} »`);
   await open(page, `${r.base}/validations?f=done&r=${encodeURIComponent(wf)}`);
-  check((await mainText(page)).includes(t.wf_approved), `le circuit ne se dit pas « ${t.wf_approved} »`);
+  check((await mainText(page)).includes(tr('Approved')), `le circuit ne se dit pas « ${tr('Approved')} »`);
   await actAs(r, OUTSIDER);
   await open(page, record(r, docId));
   check((await mainText(page)).includes(title), `${OUTSIDER} ne voit pas le document en vigueur`);
-  done(r, `${docId} en vigueur (révision A), circuit « ${t.wf_approved} », visible de ${OUTSIDER}`);
+  done(r, `${docId} en vigueur (révision A), circuit « ${tr('Approved')} », visible de ${OUTSIDER}`);
 }
 
 /** A step rejected with its reason; a new working version, then a new approval request. */
@@ -312,23 +311,23 @@ async function rejet(r: Run) {
   await actAs(r, id);
   await open(page, `${r.base}/validations?f=mine&r=${encodeURIComponent(wf)}`);
   const reason = `Références normatives à mettre à jour (${stamp()})`;
-  const reject = await dialogOf(page, t.reject);
+  const reject = await dialogOf(page, tr('Reject'));
   // The reason is required: the dialog does not send the step without it.
   check(await reject.locator('textarea[name="reason"]').evaluate((x) => (x as HTMLTextAreaElement).required), 'le motif du rejet n’est pas obligatoire');
   await reject.locator('textarea[name="reason"]').fill(reason);
-  await submit(page, reject, t.reject);
+  await submit(page, reject, tr('Reject'));
   done(r, `étape rejetée par ${name} (${id}) avec son motif`);
 
   // Back to drafting: the record of its owner tells who rejected it and why, and offers a new request.
   await actAs(r, 'cbardet');
   await open(page, record(r, docId, 'approval'));
   let text = await mainText(page);
-  check(text.includes(t.wf_rejected) && text.includes(reason) && text.includes(name), 'la fiche ne montre pas le rejet, son auteur et son motif');
-  check(await page.getByRole('button', { name: t.request_validation, exact: true }).count(), 'la révision n’est pas revenue en rédaction');
+  check(text.includes(tr('Rejected')) && text.includes(reason) && text.includes(name), 'la fiche ne montre pas le rejet, son auteur et son motif');
+  check(await page.getByRole('button', { name: tr('Request approval#action'), exact: true }).count(), 'la révision n’est pas revenue en rédaction');
   await open(page, `${r.base}/validations?f=done&r=${encodeURIComponent(wf)}`);
   text = await mainText(page);
-  check(text.includes(t.wf_rejected) && text.includes(reason), `le circuit ne se dit pas « ${t.wf_rejected} » avec son motif`);
-  done(r, `révision revenue en rédaction, circuit « ${t.wf_rejected} », motif sur la fiche et dans le circuit`);
+  check(text.includes(tr('Rejected')) && text.includes(reason), `le circuit ne se dit pas « ${tr('Rejected')} » avec son motif`);
+  done(r, `révision revenue en rédaction, circuit « ${tr('Rejected')} », motif sur la fiche et dans le circuit`);
 
   await draftHidden(r, docId, title);
   done(r, `brouillon rejeté invisible hors du cercle de rédaction (${OUTSIDER})`);
@@ -361,14 +360,14 @@ async function rappel(r: Run) {
   await actAs(r, 'jwagner');
   await open(page, record(r, docId, 'approval'));
   const reason = `Pièce jointe oubliée (${stamp()})`;
-  const recall = await dialogOf(page, t.recall);
+  const recall = await dialogOf(page, tr('Recall the request'));
   await recall.locator('textarea[name="reason"]').fill(reason);
-  await submit(page, recall, t.recall);
+  await submit(page, recall, tr('Recall the request'));
   await open(page, record(r, docId, 'approval'));
   const text = await mainText(page);
-  check(text.includes(t.wf_recalled) && text.includes(reason), `la fiche ne montre pas le circuit « ${t.wf_recalled} » et son motif`);
-  check(await page.getByRole('button', { name: t.request_validation, exact: true }).count(), 'la révision n’est pas revenue en rédaction');
-  done(r, `demande rappelée par jwagner : circuit « ${t.wf_recalled} », motif sur la fiche, révision revenue en rédaction`);
+  check(text.includes(tr('Recalled')) && text.includes(reason), `la fiche ne montre pas le circuit « ${tr('Recalled')} » et son motif`);
+  check(await page.getByRole('button', { name: tr('Request approval#action'), exact: true }).count(), 'la révision n’est pas revenue en rédaction');
+  done(r, `demande rappelée par jwagner : circuit « ${tr('Recalled')} », motif sur la fiche, révision revenue en rédaction`);
 
   // The holder of the step no longer has it to decide.
   await actAs(r, holder[1]);
@@ -394,20 +393,20 @@ async function vigie(r: Run) {
   const ask = async (who: string, why: string) => {
     await actAs(r, who);
     await open(page, record(r, docId));
-    const dialog = await dialogOf(page, t.request_change);
+    const dialog = await dialogOf(page, tr('Request a change'));
     await dialog.locator('input[name="reason"]').fill(why);
     await dialog.locator('textarea[name="description"]').fill('Parcours de bout en bout.');
-    await submit(page, dialog, t.send);
+    await submit(page, dialog, tr('Send'));
   };
   /** Vigie's acceptance of the request still « Transmise à Vigie », simulated by a records manager; returns its ID. */
   const accept = async () => {
     await actAs(r, 'cbardet');
     await open(page, record(r, docId, 'requests'));
-    const dialog = await dialogOf(page, t.vigie_sim);
+    const dialog = await dialogOf(page, tr('Vigie simulation'));
     const id = (await dialog.innerText()).match(/ECR-\d{4}-\d+/)?.[0];
     check(id, 'simulation Vigie : demande sans référence');
     check(await dialog.locator('select').first().inputValue() === 'jwagner', 'simulation Vigie : jwagner n’est pas le modificateur proposé');
-    await submit(page, dialog, t.vigie_accept);
+    await submit(page, dialog, tr('Simulate acceptance'));
     return id;
   };
 
@@ -416,8 +415,8 @@ async function vigie(r: Run) {
   await actAs(r, 'jwagner');
   await open(page, record(r, docId, 'requests'));
   let text = await mainText(page);
-  check(text.includes(ecr1) && text.includes(`${t.change_opened} B`) && text.includes(t.ecr_implemented), `${ecr1} n’a pas ouvert la révision B`);
-  check(text.includes(`${t.rev_short} B ${t.in_progress}`), 'la fiche de jwagner ne montre pas la révision B en cours');
+  check(text.includes(ecr1) && text.includes(`${tr('Opened revision')} B`) && text.includes(tr('Applied')), `${ecr1} n’a pas ouvert la révision B`);
+  check(text.includes(`${tr('Rev.')} B ${tr('in progress')}`), 'la fiche de jwagner ne montre pas la révision B en cours');
   done(r, `${ecr1} demandée par jwagner, acceptée (simulation Vigie) : révision B ouverte en brouillon pour jwagner`);
 
   // D-14: the revision in force for the others, nothing of B.
@@ -425,11 +424,11 @@ async function vigie(r: Run) {
     await actAs(r, OUTSIDER);
     await open(page, record(r, docId, 'versions'));
     const seen = await mainText(page);
-    check(seen.includes(title) && seen.includes(t.st_in_force), `${OUTSIDER} ne voit pas la révision A en vigueur (${what})`);
-    check(!/\bB(\.\d+)?\b/.test(seen) && !seen.includes(`${t.rev_short} B`), `${OUTSIDER} voit la révision B (${what})`);
+    check(seen.includes(title) && seen.includes(tr('In force')), `${OUTSIDER} ne voit pas la révision A en vigueur (${what})`);
+    check(!/\bB(\.\d+)?\b/.test(seen) && !seen.includes(`${tr('Rev.')} B`), `${OUTSIDER} voit la révision B (${what})`);
     await open(page, record(r, docId, 'requests'));
     const requests = await mainText(page);
-    check(!requests.includes(`${t.change_opened} B`) && !requests.includes(`${t.change_grafted_on} B`) && !requests.includes(t.graft_on), `${OUTSIDER} voit dans les demandes la révision B (${what})`);
+    check(!requests.includes(`${tr('Opened revision')} B`) && !requests.includes(`${tr('Grafted onto revision')} B`) && !requests.includes(tr('Graft onto revision')), `${OUTSIDER} voit dans les demandes la révision B (${what})`);
   };
   await outsiderSeesOnlyA('après ouverture');
   done(r, `${OUTSIDER} voit la révision A en vigueur, rien de la révision B`);
@@ -440,19 +439,19 @@ async function vigie(r: Run) {
   await actAs(r, 'jwagner');
   await open(page, record(r, docId));
   text = await mainText(page);
-  check(text.includes(`${t.ecr_accepted_l} :`) && text.includes(`${t.graft_on} B`), `${ecr2} acceptée : ni attente ni greffe proposée sur la fiche`);
+  check(text.includes(`${tr('accepted')} :`) && text.includes(`${tr('Graft onto revision')} B`), `${ecr2} acceptée : ni attente ni greffe proposée sur la fiche`);
   done(r, `${ecr2} acceptée pendant la rédaction de B : en attente, greffe proposée sur la fiche (D-26)`);
   await outsiderSeesOnlyA('modification en attente');
   done(r, `${OUTSIDER} ne voit ni l’attente sur B ni la greffe proposée`);
 
   await actAs(r, 'jwagner');
   await open(page, record(r, docId));
-  const graft = await dialogOf(page, `${t.graft_on} B`);
-  await submit(page, graft, t.graft_confirm);
+  const graft = await dialogOf(page, `${tr('Graft onto revision')} B`);
+  await submit(page, graft, tr('Graft'));
   await open(page, record(r, docId, 'requests'));
   text = await mainText(page);
-  check(text.includes(`${t.change_grafted_on} B`), `${ecr2} n’est pas greffée sur B`);
-  check(!(await page.getByRole('button', { name: `${t.graft_on} B`, exact: true }).count()), 'greffe encore proposée après la greffe');
+  check(text.includes(`${tr('Grafted onto revision')} B`), `${ecr2} n’est pas greffée sur B`);
+  check(!(await page.getByRole('button', { name: `${tr('Graft onto revision')} B`, exact: true }).count()), 'greffe encore proposée après la greffe');
   done(r, `${ecr2} greffée sur la révision B par jwagner`);
   await outsiderSeesOnlyA('après la greffe');
   done(r, `${OUTSIDER} ne voit toujours rien de la révision B`);
@@ -465,8 +464,8 @@ async function vigie(r: Run) {
   await actAs(r, 'jwagner');
   await open(page, record(r, docId));
   text = await mainText(page);
-  check(text.includes(`${t.ecr_accepted_l} :`) && text.includes(`${t.revision} B ${t.graft_closed_review}`), `${ecr3} : l’attente de la révision B en validation n’est pas dite`);
-  check(!(await page.getByRole('button', { name: `${t.graft_on} B`, exact: true }).count()), 'greffe proposée sur une révision en validation');
+  check(text.includes(`${tr('accepted')} :`) && text.includes(`${tr('Revision')} B ${tr('under review: the change can no longer be grafted onto it without restarting the workflow, it can only wait.')}`), `${ecr3} : l’attente de la révision B en validation n’est pas dite`);
+  check(!(await page.getByRole('button', { name: `${tr('Graft onto revision')} B`, exact: true }).count()), 'greffe proposée sur une révision en validation');
   done(r, `B.1 déposée, circuit ${wf} ; ${ecr3} acceptée : en attente seulement, pas de greffe sur une révision en validation`);
   await outsiderSeesOnlyA('révision B en validation');
   done(r, `${OUTSIDER} ne voit toujours que la révision A`);
@@ -495,7 +494,7 @@ async function importPath(r: Run) {
     await actAs(r, who);
     await open(page, record(r, predicted));
     const text = await mainText(page);
-    check(text.includes(title) && text.includes(t.st_in_force), `${who} ne voit pas ${predicted} en vigueur`);
+    check(text.includes(title) && text.includes(tr('In force')), `${who} ne voit pas ${predicted} en vigueur`);
     check(await page.locator('iframe').count(), `${who} : aperçu du fichier importé absent`);
   }
   await open(page, record(r, meta.legacyRef));

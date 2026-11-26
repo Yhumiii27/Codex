@@ -25,8 +25,8 @@ const ITEMS: { key: Screen; href: string; icon: IconName; label: string }[] = [
 
 /** Tabs of Administration offered by the page search (the hand-over tab depends on the person: left to the page). */
 const ADMIN_TABS = [
-  ['registry', 'registry'], ['functions', 'functions_tab'], ['roles', 'ad_roles'], ['org', 'organisation'],
-  ['vocab', 'tab_vocab'], ['templates', 'templates_qms'], ['audit', 'ad_audit'],
+  ['registry', msg('Type register')], ['functions', msg('Functions & workflows')], ['roles', msg('Roles & permissions')], ['org', msg('Organisation')],
+  ['vocab', msg('Vocabularies')], ['templates', msg('Templates (QMS)')], ['audit', msg('Audit log')],
 ] as const;
 
 export function activeScreen(pathname: string): Screen | 'document' | 'help' {
@@ -48,7 +48,7 @@ export function Sidebar({ screens, user, roleTitle, keystoneUrl, signOut = false
   /** Signed in through Clavis (CODEX_AUTH=clavis): the person is not simulated, the button signs out. */
   signOut?: boolean;
 }) {
-  const { t, tr, open, todo, data } = useApp();
+  const { tr, open, todo, data } = useApp();
   const { closeNav } = useCoque();
 
   // Every page the person may open: the screens, Help, the tabs of Administration and the department pages.
@@ -57,7 +57,7 @@ export function Sidebar({ screens, user, roleTitle, keystoneUrl, signOut = false
     out.push({ href: '/aide', icon: ICONS.help, label: tr('Help') });
     if (screens.admin) {
       for (const [tab, key] of ADMIN_TABS) {
-        out.push({ href: `/administration${tab === 'registry' ? '' : `?tab=${tab}`}`, icon: ICONS.shield, label: t[key], section: tr('Administration') });
+        out.push({ href: `/administration${tab === 'registry' ? '' : `?tab=${tab}`}`, icon: ICONS.shield, label: tr(key), section: tr('Administration') });
       }
     }
     if (screens.departments) {
@@ -66,7 +66,7 @@ export function Sidebar({ screens, user, roleTitle, keystoneUrl, signOut = false
       }
     }
     return out;
-  }, [screens, t, tr, data.departments]);
+  }, [screens, tr, data.departments]);
   // Items of « À traiter » (AppProvider), listed whole on Accueil: the badge sits on its entry.
   const badge = todo.length;
   const sc = activeScreen(usePathname());

@@ -5,7 +5,6 @@ import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { FILES_DIR, schema as s } from '@/db';
 import { renameProvisionalFiles } from '@/lib/actions';
 import type { Ctx } from '@/lib/context';
-import { DICT } from '@/lib/i18n';
 import { orphanReport } from '@/lib/orphans';
 import { provisionalReport, renameProvisional } from '@/lib/provisional';
 import { auditDetailL } from '@/lib/queries';
@@ -13,6 +12,7 @@ import { runTask } from '@/lib/scheduler';
 import { nameStoredFile, PROVISIONAL_LOCAL_KEY } from '@/lib/storage';
 import { addDoc, setupDb } from '../support/db';
 import { actAs } from '../support/session';
+import { translate, translatorFor } from '@/i18n';
 
 // Files left under their provisional name (point 36 of docs/reste-a-faire.md, lib/provisional.ts): a record written, the
 // rename to {ID}_{version}.{ext} never done (a process stopped between the commit and nameStoredFile, the store out of
@@ -107,7 +107,7 @@ describe('the rename', () => {
     const [entry] = await db().select().from(s.auditLog).where(eq(s.auditLog.action, 'files_renamed'));
     expect(entry).toMatchObject({ userId: 'manager', docId: null, targetKind: 'storage', targetId: 'local' });
     // The names carry a draft's ID and version: records managers only (D-14).
-    const as = (seesAll: boolean) => auditDetailL({ t: DICT.fr, lang: 'fr', seesAll } as Ctx, entry);
+    const as = (seesAll: boolean) => auditDetailL({ tr: translatorFor('fr'), lang: 'fr', seesAll } as Ctx, entry);
     expect(as(true)).toBe(`Fichiers : 1 · PRO-QUA-0001 A.2 : ${uuid(1)}-upload.pdf → ${uuid(1)}-PRO-QUA-0001_A.2.pdf`);
     expect(as(false)).toBe('Fichiers : 1');
     // Nothing left: a second run renames nothing and journals nothing.
@@ -172,11 +172,11 @@ describe('the Server Action and the scheduler', () => {
     await db().insert(s.rolePermissions).values({ role: 'validateur', perm: 'admin', granted: true });
     for (const who of ['head', 'writer'] as const) {
       actAs(who);
-      expect(await renameProvisionalFiles(keys)).toEqual({ ok: false, error: DICT.fr.forbidden });
+      expect(await renameProvisionalFiles(keys)).toEqual({ ok: false, error: translate('fr', 'The simulated role cannot access this screen.') });
     }
     actAs('manager');
     for (const bad of [undefined, 'x', [], [42], Array.from({ length: 201 }, (_, i) => `${uuid(i)}-upload.pdf`)]) {
-      expect(await renameProvisionalFiles(bad as string[])).toEqual({ ok: false, error: DICT.fr.error });
+      expect(await renameProvisionalFiles(bad as string[])).toEqual({ ok: false, error: translate('fr', 'Something went wrong') });
     }
     expect(await keyOf('PRO-QUA-0001')).toBe(`${uuid(1)}-upload.pdf`);
     expect(await renameProvisionalFiles(keys)).toEqual({ ok: true, message: 'Fichiers renommés : 1.' });

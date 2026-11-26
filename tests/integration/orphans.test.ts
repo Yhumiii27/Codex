@@ -5,12 +5,12 @@ import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { FILES_DIR, schema as s } from '@/db';
 import { purgeOrphanFiles } from '@/lib/actions';
 import type { Ctx } from '@/lib/context';
-import { DICT } from '@/lib/i18n';
 import { MAX_PER_RUN, orphanReport, purgeOrphans } from '@/lib/orphans';
 import { auditDetailL } from '@/lib/queries';
 import { listStoredFiles, localTouched } from '@/lib/storage';
 import { addDoc, setupDb } from '../support/db';
 import { actAs } from '../support/session';
+import { translate, translatorFor } from '@/i18n';
 
 // Orphan files of the local store (point 36 of docs/reste-a-faire.md, lib/orphans.ts): listed without removing anything
 // (dry run), removed by a records manager once older than the grace period and named by no working version, journaled;
@@ -231,14 +231,14 @@ describe('the Server Action and the journal', () => {
     await db().insert(s.rolePermissions).values({ role: 'validateur', perm: 'admin', granted: true });
     const keys = [key(2, 'upload.pdf')];
     actAs('head');
-    expect(await purgeOrphanFiles(keys)).toEqual({ ok: false, error: DICT.fr.forbidden });
+    expect(await purgeOrphanFiles(keys)).toEqual({ ok: false, error: translate('fr', 'The simulated role cannot access this screen.') });
     actAs('writer');
-    expect(await purgeOrphanFiles(keys)).toEqual({ ok: false, error: DICT.fr.forbidden });
+    expect(await purgeOrphanFiles(keys)).toEqual({ ok: false, error: translate('fr', 'The simulated role cannot access this screen.') });
     expect(stored()).toEqual([key(2, 'upload.pdf')]);
     actAs('manager');
     // What a page sends back is checked: a list of names, no longer than the one a page shows.
     for (const bad of [undefined, 'x', [], [42], Array.from({ length: MAX_PER_RUN + 1 }, (_, i) => key(i, 'upload.pdf'))]) {
-      expect(await purgeOrphanFiles(bad as string[])).toEqual({ ok: false, error: DICT.fr.error });
+      expect(await purgeOrphanFiles(bad as string[])).toEqual({ ok: false, error: translate('fr', 'Something went wrong') });
     }
     expect(stored()).toEqual([key(2, 'upload.pdf')]);
     expect(await purgeOrphanFiles(keys)).toEqual({ ok: true, message: 'Fichiers orphelins supprimés : 1 (1 o).' });
@@ -251,7 +251,7 @@ describe('the Server Action and the journal', () => {
     put(key(3, 'PRO-QUA-0007_A.2.docx'), 'orphan-22');
     await purgeOrphans('manager', { now: later(), env: {} });
     const [entry] = await purges();
-    const as = (seesAll: boolean) => auditDetailL({ t: DICT.fr, lang: 'fr', seesAll } as Ctx, entry);
+    const as = (seesAll: boolean) => auditDetailL({ tr: translatorFor('fr'), lang: 'fr', seesAll } as Ctx, entry);
     expect(as(true)).toBe(`Fichiers : 1 (9 o) · ${key(3, 'PRO-QUA-0007_A.2.docx')}`);
     expect(as(false)).toBe('Fichiers : 1 (9 o)');
     vi.restoreAllMocks();

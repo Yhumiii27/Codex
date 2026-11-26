@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import RootLayout from '@/app/layout';
 import { activeScreen } from '@/components/shell/Sidebar';
-import { DICT, type Lang } from '@/lib/i18n';
+import type { Lang } from '@/lib/i18n';
 import { translate } from '@/i18n';
 import { setupDb } from '../support/db';
 import { actAs, setLangCookie } from '../support/session';
@@ -63,7 +63,7 @@ describe('Shell: skip link, landmarks, help', () => {
     const { default: HelpPage } = await import('@/app/aide/page');
     const html = await shell('fr', HelpPage);
     expect(html.match(/<h1/g)).toHaveLength(1);
-    expect(html).toMatch(new RegExp(`<header class="coque-header">[^]*<h1 class="coque-title">${DICT.fr.help_title}</h1>`));
+    expect(html).toMatch(new RegExp(`<header class="coque-header">[^]*<h1 class="coque-title">${translate('fr', 'Using Codex')}</h1>`));
   });
 
   it('takes /aide for the help screen, and no other path', () => {

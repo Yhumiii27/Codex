@@ -72,11 +72,14 @@ export function sameRule(a: RetentionRule, b: RetentionRule): boolean {
 /** Earliest event date accepted: older dates are typing errors. */
 export const EVENT_DATE_MIN = '1900-01-01';
 
+/** Why the date of an event is refused (its message: src/i18n/labels.ts EVENT_DATE_ISSUE_LABEL). */
+export type EventDateIssue = 'retention_event_invalid' | 'retention_event_future';
+
 /**
  * The date of an event entered on a record: a real day, from EVENT_DATE_MIN to today (the event has happened; a planned
  * end of life or departure is not one yet). Empty clears it.
  */
-export function parseEventDate(raw: string | null | undefined, today: string): { ok: true; value: string | null } | { ok: false; key: 'retention_event_invalid' | 'retention_event_future' } {
+export function parseEventDate(raw: string | null | undefined, today: string): { ok: true; value: string | null } | { ok: false; key: EventDateIssue } {
   const v = (raw ?? '').trim();
   if (!v) return { ok: true, value: null };
   const day = parseIsoDay(v);

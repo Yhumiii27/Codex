@@ -2,11 +2,11 @@ import { and, eq } from 'drizzle-orm';
 import { describe, expect, it, vi } from 'vitest';
 import { schema as s } from '@/db';
 import { decideStep, renameVocabTerm, requestChange, requestValidation, togglePermission, updateType } from '@/lib/actions';
-import { DICT } from '@/lib/i18n';
 import { applyChangeDecision, lockDoc, promoteDue } from '@/lib/lifecycle';
 import { submitChange } from '@/server/integrations/vigie';
 import { addDoc, baseOf, fixClock, getDoc, revisionStatuses, setupDb } from '../support/db';
 import { actAs } from '../support/session';
+import { translatorFor } from '@/i18n';
 
 // The transactions that read before they write, under READ COMMITTED (point 51 of docs/reste-a-faire.md,
 // docs/postgres.md « Transactions »): each statement sees what was committed when it starts, so two transactions on the
@@ -21,7 +21,7 @@ vi.mock('next/cache', () => ({ refresh: () => {} }));
 const db = setupDb();
 fixClock(); // 10 October 2026
 
-const t = DICT.fr;
+const tr = translatorFor('fr');
 const ID = 'PRO-QUA-0001'; // type PRO: head of the QUA department, then the quality manager
 const server = !!process.env.CODEX_TEST_DATABASE_URL?.trim();
 
@@ -54,7 +54,7 @@ describe('transactions that read before they write', () => {
     actAs('head');
     const res = await Promise.all([1, 2, 3, 4].map(() => decideStep(wf, true, 1)));
     expect(res.filter((r) => r.ok)).toHaveLength(1);
-    expect(res.filter((r) => !r.ok).map((r) => (r as { error: string }).error)).toEqual([t.wrong_step, t.wrong_step, t.wrong_step]);
+    expect(res.filter((r) => !r.ok).map((r) => (r as { error: string }).error)).toEqual([tr('The workflow moved on in the meantime: the page has been refreshed.'), tr('The workflow moved on in the meantime: the page has been refreshed.'), tr('The workflow moved on in the meantime: the page has been refreshed.')]);
     expect(await entries('approve')).toBe(1);
     const [w] = await db().select().from(s.workflows);
     expect([w.step, w.outcome]).toEqual([2, null]);
@@ -87,7 +87,7 @@ describe('transactions that read before they write', () => {
     }
     await other;
     // It saw the rejection once committed, instead of approving a circuit already ended.
-    expect(await decision).toEqual({ ok: false, error: t.wrong_step });
+    expect(await decision).toEqual({ ok: false, error: tr('The workflow moved on in the meantime: the page has been refreshed.') });
     expect(await entries('approve')).toBe(0);
   });
 
@@ -121,7 +121,7 @@ describe('transactions that read before they write', () => {
       hold.open();
     }
     await other;
-    expect(await saving).toMatchObject({ ok: true, message: expect.stringContaining(t.retention_held_kept.replace('{n}', '1')) });
+    expect(await saving).toMatchObject({ ok: true, message: expect.stringContaining(tr('{n} document(s) under legal hold unchanged').replace('{n}', '1')) });
     // The frozen document keeps its class (D-20: a hold freezes the record).
     const after = await getDoc(db(), ID);
     expect([after.retentionYears, after.retentionTrigger, after.retentionDisposition]).toEqual([before.retentionYears, before.retentionTrigger, before.retentionDisposition]);

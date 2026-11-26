@@ -1,4 +1,4 @@
-import { ERROR_EN as en, ERROR_FR as fr } from '@/lib/i18n-errors';
+import { msg, translate } from '@/i18n';
 
 /**
  * The whole document while the database is empty (a PostgreSQL server left unseeded: src/db/index.ts seedIfEmpty), in
@@ -7,23 +7,26 @@ import { ERROR_EN as en, ERROR_FR as fr } from '@/lib/i18n-errors';
  * variables to set, never their values nor the server's address.
  */
 export function EmptyDatabase() {
-  const both = (a: string, b: string) => (a === b ? a : `${a} · ${b}`);
+  const both = (source: string) => {
+    const [a, b] = [translate('fr', source), translate('en', source)];
+    return a === b ? a : `${a} · ${b}`;
+  };
   return (
     <main id="contenu" role="main" style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 'var(--space-8)', fontSize: 13 }}>
       <div style={{ maxWidth: 620 }}>
-        <h1 style={{ margin: '0 0 12px', fontSize: 18 }}>{both(fr.empty_title, en.empty_title)}</h1>
-        {([fr, en] as const).map((d, i) => (
-          <section key={i} lang={i ? 'en' : 'fr'} style={{ margin: '0 0 14px' }}>
-            <p style={{ margin: '0 0 6px' }}>{d.empty_body}</p>
+        <h1 style={{ margin: '0 0 12px', fontSize: 18 }}>{both(msg('Codex’s database is empty'))}</h1>
+        {(['fr', 'en'] as const).map((lang) => (
+          <section key={lang} lang={lang} style={{ margin: '0 0 14px' }}>
+            <p style={{ margin: '0 0 6px' }}>{translate(lang, 'Codex is connected to a PostgreSQL server (DATABASE_URL) whose schema codex holds no data yet, and no seeding was asked for: nothing was written.')}</p>
             <ul style={{ margin: '0 0 6px', paddingLeft: 18 }}>
-              <li>{d.empty_minimal}</li>
-              <li>{d.empty_demo}</li>
+              <li>{translate(lang, 'To put it into service: CODEX_SEED=minimal loads the reference data (register of types, functions, permission matrix, provisional organisation) and an initial administrator.')}</li>
+              <li>{translate(lang, 'For a demonstration (beta): CODEX_SEED=demo, or CODEX_SEED_DEMO=1.')}</li>
             </ul>
-            <p className="text-muted" style={{ margin: 0, fontSize: 12.5 }}>{d.empty_restart}</p>
+            <p className="text-muted" style={{ margin: 0, fontSize: 12.5 }}>{translate(lang, 'Set one of these variables in the server’s environment, then restart Codex (docs/exploitation.md, § 10).')}</p>
           </section>
         ))}
         {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- a full load: once filled, the shell is rendered again. */}
-        <a href="/" className="btn btn-secondary">{both(fr.empty_retry, en.empty_retry)}</a>
+        <a href="/" className="btn btn-secondary">{both(msg('Reload'))}</a>
       </div>
     </main>
   );

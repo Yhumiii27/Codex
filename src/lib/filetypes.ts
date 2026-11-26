@@ -4,7 +4,8 @@
 // client component.
 
 import { fmtSize } from './format';
-import type { Lang, T } from './i18n';
+import type { Lang } from './i18n';
+import type { Translate } from '@/i18n';
 
 export const INLINE_SAFE: ReadonlySet<string> = new Set(['application/pdf', 'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'text/plain']);
 
@@ -327,25 +328,25 @@ export function acceptAttr(rules: FileRules): string {
 }
 
 /** The refusal, in the user's language. */
-export function fileIssueText(t: T, lang: Lang, issue: FileIssue, rules: FileRules): string {
+export function fileIssueText(tr: Translate, lang: Lang, issue: FileIssue, rules: FileRules): string {
   switch (issue.code) {
-    case 'too_large': return t.file_too_large.replace('{size}', fmtSize(issue.size, lang)).replace('{max}', fmtMax(rules.maxBytes, lang));
-    case 'executable': return t.file_executable;
-    case 'no_extension': return t.file_no_extension.replace('{list}', rules.extensions.join(', '));
-    case 'format': return t.file_format.replace('{ext}', issue.ext).replace('{list}', rules.extensions.join(', '));
-    case 'signature': return t.file_signature.replace('{ext}', issue.ext);
-    case 'macros': return t.file_macros;
+    case 'too_large': return tr('File too large: {size}, {max} at most.').replace('{size}', fmtSize(issue.size, lang)).replace('{max}', fmtMax(rules.maxBytes, lang));
+    case 'executable': return tr('This file is an executable program: it is refused, whatever its name.');
+    case 'no_extension': return tr('File without extension whose content is not recognised: name it with the extension of its format. Accepted formats: {list}.').replace('{list}', rules.extensions.join(', '));
+    case 'format': return tr('Format not accepted: {ext}. Accepted formats: {list}.').replace('{ext}', issue.ext).replace('{list}', rules.extensions.join(', '));
+    case 'signature': return tr('The content of this file is not that of a {ext} file: it is refused.').replace('{ext}', issue.ext);
+    case 'macros': return tr('This file contains macros: it is refused. Save it in a format without macros (.docx, .xlsx, .pptx…).');
   }
 }
 
 /** The same refusal, short, for a sentence that names the file (the copy of a template: actions.ts). */
-export function fileIssueReason(t: T, lang: Lang, issue: FileIssue): string {
+export function fileIssueReason(tr: Translate, lang: Lang, issue: FileIssue): string {
   switch (issue.code) {
-    case 'too_large': return t.file_reason_too_large.replace('{size}', fmtSize(issue.size, lang)).replace('{max}', fmtMax(issue.maxBytes, lang));
-    case 'executable': return t.file_reason_executable;
-    case 'no_extension': return t.file_reason_no_extension;
-    case 'format': return t.file_reason_format.replace('{ext}', issue.ext);
-    case 'signature': return t.file_reason_signature.replace('{ext}', issue.ext);
-    case 'macros': return t.file_reason_macros;
+    case 'too_large': return tr('too large: {size}, {max} at most').replace('{size}', fmtSize(issue.size, lang)).replace('{max}', fmtMax(issue.maxBytes, lang));
+    case 'executable': return tr('it is an executable program');
+    case 'no_extension': return tr('no extension, content not recognised');
+    case 'format': return tr('format {ext} not accepted').replace('{ext}', issue.ext);
+    case 'signature': return tr('its content is not that of a {ext} file').replace('{ext}', issue.ext);
+    case 'macros': return tr('it contains macros');
   }
 }

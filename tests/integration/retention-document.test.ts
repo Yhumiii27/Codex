@@ -3,11 +3,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { schema as s } from '@/db';
 import { setRetentionClass, setRetentionEvent, updateMeta, updateType } from '@/lib/actions';
 import { getCtx } from '@/lib/context';
-import { DICT } from '@/lib/i18n';
 import { deadlines, listAudit, listDocs, METADATA_ACTIONS, retentionByType } from '@/lib/queries';
 import { addDoc, fixClock, getDoc, journalOf, setupDb, viewOf } from '../support/db';
 import type { Person } from '../support/fixtures';
 import { actAs } from '../support/session';
+import { translatorFor } from '@/i18n';
 
 // Points 7 and 18 of docs/reste-a-faire.md (D-20, docs/modele-cible.md §8). The date of an event Codex cannot know (end
 // of life of the asset, departure of the employee) is entered on the record by its owner or a records manager and the
@@ -22,7 +22,7 @@ vi.mock('next/cache', () => ({ refresh: () => {} }));
 const db = setupDb();
 fixClock(); // 2026-10-10
 
-const t = DICT.fr;
+const tr = translatorFor('fr');
 const ID = 'PRO-QUA-0001';
 
 /** A document of type PRO whose retention counts from `trigger`, `years` after it. */
@@ -71,7 +71,7 @@ const classOf = async (id: string) => {
 describe('date of the trigger event (asset life, employee departure)', () => {
   it('entered by the owner, it gives the end of retention, which falls due in Archivage; nothing is archived', async () => {
     await withTrigger('employee_departure', 5);
-    expect((await viewAs('owner'))).toMatchObject({ retainUntil: null, untilF: t.until_event_missing, eventTrigger: true });
+    expect((await viewAs('owner'))).toMatchObject({ retainUntil: null, untilF: tr('Event date to enter'), eventTrigger: true });
     expect(await setEvent('owner', '2021-11-02')).toMatchObject({ ok: true });
     const d = await getDoc(db(), ID);
     expect(d).toMatchObject({ retentionEventAt: '2021-11-02', state: 'active', archivedAt: null });
@@ -92,7 +92,7 @@ describe('date of the trigger event (asset life, employee departure)', () => {
   it('asset life without a duration (O-07): the date is kept, the end stays to be set', async () => {
     await withTrigger('asset_life', null);
     expect(await setEvent('owner', '2026-01-15')).toMatchObject({ ok: true });
-    expect(await viewAs('owner')).toMatchObject({ retainUntil: null, untilF: t.until_no_duration, retentionEventAt: '2026-01-15' });
+    expect(await viewAs('owner')).toMatchObject({ retainUntil: null, untilF: tr('Duration to set'), retentionEventAt: '2026-01-15' });
     // A records manager may give this document a duration: the end follows the date entered.
     expect(await setClass('manager', { retentionYears: '0', retentionTrigger: 'asset_life', retentionDisposition: 'review' })).toMatchObject({ ok: true });
     expect((await viewAs('manager'))?.retainUntil).toBe('2026-01-15');
@@ -100,35 +100,35 @@ describe('date of the trigger event (asset life, employee departure)', () => {
 
   it('is a real day no later than today, and only for a trigger that waits for one; it may be cleared', async () => {
     await withTrigger('asset_life', 10);
-    expect(await setEvent('owner', '2026-10-11')).toEqual({ ok: false, error: t.retention_event_future, field: 'eventAt' });
-    expect(await setEvent('owner', '2026-02-30')).toEqual({ ok: false, error: t.retention_event_invalid, field: 'eventAt' });
-    expect(await setEvent('owner', '1899-12-31')).toEqual({ ok: false, error: t.retention_event_invalid, field: 'eventAt' });
+    expect(await setEvent('owner', '2026-10-11')).toEqual({ ok: false, error: tr('The event must have happened: the date cannot be later than today.'), field: 'eventAt' });
+    expect(await setEvent('owner', '2026-02-30')).toEqual({ ok: false, error: tr('Invalid event date.'), field: 'eventAt' });
+    expect(await setEvent('owner', '1899-12-31')).toEqual({ ok: false, error: tr('Invalid event date.'), field: 'eventAt' });
     expect(await setEvent('owner', '2026-10-10')).toMatchObject({ ok: true });
     expect((await getDoc(db(), ID)).retentionEventAt).toBe('2026-10-10');
     // The trigger changes (records manager): a date can no longer be entered, the one left may still be cleared.
     await db().update(s.documents).set({ retentionTrigger: 'superseded' }).where(eq(s.documents.id, ID));
-    expect(await setEvent('owner', '2026-10-01')).toEqual({ ok: false, error: t.retention_event_not_needed });
+    expect(await setEvent('owner', '2026-10-01')).toEqual({ ok: false, error: tr('The retention of this document does not start from an event to enter.') });
     expect(await setEvent('owner', null)).toMatchObject({ ok: true });
     expect((await getDoc(db(), ID)).retentionEventAt).toBeNull();
   });
 
   it('the end of a project is not entered: it waits for Keystone (O-03)', async () => {
     await withTrigger('project_end', 5);
-    expect(await setEvent('owner', '2026-01-15')).toEqual({ ok: false, error: t.retention_event_not_needed });
+    expect(await setEvent('owner', '2026-01-15')).toEqual({ ok: false, error: tr('The retention of this document does not start from an event to enter.') });
     expect(await viewAs('owner')).toMatchObject({ retainUntil: null, eventTrigger: false, untilF: '—' });
   });
 
   it('by the owner of an editable record or a records manager, never on a frozen one', async () => {
     await withTrigger('asset_life', 10, { ownerId: 'owner' });
-    expect(await setEvent('writer', '2026-01-15')).toEqual({ ok: false, error: t.not_allowed });
+    expect(await setEvent('writer', '2026-01-15')).toEqual({ ok: false, error: tr('Permission required') });
     expect(await setEvent('manager', '2026-01-15')).toMatchObject({ ok: true });
     // Archived: the owner may no longer edit the record, a records manager still enters the date.
     await db().update(s.documents).set({ state: 'archived', archivedAt: '2026-10-01' }).where(eq(s.documents.id, ID));
-    expect(await setEvent('owner', '2026-02-01')).toEqual({ ok: false, error: t.locked_archived });
+    expect(await setEvent('owner', '2026-02-01')).toEqual({ ok: false, error: tr('Archived document: it cannot be changed.') });
     expect(await setEvent('manager', '2026-02-01')).toMatchObject({ ok: true });
     expect((await getDoc(db(), ID)).state).toBe('archived');
     await db().update(s.documents).set({ legalHold: true, legalHoldAt: '2026-10-05' }).where(eq(s.documents.id, ID));
-    expect(await setEvent('manager', '2026-03-01')).toEqual({ ok: false, error: t.locked_hold });
+    expect(await setEvent('manager', '2026-03-01')).toEqual({ ok: false, error: tr('Document under legal hold: it cannot be changed.') });
     expect((await getDoc(db(), ID)).retentionEventAt).toBe('2026-02-01');
   });
 
@@ -167,13 +167,13 @@ describe('retention class of one document', () => {
   it('reserved to the archive permission; refused under legal hold, on an outdated view, with an invalid duration', async () => {
     await addDoc(db(), { id: ID });
     const rule = { retentionYears: '3', retentionTrigger: 'creation', retentionDisposition: 'destroy' };
-    expect(await setClass('owner', rule)).toEqual({ ok: false, error: `${t.not_allowed} : ${t.perm_archive}` });
-    expect(await setClass('head', rule)).toEqual({ ok: false, error: `${t.not_allowed} : ${t.perm_archive}` });
-    expect(await setClass('manager', { ...rule, retentionYears: '201' })).toEqual({ ok: false, error: t.reg_years_invalid, field: 'retentionYears' });
+    expect(await setClass('owner', rule)).toEqual({ ok: false, error: `${tr('Permission required')} : ${tr('Archive')}` });
+    expect(await setClass('head', rule)).toEqual({ ok: false, error: `${tr('Permission required')} : ${tr('Archive')}` });
+    expect(await setClass('manager', { ...rule, retentionYears: '201' })).toEqual({ ok: false, error: tr('Retention period: a whole number of years, from 0 to 200, or empty.'), field: 'retentionYears' });
     actAs('manager');
     expect(await setRetentionClass(form({ docId: ID, version: '99', ...rule }))).toMatchObject({ ok: false, stale: true });
     await db().update(s.documents).set({ legalHold: true }).where(eq(s.documents.id, ID));
-    expect(await setClass('manager', rule)).toEqual({ ok: false, error: t.locked_hold });
+    expect(await setClass('manager', rule)).toEqual({ ok: false, error: tr('Document under legal hold: it cannot be changed.') });
     expect(await classOf(ID)).toEqual({ years: 10, trigger: 'superseded', disposition: 'destroy', override: false });
   });
 
@@ -208,7 +208,7 @@ describe('a change of the type rule, applied to its documents', () => {
   it('not applied unless asked: the documents keep their class', async () => {
     await three();
     actAs('manager');
-    expect(await updateType(await typeForm(NEW_RULE))).toEqual({ ok: true, message: t.saved_ok });
+    expect(await updateType(await typeForm(NEW_RULE))).toEqual({ ok: true, message: tr('Changes saved') });
     expect(await classOf('PRO-QUA-0001')).toEqual({ years: 10, trigger: 'superseded', disposition: 'destroy', override: false });
     expect((await viewAs('manager', 'PRO-QUA-0001'))?.retentionOverride).toBe(false);
   });
@@ -217,7 +217,7 @@ describe('a change of the type rule, applied to its documents', () => {
     await three();
     actAs('manager');
     const r = await updateType(await typeForm({ ...NEW_RULE, applyRetention: 'on' }));
-    expect(r).toEqual({ ok: true, message: `${t.saved_ok} · ${t.retention_applied.replace('{n}', '1')} · ${t.retention_overrides_kept.replace('{n}', '1')} · ${t.retention_held_kept.replace('{n}', '1')}` });
+    expect(r).toEqual({ ok: true, message: `${tr('Changes saved')} · ${tr('rule applied to {n} document(s)').replace('{n}', '1')} · ${tr('{n} derogation(s) unchanged').replace('{n}', '1')} · ${tr('{n} document(s) under legal hold unchanged').replace('{n}', '1')}` });
     expect(await classOf('PRO-QUA-0001')).toEqual({ years: 25, trigger: 'in_force', disposition: 'archive', override: false });
     expect(await classOf('PRO-QUA-0002')).toEqual({ years: 30, trigger: 'creation', disposition: 'archive', override: true });
     expect(await classOf('PRO-QUA-0003')).toEqual({ years: 10, trigger: 'superseded', disposition: 'destroy', override: false });
@@ -233,7 +233,7 @@ describe('a change of the type rule, applied to its documents', () => {
     expect(typeEntries.map((x) => x.action)).toEqual(['type', 'retention_applied']);
     expect(typeEntries[1].data?.changes).toContainEqual({ field: 'retentionDocs', after: '1' });
     // Saved again with the same rule: nothing left to apply.
-    expect(await updateType(await typeForm({ ...NEW_RULE, applyRetention: 'on' }))).toMatchObject({ ok: true, message: expect.stringContaining(t.retention_applied.replace('{n}', '0')) });
+    expect(await updateType(await typeForm({ ...NEW_RULE, applyRetention: 'on' }))).toMatchObject({ ok: true, message: expect.stringContaining(tr('rule applied to {n} document(s)').replace('{n}', '0')) });
   });
 
   it('the frozen document, once released, takes the type rule back from its record', async () => {

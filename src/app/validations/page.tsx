@@ -7,13 +7,13 @@ import { Pager } from '@/components/ui/Pager';
 import { Segmented } from '@norma/charte/ds/Segmented';
 import { FilterBar } from '@norma/charte/ds/FilterBar';
 import { PageHeader } from '@/components/shell/PageHeader';
-import { msg, translatorFor } from '@/i18n';
+import { msg } from '@/i18n';
 import { HStepper, type StepItem } from '@/components/ui/Stepper';
 import { ActionButton, ActionLink, DialogButton } from '@/components/ui/client';
 import { mayReassignStep } from '@/lib/access';
 import { decideStep } from '@/lib/actions';
 import { getCtx } from '@/lib/context';
-import type { LockKey } from '@/lib/lifecycle';
+import { LOCK_LABEL } from '@/i18n/labels';
 import { getDoc, listChangeRequests, listRevisions, validationsPage, WORKFLOW_FILTERS, type WorkflowFilter } from '@/lib/queries';
 import { CommentBox } from './CommentBox';
 import { MyChangeRequests } from './MyChangeRequests';
@@ -27,25 +27,17 @@ type Filter = WorkflowFilter;
 /** The views of the list (lib/queries.ts WORKFLOW_FILTERS). */
 const FILTER_LABEL: Record<Filter, string> = { mine: msg('For me'), requested: msg('My requests'), active: msg('In progress'), done: msg('Completed') };
 
-/** Why a circuit is frozen (lib/lifecycle.ts lockOf). */
-const LOCK_TEXT: Record<LockKey, string> = {
-  locked_archived: msg('Archived document: it cannot be changed.'),
-  locked_obsolete: msg('Obsolete document: it cannot be changed.'),
-  locked_hold: msg('Document under legal hold: it cannot be changed.'),
-};
 /** `f` of the view « Mes demandes Vigie » (`c`: the request shown), beside the workflow filters. */
 const VIGIE = 'vigie';
 
 export function generateMetadata() {
-  return screenTitle('nav_workflow');
+  return screenTitle(msg('Approvals'));
 }
 
 export default async function WorkflowPage({ searchParams }: PageProps<'/validations'>) {
   const sp = (await searchParams) as Record<string, string | undefined>;
   const ctx = await getCtx();
-  // The pager is shared with the other lists and still reads the keyed dictionary (components/ui/Pager.tsx).
-  const { t } = ctx;
-  const tr = translatorFor(ctx.lang);
+  const { tr } = ctx;
   if (!ctx.screens.workflow) return <Forbidden text={tr('The simulated role cannot access this screen.')} back={tr('Back to home')} />;
   // Records managers follow every workflow; others the ones they request or take part in (filtered, counted and paged by
   // the database: lib/queries.ts validationsPage). Beside them, the change and withdrawal requests the user sent to
@@ -136,7 +128,7 @@ export default async function WorkflowPage({ searchParams }: PageProps<'/validat
   const over = r.done;
   const canAct = r.mine;
   // An archived, obsolete or frozen document freezes its circuit: nobody decides until the lock is lifted.
-  const lockText = r.locked ? tr(LOCK_TEXT[r.locked]) : undefined;
+  const lockText = r.locked ? tr(LOCK_LABEL[r.locked]) : undefined;
   const approveDenied = lockText ?? (ctx.can('approve') ? undefined : `${tr('Permission required')} : ${tr('Approve#permission')}`);
   // The last approval puts the revision in force: the "publish" permission as well.
   const lastStep = r.step === r.steps.length - 1;
@@ -201,7 +193,7 @@ export default async function WorkflowPage({ searchParams }: PageProps<'/validat
               </div>
             </Link>
           ))}
-          {pages > 1 && <div style={{ padding: '10px 2px 0', display: 'flex', justifyContent: 'center' }}><Pager t={t} page={page} pages={pages} href={(n) => href(filter, r.id, n)} /></div>}
+          {pages > 1 && <div style={{ padding: '10px 2px 0', display: 'flex', justifyContent: 'center' }}><Pager tr={tr} page={page} pages={pages} href={(n) => href(filter, r.id, n)} /></div>}
         </div>
       </aside>
 

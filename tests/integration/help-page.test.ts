@@ -2,13 +2,16 @@ import { createElement, type ReactElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import HelpPage, { generateMetadata } from '@/app/aide/page';
-import { FR } from '@/i18n/fr';
-import { DICT, HELP, type Lang } from '@/lib/i18n';
+import { FR, SAME_IN_FRENCH } from '@/i18n/fr';
+import { FR_HELP } from '@/i18n/fr-help';
+import { HELP } from '@/lib/help';
+import type { Lang } from '@/lib/i18n';
 import { setupDb } from '../support/db';
 import type { Person } from '../support/fixtures';
 import { actAs, setLangCookie } from '../support/session';
+import { translatorFor } from '@/i18n';
 
-// Help page (/aide, point 69 of docs/reste-a-faire.md): the common tasks in the user's language (lib/i18n.ts HELP),
+// Help page (/aide, point 69 of docs/reste-a-faire.md): the common tasks in the user's language (lib/help.ts HELP, English sources),
 // with what is simulated said where it applies, and a link to the screen where a task starts only for a user who has
 // that screen (lib/context.ts screens).
 
@@ -32,37 +35,33 @@ async function render(who: Person, lang: Lang): Promise<string> {
 const text = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/\s+/g, ' ');
 
 describe('Help page', () => {
-  it('has the same topics, in the same order, in French and in English, each with steps', () => {
-    expect(HELP.en.topics.map((x) => x.id)).toEqual(HELP.fr.topics.map((x) => x.id));
-    for (const lang of ['fr', 'en'] as const) {
-      for (const x of HELP[lang].topics) {
-        expect(x.title.trim()).not.toBe('');
-        expect(x.steps.length).toBeGreaterThan(0);
-        expect(!!x.simulated).toBe(!!HELP.fr.topics.find((y) => y.id === x.id)!.simulated);
-      }
+  it('has its topics, each with a title and steps, every text translated into French', () => {
+    for (const x of HELP.topics) {
+      expect(x.title.trim()).not.toBe('');
+      expect(x.steps.length).toBeGreaterThan(0);
+      for (const s of [x.title, x.intro, ...x.steps, ...(x.notes ?? []), ...(x.simulated ? [x.simulated] : [])]) expect(FR_HELP[s] ?? FR[s], s).toBeTruthy();
     }
     // The journeys asked for (docs/reste-a-faire.md, point 69).
-    expect(HELP.fr.topics.map((x) => x.id)).toEqual(['simulation', 'create', 'working', 'restore', 'approval', 'decide', 'vigie', 'compare', 'confidentiality', 'search']);
+    expect(HELP.topics.map((x) => x.id)).toEqual(['simulation', 'create', 'working', 'restore', 'approval', 'decide', 'vigie', 'compare', 'confidentiality', 'search']);
   });
 
   it.each(['fr', 'en'] as const)('renders in %s: title, contents linked to each section, simulated parts marked', async (lang) => {
     const html = await render('owner', lang);
-    const t = DICT[lang];
+    const tr = translatorFor(lang);
     expect(html).toContain(`<h2`);
-    expect(text(html)).toContain(t.help_title);
-    for (const x of HELP[lang].topics) {
+    expect(text(html)).toContain(tr('Using Codex'));
+    for (const x of HELP.topics) {
       expect(html).toContain(`href="#${x.id}"`);
       expect(html).toContain(`id="${x.id}"`);
-      expect(text(html)).toContain(x.title);
-      for (const s of x.steps) expect(text(html)).toContain(s);
+      expect(text(html)).toContain(tr(x.title));
+      for (const s of x.steps) expect(text(html)).toContain(tr(s));
     }
     // Vigie's decision is the simulated part of its journey, said there.
     const vigie = html.slice(html.indexOf('id="vigie"'), html.indexOf('id="compare"'));
-    expect(text(vigie)).toContain(HELP[lang].simulatedLabel);
-    expect(text(vigie)).toContain(HELP[lang].topics.find((x) => x.id === 'vigie')!.simulated!);
+    expect(text(vigie)).toContain(tr(HELP.simulatedLabel));
+    expect(text(vigie)).toContain(tr(HELP.topics.find((x) => x.id === 'vigie')!.simulated!));
     // Nothing of the other language.
-    const other = HELP[lang === 'fr' ? 'en' : 'fr'];
-    expect(text(html)).not.toContain(other.topics[1].title);
+    expect(text(html)).not.toContain(translatorFor(lang === 'fr' ? 'en' : 'fr')(HELP.topics[1].title));
   });
 
   it('links a task to its screen only for a user who has that screen', async () => {
@@ -84,9 +83,11 @@ describe('Help page', () => {
     // A renamed button would leave the help pointing at a label that no longer exists.
     const quoted = (s: string, lang: Lang) => [...s.matchAll(lang === 'fr' ? /« ([^»]+) »/g : /“([^”]+)”/g)].map((m) => m[1]);
     for (const lang of ['fr', 'en'] as const) {
-      // The labels of the keyed dictionary, and those of the screens moved to English sources (src/i18n/fr.ts, CX-N01).
-      const values = new Set([...Object.values(DICT[lang]), ...(lang === 'fr' ? Object.values(FR) : Object.keys(FR).map((x) => x.replace(/#[a-z][\w-]*$/, '')))]);
-      const all = HELP[lang].topics.flatMap((x) => [x.intro, ...x.steps, ...(x.notes ?? []), x.simulated ?? '']).flatMap((s) => quoted(s, lang));
+      // The labels of the screens (src/i18n/fr.ts), the help's own texts set aside.
+      const labels = Object.entries(FR).filter(([en]) => !(en in FR_HELP));
+      const values = new Set([...(lang === 'fr' ? labels.map(([, fr]) => fr) : labels.map(([en]) => en.replace(/#[a-z][\w-]*$/, ''))), ...SAME_IN_FRENCH]);
+      const tr = translatorFor(lang);
+      const all = HELP.topics.flatMap((x) => [x.intro, ...x.steps, ...(x.notes ?? []), x.simulated ?? '']).flatMap((s) => quoted(s ? tr(s) : '', lang));
       // Not a label: the comment Codex gives a restored version.
       const missing = all.filter((q) => !values.has(q) && !/^(Restaurée depuis|Restored from) A\.1$/.test(q));
       expect(missing).toEqual([]);
