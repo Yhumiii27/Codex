@@ -21,7 +21,7 @@ function safeDecode(x: string): string {
 
 async function handleGet(req: Request, { params }: RouteContext<'/api/documents/[id]/candidates'>) {
   const ctx = await getCtx();
-  const limited = limitReader(req, 'lookups', ctx.user.id, ctx.t);
+  const limited = limitReader(req, 'lookups', ctx.user.id, ctx.tr);
   if (limited) return limited;
   const url = new URL(req.url);
   const purpose = url.searchParams.get('for');

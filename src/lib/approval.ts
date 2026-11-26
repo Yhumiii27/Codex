@@ -1,7 +1,8 @@
 import type { Localized } from '@/db/schema';
 import { fmtDate, fmtDateTime, loc } from './format';
-import type { Lang, T } from './i18n';
+import type { Lang } from './i18n';
 import type { PdfLine } from './pdf';
+import { msg, type Translate } from '@/i18n';
 
 // Approval record of a revision (« fiche de visa », point 21 of docs/reste-a-faire.md): what Codex recorded about its
 // approval — circuits, steps, holders, decisions, delegations, comments, dates, change orders — laid out for the PDF
@@ -159,13 +160,13 @@ export function visaFileName(id: string, letter: string): string {
 
 const fill = (template: string, values: Record<string, string>) => template.replace(/\{(\w+)\}/g, (_, k: string) => values[k] ?? '');
 
-const STEP_OUTCOME: Record<StepOutcome, 'visa_step_submitted' | 'visa_step_approved' | 'visa_step_rejected' | 'visa_step_recalled' | 'visa_step_closed' | 'visa_step_pending' | 'visa_step_not_reached'> = {
-  submitted: 'visa_step_submitted', approved: 'visa_step_approved', rejected: 'visa_step_rejected', recalled: 'visa_step_recalled',
-  closed: 'visa_step_closed', pending: 'visa_step_pending', not_reached: 'visa_step_not_reached',
+const STEP_OUTCOME: Record<StepOutcome, string> = {
+  submitted: msg('Sent for approval'), approved: msg('Approved#visa'), rejected: msg('Rejected#visa'), recalled: msg('Not decided: request recalled'),
+  closed: msg('Not decided: workflow closed'), pending: msg('Awaiting decision'), not_reached: msg('Not reached'),
 };
 
 /** The record laid out for lib/pdf.ts simplePdf: identification, dates, how it was approved, then where it comes from. */
-export function visaLines(t: T, lang: Lang, x: VisaRecord): PdfLine[] {
+export function visaLines(tr: Translate, lang: Lang, x: VisaRecord): PdfLine[] {
   const day = (iso: string | null) => fmtDate(iso, lang);
   const when = (stamp: string | null) => (stamp ? fmtDateTime(stamp, lang) : '—');
   const heading = (text: string): PdfLine => ({ text, size: 11.5, bold: true, gap: 28, keep: 2 });
@@ -173,83 +174,83 @@ export function visaLines(t: T, lang: Lang, x: VisaRecord): PdfLine[] {
   const { doc, rev } = x;
 
   const lines: PdfLine[] = [
-    { text: t.visa_extract, size: 9, grey: true, gap: 0 },
-    { text: t.visa, size: 20, bold: true, gap: 30 },
-    { text: `${doc.id} · ${t.rev_short} ${rev.letter}`, size: 12, bold: true, gap: 24 },
+    { text: tr('Extract from the Codex journal'), size: 9, grey: true, gap: 0 },
+    { text: tr('Approval record'), size: 20, bold: true, gap: 30 },
+    { text: `${doc.id} · ${tr('Rev.')} ${rev.letter}`, size: 12, bold: true, gap: 24 },
     { text: doc.title, size: 12, gap: 17 },
 
-    heading(t.visa_identification),
-    field(t.visa_id, doc.id),
-    field(t.revision, `${rev.letter} · ${rev.status}`),
-    field(t.type, doc.type),
-    field(t.attachment, doc.context),
-    field(t.owner, doc.owner),
-    field(t.conf, doc.conf),
-    ...(doc.state ? [field(t.visa_state, doc.state)] : []),
-    ...(rev.modifier ? [field(t.modifier, rev.modifier)] : []),
-    field(t.visa_eco, rev.changeRefs.length ? rev.changeRefs.join(', ') : '—'),
-    ...(rev.file ? [field(t.visa_file, `${rev.file.name} · ${rev.file.size}`), field('SHA-256', rev.file.sha256 ?? t.visa_no_sha)] : []),
+    heading(tr('Identification')),
+    field(tr('Identifier'), doc.id),
+    field(tr('Revision'), `${rev.letter} · ${rev.status}`),
+    field(tr('Type'), doc.type),
+    field(tr('Attachment'), doc.context),
+    field(tr('Owner'), doc.owner),
+    field(tr('Confidentiality'), doc.conf),
+    ...(doc.state ? [field(tr('Document state'), doc.state)] : []),
+    ...(rev.modifier ? [field(tr('Designated author'), rev.modifier)] : []),
+    field(tr('ECO references'), rev.changeRefs.length ? rev.changeRefs.join(', ') : '—'),
+    ...(rev.file ? [field(tr('Approved file'), `${rev.file.name} · ${rev.file.size}`), field('SHA-256', rev.file.sha256 ?? tr('not computed (file uploaded before fingerprints were computed)'))] : []),
 
-    heading(t.visa_dates),
-    field(t.visa_created, day(rev.createdAt)),
+    heading(tr('Dates')),
+    field(tr('Created#visa'), day(rev.createdAt)),
     // A draft migrated from the legacy system, then approved in Codex: when it came, its approval date is Codex's.
-    ...(x.imported && !x.imported.approved ? [field(t.visa_migrated, fill(t.visa_migrated_draft, { ref: x.imported.legacyRef, date: day(x.imported.at) }))] : []),
-    field(t.visa_approved, x.imported?.approved ? t.visa_legacy : day(rev.approvedAt)),
-    field(t.effective_at, rev.effectiveAt ? day(rev.effectiveAt) : rev.inForceAt ? day(rev.inForceAt) : t.visa_effect_on_entry),
-    field(t.visa_in_force, rev.inForceAt ? day(rev.inForceAt) : '—'),
-    ...(rev.supersededAt ? [field(t.visa_superseded, day(rev.supersededAt))] : []),
+    ...(x.imported && !x.imported.approved ? [field(tr('Migrated'), fill(tr('{date}, as a draft, from the legacy system (reference {ref})'), { ref: x.imported.legacyRef, date: day(x.imported.at) }))] : []),
+    field(tr('Approval#visa'), x.imported?.approved ? tr('In the legacy system') : day(rev.approvedAt)),
+    field(tr('Effective date'), rev.effectiveAt ? day(rev.effectiveAt) : rev.inForceAt ? day(rev.inForceAt) : tr('On entry into force')),
+    field(tr('Entry into force'), rev.inForceAt ? day(rev.inForceAt) : '—'),
+    ...(rev.supersededAt ? [field(tr('Superseded on'), day(rev.supersededAt))] : []),
   ];
 
   if (x.imported?.approved) {
-    lines.push(heading(t.visa_approved), { text: fill(t.visa_imported, { ref: x.imported.legacyRef, date: day(x.imported.at) }), size: 10, gap: 15 });
+    lines.push(heading(tr('Approval#visa')), { text: fill(tr('Revision migrated from the legacy system (reference {ref}) on {date}: it was approved in the legacy system. Codex took over neither its approvals nor their dates.'), { ref: x.imported.legacyRef, date: day(x.imported.at) }), size: 10, gap: 15 });
   } else if (!x.circuits.length) {
-    lines.push(heading(t.visa_circuit), { text: t.visa_no_circuit, size: 10, gap: 15 });
+    lines.push(heading(tr('Approval workflow')), { text: tr('No approval workflow is recorded in Codex for this revision.'), size: 10, gap: 15 });
   }
 
   for (const c of x.circuits) {
-    const outcome = c.outcome === 'approved' ? fill(t.visa_outcome_approved, { when: when(c.closedAt) })
-      : c.outcome === 'rejected' ? fill(t.visa_outcome_rejected, { who: c.closer ?? '—', when: when(c.closedAt) })
-      : c.outcome === 'recalled' ? fill(t.visa_outcome_recalled, { who: c.closer ?? '—', when: when(c.closedAt) })
-      : t.visa_outcome_running;
+    const outcome = c.outcome === 'approved' ? fill(tr('Approved on {when}'), { when: when(c.closedAt) })
+      : c.outcome === 'rejected' ? fill(tr('Rejected by {who} on {when}'), { who: c.closer ?? '—', when: when(c.closedAt) })
+      : c.outcome === 'recalled' ? fill(tr('Recalled by {who} on {when}'), { who: c.closer ?? '—', when: when(c.closedAt) })
+      : tr('In progress');
     lines.push(
-      heading(`${t.visa_circuit} ${c.id}`),
-      { text: fill(t.visa_requested, { who: c.requester, when: when(c.requestedAt) }), size: 10, gap: 15 },
+      heading(`${tr('Approval workflow')} ${c.id}`),
+      { text: fill(tr('Requested by {who} on {when}'), { who: c.requester, when: when(c.requestedAt) }), size: 10, gap: 15 },
       { text: outcome, size: 10, bold: true, gap: 14 },
     );
-    if (c.outcome === 'approved' && c.steps.length === 1) lines.push({ text: t.visa_no_step, size: 10, gap: 14 });
-    if (c.reason) lines.push({ label: c.outcome === 'rejected' ? t.visa_reject_reason : t.visa_recall_reason, text: c.reason, size: 10, gap: 15 });
+    if (c.outcome === 'approved' && c.steps.length === 1) lines.push({ text: tr('Workflow without an approval step: the revision is approved as soon as it is requested.'), size: 10, gap: 14 });
+    if (c.reason) lines.push({ label: c.outcome === 'rejected' ? tr('Reason for rejection') : tr('Reason for recall'), text: c.reason, size: 10, gap: 15 });
     c.steps.forEach((st, i) => {
       lines.push(
         { text: `${i + 1}. ${st.name}`, size: 10, bold: true, gap: 19, keep: 1 },
-        { text: [st.holder, t[STEP_OUTCOME[st.outcome]], st.at ? when(st.at) : ''].filter(Boolean).join(' · '), size: 10, indent: 14, gap: 14 },
-        ...st.delegations.map((d): PdfLine => ({ text: fill(t.visa_delegated, { from: d.from, to: d.to, when: when(d.at) }), size: 9, grey: true, indent: 14, gap: 13 })),
+        { text: [st.holder, tr(STEP_OUTCOME[st.outcome]), st.at ? when(st.at) : ''].filter(Boolean).join(' · '), size: 10, indent: 14, gap: 14 },
+        ...st.delegations.map((d): PdfLine => ({ text: fill(tr('Delegated by {from} to {to} on {when}'), { from: d.from, to: d.to, when: when(d.at) }), size: 9, grey: true, indent: 14, gap: 13 })),
       );
     });
     for (const d of c.delegations) {
-      lines.push({ text: `${d.step} · ${fill(t.visa_delegated, { from: d.from, to: d.to, when: when(d.at) })}`, size: 9, grey: true, gap: 15 });
+      lines.push({ text: `${d.step} · ${fill(tr('Delegated by {from} to {to} on {when}'), { from: d.from, to: d.to, when: when(d.at) })}`, size: 9, grey: true, gap: 15 });
     }
     if (c.comments.length) {
-      lines.push({ text: t.comments, size: 10, bold: true, gap: 21, keep: 2 });
+      lines.push({ text: tr('Comments'), size: 10, bold: true, gap: 21, keep: 2 });
       for (const m of c.comments) {
         lines.push({ text: `${day(m.at)} · ${m.who}`, size: 9, grey: true, indent: 14, gap: 15 }, { text: m.text, size: 10, indent: 14, gap: 13 });
       }
     }
     if (c.withheld) {
       lines.push(
-        { text: t.comments, size: 10, bold: true, gap: 21, keep: 1 },
-        { text: fill(c.withheld === 1 ? t.visa_comments_withheld_one : t.visa_comments_withheld, { n: String(c.withheld) }), size: 9, grey: true, indent: 14, gap: 15 },
+        { text: tr('Comments'), size: 10, bold: true, gap: 21, keep: 1 },
+        { text: fill(c.withheld === 1 ? tr('1 comment, readable in the workflow by its participants and the records managers.') : tr('{n} comments, readable in the workflow by its participants and the records managers.'), { n: String(c.withheld) }), size: 9, grey: true, indent: 14, gap: 15 },
       );
     }
   }
 
   lines.push(
-    { text: fill(t.visa_issued, { when: when(x.issued.at), who: x.issued.by }), size: 9, grey: true, gap: 34 },
-    { text: t.visa_no_signature, size: 9, grey: true, gap: 13 },
+    { text: fill(tr('Extract from the Codex journal issued on {when} by {who}.'), { when: when(x.issued.at), who: x.issued.by }), size: 9, grey: true, gap: 34 },
+    { text: tr('This record bears no electronic signature: it reproduces what the Codex journal records about the approval of the revision.'), size: 9, grey: true, gap: 13 },
   );
   return lines;
 }
 
 /** Footer of every page of the record. */
-export function visaFooter(t: T, id: string, letter: string): (page: number, pages: number) => string {
-  return (page, pages) => `${id} · ${t.rev_short} ${letter} · ${t.visa} · ${t.page} ${page}/${pages}`;
+export function visaFooter(tr: Translate, id: string, letter: string): (page: number, pages: number) => string {
+  return (page, pages) => `${id} · ${tr('Rev.')} ${letter} · ${tr('Approval record')} · ${tr('Page')} ${page}/${pages}`;
 }

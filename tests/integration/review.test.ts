@@ -3,13 +3,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { schema as s } from '@/db';
 import { recordReview, updateMeta, updateType } from '@/lib/actions';
 import { getCtx } from '@/lib/context';
-import { DICT } from '@/lib/i18n';
 import { approveRevision, promoteDue } from '@/lib/lifecycle';
 import { auditDetailL, deadlines, listAudit, listDocs } from '@/lib/queries';
 import { addDoc, fixClock, getDoc, getRevision, journalOf, revisionStatuses, setupDb, viewOf } from '../support/db';
 import type { Person } from '../support/fixtures';
 import { searchChecked } from '../support/search';
 import { actAs } from '../support/session';
+import { translatorFor } from '@/i18n';
 
 // Expiry and periodic review (point 13 of docs/reste-a-faire.md, G36, G37): « Revue effectuée » through its Server
 // Action, the periodicity of a type in the register and its use at entry into force, and the indicators « Expiré » and
@@ -22,7 +22,7 @@ vi.mock('next/cache', () => ({ refresh: () => {} }));
 const db = setupDb();
 fixClock(); // 10 October 2026, 10:00 in Paris
 
-const t = DICT.fr;
+const tr = translatorFor('fr');
 const ID = 'PRO-QUA-0001'; // addDoc: owned by `owner`, revision A in force since 10 September 2026
 
 type Meta = Partial<typeof s.documents.$inferInsert>;
@@ -49,7 +49,7 @@ const setMonths = (code: string, reviewMonths: number | null) => db().update(s.d
 describe('recordReview (« Revue effectuée »)', () => {
   it('the owner sets the next review date: no revision is created, the journal keeps the comment and the dates', async () => {
     await doc({ reviewDueAt: '2026-09-30', processOwnerId: 'writer' });
-    expect(await review('owner', '2027-09-30', '  Toujours applicable.  ')).toEqual({ ok: true, message: `${t.review_recorded} 30/09/2027` });
+    expect(await review('owner', '2027-09-30', '  Toujours applicable.  ')).toEqual({ ok: true, message: `${tr('Review recorded: next review on')} 30/09/2027` });
     expect(await trace()).toEqual({ reviewDueAt: '2027-09-30', modifiedAt: '2026-10-10', revisions: { A: 'in_force' }, journal: 1 });
     expect((await journalOf(db(), ID)).at(-1)).toMatchObject({
       userId: 'owner', action: 'reviewed', detail: 'Toujours applicable.', revisionId: null,
@@ -68,60 +68,60 @@ describe('recordReview (« Revue effectuée »)', () => {
   it('refuses anyone else who reads the document, an approver included, and writes nothing', async () => {
     await doc({ reviewDueAt: '2026-09-30', processOwnerId: 'writer' });
     const before = await trace();
-    for (const who of ['writer2', 'head', 'quality'] as const) expect(await review(who, '2027-09-30'), who).toEqual({ ok: false, error: t.review_reserved });
+    for (const who of ['writer2', 'head', 'quality'] as const) expect(await review(who, '2027-09-30'), who).toEqual({ ok: false, error: tr('Review reserved to the document’s owner, its process owner and records managers.') });
     expect(await trace()).toEqual(before);
   });
 
   it('wants the edit permission, even from the owner', async () => {
     await doc({ reviewDueAt: '2026-09-30' });
     actAs('owner', 'auditeur');
-    expect(await recordReview(ID, '2027-09-30')).toEqual({ ok: false, error: `${t.not_allowed} : ${t.perm_edit}` });
+    expect(await recordReview(ID, '2027-09-30')).toEqual({ ok: false, error: `${tr('Permission required')} : ${tr('Edit#permission')}` });
     expect((await getDoc(db(), ID)).reviewDueAt).toBe('2026-09-30');
   });
 
   it('answers « not found » on a document the user cannot read, before anything else (D-13)', async () => {
     // writer2 (ING) owns the process of a confidential QUA document he cannot read.
     await doc({ conf: 'confidentiel', processOwnerId: 'writer2', reviewDueAt: '2026-09-30' });
-    expect(await review('writer2', '2027-09-30')).toEqual({ ok: false, error: t.not_found });
+    expect(await review('writer2', '2027-09-30')).toEqual({ ok: false, error: tr('Document not found.') });
   });
 
   it('refuses on a document frozen, archived or obsolete', async () => {
     await doc({}, { legalHold: true }, 'PRO-QUA-0001');
     await doc({}, { state: 'archived' }, 'PRO-QUA-0002');
     await doc({}, { state: 'obsolete' }, 'PRO-QUA-0003');
-    expect(await review('owner', '2027-09-30', '', 'PRO-QUA-0001')).toEqual({ ok: false, error: t.locked_hold });
-    expect(await review('owner', '2027-09-30', '', 'PRO-QUA-0002')).toEqual({ ok: false, error: t.locked_archived });
-    expect(await review('owner', '2027-09-30', '', 'PRO-QUA-0003')).toEqual({ ok: false, error: t.locked_obsolete });
+    expect(await review('owner', '2027-09-30', '', 'PRO-QUA-0001')).toEqual({ ok: false, error: tr('Document under legal hold: it cannot be changed.') });
+    expect(await review('owner', '2027-09-30', '', 'PRO-QUA-0002')).toEqual({ ok: false, error: tr('Archived document: it cannot be changed.') });
+    expect(await review('owner', '2027-09-30', '', 'PRO-QUA-0003')).toEqual({ ok: false, error: tr('Obsolete document: it cannot be changed.') });
   });
 
   it('refuses without a revision in force: a draft is reviewed by its approval circuit', async () => {
     await doc({}, { revisions: [{ letter: 'A', status: 'draft', versions: ['owner'] }] });
-    expect(await review('owner', '2027-09-30')).toEqual({ ok: false, error: t.review_need_in_force });
+    expect(await review('owner', '2027-09-30')).toEqual({ ok: false, error: tr('Only a revision in force is reviewed periodically.') });
   });
 
   it('wants a next date after today, a real day, under the field', async () => {
     await doc({ reviewDueAt: '2026-09-30' });
     const before = await trace();
-    expect(await review('owner', '2026-10-10')).toEqual({ ok: false, error: t.review_next_past, field: 'next' });
-    expect(await review('owner', '2026-01-01')).toEqual({ ok: false, error: t.review_next_past, field: 'next' });
-    expect(await review('owner', '2027-02-30')).toEqual({ ok: false, error: `${t.review_next} : ${t.date_malformed}`, field: 'next' });
-    expect(await review('owner', 'x'.repeat(10))).toEqual({ ok: false, error: `${t.review_next} : ${t.date_malformed}`, field: 'next' });
+    expect(await review('owner', '2026-10-10')).toEqual({ ok: false, error: tr('The next review must come after today.'), field: 'next' });
+    expect(await review('owner', '2026-01-01')).toEqual({ ok: false, error: tr('The next review must come after today.'), field: 'next' });
+    expect(await review('owner', '2027-02-30')).toEqual({ ok: false, error: `${tr('Next review')} : ${tr('invalid date, enter a calendar day (YYYY-MM-DD).')}`, field: 'next' });
+    expect(await review('owner', 'x'.repeat(10))).toEqual({ ok: false, error: `${tr('Next review')} : ${tr('invalid date, enter a calendar day (YYYY-MM-DD).')}`, field: 'next' });
     expect(await trace()).toEqual(before);
     expect(await review('owner', '2026-10-11')).toMatchObject({ ok: true });
   });
 
   it('without a date entered, counts the type’s periodicity from today; without periodicity, asks for the date', async () => {
     await doc({ reviewDueAt: '2026-09-30' });
-    expect(await review('owner', null)).toEqual({ ok: false, error: t.review_next_required, field: 'next' });
-    expect(await review('owner', '  ')).toEqual({ ok: false, error: t.review_next_required, field: 'next' });
+    expect(await review('owner', null)).toEqual({ ok: false, error: tr('Enter the next review date: the document type has no review periodicity.'), field: 'next' });
+    expect(await review('owner', '  ')).toEqual({ ok: false, error: tr('Enter the next review date: the document type has no review periodicity.'), field: 'next' });
     await setMonths('PRO', 36);
-    expect(await review('owner', null)).toEqual({ ok: true, message: `${t.review_recorded} 10/10/2029` });
+    expect(await review('owner', null)).toEqual({ ok: true, message: `${tr('Review recorded: next review on')} 10/10/2029` });
     expect((await getDoc(db(), ID)).reviewDueAt).toBe('2029-10-10');
   });
 
   it('keeps a comment of 2,000 characters at most', async () => {
     await doc({ reviewDueAt: '2026-09-30' });
-    expect(await review('owner', '2027-09-30', 'x'.repeat(2001))).toEqual({ ok: false, error: t.review_comment_too_long, field: 'comment' });
+    expect(await review('owner', '2027-09-30', 'x'.repeat(2001))).toEqual({ ok: false, error: tr('Comment too long: 2,000 characters at most.'), field: 'comment' });
     expect(await review('owner', '2027-09-30', 'x'.repeat(2000))).toMatchObject({ ok: true });
   });
 
@@ -131,7 +131,7 @@ describe('recordReview (« Revue effectuée »)', () => {
     actAs('writer2');
     const ctx = await getCtx();
     const entries = await listAudit(ctx, { docId: ID });
-    expect(entries.map((e) => [e.action, e.detail])).toEqual([['reviewed', `RAS · ${t.review_due_at} : 2026-09-30 → 2027-09-30`]]);
+    expect(entries.map((e) => [e.action, e.detail])).toEqual([['reviewed', `RAS · ${tr('Review date')} : 2026-09-30 → 2027-09-30`]]);
     // The record is dated by the review, the last change this reader sees.
     expect((await listDocs(ctx)).find((d) => d.id === ID)).toMatchObject({ modifiedAt: '2026-10-10', revWorking: null });
   });
@@ -165,19 +165,19 @@ describe('periodicity of a type (Administration › Registre des types)', () => 
     actAs('manager');
     expect(await updateType(typeForm('36'))).toMatchObject({ ok: true });
     expect(await months()).toBe(36);
-    for (const v of ['0', '241', '12.5', 'trois']) expect(await updateType(typeForm(v)), v).toEqual({ ok: false, error: t.review_months_invalid, field: 'reviewMonths' });
+    for (const v of ['0', '241', '12.5', 'trois']) expect(await updateType(typeForm(v)), v).toEqual({ ok: false, error: tr('Invalid review periodicity: a whole number of months from 1 to 240, or nothing.'), field: 'reviewMonths' });
     expect(await months()).toBe(36);
     expect(await updateType(typeForm(''))).toMatchObject({ ok: true });
     expect(await months()).toBeNull();
     const entries = await typeJournal();
     expect(entries.map((e) => e.data?.changes)).toEqual([[{ field: 'reviewMonths', before: null, after: '36' }], [{ field: 'reviewMonths', before: '36', after: null }]]);
     const ctx = await getCtx();
-    expect(auditDetailL(ctx, entries[0])).toBe(`${t.review_months} : ${t.review_months_none} → 36 ${t.months_short}`);
+    expect(auditDetailL(ctx, entries[0])).toBe(`${tr('Review periodicity')} : ${tr('None#review')} → 36 ${tr('months')}`);
   });
 
   it('is the administrators’ only', async () => {
     actAs('owner');
-    expect(await updateType(typeForm('12'))).toEqual({ ok: false, error: t.forbidden });
+    expect(await updateType(typeForm('12'))).toEqual({ ok: false, error: tr('The simulated role cannot access this screen.') });
     expect(await months()).toBeNull();
   });
 });
@@ -278,11 +278,11 @@ describe('indicators « Expiré » and « Revue en retard » (no new status, D-1
     const ctx = await getCtx();
     const due = deadlines(ctx, await listDocs(ctx)).filter((x) => x.kind !== 'retention').map((x) => [x.id, x.kind, x.overdue, x.dueL]);
     expect(due).toEqual([
-      ['PRO-QUA-0005', 'expiry', true, t.dl_expired],
-      ['PRO-QUA-0002', 'review', true, t.dl_review_late],
-      ['PRO-QUA-0001', 'expiry', true, t.dl_expired],
-      ['PRO-QUA-0003', 'expiry', false, t.dl_expiry],
-      ['PRO-QUA-0003', 'review', false, t.dl_review],
+      ['PRO-QUA-0005', 'expiry', true, tr('Expired, valid until')],
+      ['PRO-QUA-0002', 'review', true, tr('Review overdue, due')],
+      ['PRO-QUA-0001', 'expiry', true, tr('Expired, valid until')],
+      ['PRO-QUA-0003', 'expiry', false, tr('Expires')],
+      ['PRO-QUA-0003', 'review', false, tr('Review due')],
     ]);
   });
 });

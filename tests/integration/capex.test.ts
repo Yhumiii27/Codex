@@ -8,11 +8,11 @@ import { TYPES } from '@/db/registry';
 import { createDocument, releaseHold, updateMeta } from '@/lib/actions';
 import { syncCapex } from '@/server/integrations/arche/capex';
 import { getCtx } from '@/lib/context';
-import { DICT } from '@/lib/i18n';
 import { getDoc } from '@/lib/queries';
 import { resetRateLimits } from '@/lib/ratelimit';
 import { fixClock, setupDb, viewOf } from '../support/db';
 import { actAs } from '../support/session';
+import { translatorFor } from '@/i18n';
 
 // Arche's requests CX-01, CX-02 and CX-07, as the user chose on 1 November 2026 (docs/decisions.md D-29): a 4th
 // attachment `capex` whose CAPEX code is the context of the ID (PID-CPX-APM-2026-01-001), the CAPEX read from Arche's view
@@ -25,7 +25,7 @@ vi.mock('next/cache', () => ({ refresh: () => {} }));
 
 const db = setupDb();
 fixClock('2026-11-05T08:00:00Z');
-const t = DICT.fr;
+const tr = translatorFor('fr');
 const TOKEN = 'D3p0sit-t0ken-0f-th1rty-tw0-v4r1ed-ch4rs';
 
 beforeEach(async () => {
@@ -69,10 +69,10 @@ describe('CX-01: the capex attachment', () => {
 
   it('refuses a CAPEX missing, unknown or no longer published, and a type that does not admit it', async () => {
     actAs('owner');
-    expect(await pid({ capexCode: '' })).toEqual({ ok: false, error: t.capex_required });
-    expect(await pid({ capexCode: 'CPX-XXX' })).toEqual({ ok: false, error: t.capex_required });
-    expect(await pid({ capexCode: 'CPX-OLD-2025-09' })).toEqual({ ok: false, error: t.capex_required });
-    expect(await pid({ typeCode: 'PRO' })).toEqual({ ok: false, error: t.type_mismatch });
+    expect(await pid({ capexCode: '' })).toEqual({ ok: false, error: tr('Choose the CAPEX.') });
+    expect(await pid({ capexCode: 'CPX-XXX' })).toEqual({ ok: false, error: tr('Choose the CAPEX.') });
+    expect(await pid({ capexCode: 'CPX-OLD-2025-09' })).toEqual({ ok: false, error: tr('Choose the CAPEX.') });
+    expect(await pid({ typeCode: 'PRO' })).toEqual({ ok: false, error: tr('This type does not admit this origin or attachment.') });
     expect(await db().select().from(s.documents)).toEqual([]);
   });
 

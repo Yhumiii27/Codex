@@ -1,7 +1,7 @@
 import type { TermField } from '@/db/schema';
 import { parseIsoDay } from './format';
-import type { TKey } from './i18n';
 import type { DocView } from './queries';
+import { msg } from '@/i18n';
 
 /**
  * Facets of /recherche, in the order of its filter column; each one is a URL parameter, repeated for each value chosen.
@@ -29,17 +29,17 @@ const CODED: ReadonlySet<FacetKey> = new Set(['project', 'family', 'type', 'orig
 export const OVERDUE_KEYS = ['expired', 'review'] as const;
 
 /** Label of each facet (filter column, saved search criteria, journal of the exports). */
-export const FACET_LABEL: Record<FacetKey, TKey> = {
-  project: 'project_program', family: 'family', type: 'doc_type', subtype: 'subtype', origin: 'origin', attachment: 'attachment',
-  department: 'department', site: 'site_label', owner: 'owner', author: 'author_label', status: 'status', overdue: 'facet_overdue', conf: 'conf',
-  lang: 'language', keywords: 'keywords', source: 'source_org', phase: 'project_phase', lot: 'work_package', discipline: 'discipline',
-  theme: 'research_theme',
+export const FACET_LABEL: Record<FacetKey, string> = {
+  project: msg('Project / programme'), family: msg('Family'), type: msg('Document type'), subtype: msg('Sub-type'), origin: msg('Origin'), attachment: msg('Attachment'),
+  department: msg('Department / Function'), site: msg('Site'), owner: msg('Owner'), author: msg('Author'), status: msg('Status'), overdue: msg('Past due'), conf: msg('Confidentiality'),
+  lang: msg('Language'), keywords: msg('Keywords'), source: msg('Source organisation'), phase: msg('Project phase'), lot: msg('Work package'), discipline: msg('Discipline'),
+  theme: msg('Research theme'),
 };
 
 /** Dates a period can bear on (URL `date`); the modification date is the default. */
 export const DATE_FIELDS = ['modified', 'issued', 'effective', 'review', 'expiry'] as const;
 export type DateField = (typeof DATE_FIELDS)[number];
-export const DATE_LABEL: Record<DateField, TKey> = { modified: 'date_modified', issued: 'issued_at', effective: 'effective_at', review: 'review_due_at', expiry: 'expires_at' };
+export const DATE_LABEL: Record<DateField, string> = { modified: msg('Modification date'), issued: msg('Issue date'), effective: msg('Effective date'), review: msg('Review date'), expiry: msg('Expiry date') };
 
 /** A period on one date of the documents (URL `date`, `from`, `to`), bounds included; one bound may be open. */
 export type Period = { field: DateField; from: string | null; to: string | null };
@@ -47,7 +47,7 @@ export type Period = { field: DateField; from: string | null; to: string | null 
 /** Orders of the results (URL `sort`); without one, sortOf() applies the default. */
 export const SORT_KEYS = ['relevance', 'modified', 'issued', 'due', 'id', 'title'] as const;
 export type SortKey = (typeof SORT_KEYS)[number];
-export const SORT_LABEL: Record<SortKey, TKey> = { relevance: 'sort_relevance', modified: 'date_modified', issued: 'issued_at', due: 'sort_due', id: 'sort_id', title: 'title_label' };
+export const SORT_LABEL: Record<SortKey, string> = { relevance: msg('Relevance'), modified: msg('Modification date'), issued: msg('Issue date'), due: msg('Next due date'), id: msg('ID'), title: msg('Title') };
 
 /** What /recherche reads from its URL and a saved search keeps. `sort` is null when none was chosen. */
 export type Search = { q: string; facets: Facets; period: Period | null; sort: SortKey | null };

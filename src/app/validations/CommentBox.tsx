@@ -6,8 +6,7 @@ import { addComment } from '@/lib/actions';
 import { failureText } from '@/lib/errors';
 
 export function CommentBox({ workflowId }: { workflowId: string }) {
-  // A failure's text comes from the shared error messages (lib/errors.ts failureText), still keyed.
-  const { t, tr, toast } = useApp();
+  const { tr, toast } = useApp();
   const [text, setText] = useState('');
   const [pending, start] = useTransition();
   const send = () => {
@@ -18,7 +17,7 @@ export function CommentBox({ workflowId }: { workflowId: string }) {
         if (r.ok) setText('');
         else toast(r.error, true);
       } catch (err) {
-        toast(failureText(t, err), true);
+        toast(failureText(tr, err), true);
       }
     });
   };

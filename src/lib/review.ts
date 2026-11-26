@@ -1,4 +1,5 @@
 import { addMonths, daysBetween, parseIsoDay } from './format';
+import { msg } from '@/i18n';
 
 // Expiry and periodic review of a document (G36, G37, point 13 of docs/reste-a-faire.md): indicators, the next review
 // date and the periodicity of a type. No new status: an expired document stays in force until Vigie withdraws it (D-17),
@@ -46,9 +47,11 @@ export function reviewAfter(from: string, months: number | null | undefined): st
  * (creation, a draft never issued), an empty date is set by the entry into force. A document already in force gets
  * one only from its next revision: emptying it plans no review, since editing the metadata applies no periodicity.
  */
-export function reviewDueHint(months: number | null | undefined, inForce: boolean): 'review_due_periodic' | 'review_due_periodic_in_force' | null {
+export function reviewDueHint(months: number | null | undefined, inForce: boolean): string | null {
   if (!months) return null;
-  return inForce ? 'review_due_periodic_in_force' : 'review_due_periodic';
+  return inForce
+    ? msg('Left empty, no review is planned: the date is only set when a next revision enters into force, {n} months later (the type’s periodicity).')
+    : msg('Left empty, it is set on entry into force, {n} months later (the type’s periodicity).');
 }
 
 /**

@@ -1,9 +1,10 @@
 import { TYPES } from '@/db/registry';
 import { PROGRAMS, PROJECTS } from '@/db/seed-org';
 import { parseCsv, unneutralise } from './csv';
-import { DICT, MATRIX_ROLES, SIM_ROLES } from './i18n';
+import { MATRIX_ROLES, SIM_ROLES } from './i18n';
 import { orgLabels } from './org-rules';
 import { departmentCodeIssue, KEY_RE, LABEL_MAX, type CodeSpace } from './registry-rules';
+import { msg, translate } from '@/i18n';
 
 // Check of an org chart given as CSV (O-04 of docs/decisions.md; model in docs/modeles/organigramme.csv), before it is
 // typed into Administration › Organisation or replaces the provisional values of src/db/seed-org.ts: the rules of
@@ -67,7 +68,7 @@ export function checkOrgCsv(text: string, space: Omit<CodeSpace, 'departments'> 
     const err = (column: string, message: string) => report.errors.push({ line, code, column, message });
     if (!nature) { err('Nature', `« ${natureCell} » : département, site ou personne`); continue; }
     const company = cell('Société');
-    if (company.length > LABEL_MAX) err('Société', DICT.fr.reg_text_too_long);
+    if (company.length > LABEL_MAX) err('Société', translate('fr', 'Text too long.'));
     if (company && !report.companies.includes(company)) report.companies.push(company);
     const first = seen[nature].get(code);
     if (code && first) { report.duplicates.push({ line, code, column: 'Code', message: `déjà donné ligne ${first}` }); continue; }
@@ -75,18 +76,18 @@ export function checkOrgCsv(text: string, space: Omit<CodeSpace, 'departments'> 
 
     if (nature === 'department' || nature === 'site') {
       const labels = orgLabels(cell('Libellé FR'), cell('Libellé EN'));
-      if (!labels.ok) err(labels.field === 'labelEn' ? 'Libellé EN' : 'Libellé FR', DICT.fr[labels.key]);
+      if (!labels.ok) err(labels.field === 'labelEn' ? 'Libellé EN' : 'Libellé FR', translate('fr', labels.key));
       const { labelFr, labelEn } = labels.ok ? labels.value : { labelFr: cell('Libellé FR'), labelEn: cell('Libellé EN') };
       if (nature === 'department') {
         // Duplicates are reported above; here, format and the codes of the register.
         const issue = departmentCodeIssue(code, { ...space, departments: [] });
-        if (issue === 'reg_department_code_format') err('Code', DICT.fr[issue]);
-        else if (issue) report.collisions.push({ line, code, column: 'Code', message: `${DICT.fr[issue]}${issue === 'reg_code_type' ? ` (${code}-${code}-0001 ; question 1 du registre, O-05)` : ''}` });
+        if (issue === msg('Department code: 3 letters.')) err('Code', translate('fr', issue));
+        else if (issue) report.collisions.push({ line, code, column: 'Code', message: `${translate('fr', issue)}${issue === msg('This code already names a document type: in an ID (TYPE-CONTEXT-SEQ), a code names one thing only.') ? ` (${code}-${code}-0001 ; question 1 du registre, O-05)` : ''}` });
         const head = cell('Responsable');
         if (head) refs.push({ line, code, column: 'Responsable', kind: 'person', value: head });
         report.departments.push({ code, labelFr, labelEn, company, head });
       } else {
-        if (!KEY_RE.test(code)) err('Code', DICT.fr.reg_key_format);
+        if (!KEY_RE.test(code)) err('Code', translate('fr', 'Key: a lower-case letter, then 1 to 39 lower-case letters, digits or _.'));
         report.sites.push({ key: code, labelFr, labelEn, company });
       }
       continue;
@@ -95,11 +96,11 @@ export function checkOrgCsv(text: string, space: Omit<CodeSpace, 'departments'> 
     if (!PERSON_ID_RE.test(code)) err('Code', 'identifiant de personne : 1 à 120 caractères, sans espace ni ; | = , ( )');
     const name = cell('Nom');
     if (!name) err('Nom', 'le nom est obligatoire');
-    if (name.length > LABEL_MAX) err('Nom', DICT.fr.reg_text_too_long);
+    if (name.length > LABEL_MAX) err('Nom', translate('fr', 'Text too long.'));
     const titleFr = cell('Libellé FR');
     const titleEn = cell('Libellé EN');
-    if (titleFr.length > LABEL_MAX) err('Libellé FR', DICT.fr.reg_text_too_long);
-    if (titleEn.length > LABEL_MAX) err('Libellé EN', DICT.fr.reg_text_too_long);
+    if (titleFr.length > LABEL_MAX) err('Libellé FR', translate('fr', 'Text too long.'));
+    if (titleEn.length > LABEL_MAX) err('Libellé EN', translate('fr', 'Text too long.'));
     const department = cell('Département');
     if (!department) err('Département', 'le département est obligatoire');
     else refs.push({ line, code, column: 'Département', kind: 'department', value: department });

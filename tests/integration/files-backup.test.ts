@@ -8,10 +8,10 @@ import { DATA_DIR, FILES_DIR, schema as s } from '@/db';
 import { backUpData, restoreBackedUpFiles } from '@/lib/actions';
 import type { Ctx } from '@/lib/context';
 import { createFilesBackup, filesBackupDir, listFilesBackups, restoreFiles, stateName, verifyFilesBackup } from '@/lib/files-backup-core.mjs';
-import { DICT } from '@/lib/i18n';
 import { auditDetailL } from '@/lib/queries';
 import { addDoc, setupDb } from '../support/db';
 import { actAs } from '../support/session';
+import { translate, translatorFor } from '@/i18n';
 
 // Files backup of a server's database (lib/files-backup-core.mjs; decision of 2 November 2026, the document library on
 // our own server: docs/stockage-serveur.md). The database is backed up by the server's pg_dump; Codex copies the files
@@ -198,7 +198,7 @@ describe('restoreFiles', () => {
 });
 
 describe('the Administration actions on a server database', () => {
-  const ctx = (seesAll: boolean) => ({ t: DICT.fr, lang: 'fr', seesAll }) as unknown as Ctx;
+  const ctx = (seesAll: boolean) => ({ tr: translatorFor('fr'), lang: 'fr', seesAll }) as unknown as Ctx;
 
   it('backs up the files, journaled with counts only, and puts them back', async () => {
     engine.server = true;
@@ -227,8 +227,8 @@ describe('the Administration actions on a server database', () => {
     await fill();
     for (const who of ['owner', 'auditor', 'head'] as const) {
       actAs(who);
-      expect(await backUpData(), who).toEqual({ ok: false, error: DICT.fr.forbidden });
-      expect(await restoreBackedUpFiles(), who).toEqual({ ok: false, error: DICT.fr.forbidden });
+      expect(await backUpData(), who).toEqual({ ok: false, error: translate('fr', 'The simulated role cannot access this screen.') });
+      expect(await restoreBackedUpFiles(), who).toEqual({ ok: false, error: translate('fr', 'The simulated role cannot access this screen.') });
     }
     expect(existsSync(BACKUPS)).toBe(false);
   });
@@ -237,6 +237,6 @@ describe('the Administration actions on a server database', () => {
   it.skipIf(!!process.env.CODEX_TEST_DATABASE_URL?.trim())('leaves putting files back to npm run restore with the embedded database', async () => {
     vi.stubEnv('CODEX_BACKUP_DIR', BACKUPS);
     actAs('manager');
-    expect(await restoreBackedUpFiles()).toEqual({ ok: false, error: DICT.fr.backup_restore_archive });
+    expect(await restoreBackedUpFiles()).toEqual({ ok: false, error: translate('fr', 'With the embedded database, a backup is restored whole, server stopped (npm run restore).') });
   });
 });

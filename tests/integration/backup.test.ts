@@ -10,11 +10,11 @@ import { DATA_DIR, FILES_DIR, openDb, schema as s } from '@/db';
 import { backUpData } from '@/lib/actions';
 import { archiveName, createBackup, listBackups, readManifest, readMigrations, restoreBackup, verifyArchive, type Migration } from '@/lib/backup-core.mjs';
 import type { Ctx } from '@/lib/context';
-import { DICT } from '@/lib/i18n';
 import { auditDetailL } from '@/lib/queries';
 import { getCtx } from '@/lib/context';
 import { addDoc, pgliteOf, setClock, setupDb } from '../support/db';
 import { actAs } from '../support/session';
+import { translate, translatorFor } from '@/i18n';
 
 // Backup and restore (point 48 of docs/reste-a-faire.md, lib/backup-core.mjs): an archive of the test database and of
 // the files its records point to, checked entry by entry, restored into a data directory on disk and opened again; the
@@ -369,7 +369,7 @@ describe('restoreBackup', () => {
 });
 
 describe('the Administration action', () => {
-  const ctx = (seesAll: boolean) => ({ t: DICT.fr, lang: 'fr', seesAll }) as unknown as Ctx;
+  const ctx = (seesAll: boolean) => ({ tr: translatorFor('fr'), lang: 'fr', seesAll }) as unknown as Ctx;
 
   it('is refused to anyone but a records manager with access to Administration', async () => {
     vi.stubEnv('CODEX_BACKUP_DIR', BACKUPS);
@@ -377,12 +377,12 @@ describe('the Administration action', () => {
     // The records manager simulating another role sees no more than that role.
     for (const [who, role] of [['owner', undefined], ['auditor', undefined], ['head', undefined], ['manager', 'collaborateur'], ['manager', 'validateur']] as const) {
       actAs(who, role);
-      expect(await backUpData(), who).toEqual({ ok: false, error: DICT.fr.forbidden });
+      expect(await backUpData(), who).toEqual({ ok: false, error: translate('fr', 'The simulated role cannot access this screen.') });
     }
     // A validator granted the right to administer is still no records manager: the archive holds every draft (D-14).
     await db().insert(s.rolePermissions).values({ role: 'validateur', perm: 'admin', granted: true });
     actAs('head');
-    expect(await backUpData()).toEqual({ ok: false, error: DICT.fr.forbidden });
+    expect(await backUpData()).toEqual({ ok: false, error: translate('fr', 'The simulated role cannot access this screen.') });
     expect(existsSync(BACKUPS)).toBe(false);
     expect(await db().select().from(s.auditLog).where(eq(s.auditLog.action, 'backup_created'))).toEqual([]);
   });

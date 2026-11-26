@@ -29,7 +29,7 @@ type Found = { ctx: Ctx; docId: string; letter: string; revisionId: number; reco
 async function resolve(req: Request, id: string): Promise<Found | Response> {
   const ctx = await getCtx();
   // Same budget as the file route, per user as resolved from the session (lib/ratelimit.ts).
-  const limited = limitReader(req, 'files', ctx.user.id, ctx.t);
+  const limited = limitReader(req, 'files', ctx.user.id, ctx.tr);
   if (limited) return limited;
   const letter = (new URL(req.url).searchParams.get('rev') ?? '').trim().toUpperCase();
   if (!LETTER.test(letter)) return notFound();
@@ -52,9 +52,9 @@ async function handleGet(req: Request, { params }: RouteContext<'/api/documents/
   const x = await resolve(req, (await params).id);
   if (x instanceof Response) return x;
   const { ctx } = x;
-  const body = simplePdf(visaLines(ctx.t, ctx.lang, x.record), {
-    title: `${ctx.t.visa} ${x.docId} ${ctx.t.rev_short} ${x.letter}`,
-    footer: visaFooter(ctx.t, x.docId, x.letter),
+  const body = simplePdf(visaLines(ctx.tr, ctx.lang, x.record), {
+    title: `${ctx.tr('Approval record')} ${x.docId} ${ctx.tr('Rev.')} ${x.letter}`,
+    footer: visaFooter(ctx.tr, x.docId, x.letter),
   });
   await audit(await getDb(), ctx.user.id, 'visa', x.docId, x.letter, x.revisionId);
   return new Response(new Uint8Array(body), { headers: headers(x, body.length) });

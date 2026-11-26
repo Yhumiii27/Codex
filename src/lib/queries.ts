@@ -10,7 +10,7 @@ import { revLabel } from './codification';
 import type { Ctx } from './context';
 import { extensionOf } from './filetypes';
 import { addDays, clip, daysBetween, fmtDate, fmtDateTime, fmtSize, fmtWhen, loc, nowStamp, parisStamp, parseIsoDay, TIME_ZONE, todayIso } from './format';
-import { CONF_LEVELS, MATRIX_ROLE_LABEL, phaseLabel, retentionBasisL, TAGCLS, type T, type TKey } from './i18n';
+import { CONF_LEVELS, phaseLabel, retentionBasisL, TAGCLS } from './i18n';
 import { decisionWait, lockOf, type DecisionWait, type Tx } from './lifecycle';
 import { LINK_RELS, otherEnd, relOf, type DocCandidate } from './links';
 import { NO_USAGE, type OrgUsage } from './org-rules';
@@ -22,6 +22,8 @@ import { simulateTransfer, type TransferPlan } from './transfer';
 import { bothDocumentValues, documentValues, loadTerms, type Term } from './vocab';
 import { canonicalSubtype, termKeys, vocabKey, type VocabKind } from './vocab-rules';
 import { DATE_LABEL, FACET_KEYS, FACET_LABEL, fold, hit, SCORE_WEIGHT, searchHref, SORT_LABEL, sortOf, wordStartPrefix, type DateField, type FacetKey, type Facets, type Period, type SearchDoc, type SearchInput, type SortKey } from './search';
+import { msg, type Translate } from '@/i18n';
+import { ACTIVITY_LABEL, ATTACHMENT_LABEL, CHANGE_KIND_LABEL, CHANGE_STATUS_LABEL, CONF_LABEL, DISPOSITION_LABEL, FAMILY_GROUP_LABEL, FILE_ENTRY_LABEL, FUNCTION_SCOPE_LABEL, LANGUAGE_LABEL, LINK_LABEL, LINK_SKIP_LABEL, MATRIX_ROLE_LABEL, ORIGIN_LABEL, OVERDUE_LABEL, PERM_LABEL, PROPOSED_ACTION_LABEL, STATUS_LABEL, STORAGE_LABEL, TRANSFER_KIND_LABEL, TRIGGER_LABEL, labelOf } from '@/i18n/labels';
 
 type DocRow = typeof s.documents.$inferSelect;
 
@@ -36,14 +38,14 @@ const anyOf = (column: SQLWrapper, values: string[]) => sql`${column} = any(${sq
  * too (an upload, a revision opened or sent for approval), which stays within the circle (D-14).
  */
 export function docView(ctx: Ctx, d: DocRow, workingL: string | null | undefined, circle: boolean, shownModified?: string) {
-  const { t, lang, label } = ctx;
+  const { tr, lang, label } = ctx;
   const revWorking = circle ? d.revWorking : null;
   const modifiedAt = (!circle && shownModified) || d.modifiedAt;
   const version = circle ? d.version : 0;
   const typeLabel = label('type', d.typeCode), familyLabel = label('family', d.family);
   const contextL = d.attachment === 'project' ? `${d.projectCode} · ${label('project', d.projectCode)}` : d.attachment === 'research' ? `${d.programCode} · ${label('program', d.programCode)}` : d.attachment === 'capex' ? `${d.capexCode} · ${label('capex', d.capexCode)}` : label('department', d.department);
   const until = retainUntil(d);
-  const years = d.retentionYears != null ? `${d.retentionYears} ${t.years_short} · ` : '';
+  const years = d.retentionYears != null ? `${d.retentionYears} ${tr('years')} · ` : '';
   const today = todayIso();
   return {
     ...d,
@@ -53,11 +55,11 @@ export function docView(ctx: Ctx, d: DocRow, workingL: string | null | undefined
     typeLabel, familyLabel, contextL,
     departmentL: label('department', d.department),
     siteL: d.site ? label('site', d.site) : '—',
-    originL: t[`or_${d.origin}` as TKey],
-    attachmentL: t[`att_${d.attachment}` as TKey],
-    statusLabel: t[`st_${d.status}` as TKey] ?? d.status,
+    originL: labelOf(tr, ORIGIN_LABEL, d.origin),
+    attachmentL: labelOf(tr, ATTACHMENT_LABEL, d.attachment),
+    statusLabel: labelOf(tr, STATUS_LABEL, d.status),
     tagClass: TAGCLS[d.status] ?? 'tag tag-neutral',
-    confL: t[`conf_${d.conf}` as TKey] ?? d.conf,
+    confL: labelOf(tr, CONF_LABEL, d.conf),
     owner: ctx.userName(d.ownerId),
     author: d.authorText || ctx.userName(d.authorId ?? d.ownerId),
     /** Revision being drafted or reviewed, with its last working version ("B.2"); null when none. */
@@ -78,11 +80,11 @@ export function docView(ctx: Ctx, d: DocRow, workingL: string | null | undefined
     expired: isExpired(d, today),
     reviewOverdue: isReviewOverdue(d, today),
     retainUntil: until,
-    untilF: until ? fmtDate(until, lang) : d.retentionTrigger === 'permanent' || d.retentionDisposition === 'permanent' ? t.disp_permanent : untilGapL(t, retentionGap(d)),
+    untilF: until ? fmtDate(until, lang) : d.retentionTrigger === 'permanent' || d.retentionDisposition === 'permanent' ? tr('Permanent retention') : untilGapL(tr, retentionGap(d)),
     /** The trigger waits for a date entered on the record (end of life of the asset, departure of the employee). */
     eventTrigger: isEventTrigger(d.retentionTrigger),
     retentionEventF: fmtDate(d.retentionEventAt, lang),
-    retentionL: `${years}${t[`trig_${d.retentionTrigger}` as TKey]} · ${t[`disp_${d.retentionDisposition}` as TKey]}`,
+    retentionL: `${years}${labelOf(tr, TRIGGER_LABEL, d.retentionTrigger)} · ${labelOf(tr, DISPOSITION_LABEL, d.retentionDisposition)}`,
     path: `${contextL} › ${familyLabel} › ${typeLabel}`,
     href: `/documents/${encodeURIComponent(d.id)}`,
   };
@@ -90,8 +92,8 @@ export function docView(ctx: Ctx, d: DocRow, workingL: string | null | undefined
 export type DocView = ReturnType<typeof docView>;
 
 /** « Fin de conservation » of a document without one: what it waits for. */
-function untilGapL(t: Ctx['t'], gap: ReturnType<typeof retentionGap>): string {
-  return gap === 'event_missing' ? t.until_event_missing : gap === 'no_duration' ? t.until_no_duration : '—';
+function untilGapL(tr: Translate, gap: ReturnType<typeof retentionGap>): string {
+  return gap === 'event_missing' ? tr('Event date to enter') : gap === 'no_duration' ? tr('Duration to set') : '—';
 }
 
 /**
@@ -742,7 +744,7 @@ export async function listRevisions(ctx: Ctx, docId: string) {
     return {
       ...r,
       label: last ? revLabel(r.letter, r.status, last.n) : r.letter,
-      statusLabel: ctx.t[`st_${r.status}` as TKey],
+      statusLabel: labelOf(ctx.tr, STATUS_LABEL, r.status),
       tagClass: TAGCLS[r.status] ?? 'tag tag-neutral',
       modifier: r.modifierId ? ctx.userName(r.modifierId) : null,
       changeRefs: [...new Set([...(r.changeRef ? [r.changeRef] : []), ...carried.filter((c) => c.revisionId === r.id).map((c) => c.ref)])],
@@ -793,11 +795,11 @@ export async function approvalRecord(ctx: Ctx, id: string, letter: string): Prom
   const imported = journal.find((e) => e.action === 'import');
   const approvedInCodex = wfs.some((w) => w.outcome === 'approved');
   const order = (w: (typeof wfs)[number]) => Number(/\d+/.exec(w.id)?.[0] ?? 0);
-  const { t, lang } = ctx;
+  const { tr, lang } = ctx;
   const record: VisaRecord = {
     doc: {
       id: doc.id, title: doc.title, type: `${doc.typeCode} · ${doc.typeLabel}`, context: doc.contextL, owner: doc.owner, conf: doc.confL,
-      state: doc.state === 'obsolete' ? `${t.st_obsolete} · ${fmtDate(doc.obsoleteAt, lang)}` : doc.state === 'archived' ? `${t.st_archived} · ${fmtDate(doc.archivedAt, lang)}` : null,
+      state: doc.state === 'obsolete' ? `${tr('Obsolete')} · ${fmtDate(doc.obsoleteAt, lang)}` : doc.state === 'archived' ? `${tr('Archived')} · ${fmtDate(doc.archivedAt, lang)}` : null,
     },
     rev: {
       letter: rev.letter, status: rev.statusLabel, createdAt: rev.createdAt, approvedAt: rev.approvedAt, effectiveAt: rev.effectiveAt, inForceAt: rev.inForceAt,
@@ -860,7 +862,7 @@ export async function workflowsWhere(ctx: Ctx, where?: SQL) {
   const stepsBy = groupBy(steps, (x) => x.workflowId), commentsBy = groupBy(comments, (c) => c.workflowId);
   const docBy = new Map(docs.map((d) => [d.id, d]));
   const revBy = new Map(revs.map((r) => [r.id, r]));
-  const { t, lang } = ctx;
+  const { tr, lang } = ctx;
   const today = todayIso();
   return wfs.map((w) => {
     const ws = (stepsBy.get(w.id) ?? []).map((st) => {
@@ -870,14 +872,14 @@ export async function workflowsWhere(ctx: Ctx, where?: SQL) {
         nameL: loc(st.name, lang),
         assignee: ctx.userName(st.assigneeId),
         state: state as 'done' | 'current' | 'todo',
-        stateLabel: t[`st_${state}` as TKey],
+        stateLabel: labelOf(tr, STATUS_LABEL, state),
         dateF: st.date ? fmtDate(st.date, lang) : '',
       };
     });
     const cur = ws[w.step];
     const doc = docBy.get(w.docId);
     const rev = revBy.get(w.revisionId);
-    const outcomeL = w.outcome === 'approved' ? t.wf_approved : w.outcome === 'rejected' ? t.wf_rejected : w.outcome === 'recalled' ? t.wf_recalled : null;
+    const outcomeL = w.outcome === 'approved' ? tr('Approved') : w.outcome === 'rejected' ? tr('Rejected') : w.outcome === 'recalled' ? tr('Recalled') : null;
     const daysLate = circuitDaysLate({ outcome: w.outcome, done: !!w.outcome || w.step >= ws.length, due: w.due }, today);
     return {
       ...w,
@@ -894,11 +896,11 @@ export async function workflowsWhere(ctx: Ctx, where?: SQL) {
        * and the label of the indicator (« En retard », its title saying since when), or null. Display only.
        */
       daysLate,
-      lateL: daysLate ? t.wf_late : null,
-      lateTitle: daysLate ? t.wf_late_title.replace('{date}', fmtDate(w.due, lang)).replace('{n}', String(daysLate)) : null,
+      lateL: daysLate ? tr('Overdue') : null,
+      lateTitle: daysLate ? tr('Circuit past its due date: due {date}, {n} days overdue').replace('{date}', fmtDate(w.due, lang)).replace('{n}', String(daysLate)) : null,
       steps: ws,
       current: cur ?? null,
-      stepName: (w.outcome === 'rejected' || w.outcome === 'recalled') && outcomeL ? outcomeL : cur && !w.outcome ? cur.nameL : t.wf_finished,
+      stepName: (w.outcome === 'rejected' || w.outcome === 'recalled') && outcomeL ? outcomeL : cur && !w.outcome ? cur.nameL : tr('Completed#workflow'),
       /** « Approuvé », « Rejeté » or « Rappelé » once it ended, else null. */
       outcomeL,
       /** Who ended it (a rejection recorded without it: the step it stopped at), and when. */
@@ -1095,8 +1097,8 @@ export async function listChangeRequests(ctx: Ctx, opts: { docId?: string; mine?
       ...r,
       docTitle: d.title,
       docHref: `/documents/${encodeURIComponent(d.id)}`,
-      kindL: ctx.t[`kind_${r.kind}` as TKey],
-      statusL: ctx.t[`ecr_${r.status}` as TKey],
+      kindL: labelOf(ctx.tr, CHANGE_KIND_LABEL, r.kind),
+      statusL: labelOf(ctx.tr, CHANGE_STATUS_LABEL, r.status),
       requester: ctx.userName(r.requesterId),
       modifier: r.modifierId ? ctx.userName(r.modifierId) : null,
       when: fmtWhen(r.createdAt),
@@ -1105,7 +1107,7 @@ export async function listChangeRequests(ctx: Ctx, opts: { docId?: string; mine?
       sentF: fmtDateTime(r.createdAt, ctx.lang),
       decidedF: r.decidedAt ? fmtDateTime(r.decidedAt, ctx.lang) : null,
       /** What an acceptance still waits for, in words this reader may be given (acceptedWaitL), or null. */
-      waitL: acceptedWaitL(ctx.t, r, d, circle),
+      waitL: acceptedWaitL(ctx.tr, r, d, circle),
       /** The revision an applied change is carried by, when the reader sees it: the one it opened, or the one it was grafted onto (D-26). */
       carrier: rev ? { letter: rev.letter, grafted: rev.changeRef !== (r.ecoRef ?? r.id) } : null,
       /** The replacement proposed with a withdrawal, when the reader may read it. */
@@ -1120,17 +1122,17 @@ export type ChangeRequestView = Awaited<ReturnType<typeof listChangeRequests>>[n
  * then, for a change, the revision already open (D-26). An archived document under legal hold cannot be restored before
  * the hold is released: both are named. Outside the drafting circle, pass no revision: it does not exist for the reader (D-14).
  */
-export function decisionWaitL(t: T, w: DecisionWait): string {
+export function decisionWaitL(tr: Translate, w: DecisionWait): string {
   const archived = w.state === 'archived';
   if (!w.revision) {
-    if (archived) return w.legalHold ? t.ecr_wait_hold_archived : t.ecr_wait_archived;
-    return w.state === 'active' && w.legalHold ? t.ecr_wait_hold : t.ecr_wait_lock;
+    if (archived) return w.legalHold ? tr('it will apply once the legal hold is released and the document restored') : tr('it will apply when the document is restored');
+    return w.state === 'active' && w.legalHold ? tr('it will apply when the legal hold is released') : tr('it will apply once the document is no longer locked');
   }
   // The revision is named first: it is what the change opens after; a lock only delays it further.
   const lock = archived
-    ? (w.legalHold ? t.ecr_wait_not_before_hold_archived : t.ecr_wait_not_before_archived)
-    : w.state === 'active' ? (w.legalHold ? t.ecr_wait_not_before_hold : null) : t.ecr_wait_not_while_locked;
-  return `${t.ecr_wait_revision} ${w.revision}${lock ? `, ${lock}` : ''}`;
+    ? (w.legalHold ? tr('not before the legal hold is released and the document restored') : tr('not before the document is restored'))
+    : w.state === 'active' ? (w.legalHold ? tr('not before the legal hold is released') : null) : tr('not while the document is locked');
+  return `${tr('it will open the next revision upon entry into force of revision')} ${w.revision}${lock ? `, ${lock}` : ''}`;
 }
 
 /**
@@ -1140,15 +1142,15 @@ export function decisionWaitL(t: T, w: DecisionWait): string {
  * it will not apply before, never as the one it applies at, the same words whether a revision is open or not; without a
  * lock nothing is said (D-14, D-26). A withdrawal waits for the lock alone.
  */
-export function acceptedWaitL(t: T, r: { kind: string; status: string }, d: Pick<DocRow, 'state' | 'legalHold' | 'revWorking'>, circle: boolean): string | null {
+export function acceptedWaitL(tr: Translate, r: { kind: string; status: string }, d: Pick<DocRow, 'state' | 'legalHold' | 'revWorking'>, circle: boolean): string | null {
   if (r.status !== 'accepted') return null;
   const kind = r.kind === 'modification' ? 'modification' : 'obsolescence';
   const wait = decisionWait(kind, circle ? d : { ...d, revWorking: null });
   const locked = wait.state !== 'active' || wait.legalHold;
-  if (circle || kind !== 'modification') return locked || wait.revision ? decisionWaitL(t, wait) : null;
+  if (circle || kind !== 'modification') return locked || wait.revision ? decisionWaitL(tr, wait) : null;
   if (!locked) return null;
-  if (wait.state === 'archived') return wait.legalHold ? t.ecr_wait_no_earlier_hold_archived : t.ecr_wait_no_earlier_archived;
-  return wait.state === 'active' ? t.ecr_wait_no_earlier_hold : t.ecr_wait_no_earlier_lock;
+  if (wait.state === 'archived') return wait.legalHold ? tr('it will not apply before the legal hold is released and the document restored') : tr('it will not apply before the document is restored');
+  return wait.state === 'active' ? tr('it will not apply before the legal hold is released') : tr('it will not apply while the document is locked');
 }
 
 /**
@@ -1157,13 +1159,13 @@ export function acceptedWaitL(t: T, r: { kind: string; status: string }, d: Pick
  */
 export function stateNotice(ctx: Ctx, d: DocView, requests: ChangeRequestView[]): { state: 'obsolete' | 'archived'; text: string } | null {
   if (d.state === 'active') return null;
-  const { t, lang } = ctx;
+  const { tr, lang } = ctx;
   // An accepted withdrawal carries Vigie's change order, else the request itself (lib/lifecycle.ts applyChangeDecision).
   const w = requests.find((r) => r.docId === d.id && r.kind === 'obsolescence' && r.status === 'implemented');
   const ref = w ? w.ecoRef ?? w.id : null;
-  const obsolete = `${d.obsoleteAt ? `${t.obsolete_since} ${fmtDate(d.obsoleteAt, lang)}` : t.st_obsolete}${ref ? ` (${ref})` : ''} — ${t.do_not_apply}`;
+  const obsolete = `${d.obsoleteAt ? `${tr('Obsolete since')} ${fmtDate(d.obsoleteAt, lang)}` : tr('Obsolete')}${ref ? ` (${ref})` : ''} — ${tr('no longer applicable')}`;
   if (d.state === 'obsolete') return { state: 'obsolete', text: obsolete };
-  const archived = d.archivedAt ? `${t.archived_on} ${fmtDate(d.archivedAt, lang)}` : t.st_archived;
+  const archived = d.archivedAt ? `${tr('Archived on')} ${fmtDate(d.archivedAt, lang)}` : tr('Archived');
   // An obsolete document archived later keeps both facts (obsoleteAt is never cleared).
   return { state: 'archived', text: d.obsoleteAt ? `${archived} · ${obsolete}` : archived };
 }
@@ -1190,7 +1192,7 @@ export async function listDocLinks(ctx: Ctx, docId: string) {
       if (!d || !canRead(ctx, d, ix)) return [];
       const v = docView(ctx, d, null, inDraftingCircle(ctx, d, ix));
       const rel: LinkRel = relOf(l, docId);
-      return [{ id: l.id, rel, relL: ctx.t[`link_${rel}`], editable: mayEditLinks(ctx, d), frozen: d.legalHold, doc: { id: v.id, title: v.title, href: v.href, statusLabel: v.statusLabel, tagClass: v.tagClass } }];
+      return [{ id: l.id, rel, relL: labelOf(ctx.tr, LINK_LABEL, rel), editable: mayEditLinks(ctx, d), frozen: d.legalHold, doc: { id: v.id, title: v.title, href: v.href, statusLabel: v.statusLabel, tagClass: v.tagClass } }];
     })
     .sort((a, b) => LINK_RELS.indexOf(a.rel) - LINK_RELS.indexOf(b.rel) || a.doc.id.localeCompare(b.doc.id));
 }
@@ -1206,14 +1208,14 @@ export const DEADLINE_WINDOW_DAYS = 90;
  * date, which says so (« Expiré, valable jusqu’au », « Revue en retard, prévue le »).
  */
 export function deadlines(ctx: Ctx, docs: DocView[]) {
-  const { t } = ctx;
+  const { tr } = ctx;
   const today = todayIso();
   const limit = addDays(today, DEADLINE_WINDOW_DAYS);
   const out: (DocView & { kind: 'retention' | 'expiry' | 'review'; end: string; endF: string; days: number; action: string; actionLabel: string; overdue: boolean; dueL: string })[] = [];
   for (const d of docs) {
     const push = (kind: 'retention' | 'expiry' | 'review', end: string, action: string, overdue = false) => out.push({
-      ...d, kind, end, endF: fmtDate(end, ctx.lang), days: daysBetween(today, end), action, actionLabel: d.legalHold ? t.hold : t[`x_${action}` as TKey], overdue,
-      dueL: kind === 'retention' ? t.until : kind === 'expiry' ? (overdue ? t.dl_expired : t.dl_expiry) : overdue ? t.dl_review_late : t.dl_review,
+      ...d, kind, end, endF: fmtDate(end, ctx.lang), days: daysBetween(today, end), action, actionLabel: d.legalHold ? tr('Legal hold') : labelOf(tr, PROPOSED_ACTION_LABEL, action), overdue,
+      dueL: kind === 'retention' ? tr('Retained until') : kind === 'expiry' ? (overdue ? tr('Expired, valid until') : tr('Expires')) : overdue ? tr('Review overdue, due') : tr('Review due'),
     });
     if (d.retainUntil && d.retainUntil <= limit) push('retention', d.retainUntil, d.retentionDisposition === 'destroy' ? 'destroy' : d.retentionDisposition === 'review' ? 'review' : 'archive');
     if (d.state !== 'active') continue;
@@ -1304,7 +1306,7 @@ const todoSources = cache(async () => {
  */
 export async function actionsAmong(ctx: Ctx, docs: DocView[], workflows: WorkflowView[]): Promise<MyAction[]> {
   const db = await getDb();
-  const { t } = ctx;
+  const { tr } = ctx;
   const me = ctx.user.id;
   const [{ open, pending }, ix] = await Promise.all([todoSources(), getAccessIndex(ctx)]);
   const docBy = new Map(docs.map((d) => [d.id, d]));
@@ -1320,7 +1322,7 @@ export async function actionsAmong(ctx: Ctx, docs: DocView[], workflows: Workflo
     for (const w of workflows) {
       const d = docBy.get(w.docId);
       if (!d || !w.mine || w.locked || !w.visible) continue;
-      push('step', d, `${d.id} · ${t.rev_short} ${w.letter} · ${t.requested_by} ${w.requester} · ${t.step} : ${w.stepName} · ${t.due} ${w.dueF}`, w.href, w.due, w.id);
+      push('step', d, `${d.id} · ${tr('Rev.')} ${w.letter} · ${tr('Requested by')} ${w.requester} · ${tr('Step')} : ${w.stepName} · ${tr('Due')} ${w.dueF}`, w.href, w.due, w.id);
     }
   }
 
@@ -1335,15 +1337,15 @@ export async function actionsAmong(ctx: Ctx, docs: DocView[], workflows: Workflo
     if (last && !sentBack) continue;
     const kind = draftTodo(me, r, d.ownerId, last && sentBack ? { authorId: last.steps[0]?.assigneeId ?? r.modifierId ?? d.ownerId, outcome: sentBack } : null);
     if (!kind) continue;
-    const rev = `${d.id} · ${t.rev_short} ${d.workingLabel ?? r.letter}`;
+    const rev = `${d.id} · ${tr('Rev.')} ${d.workingLabel ?? r.letter}`;
     const eco = r.changeRef ? ` · ${r.changeRef}` : '';
     // The owner's draft an ECO assigned to someone else names who was designated to write it.
-    const assigned = r.modifierId && r.modifierId !== me ? ` · ${t.todo_assigned} ${ctx.userName(r.modifierId)}${eco}` : '';
+    const assigned = r.modifierId && r.modifierId !== me ? ` · ${tr('assigned to')} ${ctx.userName(r.modifierId)}${eco}` : '';
     const sent = kind === 'rejected' || kind === 'recalled';
     const detail = sent
-      ? `${rev} ${kind === 'rejected' ? t.todo_rejected : t.todo_recalled} ${last?.closer ?? '—'}${eco}`
-      : kind === 'eco' ? `${rev} ${t.todo_eco}${eco}` : `${rev} ${t.todo_draft}${assigned}`;
-    const note = sent && last?.reason ? `${t.ecr_reason} : ${clip(last.reason, REASON_SHOWN)}` : null;
+      ? `${rev} ${kind === 'rejected' ? tr('sent back to drafting by') : tr('approval request recalled by')} ${last?.closer ?? '—'}${eco}`
+      : kind === 'eco' ? `${rev} ${tr('to draft')}${eco}` : `${rev} ${tr('drafted, never sent for approval')}${assigned}`;
+    const note = sent && last?.reason ? `${tr('Reason')} : ${clip(last.reason, REASON_SHOWN)}` : null;
     push(kind, d, detail, `${d.href}?tab=versions`, null, d.id, note);
   }
 
@@ -1352,13 +1354,13 @@ export async function actionsAmong(ctx: Ctx, docs: DocView[], workflows: Workflo
       const d = docBy.get(c.docId);
       if (!d || c.kind !== 'modification' || c.status !== 'accepted' || lockOf(d)) continue;
       const { wait } = openRevisionView(inDraftingCircle(ctx, d, ix), ctx, d.ownerId, open.find((r) => r.docId === d.id), c);
-      if (wait?.graft === 'yes') push('graft', d, `${d.id} · ${c.ecoRef ?? c.id} ${t.ecr_accepted_l}, ${t.todo_graft} ${wait.letter}`, `${d.href}?tab=requests`);
+      if (wait?.graft === 'yes') push('graft', d, `${d.id} · ${c.ecoRef ?? c.id} ${tr('accepted')}, ${tr('may be grafted onto revision')} ${wait.letter}`, `${d.href}?tab=requests`);
     }
     const changing = new Set(pending.map((c) => c.docId));
     const own = docs.filter((d) => (d.ownerId === me || d.processOwnerId === me) && !lockOf(d));
     for (const x of deadlines(ctx, own)) {
       if (x.kind === 'retention' || !deadlineActor(me, x, x.kind, changing.has(x.id))) continue;
-      const days = x.days >= 0 ? `${x.days} ${t.days_left}` : `${-x.days} ${t.days_late}`;
+      const days = x.days >= 0 ? `${x.days} ${tr('days left')}` : `${-x.days} ${tr('days overdue')}`;
       // Worded as the record's indicator once overdue (dueL): « Expiré, valable jusqu’au … », « Revue en retard, prévue le … ».
       push(x.kind === 'review' ? 'review' : 'renew', x, `${x.id} · ${x.dueL} ${x.endF} · ${days}`, `${x.href}?tab=meta`, x.end);
     }
@@ -1450,93 +1452,93 @@ export async function auditForReader(ctx: Ctx, all: AuditRow[]): Promise<AuditEn
   });
 }
 
-const TARGET_LABEL: Record<AuditTargetKind, TKey> = { permission: 'target_permission', department: 'department', site: 'site', function: 'function_label', family: 'family', type: 'type', program: 'program', export: 'target_export', file: 'target_file', storage: 'target_storage', backup: 'target_backup', integrity: 'target_integrity', user: 'target_user', source_org: 'target_source_org', keyword: 'target_keyword' };
+const TARGET_LABEL: Record<AuditTargetKind, string> = { permission: msg('Permission'), department: msg('Department / Function'), site: msg('Worksite'), function: msg('Function'), family: msg('Family'), type: msg('Type'), program: msg('Research programme'), export: msg('Export'), file: msg('Uploaded file'), storage: msg('File storage'), backup: msg('Backup'), integrity: msg('Integrity'), user: msg('Person'), source_org: msg('Source organisation'), keyword: msg('Keyword') };
 
 /** What an entry without document is about, as the Journal tab and its export name it: "Fonction · Responsable qualité". */
 export function auditTargetL(ctx: Ctx, kind: AuditTargetKind | null, id: string | null): string {
   if (!kind || !id) return '—';
-  const { t } = ctx;
+  const { tr } = ctx;
   const [role, perm] = id.split(':');
   const name =
-    kind === 'permission' ? `${t[MATRIX_ROLE_LABEL[role]] ?? role} · ${t[`perm_${perm}` as TKey] ?? perm}`
+    kind === 'permission' ? `${labelOf(tr, MATRIX_ROLE_LABEL, role)} · ${labelOf(tr, PERM_LABEL, perm)}`
     : kind === 'department' ? `${id} · ${ctx.label('department', id)}`
     : kind === 'site' ? ctx.label('site', id)
     : kind === 'function' ? ctx.label('function', id)
     : kind === 'family' ? ctx.label('family', id)
     : kind === 'type' ? `${id} · ${ctx.label('type', id)}`
     : kind === 'program' ? `${id} · ${ctx.label('program', id)}`
-    : kind === 'file' ? t[`file_entry_${id}` as TKey] ?? id
-    : kind === 'storage' ? t[`store_${id}` as TKey] ?? id
+    : kind === 'file' ? labelOf(tr, FILE_ENTRY_LABEL, id)
+    : kind === 'storage' ? labelOf(tr, STORAGE_LABEL, id)
     : kind === 'backup' ? id
-    : kind === 'integrity' ? t.integrity_all
+    : kind === 'integrity' ? tr('all files')
     : kind === 'user' ? ctx.userName(id)
     : kind === 'source_org' || kind === 'keyword' ? id
-    : id === 'search' ? t.adv_search : id === 'full' ? t.target_export_full : t.ad_audit;
-  return `${t[TARGET_LABEL[kind]]} · ${name}`;
+    : id === 'search' ? tr('Advanced search') : id === 'full' ? tr('all data and files') : tr('Audit log');
+  return `${tr(TARGET_LABEL[kind])} · ${name}`;
 }
 
 /** Labels of the fields a journal change names; `granted` and `active` have none (the target, or the value, says it). */
-const CHANGE_LABEL: Record<string, TKey> = {
-  title: 'title_label', typeCode: 'type', subtype: 'subtype', origin: 'origin', attachment: 'attachment', projectCode: 'project', programCode: 'program', capexCode: 'capex',
-  department: 'department', site: 'site', ownerId: 'owner', authorId: 'author_label', authorText: 'author_text', templateTypes: 'template_types', conf: 'conf', keywords: 'keywords', lang: 'language',
-  reviewDueAt: 'review_due_at', expiresAt: 'expires_at', sourceOrg: 'source_org', externalRef: 'external_ref', receivedAt: 'received_at',
-  projectPhase: 'project_phase', workPackage: 'work_package', discipline: 'discipline', researchTheme: 'research_theme', studyId: 'study_id',
-  ipStatus: 'ip_status', processOwnerId: 'process_owner', retention: 'retention', circuit: 'circuit', confAllowed: 'conf_allowed', confDefault: 'conf_default',
-  featured: 'featured_filters', reviewMonths: 'review_months', retentionOverride: 'retention_override_label', retentionEventAt: 'retention_event_at',
-  typeRetention: 'retention_type_rule', retentionDocs: 'retention_docs',
+const CHANGE_LABEL: Record<string, string> = {
+  title: msg('Title'), typeCode: msg('Type'), subtype: msg('Sub-type'), origin: msg('Origin'), attachment: msg('Attachment'), projectCode: msg('Project'), programCode: msg('Research programme'), capexCode: msg('CAPEX'),
+  department: msg('Department / Function'), site: msg('Worksite'), ownerId: msg('Owner'), authorId: msg('Author'), authorText: msg('Author (free text)'), templateTypes: msg('Target types'), conf: msg('Confidentiality'), keywords: msg('Keywords'), lang: msg('Language'),
+  reviewDueAt: msg('Review date'), expiresAt: msg('Expiry date'), sourceOrg: msg('Source organisation'), externalRef: msg('External reference'), receivedAt: msg('Received on'),
+  projectPhase: msg('Project phase'), workPackage: msg('Work package'), discipline: msg('Discipline'), researchTheme: msg('Research theme'), studyId: msg('Study / trial ID'),
+  ipStatus: msg('Publication / IP status'), processOwnerId: msg('Process owner'), retention: msg('Retention#column'), circuit: msg('Workflow'), confAllowed: msg('Allowed levels'), confDefault: msg('Default level'),
+  featured: msg('Featured filters'), reviewMonths: msg('Review periodicity'), retentionOverride: msg('Derogation from the type rule'), retentionEventAt: msg('Date of the trigger event'),
+  typeRetention: msg('Type rule'), retentionDocs: msg('Documents updated'),
   // Register and research programmes (Administration).
-  code: 'rule_id', key: 'key_label', labelFr: 'label_fr', labelEn: 'label_en', family: 'family', origins: 'origin', attachments: 'attachment',
-  subtypes: 'subtypes_label', retentionBasis: 'retention_basis', retentionBasisEn: 'retention_basis_en', iso: 'iso_clause', clientDeliverable: 'client_deliverable', grp: 'family_group',
-  scope: 'scope', name: 'program_name', managerId: 'manager',
+  code: msg('Code'), key: msg('Key'), labelFr: msg('Label (FR)'), labelEn: msg('Label (EN)'), family: msg('Family'), origins: msg('Origin'), attachments: msg('Attachment'),
+  subtypes: msg('Sub-types'), retentionBasis: msg('Basis'), retentionBasisEn: msg('Basis (EN)'), iso: msg('ISO 9001 clause'), clientDeliverable: msg('Client deliverable'), grp: msg('Deck group'),
+  scope: msg('Scope'), name: msg('Name'), managerId: msg('Manager'),
   // Holdings handed to a replacement (lib/transfer.ts) and controlled vocabularies (lib/vocab.ts).
-  modifierId: 'modifier', assigneeId: 'assignee', reader: 'reader_label', term: 'vocab_term', aliases: 'vocab_aliases',
+  modifierId: msg('Designated author'), assigneeId: msg('Step holder'), reader: msg('Named reader'), term: msg('Term'), aliases: msg('Other spellings'),
 };
 
 /** One stored value of a change, in the reader's language. */
 function changeValueL(ctx: Ctx, field: string, v: AuditValue | undefined): string {
-  const { t } = ctx;
-  if (v == null || (Array.isArray(v) && !v.length)) return field === 'circuit' ? t.no_approval : field === 'featured' ? t.featured_none : field === 'reviewMonths' ? t.review_months_none : '—';
-  if (typeof v === 'boolean') return field === 'granted' ? (v ? '✓' : '✕') : field === 'clientDeliverable' ? (v ? t.yes : t.no) : field === 'retentionOverride' ? (v ? t.retention_override : t.retention_follows_type) : v ? t.active_label : t.inactive;
+  const { tr } = ctx;
+  if (v == null || (Array.isArray(v) && !v.length)) return field === 'circuit' ? tr('Immediate approval') : field === 'featured' ? tr('None') : field === 'reviewMonths' ? tr('None#review') : '—';
+  if (typeof v === 'boolean') return field === 'granted' ? (v ? '✓' : '✕') : field === 'clientDeliverable' ? (v ? tr('Yes') : tr('No')) : field === 'retentionOverride' ? (v ? tr('Derogation') : tr('Type rule')) : v ? tr('Active') : tr('Inactive');
   if (Array.isArray(v)) return v.map((x) => changeValueL(ctx, field, x)).join(field === 'circuit' ? ' → ' : ', ');
   if (typeof v === 'object') {
-    return `${v.years != null ? `${v.years} ${t.years_short} · ` : ''}${t[`trig_${v.trigger}` as TKey] ?? v.trigger} · ${t[`disp_${v.disposition}` as TKey] ?? v.disposition}`;
+    return `${v.years != null ? `${v.years} ${tr('years')} · ` : ''}${labelOf(tr, TRIGGER_LABEL, v.trigger)} · ${labelOf(tr, DISPOSITION_LABEL, v.disposition)}`;
   }
-  const key = (prefix: string) => t[`${prefix}${v}` as TKey] ?? v;
+  const key = (table: Readonly<Record<string, string>>) => labelOf(tr, table, v);
   switch (field) {
     case 'title': return ctx.lang === 'fr' ? `« ${v} »` : `“${v}”`;
     case 'ownerId': case 'authorId': case 'processOwnerId': case 'holder': case 'managerId': case 'modifierId': case 'assigneeId': case 'reader': return ctx.userName(v);
-    case 'conf': case 'confAllowed': case 'confDefault': return key('conf_');
-    case 'origin': case 'origins': return key('or_');
-    case 'attachment': case 'attachments': return key('att_');
+    case 'conf': case 'confAllowed': case 'confDefault': return key(CONF_LABEL);
+    case 'origin': case 'origins': return key(ORIGIN_LABEL);
+    case 'attachment': case 'attachments': return key(ATTACHMENT_LABEL);
     case 'family': return ctx.label('family', v);
-    case 'grp': return key('grp_');
-    case 'scope': return key('scope_');
-    case 'lang': return key('lang_');
+    case 'grp': return key(FAMILY_GROUP_LABEL);
+    case 'scope': return key(FUNCTION_SCOPE_LABEL);
+    case 'lang': return key(LANGUAGE_LABEL);
     case 'site': return ctx.label('site', v);
     case 'projectPhase': return phaseLabel(v, ctx.lang);
     case 'circuit': return ctx.label('function', v);
     // Facets a department page puts forward ('default': those of every department without its own, lib/departments.ts).
-    case 'featured': return v === 'default' ? t.featured_default : t[FACET_LABEL[v as FacetKey]] ?? v;
-    case 'reviewMonths': return `${v} ${t.months_short}`;
+    case 'featured': return v === 'default' ? tr('Default filters') : labelOf(tr, FACET_LABEL, v);
+    case 'reviewMonths': return `${v} ${tr('months')}`;
     default: return v;
   }
 }
 
 /** "Label : before → after"; the label alone when the values are withheld. */
 function changeL(ctx: Ctx, c: AuditChange): string {
-  const label = c.field === 'holder' ? c.scope ?? ctx.t.scope_global : CHANGE_LABEL[c.field] ? ctx.t[CHANGE_LABEL[c.field]] : '';
+  const label = c.field === 'holder' ? c.scope ?? ctx.tr('Group') : CHANGE_LABEL[c.field] ? ctx.tr(CHANGE_LABEL[c.field]) : '';
   if (!('before' in c) && !('after' in c)) return label || c.field;
   // A value recorded alongside a change (the type's rule next to a document's class), not changed itself.
   if (!('before' in c)) return `${label ? `${label} : ` : ''}${changeValueL(ctx, c.field, c.after)}`;
   return `${label ? `${label} : ` : ''}${changeValueL(ctx, c.field, c.before)} → ${changeValueL(ctx, c.field, c.after)}`;
 }
 
-const FACET_PREFIX: Partial<Record<FacetKey, string>> = { origin: 'or_', attachment: 'att_', status: 'st_', overdue: 'overdue_', conf: 'conf_', lang: 'lang_' };
+const FACET_VALUES: Partial<Record<FacetKey, Readonly<Record<string, string>>>> = { origin: ORIGIN_LABEL, attachment: ATTACHMENT_LABEL, status: STATUS_LABEL, overdue: OVERDUE_LABEL, conf: CONF_LABEL, lang: LANGUAGE_LABEL };
 
 /** A facet value of /recherche as the reader reads it: reference labels, people's names, coded values translated. */
 export function facetValueL(ctx: Ctx, k: FacetKey, v: string): string {
-  const prefixed = FACET_PREFIX[k] && ctx.t[`${FACET_PREFIX[k]}${v}` as TKey];
-  if (prefixed) return prefixed;
+  const coded = FACET_VALUES[k];
+  if (coded && Object.hasOwn(coded, v)) return ctx.tr(coded[v]);
   switch (k) {
     case 'project': {
       const name = ctx.projects.find((p) => p.code === v)?.name ?? ctx.programs.find((p) => p.code === v)?.name;
@@ -1553,10 +1555,10 @@ export function facetValueL(ctx: Ctx, k: FacetKey, v: string): string {
 
 /** "Date d'émission : du 01/01/2026 au 30/06/2026", "… depuis le …", "… jusqu'au …". */
 export function periodL(ctx: Ctx, p: Period): string {
-  const { t, lang } = ctx;
-  const range = p.from && p.to ? `${t.period_from} ${fmtDate(p.from, lang)} ${t.period_to} ${fmtDate(p.to, lang)}`
-    : p.from ? `${t.period_since} ${fmtDate(p.from, lang)}` : `${t.period_until} ${fmtDate(p.to, lang)}`;
-  return `${t[DATE_LABEL[p.field]]}${lang === 'fr' ? ' : ' : ': '}${range}`;
+  const { tr, lang } = ctx;
+  const range = p.from && p.to ? `${tr('from')} ${fmtDate(p.from, lang)} ${tr('to')} ${fmtDate(p.to, lang)}`
+    : p.from ? `${tr('since')} ${fmtDate(p.from, lang)}` : `${tr('until')} ${fmtDate(p.to, lang)}`;
+  return `${tr(DATE_LABEL[p.field])}${lang === 'fr' ? ' : ' : ': '}${range}`;
 }
 
 /**
@@ -1564,25 +1566,25 @@ export function periodL(ctx: Ctx, p: Period): string {
  * the period, and the order when one was chosen.
  */
 export function searchCriteriaL(ctx: Ctx, x: SearchInput): string[] {
-  const { t, lang } = ctx;
+  const { tr, lang } = ctx;
   const colon = lang === 'fr' ? ' : ' : ': ';
   return [
     ...(x.q ? [lang === 'fr' ? `« ${x.q} »` : `“${x.q}”`] : []),
-    ...FACET_KEYS.filter((k) => x.facets?.[k]?.length).map((k) => `${t[FACET_LABEL[k]]}${colon}${x.facets![k]!.map((v) => facetValueL(ctx, k, v)).join(', ')}`),
+    ...FACET_KEYS.filter((k) => x.facets?.[k]?.length).map((k) => `${tr(FACET_LABEL[k])}${colon}${x.facets![k]!.map((v) => facetValueL(ctx, k, v)).join(', ')}`),
     ...(x.period && (x.period.from || x.period.to) ? [periodL(ctx, x.period)] : []),
-    ...(x.sort ? [`${t.sorted_by}${colon}${sortL(ctx, x.sort)}`] : []),
+    ...(x.sort ? [`${tr('Sort')}${colon}${sortL(ctx, x.sort)}`] : []),
   ];
 }
 
 export function sortL(ctx: Ctx, k: SortKey): string {
-  return ctx.t[SORT_LABEL[k]];
+  return ctx.tr(SORT_LABEL[k]);
 }
 
 /** What an export wrote: "« béton » · Type de document : Procédure · Tri : Titre · 12 lignes", or "journal complet · 830 lignes". */
 function exportL(ctx: Ctx, targetId: string | null, x: NonNullable<AuditData['export']>): string {
-  const { t } = ctx;
-  const what = targetId === 'search' ? searchCriteriaL(ctx, { q: x.q, facets: x.facets as Facets, period: x.period as Period | undefined, sort: x.sort as SortKey | undefined }) : [t.export_full];
-  return [...(what.length ? what : [t.export_unfiltered]), `${x.interrupted ? `${t.export_interrupted} ` : ''}${x.rows} ${t.export_rows}`].join(' · ');
+  const { tr } = ctx;
+  const what = targetId === 'search' ? searchCriteriaL(ctx, { q: x.q, facets: x.facets as Facets, period: x.period as Period | undefined, sort: x.sort as SortKey | undefined }) : [tr('full log')];
+  return [...(what.length ? what : [tr('no filter')]), `${x.interrupted ? `${tr('interrupted after')} ` : ''}${x.rows} ${tr('rows')}`].join(' · ');
 }
 
 /**
@@ -1590,7 +1592,7 @@ function exportL(ctx: Ctx, targetId: string | null, x: NonNullable<AuditData['ex
  * a step under its name in their language. A parameter of an unexpected type is left out rather than shown raw.
  */
 export function auditTextL(ctx: Ctx, x: AuditText): string {
-  const { t, lang } = ctx;
+  const { tr, lang } = ctx;
   const p = x.params;
   const str = (k: string) => {
     const v = p[k];
@@ -1599,15 +1601,15 @@ export function auditTextL(ctx: Ctx, x: AuditText): string {
   const size = typeof p.size === 'number' ? fmtSize(p.size, lang) : '';
   const join = (...xs: string[]) => xs.filter(Boolean).join(' · ');
   switch (x.code) {
-    case 'version': return join(str('label'), size, p.template ? t.audit_from_template.replace('{id}', str('template')) : '');
-    case 'version_restored': return join(str('label'), t.audit_restored_from.replace('{from}', str('from')), size);
+    case 'version': return join(str('label'), size, p.template ? tr('from template {id}').replace('{id}', str('template')) : '');
+    case 'version_restored': return join(str('label'), tr('restored from {from}').replace('{from}', str('from')), size);
     case 'import': return join(`${str('ref')} → ${str('label')}`, size);
-    case 'readers': return `${t.readers} (${str('n')})`;
+    case 'readers': return `${tr('Named readers')} (${str('n')})`;
     case 'step_delegated': return join(str('wf'), `${str('step')} → ${str('to')}`);
     case 'step_reassigned': return join(str('wf'), `${str('step')}${lang === 'fr' ? ' : ' : ': '}${str('from')} → ${str('to')}`);
     case 'step_transferred': return join(str('wf'), str('step'));
-    case 'compared': return join(str('label'), t.audit_compared);
-    case 'modifier_swap': return join(str('ref'), `${str('from')} → ${str('to')}${p.denied === true ? ` (${t.not_allowed}${lang === 'fr' ? ' : ' : ': '}${t.perm_upload})` : ''}`);
+    case 'compared': return join(str('label'), tr('Comparison'));
+    case 'modifier_swap': return join(str('ref'), `${str('from')} → ${str('to')}${p.denied === true ? ` (${tr('Permission required')}${lang === 'fr' ? ' : ' : ': '}${tr('Upload')})` : ''}`);
     default: return '';
   }
 }
@@ -1618,8 +1620,8 @@ export function auditTextL(ctx: Ctx, x: AuditText): string {
  */
 export function auditDetailL(ctx: Ctx, a: Pick<AuditRow, 'detail' | 'data' | 'targetId'>): string {
   const x = a.data;
-  const link = x?.link ? `${ctx.t[`link_${x.link.rel}`]} ${x.link.other}${x.link.skipped ? ` : ${ctx.t[`link_skip_${x.link.skipped}`]}` : ''}` : '';
-  return [x?.text ? auditTextL(ctx, x.text) || a.detail : a.detail, link, x?.changes?.length ? x.changes.map((c) => changeL(ctx, c)).join(' ; ') : '', x?.export ? exportL(ctx, a.targetId, x.export) : '', x?.file ? refusedFileL(ctx, a.targetId, x.file) : '', x?.purge ? purgeL(ctx, x.purge) : '', x?.rename ? renameL(ctx, x.rename) : '', x?.backup ? backupL(ctx, x.backup) : '', x?.archive ? archiveL(ctx, x.archive) : '', x?.integrity ? integrityL(ctx, x.integrity) : '', x?.transfer ? transferL(ctx, x.transfer) : '', x?.sha256 ? `SHA-256 ${x.sha256.slice(0, 16)}…` : '', x?.via ? ctx.t.audit_via.replace('{app}', x.via.app === 'matrix' ? 'Matrix' : x.via.app).replace('{person}', x.via.person).replace('{reason}', x.via.reason) : ''].filter(Boolean).join(' · ');
+  const link = x?.link ? `${labelOf(ctx.tr, LINK_LABEL, x.link.rel)} ${x.link.other}${x.link.skipped ? ` : ${labelOf(ctx.tr, LINK_SKIP_LABEL, x.link.skipped)}` : ''}` : '';
+  return [x?.text ? auditTextL(ctx, x.text) || a.detail : a.detail, link, x?.changes?.length ? x.changes.map((c) => changeL(ctx, c)).join(' ; ') : '', x?.export ? exportL(ctx, a.targetId, x.export) : '', x?.file ? refusedFileL(ctx, a.targetId, x.file) : '', x?.purge ? purgeL(ctx, x.purge) : '', x?.rename ? renameL(ctx, x.rename) : '', x?.backup ? backupL(ctx, x.backup) : '', x?.archive ? archiveL(ctx, x.archive) : '', x?.integrity ? integrityL(ctx, x.integrity) : '', x?.transfer ? transferL(ctx, x.transfer) : '', x?.sha256 ? `SHA-256 ${x.sha256.slice(0, 16)}…` : '', x?.via ? ctx.tr('from {app}, by {person} — reason: {reason}').replace('{app}', x.via.app === 'matrix' ? 'Matrix' : x.via.app).replace('{person}', x.via.person).replace('{reason}', x.via.reason) : ''].filter(Boolean).join(' · ');
 }
 
 /**
@@ -1627,11 +1629,11 @@ export function auditDetailL(ctx: Ctx, a: Pick<AuditRow, 'detail' | 'data' | 'ta
  * could not go (the counts include drafts, D-14).
  */
 export function transferL(ctx: Ctx, x: NonNullable<AuditData['transfer']>): string {
-  const { t } = ctx;
-  const to = t.transfer_summary_l.replace('{to}', ctx.userName(x.to));
+  const { tr } = ctx;
+  const to = tr('to {to}').replace('{to}', ctx.userName(x.to));
   if (!ctx.seesAll) return to;
-  const done = Object.entries(x.done).filter(([, n]) => n).map(([k, n]) => `${t[`transfer_kind_${k}` as TKey] ?? k}${ctx.lang === 'fr' ? ' : ' : ': '}${n}`);
-  return [to, ...done, x.skipped ? t.transfer_summary_skipped.replace('{n}', String(x.skipped)) : ''].filter(Boolean).join(' · ');
+  const done = Object.entries(x.done).filter(([, n]) => n).map(([k, n]) => `${labelOf(tr, TRANSFER_KIND_LABEL, k)}${ctx.lang === 'fr' ? ' : ' : ': '}${n}`);
+  return [to, ...done, x.skipped ? tr('{n} not transferable').replace('{n}', String(x.skipped)) : ''].filter(Boolean).join(' · ');
 }
 
 /**
@@ -1640,18 +1642,18 @@ export function transferL(ctx: Ctx, x: NonNullable<AuditData['transfer']>): stri
  * managers only: they count drafts and name them (D-14); other readers learn whether something was found.
  */
 export function integrityL(ctx: Ctx, x: NonNullable<AuditData['integrity']>): string {
-  const { t, lang } = ctx;
-  const named = (xs: { doc: string; label: string }[], n: number) => `${xs.map((v) => `${v.doc} ${v.label}`).join(', ')}${n > xs.length ? ` ${t.integrity_more.replace('{n}', String(n - xs.length))}` : ''}`;
-  if (!ctx.seesAll) return [x.failed ? t.integrity_failed_short : '', x.alteredCount || x.missingCount ? t.integrity_found : t.integrity_none].filter(Boolean).join(' · ');
+  const { tr, lang } = ctx;
+  const named = (xs: { doc: string; label: string }[], n: number) => `${xs.map((v) => `${v.doc} ${v.label}`).join(', ')}${n > xs.length ? ` ${tr('… and {n} more').replace('{n}', String(n - xs.length))}` : ''}`;
+  if (!ctx.seesAll) return [x.failed ? tr('check stopped by an error') : '', x.alteredCount || x.missingCount ? tr('discrepancies found') : tr('no discrepancy')].filter(Boolean).join(' · ');
   return [
-    x.failed ? t.integrity_failed_short : '',
-    x.by === 'cli' ? t.backup_by_cli : '',
-    t.integrity_checked_n.replace('{n}', String(x.checked)).replace('{size}', fmtSize(x.bytes, lang)),
-    x.alteredCount ? `${t.integrity_altered_n.replace('{n}', String(x.alteredCount))} : ${named(x.altered, x.alteredCount)}` : '',
-    x.missingCount ? `${t.integrity_missing_n.replace('{n}', String(x.missingCount))} : ${named(x.missing, x.missingCount)}` : '',
-    x.filled ? t.integrity_filled_n.replace('{n}', String(x.filled)) : '',
-    x.skipped ? t.integrity_skipped_n.replace('{n}', String(x.skipped)) : '',
-    !x.failed && !x.alteredCount && !x.missingCount ? t.integrity_none : '',
+    x.failed ? tr('check stopped by an error') : '',
+    x.by === 'cli' ? tr('command line') : '',
+    tr('files checked: {n} ({size})').replace('{n}', String(x.checked)).replace('{size}', fmtSize(x.bytes, lang)),
+    x.alteredCount ? `${tr('altered: {n}').replace('{n}', String(x.alteredCount))} : ${named(x.altered, x.alteredCount)}` : '',
+    x.missingCount ? `${tr('missing: {n}').replace('{n}', String(x.missingCount))} : ${named(x.missing, x.missingCount)}` : '',
+    x.filled ? tr('fingerprints recorded: {n}').replace('{n}', String(x.filled)) : '',
+    x.skipped ? tr('not read (SharePoint): {n}').replace('{n}', String(x.skipped)) : '',
+    !x.failed && !x.alteredCount && !x.missingCount ? tr('no discrepancy') : '',
   ].filter(Boolean).join(' · ');
 }
 
@@ -1662,27 +1664,27 @@ export function integrityL(ctx: Ctx, x: NonNullable<AuditData['integrity']>): st
  * that another reader would learn how many are hidden from them, and when one is added out of their sight (D-14).
  */
 function backupL(ctx: Ctx, b: NonNullable<AuditData['backup']>): string {
-  const { t, lang } = ctx;
+  const { tr, lang } = ctx;
   const all = ctx.seesAll;
   if (b.scope === 'files') {
     // The files backup of a server's database (lib/files-backup-core.mjs), or the files it put back.
     return [
-      t.backup_files_scope,
-      all ? t.backup_files.replace('{n}', String(b.files)).replace('{size}', fmtSize(b.bytes, lang)) : '',
-      all && b.copied ? t.backup_copied_n.replace('{n}', String(b.copied)).replace('{size}', fmtSize(b.size, lang)) : '',
-      all && b.missing ? t.backup_missing_n.replace('{n}', String(b.missing)) : '',
-      all && b.altered ? t.backup_altered_n.replace('{n}', String(b.altered)) : '',
-      all && b.sharepoint ? t.backup_sharepoint_n.replace('{n}', String(b.sharepoint)) : '',
+      tr('files only'),
+      all ? tr('files: {n} ({size})').replace('{n}', String(b.files)).replace('{size}', fmtSize(b.bytes, lang)) : '',
+      all && b.copied ? tr('copied: {n} ({size})').replace('{n}', String(b.copied)).replace('{size}', fmtSize(b.size, lang)) : '',
+      all && b.missing ? tr('missing from storage: {n}').replace('{n}', String(b.missing)) : '',
+      all && b.altered ? tr('altered, not copied: {n}').replace('{n}', String(b.altered)) : '',
+      all && b.sharepoint ? tr('on SharePoint, not included: {n}').replace('{n}', String(b.sharepoint)) : '',
     ].filter(Boolean).join(' · ');
   }
   return [
-    b.createdAt ? t.backup_of.replace('{date}', fmtDateTime(parisStamp(b.createdAt), lang)) : '',
-    all ? t.backup_docs.replace('{n}', String(b.documents)) : '',
-    all ? t.backup_files.replace('{n}', String(b.files)).replace('{size}', fmtSize(b.bytes, lang)) : '',
-    all && b.missing ? t.backup_missing_n.replace('{n}', String(b.missing)) : '',
-    all && b.sharepoint ? t.backup_sharepoint_n.replace('{n}', String(b.sharepoint)) : '',
-    all && b.sha256 ? t.backup_archive.replace('{size}', fmtSize(b.size, lang)).replace('{sha}', b.sha256.slice(0, 16)) : '',
-    b.replaced ? t.backup_replaced : '',
+    b.createdAt ? tr('backup of {date}').replace('{date}', fmtDateTime(parisStamp(b.createdAt), lang)) : '',
+    all ? tr('{n} documents').replace('{n}', String(b.documents)) : '',
+    all ? tr('files: {n} ({size})').replace('{n}', String(b.files)).replace('{size}', fmtSize(b.bytes, lang)) : '',
+    all && b.missing ? tr('missing from storage: {n}').replace('{n}', String(b.missing)) : '',
+    all && b.sharepoint ? tr('on SharePoint, not included: {n}').replace('{n}', String(b.sharepoint)) : '',
+    all && b.sha256 ? tr('archive {size}, SHA-256 {sha}…').replace('{size}', fmtSize(b.size, lang)).replace('{sha}', b.sha256.slice(0, 16)) : '',
+    b.replaced ? tr('previous database set aside') : '',
   ].filter(Boolean).join(' · ');
 }
 
@@ -1692,17 +1694,17 @@ function backupL(ctx: Ctx, b: NonNullable<AuditData['backup']>): string {
  * are shown to records managers only: they count drafts (D-14). An interruption or a failure is shown to every reader.
  */
 function archiveL(ctx: Ctx, x: NonNullable<AuditData['archive']>): string {
-  const { t, lang } = ctx;
+  const { tr, lang } = ctx;
   const all = ctx.seesAll;
-  const stopped = x.interrupted ? t.export_all_interrupted : x.failed ? t.export_all_failed : null;
+  const stopped = x.interrupted ? tr('interrupted') : x.failed ? tr('failed') : null;
   return [
-    stopped ? `${stopped}${all ? ` ${t.export_all_after.replace('{size}', fmtSize(x.size ?? 0, lang))}` : ''}` : '',
-    all && x.documents != null ? t.backup_docs.replace('{n}', String(x.documents)) : '',
-    all && x.files != null ? t.backup_files.replace('{n}', String(x.files)).replace('{size}', fmtSize(x.bytes ?? 0, lang)) : '',
-    all && x.missing ? t.backup_missing_n.replace('{n}', String(x.missing)) : '',
-    all && x.skipped ? t.backup_sharepoint_n.replace('{n}', String(x.skipped)) : '',
-    all && x.altered ? t.export_all_altered.replace('{n}', String(x.altered)) : '',
-    all && x.sha256 ? t.backup_archive.replace('{size}', fmtSize(x.size ?? 0, lang)).replace('{sha}', x.sha256.slice(0, 16)) : '',
+    stopped ? `${stopped}${all ? ` ${tr('after {size}').replace('{size}', fmtSize(x.size ?? 0, lang))}` : ''}` : '',
+    all && x.documents != null ? tr('{n} documents').replace('{n}', String(x.documents)) : '',
+    all && x.files != null ? tr('files: {n} ({size})').replace('{n}', String(x.files)).replace('{size}', fmtSize(x.bytes ?? 0, lang)) : '',
+    all && x.missing ? tr('missing from storage: {n}').replace('{n}', String(x.missing)) : '',
+    all && x.skipped ? tr('on SharePoint, not included: {n}').replace('{n}', String(x.skipped)) : '',
+    all && x.altered ? tr('differing from their fingerprint: {n}').replace('{n}', String(x.altered)) : '',
+    all && x.sha256 ? tr('archive {size}, SHA-256 {sha}…').replace('{size}', fmtSize(x.size ?? 0, lang)).replace('{sha}', x.sha256.slice(0, 16)) : '',
   ].filter(Boolean).join(' · ');
 }
 
@@ -1711,10 +1713,10 @@ function archiveL(ctx: Ctx, x: NonNullable<AuditData['archive']>): string {
  * a stored name may give a draft's ID and version ("…-PRO-ING-0007_A.2.docx", D-14).
  */
 function purgeL(ctx: Ctx, p: NonNullable<AuditData['purge']>): string {
-  const { t, lang } = ctx;
+  const { tr, lang } = ctx;
   return [
-    t.purge_files.replace('{n}', String(p.files.length)).replace('{size}', fmtSize(p.bytes, lang)),
-    p.failed ? t.purge_failed.replace('{n}', String(p.failed)) : '',
+    tr('Files: {n} ({size})').replace('{n}', String(p.files.length)).replace('{size}', fmtSize(p.bytes, lang)),
+    p.failed ? tr('not removed: {n}').replace('{n}', String(p.failed)) : '',
     ctx.seesAll ? p.files.map((f) => f.key).join(', ') : '',
   ].filter(Boolean).join(' · ');
 }
@@ -1724,10 +1726,10 @@ function purgeL(ctx: Ctx, p: NonNullable<AuditData['purge']>): string {
  * to records managers only, since they give drafts' IDs and versions (D-14).
  */
 function renameL(ctx: Ctx, r: NonNullable<AuditData['rename']>): string {
-  const { t } = ctx;
+  const { tr } = ctx;
   return [
-    t.rename_files.replace('{n}', String(r.files.length)),
-    r.failed ? t.rename_failed.replace('{n}', String(r.failed)) : '',
+    tr('Files: {n}').replace('{n}', String(r.files.length)),
+    r.failed ? tr('not renamed: {n}').replace('{n}', String(r.failed)) : '',
     ctx.seesAll ? r.files.map((f) => `${f.doc} ${f.label} : ${f.from} → ${f.to}`).join(', ') : '',
   ].filter(Boolean).join(' · ');
 }
@@ -1836,7 +1838,7 @@ function auditViews(ctx: Ctx, rows: AuditEntry[], current: Map<string, string>) 
       local,
       when: fmtWhen(local),
       user: ctx.userName(a.userId),
-      actionLabel: ctx.t[`act_${a.action}` as TKey] ?? a.action,
+      actionLabel: labelOf(ctx.tr, ACTIVITY_LABEL, a.action),
       /** Free detail, then the changes or export figures, in the user's language. */
       detail: auditDetailL(ctx, a),
       /** The document under its current ID; null for an entry without document, or about a document the user cannot read. */
@@ -1922,15 +1924,15 @@ export function typeView(ctx: Ctx, x: typeof s.docTypes.$inferSelect) {
     ...x,
     label: fr ? x.labelFr : x.labelEn,
     familyLabel: ctx.label('family', x.family),
-    circuitL: x.circuit.length ? x.circuit.map((k) => ctx.label('function', k)).join(' → ') : ctx.t.no_approval,
+    circuitL: x.circuit.length ? x.circuit.map((k) => ctx.label('function', k)).join(' → ') : ctx.tr('Immediate approval'),
     subtypesL: x.subtypes.map((st) => (fr ? st.fr : st.en)),
-    retentionL: `${x.retentionYears != null ? `${x.retentionYears} ${ctx.t.years_short} · ` : ''}${ctx.t[`trig_${x.retentionTrigger}` as TKey]} · ${ctx.t[`disp_${x.retentionDisposition}` as TKey]}`,
+    retentionL: `${x.retentionYears != null ? `${x.retentionYears} ${ctx.tr('years')} · ` : ''}${labelOf(ctx.tr, TRIGGER_LABEL, x.retentionTrigger)} · ${labelOf(ctx.tr, DISPOSITION_LABEL, x.retentionDisposition)}`,
     /** Periodic review of the type, « 36 mois », or « — » without one. */
-    reviewL: x.reviewMonths ? `${x.reviewMonths} ${ctx.t.months_short}` : '—',
+    reviewL: x.reviewMonths ? `${x.reviewMonths} ${ctx.tr('months')}` : '—',
     /** What the retention rests on, in the reader's language (lib/i18n.ts retentionBasisL). */
     basisL: retentionBasisL(x, ctx.lang),
-    confL: x.confAllowed.map((c) => ctx.t[`conf_${c}` as TKey]).join(', '),
-    confDefaultL: ctx.t[`conf_${x.confDefault}` as TKey],
+    confL: x.confAllowed.map((c) => labelOf(ctx.tr, CONF_LABEL, c)).join(', '),
+    confDefaultL: labelOf(ctx.tr, CONF_LABEL, x.confDefault),
   };
 }
 export type TypeView = ReturnType<typeof typeView>;
@@ -2039,7 +2041,7 @@ export async function listFunctionHolders(ctx: Ctx) {
   return ctx.functions.map((f) => ({
     ...f,
     label: ctx.lang === 'fr' ? f.labelFr : f.labelEn,
-    holders: rows.filter((h) => h.functionKey === f.key).map((h) => ({ id: h.id, scopeValue: h.scopeValue, scopeL: h.scopeValue ?? ctx.t.scope_global, userId: h.userId, user: ctx.userName(h.userId) })),
+    holders: rows.filter((h) => h.functionKey === f.key).map((h) => ({ id: h.id, scopeValue: h.scopeValue, scopeL: h.scopeValue ?? ctx.tr('Group'), userId: h.userId, user: ctx.userName(h.userId) })),
   }));
 }
 
@@ -2066,8 +2068,8 @@ export async function listSavedSearches(ctx: Ctx) {
       labelL: loc(x.label, ctx.lang),
       href: searchHref({ q: x.q, facets: x.facets as Facets, period: x.period, sort: x.orderBy }),
       title: x.scope === 'personal'
-        ? ctx.t.search_is_personal
-        : `${x.scope === 'department' ? `${ctx.t.search_is_department} ${ctx.label('department', x.department)}` : ctx.t.search_is_group} · ${ctx.t.by} ${ctx.userName(x.ownerId)}`,
+        ? ctx.tr('Personal: visible to you only')
+        : `${x.scope === 'department' ? `${ctx.tr('Shared with the department')} ${ctx.label('department', x.department)}` : ctx.tr('Shared with the whole group')} · ${ctx.tr('by')} ${ctx.userName(x.ownerId)}`,
       mayDelete: mayDeleteSearch(ctx, x),
     }));
 }

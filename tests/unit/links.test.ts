@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { DICT } from '@/lib/i18n';
 import { inverseRel, isLinkRel, LINK_RELS, linkIssue, otherEnd, relOf, replacementIssue, replacementOutcome, storedLink } from '@/lib/links';
+import { translate, translatorFor } from '@/i18n';
+import { LINK_LABEL, LINK_SKIP_LABEL, labelOf } from '@/i18n/labels';
 
 // Links between documents (point 16 of docs/reste-a-faire.md, docs/modele-cible.md §4): one oriented record per pair,
 // « remplacé par » read from the target of a « remplace » link; only a document Vigie withdrew is replaced (D-17).
@@ -120,11 +121,11 @@ describe('replacementIssue', () => {
 describe('wording', () => {
   it('names every kind in both languages, and the journal actions', () => {
     for (const lang of ['fr', 'en'] as const) {
-      const t = DICT[lang];
-      for (const rel of LINK_RELS) expect(t[`link_${rel}`], `${lang} ${rel}`).toBeTruthy();
-      expect(t.act_link && t.act_unlink && t.act_link_skipped, lang).toBeTruthy();
-      for (const why of ['inactive', 'hold', 'linked'] as const) expect(t[`link_skip_${why}`], `${lang} ${why}`).toBeTruthy();
+      const tr = translatorFor(lang);
+      for (const rel of LINK_RELS) expect(labelOf(tr, LINK_LABEL, rel), `${lang} ${rel}`).toBeTruthy();
+      expect(tr('Link added') && tr('Link removed') && tr('Replacement not applied'), lang).toBeTruthy();
+      for (const why of ['inactive', 'hold', 'linked'] as const) expect(labelOf(tr, LINK_SKIP_LABEL, why), `${lang} ${why}`).toBeTruthy();
     }
-    expect(DICT.fr.link_replaced_by).toBe('Remplacé par');
+    expect(translate('fr', 'Replaced by')).toBe('Remplacé par');
   });
 });

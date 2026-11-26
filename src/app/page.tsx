@@ -6,7 +6,7 @@ import { Icon } from '@/components/ui/Icon';
 import { ActionLink, ClickRow, DialogButton } from '@/components/ui/client';
 import { PageHeader } from '@/components/shell/PageHeader';
 import { KpiGrid } from '@norma/charte/ds/Kpi';
-import { translatorFor } from '@/i18n';
+import { msg, translatorFor } from '@/i18n';
 import { getCtx } from '@/lib/context';
 import { todayLong } from '@/lib/format';
 import { dueDeadlines, inForceThisWeek, myTodo, recentActivity, recentDocs } from '@/lib/queries';
@@ -20,7 +20,7 @@ function Kpi({ href, ok, children }: { href: string; ok: boolean; children: Reac
 }
 
 export function generateMetadata() {
-  return screenTitle('nav_home');
+  return screenTitle(msg('Home'));
 }
 
 export default async function HomePage() {

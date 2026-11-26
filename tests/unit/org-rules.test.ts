@@ -16,16 +16,16 @@ describe('orgLabels and parseOrgForm', () => {
   it('require the French label, take it for an empty English one, refuse a label too long', () => {
     expect(orgLabels('  Qualité ', '')).toEqual({ ok: true, value: { labelFr: 'Qualité', labelEn: 'Qualité' } });
     expect(orgLabels('Qualité', 'Quality')).toEqual({ ok: true, value: { labelFr: 'Qualité', labelEn: 'Quality' } });
-    expect(orgLabels(' ', 'Quality')).toEqual({ ok: false, key: 'reg_label_required', field: 'labelFr' });
-    expect(orgLabels(undefined, null)).toEqual({ ok: false, key: 'reg_label_required', field: 'labelFr' });
-    expect(orgLabels('x'.repeat(LABEL_MAX + 1), '')).toEqual({ ok: false, key: 'reg_text_too_long', field: 'labelFr' });
-    expect(orgLabels('Qualité', 'x'.repeat(LABEL_MAX + 1))).toEqual({ ok: false, key: 'reg_text_too_long', field: 'labelEn' });
+    expect(orgLabels(' ', 'Quality')).toEqual({ ok: false, key: 'The label is required.', field: 'labelFr' });
+    expect(orgLabels(undefined, null)).toEqual({ ok: false, key: 'The label is required.', field: 'labelFr' });
+    expect(orgLabels('x'.repeat(LABEL_MAX + 1), '')).toEqual({ ok: false, key: 'Text too long.', field: 'labelFr' });
+    expect(orgLabels('Qualité', 'x'.repeat(LABEL_MAX + 1))).toEqual({ ok: false, key: 'Text too long.', field: 'labelEn' });
   });
 
   it('read the state, active unless the form says off, and never a code', () => {
     expect(parseOrgForm(form({ code: 'QAL', labelFr: 'Qualité', labelEn: 'Quality' }))).toEqual({ ok: true, value: { labelFr: 'Qualité', labelEn: 'Quality', active: true } });
     expect(parseOrgForm(form({ labelFr: 'Qualité', active: 'off' }))).toEqual({ ok: true, value: { labelFr: 'Qualité', labelEn: 'Qualité', active: false } });
-    expect(parseOrgForm(form({ labelFr: '' }))).toMatchObject({ ok: false, key: 'reg_label_required' });
+    expect(parseOrgForm(form({ labelFr: '' }))).toMatchObject({ ok: false, key: 'The label is required.' });
   });
 
   it('know the two kinds only', () => {
@@ -75,8 +75,8 @@ describe('offered, markInactive and newDocDepartment', () => {
 describe('lastActiveIssue', () => {
   const depts = [{ code: 'DIR', active: true }, { code: 'QUA', active: false }];
   it('keeps one department active at least', () => {
-    expect(lastActiveIssue(depts, 'DIR', false)).toBe('org_last_department');
-    expect(lastActiveIssue(depts, 'DIR', null)).toBe('org_last_department');
+    expect(lastActiveIssue(depts, 'DIR', false)).toBe('At least one department must stay active: a new document without attachment takes the code of its department.');
+    expect(lastActiveIssue(depts, 'DIR', null)).toBe('At least one department must stay active: a new document without attachment takes the code of its department.');
     expect(lastActiveIssue([...depts, { code: 'ING', active: true }], 'DIR', false)).toBeNull();
   });
   it('lets a department be renamed, brought back, or deleted while inactive', () => {

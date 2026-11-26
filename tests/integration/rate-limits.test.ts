@@ -12,11 +12,11 @@ import { schema as s } from '@/db';
 import * as actions from '@/lib/actions';
 import { saveSearch } from '@/lib/actions';
 import { COOKIE_LANG } from '@/lib/context';
-import { DICT } from '@/lib/i18n';
 import { limitWrite } from '@/lib/ratelimit';
 import { addDoc, fixClock, setClock, setupDb } from '../support/db';
 import type { Person } from '../support/fixtures';
 import { actAs, cookieStore } from '../support/session';
+import { translate } from '@/i18n';
 
 // Rate limiting through the real route handlers and Server Actions (src/lib/ratelimit.ts, point 24 of
 // docs/reste-a-faire.md): beyond its budget, a client gets 429 with Retry-After and the request does nothing (no
@@ -200,10 +200,10 @@ describe('browser endpoints, per user as resolved from the session', () => {
     expect((await approvalGET(browser(`/api/documents/${ID}/approval?rev=Z`), params)).status).toBe(404);
     const refused = await fileGET(browser(`${file}?download=1`), params);
     await expect429(refused);
-    expect(await refused.text()).toBe(DICT.fr.rate_limited.replace('{n}', '20'));
+    expect(await refused.text()).toBe(translate('fr', 'Too many requests in a short time: try again in {n} s.').replace('{n}', '20'));
     await as('auditor', 'en');
     expect(await expect429(await fileHEAD(browser(file, 'HEAD'), params))).toBe(20);
-    expect(await approvalGET(browser(`/api/documents/${ID}/approval?rev=A`), params).then((r) => r.text())).toBe(DICT.en.rate_limited.replace('{n}', '20'));
+    expect(await approvalGET(browser(`/api/documents/${ID}/approval?rev=A`), params).then((r) => r.text())).toBe(translate('en', 'Too many requests in a short time: try again in {n} s.').replace('{n}', '20'));
     // From another address, still the same user's budget.
     await expect429(await fileGET(browser(file, 'GET', '10.0.0.2'), params));
     // The refused download is not journaled; another user from the same address has their own budget.
@@ -224,7 +224,7 @@ describe('browser endpoints, per user as resolved from the session', () => {
     expect(await views()).toBe(1);
     const refused = await compareGET(browser(compare), params);
     await expect429(refused);
-    expect(await refused.text()).toBe(DICT.fr.rate_limited.replace('{n}', '60'));
+    expect(await refused.text()).toBe(translate('fr', 'Too many requests in a short time: try again in {n} s.').replace('{n}', '60'));
     expect(await views()).toBe(1);
     // The file route keeps its own budget.
     expect((await fileGET(browser(`/api/documents/${ID}/file`), params)).status).toBe(200);
@@ -283,7 +283,7 @@ describe('Server Actions that write (CODEX_RATE_WRITES), per simulated user', ()
     };
     expect(await save('writer', 'Une')).toMatchObject({ ok: true });
     expect(await save('writer', 'Deux')).toMatchObject({ ok: true });
-    expect(await save('writer', 'Trois')).toEqual({ ok: false, error: DICT.fr.rate_limited.replace('{n}', '30') });
+    expect(await save('writer', 'Trois')).toEqual({ ok: false, error: translate('fr', 'Too many requests in a short time: try again in {n} s.').replace('{n}', '30') });
     expect((await db().select().from(s.savedSearches)).map((x) => x.label).sort()).toEqual(['Deux', 'Une']);
     expect(await save('owner', 'Trois')).toMatchObject({ ok: true });
   });
@@ -306,7 +306,7 @@ describe('Server Actions that write (CODEX_RATE_WRITES), per simulated user', ()
     vi.stubEnv('CODEX_RATE_WRITES', '1/1h');
     actAs('manager');
     expect(limitWrite('manager')).toBe(0);
-    const refused = { ok: false, error: DICT.fr.rate_limited.replace('{n}', '3600') };
+    const refused = { ok: false, error: translate('fr', 'Too many requests in a short time: try again in {n} s.').replace('{n}', '3600') };
     // Placeholder arguments: the budget is checked before they are read.
     for (const name of WRITES) expect(await (all[name] as (...args: unknown[]) => Promise<unknown>)(), name).toEqual(refused);
     // The two that only set cookies stay free.

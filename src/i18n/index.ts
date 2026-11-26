@@ -2,8 +2,7 @@
 // French translation is looked up in fr.ts, French being the default language. Typed text (titles, names, notes) never
 // goes through here. Variables are written `{name}` in the source and given in `vars`.
 //
-// Migration (CX-N01): the shell and the side panel speak this way; the screens still read the keyed dictionary of
-// src/lib/i18n.ts (`t.key`) until they move over, one screen at a time (CLAUDE.md, « Conventions »).
+// Every screen speaks this way (CX-N01); the labels of coded values are in labels.ts.
 
 import type { Lang } from '../lib/i18n';
 import { FR } from './fr';

@@ -3,12 +3,12 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { schema as s } from '@/db';
 import { addDocLink, removeDocLink, requestChange, simulateVigieDecision, updateMeta } from '@/lib/actions';
 import { getCtx } from '@/lib/context';
-import { DICT } from '@/lib/i18n';
 import { applyChangeDecision, applyPendingDecision, approveRevision } from '@/lib/lifecycle';
 import { listAudit, listChangeRequests, listDocLinks } from '@/lib/queries';
 import { addDoc, fixClock, getChange, getDoc, getRevision, journalOf, setupDb, viewOf } from '../support/db';
 import type { Person } from '../support/fixtures';
 import { actAs } from '../support/session';
+import { translatorFor } from '@/i18n';
 
 // Links between documents (point 16 of docs/reste-a-faire.md, docs/modele-cible.md §4): a withdrawal request may propose
 // the replacement, which becomes « remplacé par » once Vigie's acceptance applies (D-17), if it still may; the owner of
@@ -31,7 +31,7 @@ afterAll(() => {
   vi.unstubAllEnvs();
 });
 
-const t = DICT.fr;
+const tr = translatorFor('fr');
 const OLD = 'PRO-QUA-0001';
 const NEW = 'PRO-QUA-0002';
 const ECO = 'ECO-2026-030';
@@ -94,14 +94,14 @@ describe('replacement proposed with a withdrawal request', () => {
     // Read from either record, by a reader of both.
     expect(await seenLinks('auditor', OLD)).toEqual([['replaced_by', NEW]]);
     expect(await seenLinks('auditor', NEW)).toEqual([['replaces', OLD]]);
-    expect(await linkEntries('auditor', OLD)).toEqual([['link', `${req.id.replace('ECR', 'ECO')} · ${t.link_replaced_by} ${NEW}`]]);
+    expect(await linkEntries('auditor', OLD)).toEqual([['link', `${req.id.replace('ECR', 'ECO')} · ${tr('Replaced by')} ${NEW}`]]);
 
     // The owner of the replacement does not take « remplacé par » off a withdrawn document that is not theirs.
     const [link] = await db().select().from(s.documentLinks);
     actAs('writer');
-    expect(await removeDocLink(NEW, link.id)).toEqual({ ok: false, error: t.link_reserved });
+    expect(await removeDocLink(NEW, link.id)).toEqual({ ok: false, error: tr('A link is added or removed by the owner of both documents or by a records manager.') });
     actAs('owner');
-    expect(await removeDocLink(OLD, link.id)).toEqual({ ok: false, error: t.link_reserved });
+    expect(await removeDocLink(OLD, link.id)).toEqual({ ok: false, error: tr('A link is added or removed by the owner of both documents or by a records manager.') });
     expect(await seenLinks('auditor', OLD)).toEqual([['replaced_by', NEW]]);
   });
 
@@ -134,7 +134,7 @@ describe('replacement proposed with a withdrawal request', () => {
     await addDoc(db(), { id: OLD });
     await addDoc(db(), { id: NEW });
     actAs('owner');
-    expect(await addDocLink(OLD, 'see_also', NEW)).toEqual({ ok: true, message: t.link_added });
+    expect(await addDocLink(OLD, 'see_also', NEW)).toEqual({ ok: true, message: tr('Link added') });
     await withdraw('writer', OLD, NEW);
     await decide((await pendingRequest(OLD)).id, true);
     expect(await links()).toEqual([{ sourceId: NEW, targetId: OLD, kind: 'replaces' }]);
@@ -155,7 +155,7 @@ describe('replacement proposed with a withdrawal request', () => {
     expect(await links()).toEqual([{ sourceId: OLD, targetId: NEW, kind: 'see_also' }]);
     expect(await journalOf(db(), NEW)).toHaveLength(before);
     expect((await journalOf(db(), OLD)).at(-1)).toMatchObject({ userId: 'vigie', action: 'link_skipped', detail: ECO, data: { link: { rel: 'replaced_by', other: NEW, skipped: 'hold' } } });
-    expect((await linkEntries('auditor', OLD))[0]).toEqual(['link_skipped', `${ECO} · ${t.link_replaced_by} ${NEW} : ${t.link_skip_hold}`]);
+    expect((await linkEntries('auditor', OLD))[0]).toEqual(['link_skipped', `${ECO} · ${tr('Replaced by')} ${NEW} : ${tr('legal hold')}`]);
     expect(await seenLinks('auditor', OLD)).toEqual([['see_also', NEW]]);
   });
 
@@ -172,7 +172,7 @@ describe('replacement proposed with a withdrawal request', () => {
     // NEW is obsolete: it replaces nothing, and the link already there is not reversed.
     expect(await links()).toEqual([{ sourceId: OLD, targetId: NEW, kind: 'replaces' }]);
     expect((await journalOf(db(), OLD)).at(-1)).toMatchObject({ userId: 'vigie', action: 'link_skipped', data: { link: { rel: 'replaced_by', other: NEW, skipped: 'inactive' } } });
-    expect((await linkEntries('auditor', OLD))[0]).toEqual(['link_skipped', `ECO-2026-032 · ${t.link_replaced_by} ${NEW} : ${t.link_skip_inactive}`]);
+    expect((await linkEntries('auditor', OLD))[0]).toEqual(['link_skipped', `ECO-2026-032 · ${tr('Replaced by')} ${NEW} : ${tr('document obsolete, archived or not found')}`]);
     expect(await seenLinks('auditor', OLD)).toEqual([['replaces', NEW]]);
   });
 
@@ -190,14 +190,14 @@ describe('replacement proposed with a withdrawal request', () => {
     await addDoc(db(), { id: OLD });
     await addDoc(db(), { id: NEW, conf: 'tres_confidentiel' }); // writer is no named reader
     await addDoc(db(), { id: 'PRO-QUA-0003', state: 'obsolete' });
-    const notFound = { ok: false, error: t.replacement_not_found, field: 'replacement' };
+    const notFound = { ok: false, error: tr('Replacement document not found.'), field: 'replacement' };
     expect(await withdraw('writer', OLD, NEW)).toEqual(notFound);
     expect(await withdraw('writer', OLD, 'PRO-QUA-0099')).toEqual(notFound);
-    expect(await withdraw('writer', OLD, 'PRO-QUA-0003')).toEqual({ ok: false, error: t.replacement_inactive, field: 'replacement' });
-    expect(await withdraw('writer', OLD, OLD)).toEqual({ ok: false, error: t.link_self, field: 'replacement' });
+    expect(await withdraw('writer', OLD, 'PRO-QUA-0003')).toEqual({ ok: false, error: tr('The replacement document is obsolete or archived: propose an active document.'), field: 'replacement' });
+    expect(await withdraw('writer', OLD, OLD)).toEqual({ ok: false, error: tr('A document cannot be linked to itself.'), field: 'replacement' });
     // A change request carries no replacement.
     actAs('writer');
-    expect(await requestChange(OLD, 'modification', 'r', '', 'PRO-QUA-0003')).toEqual({ ok: false, error: t.error });
+    expect(await requestChange(OLD, 'modification', 'r', '', 'PRO-QUA-0003')).toEqual({ ok: false, error: tr('Something went wrong') });
     expect(await db().select().from(s.changeRequests)).toEqual([]);
     // The owner of the confidential document, who reads it, may propose it.
     expect(await withdraw('owner', OLD, NEW)).toMatchObject({ ok: true });
@@ -237,12 +237,12 @@ describe('a draft replacement stays within its drafting circle (D-14)', () => {
     fd.set('docId', NEW);
     fd.set('version', (await viewOf(db(), NEW)).version);
     fd.set('department', 'ING');
-    expect(await updateMeta(fd)).toMatchObject({ ok: true, message: `${t.act_reclass} : PRO-ING-0001` });
+    expect(await updateMeta(fd)).toMatchObject({ ok: true, message: `${tr('Reclassification')} : PRO-ING-0001` });
     expect(await links()).toEqual([{ sourceId: 'PRO-ING-0001', targetId: OLD, kind: 'replaces' }]);
     expect((await pendingRequest(OLD)).replacementId).toBe('PRO-ING-0001');
     expect(await seenLinks('writer2', OLD)).toEqual([['replaced_by', 'PRO-ING-0001']]);
     // The journal keeps the ID of the time, which still resolves to the reclassified document.
-    expect(await linkEntries('writer2', OLD)).toEqual([['link', `${ECO} · ${t.link_replaced_by} ${NEW}`]]);
+    expect(await linkEntries('writer2', OLD)).toEqual([['link', `${ECO} · ${tr('Replaced by')} ${NEW}`]]);
     expect(await linkEntries('auditor', OLD)).toEqual([]);
   });
 });
@@ -252,16 +252,16 @@ describe('links from the record', () => {
     await addDoc(db(), { id: OLD, state: 'obsolete' });
     await addDoc(db(), { id: NEW });
     actAs('owner');
-    expect(await addDocLink(OLD, 'replaced_by', NEW)).toEqual({ ok: true, message: t.link_added });
+    expect(await addDocLink(OLD, 'replaced_by', NEW)).toEqual({ ok: true, message: tr('Link added') });
     expect(await links()).toEqual([{ sourceId: NEW, targetId: OLD, kind: 'replaces' }]);
     expect((await journalOf(db(), OLD)).at(-1)).toMatchObject({ userId: 'owner', action: 'link', revisionId: null, data: { link: { rel: 'replaced_by', other: NEW } } });
     expect((await journalOf(db(), NEW)).at(-1)).toMatchObject({ userId: 'owner', action: 'link', data: { link: { rel: 'replaces', other: OLD } } });
     // The same link, whichever end asks again, in whichever direction: one link per pair.
-    expect(await addDocLink(NEW, 'replaces', OLD)).toEqual({ ok: false, error: t.link_exists, field: 'other' });
-    expect(await addDocLink(NEW, 'see_also', OLD)).toEqual({ ok: false, error: t.link_exists, field: 'other' });
+    expect(await addDocLink(NEW, 'replaces', OLD)).toEqual({ ok: false, error: tr('These two documents are already linked.'), field: 'other' });
+    expect(await addDocLink(NEW, 'see_also', OLD)).toEqual({ ok: false, error: tr('These two documents are already linked.'), field: 'other' });
     // And removes it from either record.
     const [link] = await db().select().from(s.documentLinks);
-    expect(await removeDocLink(NEW, link.id)).toEqual({ ok: true, message: t.link_removed });
+    expect(await removeDocLink(NEW, link.id)).toEqual({ ok: true, message: tr('Link removed') });
     expect(await links()).toEqual([]);
   });
 
@@ -269,26 +269,26 @@ describe('links from the record', () => {
     await addDoc(db(), { id: OLD, state: 'obsolete' });
     await addDoc(db(), { id: NEW, ownerId: 'writer' });
     actAs('writer'); // owns NEW, active; OLD, withdrawn, is owner's
-    expect(await addDocLink(NEW, 'replaces', OLD)).toEqual({ ok: false, error: t.link_reserved, field: 'other' });
+    expect(await addDocLink(NEW, 'replaces', OLD)).toEqual({ ok: false, error: tr('A link is added or removed by the owner of both documents or by a records manager.'), field: 'other' });
     actAs('owner');
-    expect(await addDocLink(OLD, 'replaced_by', NEW)).toEqual({ ok: false, error: t.link_reserved, field: 'other' });
+    expect(await addDocLink(OLD, 'replaced_by', NEW)).toEqual({ ok: false, error: tr('A link is added or removed by the owner of both documents or by a records manager.'), field: 'other' });
     expect(await links()).toEqual([]);
     actAs('manager');
-    expect(await addDocLink(OLD, 'replaced_by', NEW)).toEqual({ ok: true, message: t.link_added });
+    expect(await addDocLink(OLD, 'replaced_by', NEW)).toEqual({ ok: true, message: tr('Link added') });
   });
 
   it('replaces only a document Vigie withdrew (D-17), by an active one', async () => {
     await addDoc(db(), { id: OLD });
     await addDoc(db(), { id: NEW });
     actAs('owner');
-    expect(await addDocLink(OLD, 'replaces', NEW)).toEqual({ ok: false, error: t.link_not_withdrawn, field: 'rel' });
-    expect(await addDocLink(OLD, 'replaced_by', NEW)).toEqual({ ok: false, error: t.link_not_withdrawn, field: 'rel' });
+    expect(await addDocLink(OLD, 'replaces', NEW)).toEqual({ ok: false, error: tr('Only a document Vigie withdrew (obsolete) can be replaced. For a document in force, send a withdrawal request naming its replacement.'), field: 'rel' });
+    expect(await addDocLink(OLD, 'replaced_by', NEW)).toEqual({ ok: false, error: tr('Only a document Vigie withdrew (obsolete) can be replaced. For a document in force, send a withdrawal request naming its replacement.'), field: 'rel' });
     expect(await addDocLink(OLD, 'see_also', NEW)).toMatchObject({ ok: true });
     // An obsolete or archived document replaces nothing, as in a withdrawal request.
     await addDoc(db(), { id: 'PRO-QUA-0003', state: 'obsolete' });
     await addDoc(db(), { id: 'PRO-QUA-0004', state: 'archived' });
-    expect(await addDocLink('PRO-QUA-0003', 'replaced_by', 'PRO-QUA-0004')).toEqual({ ok: false, error: t.link_replacer_inactive, field: 'other' });
-    expect(await addDocLink('PRO-QUA-0004', 'replaces', 'PRO-QUA-0003')).toEqual({ ok: false, error: t.link_replacer_inactive, field: 'rel' });
+    expect(await addDocLink('PRO-QUA-0003', 'replaced_by', 'PRO-QUA-0004')).toEqual({ ok: false, error: tr('The replacing document must be active: an obsolete or archived document replaces nothing.'), field: 'other' });
+    expect(await addDocLink('PRO-QUA-0004', 'replaces', 'PRO-QUA-0003')).toEqual({ ok: false, error: tr('The replacing document must be active: an obsolete or archived document replaces nothing.'), field: 'rel' });
     expect(await addDocLink('PRO-QUA-0003', 'see_also', 'PRO-QUA-0004')).toMatchObject({ ok: true });
   });
 
@@ -297,17 +297,17 @@ describe('links from the record', () => {
     await addDoc(db(), { id: NEW, ownerId: 'writer' });
     await addDoc(db(), { id: 'PRO-QUA-0003', conf: 'tres_confidentiel' });
     actAs('writer'); // owns NEW, not OLD
-    expect(await addDocLink(OLD, 'see_also', NEW)).toEqual({ ok: false, error: t.link_reserved });
+    expect(await addDocLink(OLD, 'see_also', NEW)).toEqual({ ok: false, error: tr('A link is added or removed by the owner of both documents or by a records manager.') });
     actAs('owner', 'auditeur'); // no edit permission
-    expect(await addDocLink(OLD, 'see_also', NEW)).toMatchObject({ ok: false, error: `${t.not_allowed} : ${t.perm_edit}` });
+    expect(await addDocLink(OLD, 'see_also', NEW)).toMatchObject({ ok: false, error: `${tr('Permission required')} : ${tr('Edit#permission')}` });
     actAs('writer');
-    const notFound = { ok: false, error: t.link_not_found, field: 'other' };
+    const notFound = { ok: false, error: tr('Linked document not found.'), field: 'other' };
     expect(await addDocLink(NEW, 'see_also', 'PRO-QUA-0003')).toEqual(notFound);
     expect(await addDocLink(NEW, 'see_also', 'PRO-QUA-0099')).toEqual(notFound);
-    expect(await addDocLink(NEW, 'see_also', NEW)).toEqual({ ok: false, error: t.link_self, field: 'other' });
-    expect(await addDocLink(NEW, 'related', OLD)).toEqual({ ok: false, error: t.error });
+    expect(await addDocLink(NEW, 'see_also', NEW)).toEqual({ ok: false, error: tr('A document cannot be linked to itself.'), field: 'other' });
+    expect(await addDocLink(NEW, 'related', OLD)).toEqual({ ok: false, error: tr('Something went wrong') });
     // From their own record, towards a document of someone else: not theirs to link either.
-    expect(await addDocLink(NEW, 'see_also', OLD)).toEqual({ ok: false, error: t.link_reserved, field: 'other' });
+    expect(await addDocLink(NEW, 'see_also', OLD)).toEqual({ ok: false, error: tr('A link is added or removed by the owner of both documents or by a records manager.'), field: 'other' });
     expect(await links()).toEqual([]);
     actAs('manager');
     expect(await addDocLink(OLD, 'see_also', 'PRO-QUA-0003')).toMatchObject({ ok: true });
@@ -318,7 +318,7 @@ describe('links from the record', () => {
     await addDoc(db(), { id: OLD });
     await addDoc(db(), { id: NEW, legalHold: true });
     actAs('owner');
-    const frozen = { ok: false, error: t.link_hold };
+    const frozen = { ok: false, error: tr('Document under legal hold: its links do not change.') };
     expect(await addDocLink(OLD, 'see_also', NEW)).toEqual(frozen);
     await hold(NEW, false);
     await hold(OLD, true);
@@ -350,23 +350,23 @@ describe('links from the record', () => {
     const [toNew, toSecret] = await db().select().from(s.documentLinks).orderBy(s.documentLinks.id);
 
     actAs('writer'); // owns NEW, not OLD
-    expect(await removeDocLink(OLD, toNew.id)).toEqual({ ok: false, error: t.link_reserved });
-    expect(await removeDocLink(NEW, toNew.id)).toEqual({ ok: false, error: t.link_reserved });
-    expect(await removeDocLink('PRO-QUA-0003', toSecret.id)).toEqual({ ok: false, error: t.not_found });
-    expect(await removeDocLink(NEW, toSecret.id)).toEqual({ ok: false, error: t.link_not_found });
+    expect(await removeDocLink(OLD, toNew.id)).toEqual({ ok: false, error: tr('A link is added or removed by the owner of both documents or by a records manager.') });
+    expect(await removeDocLink(NEW, toNew.id)).toEqual({ ok: false, error: tr('A link is added or removed by the owner of both documents or by a records manager.') });
+    expect(await removeDocLink('PRO-QUA-0003', toSecret.id)).toEqual({ ok: false, error: tr('Document not found.') });
+    expect(await removeDocLink(NEW, toSecret.id)).toEqual({ ok: false, error: tr('Linked document not found.') });
     actAs('owner'); // owns OLD, not NEW, may not read PRO-QUA-0003
-    expect(await removeDocLink(OLD, toNew.id)).toEqual({ ok: false, error: t.link_reserved });
-    expect(await removeDocLink(OLD, toSecret.id)).toEqual({ ok: false, error: t.link_not_found });
+    expect(await removeDocLink(OLD, toNew.id)).toEqual({ ok: false, error: tr('A link is added or removed by the owner of both documents or by a records manager.') });
+    expect(await removeDocLink(OLD, toSecret.id)).toEqual({ ok: false, error: tr('Linked document not found.') });
     expect(await seenLinks('owner', OLD)).toEqual([['see_also', NEW]]);
 
     actAs('manager');
-    expect(await removeDocLink(NEW, toNew.id)).toEqual({ ok: true, message: t.link_removed });
+    expect(await removeDocLink(NEW, toNew.id)).toEqual({ ok: true, message: tr('Link removed') });
     expect(await links()).toEqual([{ sourceId: OLD, targetId: 'PRO-QUA-0003', kind: 'see_also' }]);
     expect((await journalOf(db(), OLD)).at(-1)).toMatchObject({ userId: 'manager', action: 'unlink', data: { link: { rel: 'see_also', other: NEW } } });
     expect((await journalOf(db(), NEW)).at(-1)).toMatchObject({ userId: 'manager', action: 'unlink', data: { link: { rel: 'see_also', other: OLD } } });
-    expect(await removeDocLink(NEW, toNew.id)).toEqual({ ok: false, error: t.link_not_found });
+    expect(await removeDocLink(NEW, toNew.id)).toEqual({ ok: false, error: tr('Linked document not found.') });
     // The trace of the link to the document the owner may not read is not theirs to read either.
-    expect(await linkEntries('owner', OLD)).toEqual([['unlink', `${t.link_see_also} ${NEW}`], ['link', `${t.link_see_also} ${NEW}`]]);
+    expect(await linkEntries('owner', OLD)).toEqual([['unlink', `${tr('See also')} ${NEW}`], ['link', `${tr('See also')} ${NEW}`]]);
   });
 });
 

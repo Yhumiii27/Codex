@@ -6,10 +6,10 @@ import { createDocument, decideStep, requestValidation, updateMeta } from '@/lib
 import { COOKIE_LANG } from '@/lib/context';
 import { dateIssues, effectIssue, issueFrom, latestEffect } from '@/lib/dates';
 import { todayIso } from '@/lib/format';
-import { DICT } from '@/lib/i18n';
 import { importDocument } from '@/lib/importer';
 import { addDoc, baseOf, fixClock, getDoc, getRevision, journalOf, revisionStatuses, setClock, setupDb, viewOf } from '../support/db';
 import { actAs, cookieStore } from '../support/session';
+import { translatorFor } from '@/i18n';
 
 // Dates of a document (point 3 of docs/reste-a-faire.md; docs/audit-deck-epc2i.md §4.6, rule 12: issue ≤ effect ≤
 // expiry): real calendar days whatever a Server Action is sent, then expiry after the issue and after the revision's
@@ -24,7 +24,7 @@ vi.mock('next/cache', () => ({ refresh: () => {} }));
 const db = setupDb();
 fixClock(); // 10 October 2026
 
-const t = DICT.fr;
+const tr = translatorFor('fr');
 const ID = 'PRO-QUA-0001'; // addDoc: revision A in force, issued and in force on 10 September 2026
 
 function form(fields: Record<string, string>): FormData {
@@ -57,19 +57,19 @@ describe('updateMeta and createDocument: format of the dates', () => {
   ])('refuses %s with a translated message on its field, instead of a database error, and writes nothing', async (_, value) => {
     await addDoc(db(), { id: ID, typeCode: 'COR' });
     const before = await trace();
-    for (const [field, label] of [['expiresAt', t.expires_at], ['reviewDueAt', t.review_due_at]] as const) {
-      expect(await edit({ [field]: value })).toEqual({ ok: false, error: `${label} : ${t.date_malformed}`, field });
+    for (const [field, label] of [['expiresAt', tr('Expiry date')], ['reviewDueAt', tr('Review date')]] as const) {
+      expect(await edit({ [field]: value })).toEqual({ ok: false, error: `${label} : ${tr('invalid date, enter a calendar day (YYYY-MM-DD).')}`, field });
     }
     // The received date of an external document.
-    expect(await edit({ origin: 'externe', sourceOrg: 'Nordvolt', receivedAt: value })).toEqual({ ok: false, error: `${t.received_at} : ${t.date_malformed}`, field: 'receivedAt' });
+    expect(await edit({ origin: 'externe', sourceOrg: 'Nordvolt', receivedAt: value })).toEqual({ ok: false, error: `${tr('Received on')} : ${tr('invalid date, enter a calendar day (YYYY-MM-DD).')}`, field: 'receivedAt' });
     expect(await trace()).toEqual(before);
   });
 
   it('refuses a malformed date at creation, and creates nothing', async () => {
     actAs('owner');
-    expect(await createDocument(form({ title: 'Procédure', typeCode: 'PRO', expiresAt: '2026-13-01' }))).toEqual({ ok: false, error: `${t.expires_at} : ${t.date_malformed}`, field: 'expiresAt' });
-    expect(await createDocument(form({ title: 'Procédure', typeCode: 'PRO', expiresAt: '0000-01-01' }))).toEqual({ ok: false, error: `${t.expires_at} : ${t.date_malformed}`, field: 'expiresAt' });
-    expect(await createDocument(form({ title: 'Courrier', typeCode: 'COR', origin: 'externe', sourceOrg: 'Nordvolt', receivedAt: '0000-01-01' }))).toEqual({ ok: false, error: `${t.received_at} : ${t.date_malformed}`, field: 'receivedAt' });
+    expect(await createDocument(form({ title: 'Procédure', typeCode: 'PRO', expiresAt: '2026-13-01' }))).toEqual({ ok: false, error: `${tr('Expiry date')} : ${tr('invalid date, enter a calendar day (YYYY-MM-DD).')}`, field: 'expiresAt' });
+    expect(await createDocument(form({ title: 'Procédure', typeCode: 'PRO', expiresAt: '0000-01-01' }))).toEqual({ ok: false, error: `${tr('Expiry date')} : ${tr('invalid date, enter a calendar day (YYYY-MM-DD).')}`, field: 'expiresAt' });
+    expect(await createDocument(form({ title: 'Courrier', typeCode: 'COR', origin: 'externe', sourceOrg: 'Nordvolt', receivedAt: '0000-01-01' }))).toEqual({ ok: false, error: `${tr('Received on')} : ${tr('invalid date, enter a calendar day (YYYY-MM-DD).')}`, field: 'receivedAt' });
     expect(await db().select().from(s.documents)).toEqual([]);
   });
 });
@@ -78,7 +78,7 @@ describe('updateMeta: coherence with the issue and the effective date', () => {
   it('wants the expiry after the issue date, the same day being too early', async () => {
     await addDoc(db(), { id: ID });
     const before = await trace();
-    const refused = { ok: false, error: t.expires_before_issued.replace('{date}', '10/09/2026'), field: 'expiresAt' };
+    const refused = { ok: false, error: tr('The expiry date must be after the document’s issue date ({date}): choose a later date.').replace('{date}', '10/09/2026'), field: 'expiresAt' };
     expect(await edit({ expiresAt: '2026-09-01' })).toEqual(refused);
     expect(await edit({ expiresAt: '2026-09-10' })).toEqual(refused);
     expect(await trace()).toEqual(before);
@@ -89,7 +89,7 @@ describe('updateMeta: coherence with the issue and the effective date', () => {
   it('wants the expiry after the effective date of a revision approved or in review, which the error names', async () => {
     await addDoc(db(), { id: ID, revisions: [{ letter: 'A', status: 'in_force', versions: ['owner'] }, { letter: 'B', status: 'approved', effectiveAt: '2026-11-15', versions: ['writer'] }] });
     const before = await trace();
-    expect(await edit({ expiresAt: '2026-11-15' })).toEqual({ ok: false, error: t.expires_before_effective.replace('{rev}', 'B').replace('{date}', '15/11/2026'), field: 'expiresAt' });
+    expect(await edit({ expiresAt: '2026-11-15' })).toEqual({ ok: false, error: tr('The expiry date must be after the effective date of revision {rev} ({date}): choose a later date.').replace('{rev}', 'B').replace('{date}', '15/11/2026'), field: 'expiresAt' });
     expect(await trace()).toEqual(before);
     expect(await edit({ expiresAt: '2026-11-16' })).toMatchObject({ ok: true });
   });
@@ -101,7 +101,7 @@ describe('updateMeta: coherence with the issue and the effective date', () => {
 
   it('wants the review after the issue date', async () => {
     await addDoc(db(), { id: ID });
-    expect(await edit({ reviewDueAt: '2026-09-10' })).toEqual({ ok: false, error: t.review_before_issued.replace('{date}', '10/09/2026'), field: 'reviewDueAt' });
+    expect(await edit({ reviewDueAt: '2026-09-10' })).toEqual({ ok: false, error: tr('The review date must be after the document’s issue date ({date}): choose a later date.').replace('{date}', '10/09/2026'), field: 'reviewDueAt' });
     expect(await edit({ reviewDueAt: '2027-09-10', expiresAt: '2028-09-10' })).toMatchObject({ ok: true });
     expect(await getDoc(db(), ID)).toMatchObject({ reviewDueAt: '2027-09-10', expiresAt: '2028-09-10' });
   });
@@ -110,8 +110,8 @@ describe('updateMeta: coherence with the issue and the effective date', () => {
     await addDoc(db(), { id: ID, typeCode: 'COR' });
     const external = (receivedAt: string) => edit({ origin: 'externe', sourceOrg: 'Nordvolt', receivedAt });
     const before = await trace();
-    expect(await external('2026-10-11')).toEqual({ ok: false, error: t.received_in_future, field: 'receivedAt' });
-    expect(await external('2026-09-11')).toEqual({ ok: false, error: t.received_after_issued.replace('{date}', '10/09/2026'), field: 'receivedAt' });
+    expect(await external('2026-10-11')).toEqual({ ok: false, error: tr('The received date cannot be in the future: choose today or an earlier date.'), field: 'receivedAt' });
+    expect(await external('2026-09-11')).toEqual({ ok: false, error: tr('The received date cannot be after the document’s issue date ({date}): choose that date or an earlier one.').replace('{date}', '10/09/2026'), field: 'receivedAt' });
     expect(await trace()).toEqual(before);
     expect(await external('2026-09-10')).toMatchObject({ ok: true });
     expect(await getDoc(db(), ID)).toMatchObject({ origin: 'externe', receivedAt: '2026-09-10' });
@@ -120,7 +120,7 @@ describe('updateMeta: coherence with the issue and the effective date', () => {
   it('refuses a reception in the future at creation, before the document is ever issued', async () => {
     actAs('owner');
     const create = (receivedAt: string) => createDocument(form({ title: 'Courrier', typeCode: 'COR', origin: 'externe', sourceOrg: 'Nordvolt', receivedAt }));
-    expect(await create('2026-10-11')).toEqual({ ok: false, error: t.received_in_future, field: 'receivedAt' });
+    expect(await create('2026-10-11')).toEqual({ ok: false, error: tr('The received date cannot be in the future: choose today or an earlier date.'), field: 'receivedAt' });
     expect(await db().select().from(s.documents)).toEqual([]);
     expect(await create('2026-10-10')).toMatchObject({ ok: true });
   });
@@ -128,16 +128,16 @@ describe('updateMeta: coherence with the issue and the effective date', () => {
   it('wants a document not issued yet to expire, and to be reviewed, after today, the day it can be issued at the earliest', async () => {
     await addDoc(db(), { id: ID, revisions: [{ letter: 'A', status: 'draft', versions: ['writer'] }] });
     const before = await trace();
-    expect(await edit({ expiresAt: '2026-10-10' })).toEqual({ ok: false, error: t.expires_before_first_issue.replace('{date}', '10/10/2026'), field: 'expiresAt' });
-    expect(await edit({ reviewDueAt: '2026-01-01' })).toEqual({ ok: false, error: t.review_before_first_issue.replace('{date}', '10/10/2026'), field: 'reviewDueAt' });
+    expect(await edit({ expiresAt: '2026-10-10' })).toEqual({ ok: false, error: tr('The document is not issued yet; it will be on {date} at the earliest: choose a later expiry date.').replace('{date}', '10/10/2026'), field: 'expiresAt' });
+    expect(await edit({ reviewDueAt: '2026-01-01' })).toEqual({ ok: false, error: tr('The document is not issued yet; it will be on {date} at the earliest: choose a later review date.').replace('{date}', '10/10/2026'), field: 'reviewDueAt' });
     expect(await trace()).toEqual(before);
     expect(await edit({ expiresAt: '2026-10-11', reviewDueAt: '2026-10-11' })).toMatchObject({ ok: true });
   });
 
   it('wants a document not issued yet to expire, and to be reviewed, after the effective date of the revision that will issue it', async () => {
     await addDoc(db(), { id: ID, revisions: [{ letter: 'A', status: 'in_review', effectiveAt: '2026-11-02', versions: ['writer'] }] });
-    expect(await edit({ reviewDueAt: '2026-11-02' })).toEqual({ ok: false, error: t.review_before_first_issue.replace('{date}', '02/11/2026'), field: 'reviewDueAt' });
-    expect(await edit({ expiresAt: '2026-11-02' })).toEqual({ ok: false, error: t.expires_before_effective.replace('{rev}', 'A').replace('{date}', '02/11/2026'), field: 'expiresAt' });
+    expect(await edit({ reviewDueAt: '2026-11-02' })).toEqual({ ok: false, error: tr('The document is not issued yet; it will be on {date} at the earliest: choose a later review date.').replace('{date}', '02/11/2026'), field: 'reviewDueAt' });
+    expect(await edit({ expiresAt: '2026-11-02' })).toEqual({ ok: false, error: tr('The expiry date must be after the effective date of revision {rev} ({date}): choose a later date.').replace('{rev}', 'A').replace('{date}', '02/11/2026'), field: 'expiresAt' });
     expect(await edit({ expiresAt: '2026-11-03', reviewDueAt: '2026-11-03' })).toMatchObject({ ok: true });
   });
 
@@ -145,7 +145,7 @@ describe('updateMeta: coherence with the issue and the effective date', () => {
     await addDoc(db(), { id: ID, revisions: [{ letter: 'A', status: 'in_force', versions: ['owner'] }, { letter: 'B', status: 'in_review', versions: ['writer'] }] });
     await db().update(s.documents).set({ expiresAt: '2027-01-01' }).where(eq(s.documents.id, ID));
     const before = await trace();
-    const refused = { ok: false, error: t.expires_before_approval.replace('{rev}', 'B').replace('{date}', '10/10/2026'), field: 'expiresAt' };
+    const refused = { ok: false, error: tr('Revision {rev}, under approval, will take effect when approved, on {date} at the earliest: choose a later expiry date.').replace('{rev}', 'B').replace('{date}', '10/10/2026'), field: 'expiresAt' };
     expect(await edit({ expiresAt: '2026-10-05' })).toEqual(refused);
     expect(await edit({ expiresAt: '2026-10-10' })).toEqual(refused);
     expect(await trace()).toEqual(before);
@@ -164,8 +164,8 @@ describe('updateMeta: coherence with the issue and the effective date', () => {
   it('refuses, at creation, an expiry or a review on or before today: the document is issued today at the earliest', async () => {
     actAs('owner');
     const create = (dates: Record<string, string>) => createDocument(form({ title: 'Procédure', typeCode: 'PRO', ...dates }));
-    expect(await create({ expiresAt: '2020-06-01' })).toEqual({ ok: false, error: t.expires_before_first_issue.replace('{date}', '10/10/2026'), field: 'expiresAt' });
-    expect(await create({ reviewDueAt: '2026-10-10' })).toEqual({ ok: false, error: t.review_before_first_issue.replace('{date}', '10/10/2026'), field: 'reviewDueAt' });
+    expect(await create({ expiresAt: '2020-06-01' })).toEqual({ ok: false, error: tr('The document is not issued yet; it will be on {date} at the earliest: choose a later expiry date.').replace('{date}', '10/10/2026'), field: 'expiresAt' });
+    expect(await create({ reviewDueAt: '2026-10-10' })).toEqual({ ok: false, error: tr('The document is not issued yet; it will be on {date} at the earliest: choose a later review date.').replace('{date}', '10/10/2026'), field: 'reviewDueAt' });
     expect(await db().select().from(s.documents)).toEqual([]);
     expect(await create({ reviewDueAt: '2026-10-11', expiresAt: '2026-10-11' })).toMatchObject({ ok: true });
   });
@@ -195,7 +195,7 @@ describe('requestValidation: the revision takes effect before the document expir
 
   it.each([['the expiry day', '2026-12-01'], ['a later day', '2027-01-15']])('refuses %s as effective date, and writes nothing', async (_, date) => {
     await drafted('2026-12-01');
-    expect(await request(date)).toEqual({ ok: false, error: t.effective_after_expiry.replace('{date}', '01/12/2026'), field: 'effectiveAt' });
+    expect(await request(date)).toEqual({ ok: false, error: tr('The effective date must come before the document expires on {date}: choose an earlier date; otherwise, the expiry date must first be moved in the metadata, by the document’s owner or a records manager.').replace('{date}', '01/12/2026'), field: 'effectiveAt' });
     await nothingWritten();
   });
 
@@ -221,7 +221,7 @@ describe('requestValidation: the revision takes effect before the document expir
     expect(await decideStep('W-1', true, 2)).toEqual({ ok: true });
     expect(await revisionStatuses(db(), ID)).toEqual({ A: 'superseded', B: 'in_force' });
     // B in force today, after the expiry: the metadata dialog asks for it to be moved.
-    expect(await edit({ title: 'Certificat', expiresAt: '2026-09-30' })).toEqual({ ok: false, error: t.expires_before_effective.replace('{rev}', 'B').replace('{date}', '10/10/2026'), field: 'expiresAt' });
+    expect(await edit({ title: 'Certificat', expiresAt: '2026-09-30' })).toEqual({ ok: false, error: tr('The expiry date must be after the effective date of revision {rev} ({date}): choose a later date.').replace('{rev}', 'B').replace('{date}', '10/10/2026'), field: 'expiresAt' });
     expect(await edit({ title: 'Certificat', expiresAt: '2027-09-30' })).toMatchObject({ ok: true });
   });
 
@@ -230,8 +230,8 @@ describe('requestValidation: the revision takes effect before the document expir
     await db().update(s.documents).set({ expiresAt: '2026-12-01' }).where(eq(s.documents.id, ID));
     actAs('writer');
     const res = await requestValidation(ID, '2026-12-15', await baseOf(db(), ID));
-    expect(res).toEqual({ ok: false, error: t.effective_after_expiry.replace('{date}', '01/12/2026'), field: 'effectiveAt' });
-    expect(t.effective_after_expiry).toContain('par le propriétaire du document ou un gestionnaire documentaire');
+    expect(res).toEqual({ ok: false, error: tr('The effective date must come before the document expires on {date}: choose an earlier date; otherwise, the expiry date must first be moved in the metadata, by the document’s owner or a records manager.').replace('{date}', '01/12/2026'), field: 'effectiveAt' });
+    expect(tr('The effective date must come before the document expires on {date}: choose an earlier date; otherwise, the expiry date must first be moved in the metadata, by the document’s owner or a records manager.')).toContain('par le propriétaire du document ou un gestionnaire documentaire');
     expect(await updateMeta(form({ docId: ID, version: (await viewOf(db(), ID)).version, expiresAt: '2027-12-01' }))).toMatchObject({ ok: false });
   });
 });
@@ -253,7 +253,7 @@ describe('requestValidation: a document not issued yet is issued by this revisio
 
   it('refuses an effective date on or after the review date, and says the issue would follow it', async () => {
     await drafted({ reviewDueAt: '2026-11-01' });
-    expect(await request('2026-12-01')).toEqual({ ok: false, error: t.effective_after_review.replace('{date}', '01/11/2026'), field: 'effectiveAt' });
+    expect(await request('2026-12-01')).toEqual({ ok: false, error: tr('The document is not issued yet: it will be on the effective date, after its review date, {date}. Choose an earlier effective date; otherwise, the review date must first be moved in the metadata, by the document’s owner or a records manager.').replace('{date}', '01/11/2026'), field: 'effectiveAt' });
     expect(await request('2026-11-01')).toMatchObject({ ok: false, field: 'effectiveAt' });
     await nothingWritten();
     expect(await request('2026-10-31')).toMatchObject({ ok: true });
@@ -262,9 +262,9 @@ describe('requestValidation: a document not issued yet is issued by this revisio
 
   it('without an effective date, refuses a review or an expiry on or before today, when the revision is approved at the earliest', async () => {
     await drafted({ reviewDueAt: '2026-10-10' });
-    expect(await request(null)).toEqual({ ok: false, error: t.approval_after_review.replace('{date}', '10/10/2026'), field: 'effectiveAt' });
+    expect(await request(null)).toEqual({ ok: false, error: tr('The document is not issued yet: it will be when this revision is approved, today at the earliest, after its review date, {date}. The review date must first be moved in the metadata, by the document’s owner or a records manager.').replace('{date}', '10/10/2026'), field: 'effectiveAt' });
     await db().update(s.documents).set({ reviewDueAt: null, expiresAt: '2026-10-01' }).where(eq(s.documents.id, COR));
-    expect(await request(null)).toEqual({ ok: false, error: t.approval_after_expiry.replace('{date}', '01/10/2026'), field: 'effectiveAt' });
+    expect(await request(null)).toEqual({ ok: false, error: tr('The document is not issued yet: it will be when this revision is approved, today at the earliest, after it expires on {date}. The expiry date must first be moved in the metadata, by the document’s owner or a records manager.').replace('{date}', '01/10/2026'), field: 'effectiveAt' });
     await nothingWritten();
   });
 
@@ -298,7 +298,7 @@ describe('importDocument: coherence of the dates (docs/api.md)', () => {
     expect(await refused(meta('L-1', { issuedAt: '2023-01-10', expiresAt: '2023-01-10' }))).toEqual({ expiresAt: 'expires_before_issued' });
     expect(await refused(meta('L-1', { issuedAt: '2023-01-10', expiresAt: '2025-03-12' }))).toEqual({ expiresAt: 'expires_before_effective' });
     const res = await importDocument(meta('L-1', { issuedAt: '2023-01-10', expiresAt: '2024-01-01' }), null);
-    expect(res).toMatchObject({ kind: 'invalid', issues: [{ field: 'expiresAt', code: 'expires_before_effective', message: t.expires_before_effective.replace('{rev}', 'C').replace('{date}', '12/03/2025') }] });
+    expect(res).toMatchObject({ kind: 'invalid', issues: [{ field: 'expiresAt', code: 'expires_before_effective', message: tr('The expiry date must be after the effective date of revision {rev} ({date}): choose a later date.').replace('{rev}', 'C').replace('{date}', '12/03/2025') }] });
   });
 
   it('checks the dates as they will be recorded: the issue date defaults to the entry into force, then to the day of the import', async () => {

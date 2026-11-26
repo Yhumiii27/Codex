@@ -1,5 +1,5 @@
-import type { TKey } from './i18n';
 import { LABEL_MAX, type Parsed } from './registry-rules';
+import { msg } from '@/i18n';
 
 // Pure rules of the organisation's administration (Administration › Organisation): departments and sites are renamed,
 // retired and brought back; lib/actions.ts applies them with the rights and the usage read by lib/queries.ts orgUsage.
@@ -14,9 +14,9 @@ export const isOrgKind = (k: unknown): k is OrgKind => typeof k === 'string' && 
 export function orgLabels(fr: unknown, en: unknown): Parsed<{ labelFr: string; labelEn: string }> {
   const labelFr = typeof fr === 'string' ? fr.trim() : '';
   const labelEn = (typeof en === 'string' ? en.trim() : '') || labelFr;
-  if (!labelFr) return { ok: false, key: 'reg_label_required', field: 'labelFr' };
-  if (labelFr.length > LABEL_MAX) return { ok: false, key: 'reg_text_too_long', field: 'labelFr' };
-  if (labelEn.length > LABEL_MAX) return { ok: false, key: 'reg_text_too_long', field: 'labelEn' };
+  if (!labelFr) return { ok: false, key: msg('The label is required.'), field: 'labelFr' };
+  if (labelFr.length > LABEL_MAX) return { ok: false, key: msg('Text too long.'), field: 'labelFr' };
+  if (labelEn.length > LABEL_MAX) return { ok: false, key: msg('Text too long.'), field: 'labelEn' };
   return { ok: true, value: { labelFr, labelEn } };
 }
 
@@ -65,8 +65,8 @@ export function newDocDepartment(userDepartment: string | null | undefined, depa
  * Why a department may not be made inactive or deleted (`next`: its state after, null when deleted), or null. One
  * stays active at least: a new document without attachment takes a department's code as the context of its ID.
  */
-export function lastActiveIssue(departments: readonly { code: string; active: boolean }[], code: string, next: boolean | null): TKey | null {
+export function lastActiveIssue(departments: readonly { code: string; active: boolean }[], code: string, next: boolean | null): string | null {
   // Bringing one back, or deleting one already inactive, leaves the active ones as they are.
   if (next || !departments.some((d) => d.code === code && d.active)) return null;
-  return departments.some((d) => d.active && d.code !== code) ? null : 'org_last_department';
+  return departments.some((d) => d.active && d.code !== code) ? null : msg('At least one department must stay active: a new document without attachment takes the code of its department.');
 }

@@ -2,12 +2,12 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { schema as s } from '@/db';
 import { releaseHold, restoreArchived, simulateVigieDecision } from '@/lib/actions';
-import { DICT } from '@/lib/i18n';
 import { promoteDue } from '@/lib/lifecycle';
 import { submitChange } from '@/server/integrations/vigie';
 import { addDoc, fixClock, getChange, getDoc, getRevision, revisionStatuses, setClock, setupDb } from '../support/db';
 import type { Person } from '../support/fixtures';
 import { actAs } from '../support/session';
+import { translatorFor } from '@/i18n';
 
 // Locks through the Server Actions (D-16, D-17, step 3, docs/modele-cible.md §4): Vigie's decision simulated by a
 // records manager is recorded « Acceptée » on a frozen or archived document, and applied by the action that lifts the
@@ -29,7 +29,7 @@ afterAll(() => {
   vi.unstubAllEnvs();
 });
 
-const t = DICT.fr;
+const tr = translatorFor('fr');
 const ID = 'PRO-QUA-0001';
 
 const ask = (kind: 'modification' | 'obsolescence', requesterId: Person = 'writer') =>
@@ -44,7 +44,7 @@ describe('simulated Vigie decision on a locked document', () => {
   it('is recorded under legal hold and applied when the hold is released', async () => {
     await addDoc(db(), { id: ID, legalHold: true });
     const id = await ask('modification');
-    expect(await simulate(id, true, 'writer2')).toEqual({ ok: true, message: `${t.ecr_accepted_waiting} : ${t.ecr_wait_hold}.` });
+    expect(await simulate(id, true, 'writer2')).toEqual({ ok: true, message: `${tr('Vigie decision accepted, pending application')} : ${tr('it will apply when the legal hold is released')}.` });
     expect(await getChange(db(), id)).toMatchObject({ status: 'accepted', ecoRef: id.replace('ECR', 'ECO'), modifierId: 'writer2' });
     expect(await revisionStatuses(db(), ID)).toEqual({ A: 'in_force' });
 
@@ -58,7 +58,7 @@ describe('simulated Vigie decision on a locked document', () => {
   it('waits for the hold to be released and the document restored when it is both', async () => {
     await addDoc(db(), { id: ID, legalHold: true, state: 'archived' });
     const id = await ask('modification');
-    expect(await simulate(id, true)).toEqual({ ok: true, message: `${t.ecr_accepted_waiting} : ${t.ecr_wait_hold_archived}.` });
+    expect(await simulate(id, true)).toEqual({ ok: true, message: `${tr('Vigie decision accepted, pending application')} : ${tr('it will apply once the legal hold is released and the document restored')}.` });
     // An archived document under legal hold cannot be restored before the hold is released. What the refused attempt
     // answers is not specified (docs/api.md): only its effect is checked.
     actAs('manager');
@@ -101,14 +101,14 @@ describe('simulated Vigie decision on a locked document', () => {
     await simulate(id, true, 'writer');
     await db().update(s.users).set({ role: 'auditeur' }).where(eq(s.users.id, 'writer'));
     actAs('manager');
-    expect(await releaseHold(ID)).toEqual({ ok: true, message: `${t.modifier_set_aside} : writer → writer2` });
+    expect(await releaseHold(ID)).toEqual({ ok: true, message: `${tr('Vigie decision applied: the designated author could no longer draft this document; the revision is opened for the default author')} : writer → writer2` });
     expect((await getRevision(db(), ID, 'B')).modifierId).toBe('writer2');
   });
 
   it('refuses a designated author who may not draft the document, without falling back on the default one', async () => {
     await addDoc(db(), { id: ID });
     const id = await ask('modification');
-    expect(await simulate(id, true, 'auditor')).toEqual({ ok: false, error: `${t.modifier_not_allowed} : auditor` });
+    expect(await simulate(id, true, 'auditor')).toEqual({ ok: false, error: `${tr('The designated author cannot draft this document (upload permission of their role, access to the document)')} : auditor` });
     expect(await getChange(db(), id)).toMatchObject({ status: 'submitted', modifierId: null });
   });
 
@@ -116,7 +116,7 @@ describe('simulated Vigie decision on a locked document', () => {
     await addDoc(db(), { id: ID });
     const id = await ask('modification');
     actAs('head');
-    expect(await simulateVigieDecision(id, true, null)).toEqual({ ok: false, error: t.vigie_only });
+    expect(await simulateVigieDecision(id, true, null)).toEqual({ ok: false, error: tr('Decision reserved to Vigie (simulation: records manager).') });
     expect((await getChange(db(), id)).status).toBe('submitted');
   });
 });

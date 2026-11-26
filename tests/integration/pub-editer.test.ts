@@ -2,9 +2,9 @@ import { asc, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { schema as s } from '@/db';
 import type { Ctx } from '@/lib/context';
-import { DICT } from '@/lib/i18n';
 import { auditDetailL } from '@/lib/queries';
 import { setupDb } from '../support/db';
+import { translatorFor } from '@/i18n';
 
 // codex.pub_editer (Matrix's request M-19, migration 0004; decision D-30): the IT administrator corrects Codex's data
 // from Matrix's viewer, through Codex's own rules and journal, never by writing in its tables. Four tables are open
@@ -44,7 +44,7 @@ describe('codex.pub_editer: departments', () => {
       changes: [{ field: 'labelFr', before: 'Laboratoire', after: 'Laboratoire central' }],
       via: { app: 'matrix', person: 'Jeanne Martin (DSI)', reason: 'correction demandée' },
     });
-    const ctx = { t: DICT.fr, lang: 'fr', seesAll: true, label: (_: string, k: string) => k, userName: (x: string) => x } as unknown as Ctx;
+    const ctx = { tr: translatorFor('fr'), lang: 'fr', seesAll: true, label: (_: string, k: string) => k, userName: (x: string) => x } as unknown as Ctx;
     expect(auditDetailL(ctx, entries[1])).toContain('depuis Matrix, par Jeanne Martin (DSI) — motif : correction demandée');
     expect((await db().select().from(s.users).where(eq(s.users.id, 'matrix')))[0]).toMatchObject({ name: 'Matrix', isSystem: true });
   });

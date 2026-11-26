@@ -4,6 +4,7 @@ import { getDb, schema as s } from '@/db';
 import { browserMayKeep, readerMaySeeVersion } from '@/lib/access';
 import { isFinalStatus } from '@/lib/codes';
 import { getCtx, type Ctx } from '@/lib/context';
+import type { Translate } from '@/i18n';
 import { INLINE_SAFE } from '@/lib/filetypes';
 import { fmtDate } from '@/lib/format';
 import { audit, journalConsultation } from '@/lib/lifecycle';
@@ -59,7 +60,7 @@ type Target = { ctx: Ctx; doc: DocView; version: Version; label: string; mime: s
 async function resolve(req: Request, id: string): Promise<Target | Response> {
   const ctx = await getCtx();
   // Counted per user as resolved from the session, never per raw cookie (lib/ratelimit.ts).
-  const limited = limitReader(req, 'files', ctx.user.id, ctx.t);
+  const limited = limitReader(req, 'files', ctx.user.id, ctx.tr);
   if (limited) return limited;
   const url = new URL(req.url);
   const preview = url.searchParams.get('preview');
@@ -129,11 +130,11 @@ function memorySource(body: Uint8Array, naming: unknown[]): Source {
 }
 
 /** Text of the stand-in of an unavailable preview, by reason. */
-function unavailableLine(t: Ctx['t'], reason: PreviewFailure): string {
-  if (reason === 'busy') return t.preview_busy;
-  if (reason === 'too_large') return t.preview_too_large;
-  if (reason === 'off') return t.preview_off;
-  return t.preview_failed;
+function unavailableLine(tr: Translate, reason: PreviewFailure): string {
+  if (reason === 'busy') return tr('Conversion service busy: open the record again in a moment.');
+  if (reason === 'too_large') return tr('File too large to be converted.');
+  if (reason === 'off') return tr('No conversion service is configured.');
+  return tr('The conversion to PDF failed.');
 }
 
 /**
@@ -151,9 +152,9 @@ async function renderSource(x: Target, naming: unknown[], convert: boolean): Pro
       const body = simplePdf([
         { text: `${doc.id} · ${x.label}`, size: 9, grey: true, gap: 0 },
         { text: doc.title, size: 16, gap: 40 },
-        { text: ctx.t.preview_unavailable_short, gap: 36 },
-        { text: unavailableLine(ctx.t, r.reason), size: 10, grey: true, gap: 20 },
-        { text: ctx.t.preview_download_hint, size: 10, grey: true, gap: 20 },
+        { text: ctx.tr('Preview unavailable'), gap: 36 },
+        { text: unavailableLine(ctx.tr, r.reason), size: 10, grey: true, gap: 20 },
+        { text: ctx.tr('Download the file to read it.'), size: 10, grey: true, gap: 20 },
       ]);
       return { ...memorySource(body, ['stand-in', r.reason, ...naming]), stand: true };
     }
@@ -209,10 +210,10 @@ async function source(x: Target, convert = true): Promise<Source> {
     { text: `${doc.id} · ${x.label}`, size: 9, grey: true, gap: 0 },
     { text: doc.title, size: 16, gap: 40 },
     { text: doc.path, size: 10, grey: true, gap: 24 },
-    { text: `${ctx.t.owner} : ${doc.owner}`, gap: 36 },
-    { text: `${ctx.t.date} : ${fmtDate(version.date, ctx.lang)}` },
-    { text: `${ctx.t.conf} : ${doc.confL}` },
-    { text: ctx.t.no_file, size: 9, grey: true, gap: 40 },
+    { text: `${ctx.tr('Owner')} : ${doc.owner}`, gap: 36 },
+    { text: `${ctx.tr('Date')} : ${fmtDate(version.date, ctx.lang)}` },
+    { text: `${ctx.tr('Confidentiality')} : ${doc.confL}` },
+    { text: ctx.tr('No file attached to this version — demo preview.'), size: 9, grey: true, gap: 40 },
   ]);
   return memorySource(body, naming);
 }

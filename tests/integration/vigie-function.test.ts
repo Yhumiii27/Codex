@@ -2,10 +2,10 @@ import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { schema as s } from '@/db';
 import { requestChange, simulateVigieDecision } from '@/lib/actions';
-import { DICT } from '@/lib/i18n';
 import { vigieConnected, vigieSimulated, vigieUrl } from '@/server/integrations/vigie';
 import { addDoc, fixClock, setupDb } from '../support/db';
 import { actAs } from '../support/session';
+import { translatorFor } from '@/i18n';
 
 // Vigie's request D12 (decision D-31): on the shared server, Codex creates a change or withdrawal request through
 // Vigie's function vigie.pub_creer_demande_modification (M-17), in the transaction that mirrors it, and keeps the
@@ -18,7 +18,7 @@ vi.mock('next/cache', () => ({ refresh: () => {} }));
 
 const db = setupDb();
 fixClock();
-const t = DICT.fr;
+const tr = translatorFor('fr');
 const ID = 'PRO-QUA-0001';
 
 // A stand-in of Vigie's function, with its signature (Vigie, drizzle/0029_convergence_m02_ecr_eco.sql): it records each
@@ -57,7 +57,7 @@ describe.skipIf(!!process.env.CODEX_TEST_DATABASE_URL?.trim())('D12: requests cr
   it('sends the request to Vigie and keeps the number Vigie gives', async () => {
     expect(await vigieConnected(db())).toBe(true);
     actAs('writer2');
-    expect(await requestChange(ID, 'modification', 'Écart de procédure', 'Détail')).toEqual({ ok: true, message: `${t.ecr_sent} : ECR-2026-901` });
+    expect(await requestChange(ID, 'modification', 'Écart de procédure', 'Détail')).toEqual({ ok: true, message: `${tr('Request sent to Vigie')} : ECR-2026-901` });
     const [call] = await calls();
     expect(call).toMatchObject({
       nature: 'modification', document: ID, motif: 'Écart de procédure', description: 'Détail', demandeur_ref: 'writer2',
@@ -68,15 +68,15 @@ describe.skipIf(!!process.env.CODEX_TEST_DATABASE_URL?.trim())('D12: requests cr
     expect(await mirrored()).toMatchObject([{ id: 'ECR-2026-901', docId: ID, requesterId: 'writer2', status: 'submitted', source: 'codex' }]);
     // A withdrawal proposing a replacement; the owner has no matricule.
     actAs('owner');
-    expect(await requestChange('PRO-QUA-0002', 'obsolescence', 'Doublon', '', ID)).toEqual({ ok: true, message: `${t.ecr_sent} : ECR-2026-902` });
+    expect(await requestChange('PRO-QUA-0002', 'obsolescence', 'Doublon', '', ID)).toEqual({ ok: true, message: `${tr('Request sent to Vigie')} : ECR-2026-902` });
     expect((await calls())[1]).toMatchObject({ nature: 'obsolescence', remplacant: ID, demandeur_matricule: null });
   });
 
   it('keeps nothing when Vigie refuses the request (P0V02, P0V01) or gives a number Codex already has', async () => {
     actAs('writer2');
-    expect(await requestChange(ID, 'modification', 'invalide', '')).toEqual({ ok: false, error: `${t.vigie_invalid} : motif refusé par Vigie` });
+    expect(await requestChange(ID, 'modification', 'invalide', '')).toEqual({ ok: false, error: `${tr('Request not sent: Vigie refused it')} : motif refusé par Vigie` });
     await db().$client.exec(`insert into vigie.refuse values ('P0V01')`);
-    expect(await requestChange(ID, 'modification', 'r', '')).toEqual({ ok: false, error: t.vigie_refused });
+    expect(await requestChange(ID, 'modification', 'r', '')).toEqual({ ok: false, error: tr('Request not sent: Vigie does not recognise Codex as a caller. Report it to IT.') });
     expect(await mirrored()).toEqual([]);
     expect(await calls()).toEqual([]);
     const journal = await db().select().from(s.auditLog).where(eq(s.auditLog.targetId, ID));
@@ -84,7 +84,7 @@ describe.skipIf(!!process.env.CODEX_TEST_DATABASE_URL?.trim())('D12: requests cr
     // A number of Codex's own, from before the link, that Vigie gives again: refused, Vigie's deposit undone with it.
     await db().$client.exec(`delete from vigie.refuse`);
     await db().insert(s.changeRequests).values({ id: 'ECR-2026-901', kind: 'modification', docId: 'PRO-QUA-0002', requesterId: 'owner', reason: 'r', status: 'rejected', createdAt: '2026-10-01 10:00:00' });
-    expect(await requestChange(ID, 'modification', 'r', '')).toEqual({ ok: false, error: `${t.vigie_taken} : ECR-2026-901` });
+    expect(await requestChange(ID, 'modification', 'r', '')).toEqual({ ok: false, error: `${tr('Request not sent: the number Vigie gave already names a request in Codex. Report it to IT')} : ECR-2026-901` });
     expect(await calls()).toEqual([]);
   });
 
@@ -93,7 +93,7 @@ describe.skipIf(!!process.env.CODEX_TEST_DATABASE_URL?.trim())('D12: requests cr
     actAs('writer2');
     await requestChange(ID, 'modification', 'r', '');
     actAs('manager');
-    expect(await simulateVigieDecision('ECR-2026-901', false, null)).toEqual({ ok: false, error: t.vigie_only });
+    expect(await simulateVigieDecision('ECR-2026-901', false, null)).toEqual({ ok: false, error: tr('Decision reserved to Vigie (simulation: records manager).') });
     await db().$client.exec('drop schema vigie cascade');
     expect(await vigieSimulated(db())).toBe(true);
   });

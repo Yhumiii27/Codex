@@ -7,12 +7,12 @@ import { GET } from '@/app/api/documents/[id]/file/route';
 import { FILES_DIR, schema as s } from '@/db';
 import { checkFileIntegrity, createDocument } from '@/lib/actions';
 import { getCtx } from '@/lib/context';
-import { DICT } from '@/lib/i18n';
 import { importDocument } from '@/lib/importer';
 import { integrityL, listAudit } from '@/lib/queries';
 import { addDoc, fixClock, journalOf, setupDb } from '../support/db';
 import type { Person } from '../support/fixtures';
 import { actAs } from '../support/session';
+import { translatorFor } from '@/i18n';
 
 // Point 31 of docs/reste-a-faire.md: every file entering Codex gets its SHA-256 (working_versions.sha256), shown on the
 // record and checked afterwards (Administration, npm run integrity, whole downloads); a file identical to one already
@@ -38,7 +38,7 @@ afterAll(() => {
   rmSync(FILES_DIR, { recursive: true, force: true });
 });
 
-const t = DICT.fr;
+const tr = translatorFor('fr');
 const sha = (b: Buffer | string) => createHash('sha256').update(b).digest('hex');
 const pdfBytes = (text: string) => Buffer.from(`%PDF-1.4\n% ${text}\n1 0 obj << /Type /Pages /Count 1 >> endobj\n%%EOF\n`);
 const asFile = (bytes: Buffer, name = 'plan.pdf') => new File([new Uint8Array(bytes)], name, { type: 'application/pdf' });
@@ -120,7 +120,7 @@ describe('fingerprint recorded as the file enters Codex', () => {
     const { key } = await attach('FRM-QMS-0001', 'A', 1, pdfBytes('template'));
     writeFileSync(path.join(FILES_DIR, key), pdfBytes('template, changed on disk'));
     actAs('writer');
-    expect(await createDocument(form({ title: 'Depuis le modèle', typeCode: 'PRO', templateId: 'FRM-QMS-0001' }))).toEqual({ ok: false, error: `${t.file_altered_template} : FRM-QMS-0001` });
+    expect(await createDocument(form({ title: 'Depuis le modèle', typeCode: 'PRO', templateId: 'FRM-QMS-0001' }))).toEqual({ ok: false, error: `${tr('This template’s file no longer matches its SHA-256 fingerprint: copy refused, tell a records manager')} : FRM-QMS-0001` });
   });
 });
 
@@ -128,7 +128,7 @@ describe('duplicate warning (never naming what D-14 hides)', () => {
   it('names the file in force of a document the user reads, never a working version, a draft or a document they cannot read', async () => {
     await filed();
     const named = await upload('writer', FILES.finalA2);
-    expect(named).toMatchObject({ ok: true, warning: t.same_file.replace('{docs}', 'PRO-QUA-0001 A « PRO-QUA-0001 »') });
+    expect(named).toMatchObject({ ok: true, warning: tr('Uploaded. Same file as the one of {docs}: check that it is not a duplicate.').replace('{docs}', 'PRO-QUA-0001 A « PRO-QUA-0001 »') });
     // Recorded all the same: the warning does not block.
     expect((await lastVersion()).sha256).toBe(sha(FILES.finalA2));
     for (const bytes of [FILES.workA1, FILES.draft, FILES.secret]) {
@@ -184,9 +184,9 @@ describe('integrity check from Administration', () => {
     const legacy = await attach('PRO-QUA-0001', 'A', 4, older, null);
 
     actAs('writer');
-    expect(await checkFileIntegrity()).toEqual({ ok: false, error: t.forbidden });
+    expect(await checkFileIntegrity()).toEqual({ ok: false, error: tr('The simulated role cannot access this screen.') });
     actAs('head');
-    expect(await checkFileIntegrity()).toEqual({ ok: false, error: t.forbidden });
+    expect(await checkFileIntegrity()).toEqual({ ok: false, error: tr('The simulated role cannot access this screen.') });
     expect(await db().select().from(s.auditLog).where(eq(s.auditLog.action, 'integrity_checked'))).toEqual([]);
 
     actAs('manager');
@@ -204,7 +204,7 @@ describe('integrity check from Administration', () => {
     // Documents and counts to records managers only; an administrator who is not one learns that something was found.
     const ctx = await getCtx();
     expect(integrityL(ctx, entry.data!.integrity!)).toContain('altérés : 1 : PRO-QUA-0001 A.2');
-    expect(integrityL({ ...ctx, seesAll: false }, entry.data!.integrity!)).toBe(t.integrity_found);
+    expect(integrityL({ ...ctx, seesAll: false }, entry.data!.integrity!)).toBe(tr('discrepancies found'));
 
     // A second check: the fingerprint recorded by the first now holds, nothing else changes.
     actAs('manager');
@@ -215,7 +215,7 @@ describe('integrity check from Administration', () => {
     await addDoc(db(), { id: 'PRO-QUA-0001' });
     await attach('PRO-QUA-0001', 'A', 1, pdfBytes('fine'));
     actAs('manager');
-    expect(await checkFileIntegrity()).toMatchObject({ ok: true, message: expect.stringContaining(t.integrity_ok) });
+    expect(await checkFileIntegrity()).toMatchObject({ ok: true, message: expect.stringContaining(tr('No discrepancy')) });
   });
 });
 

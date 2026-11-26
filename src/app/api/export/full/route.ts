@@ -22,7 +22,7 @@ function headers(name: string): HeadersInit {
 async function handleGet(req: Request) {
   const ctx = await getCtx();
   // Counted per user as resolved from the session, never per raw cookie (lib/ratelimit.ts).
-  const limited = limitReader(req, 'exports', ctx.user.id, ctx.t);
+  const limited = limitReader(req, 'exports', ctx.user.id, ctx.tr);
   if (limited) return limited;
   if (!mayExportAll(ctx)) return new Response('Forbidden', { status: 403 });
   const { name, body } = await startFullExport(ctx.user.id);
@@ -32,7 +32,7 @@ async function handleGet(req: Request) {
 /** Same check and headers as GET, without exporting nor journaling anything (link checkers, download managers). */
 async function handleHead(req: Request) {
   const ctx = await getCtx();
-  const limited = limitReader(req, 'exports', ctx.user.id, ctx.t);
+  const limited = limitReader(req, 'exports', ctx.user.id, ctx.tr);
   if (limited) return new Response(null, { status: limited.status, headers: limited.headers });
   if (!mayExportAll(ctx)) return new Response(null, { status: 403 });
   return new Response(null, { headers: headers('codex-export.zip') });

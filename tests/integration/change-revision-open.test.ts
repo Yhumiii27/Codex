@@ -5,13 +5,13 @@ import type { RevStatus } from '@/db/schema';
 import { addWorkingVersion, decideStep, graftChange, releaseHold, requestChange, requestValidation, simulateVigieDecision } from '@/lib/actions';
 import { buildAccessIndex, inDraftingCircle, readerMaySeeRevision } from '@/lib/access';
 import { getCtx } from '@/lib/context';
-import { DICT } from '@/lib/i18n';
 import { applyChangeDecision, applyPendingDecision, approveRevision, cancelOpenRevisions, promoteDue } from '@/lib/lifecycle';
 import { acceptedWaitL, decisionWaitL, listAudit, listChangeRequests, listRevisions } from '@/lib/queries';
 import { submitChange } from '@/server/integrations/vigie';
 import { addDoc, addWorkflow, baseOf, fixClock, getChange, getDoc, getRevision, journalOf, revisionStatuses, setClock, setupDb, type DocSpec } from '../support/db';
 import type { Person } from '../support/fixtures';
 import { actAs } from '../support/session';
+import { translatorFor } from '@/i18n';
 
 // A change Vigie accepts while a revision of the document is already open (D-26, docs/decisions.md): it is recorded
 // « Acceptée » and waits, then opens the next revision once the open one enters into force or is cancelled; or it is
@@ -33,7 +33,7 @@ afterAll(() => {
   vi.unstubAllEnvs();
 });
 
-const t = DICT.fr;
+const tr = translatorFor('fr');
 const ID = 'PRO-QUA-0001';
 const ECO_B = 'ECO-2026-010'; // the change order that opened B
 const ECO = 'ECO-2026-020'; // the change Vigie accepts while B is open
@@ -169,7 +169,7 @@ describe('graft onto the revision being drafted (D-26)', () => {
   ])('is done by %s: B keeps its author and also carries the change order', async (_, who) => {
     await withOpen('draft');
     const id = await waiting('writer2');
-    expect(await graft(who, id)).toEqual({ ok: true, message: `${t.graft_done} : ${ECO} → B` });
+    expect(await graft(who, id)).toEqual({ ok: true, message: `${tr('Change grafted onto the revision in progress')} : ${ECO} → B` });
     const b = await getRevision(db(), ID, 'B');
     expect(b).toMatchObject({ status: 'draft', modifierId: 'writer', changeRef: ECO_B });
     expect(await revisionStatuses(db(), ID)).toEqual({ A: 'in_force', B: 'draft' });
@@ -190,7 +190,7 @@ describe('graft onto the revision being drafted (D-26)', () => {
     await withOpen('draft');
     const id = await waiting();
     await graft('writer', id);
-    expect(await graft('writer', id)).toEqual({ ok: false, error: t.graft_not_pending });
+    expect(await graft('writer', id)).toEqual({ ok: false, error: tr('No accepted change waiting to be grafted onto a revision in progress.') });
     expect(await approveB()).toBe(true);
     expect(await revisionStatuses(db(), ID)).toEqual({ A: 'superseded', B: 'in_force' });
     expect(await getDoc(db(), ID)).toMatchObject({ revInForce: 'B', revWorking: null });
@@ -204,7 +204,7 @@ describe('graft onto the revision being drafted (D-26)', () => {
     await withOpen(status, {}, { effectiveAt });
     const id = await waiting();
     const before = await journalOf(db(), ID);
-    expect(await graft('manager', id)).toEqual({ ok: false, error: t.graft_not_draft });
+    expect(await graft('manager', id)).toEqual({ ok: false, error: tr('The revision in progress is under review or approved: the change can no longer be grafted onto it. It will open the next revision upon entry into force of the revision in progress.') });
     expect(await getChange(db(), id)).toMatchObject({ status: 'accepted', revisionId: null, modifierId: 'writer2' });
     expect(await journalOf(db(), ID)).toEqual(before);
   });
@@ -212,7 +212,7 @@ describe('graft onto the revision being drafted (D-26)', () => {
   it('is refused while the document is locked', async () => {
     await withOpen('draft', { legalHold: true });
     const id = await waiting();
-    expect(await graft('manager', id)).toEqual({ ok: false, error: t.locked_hold });
+    expect(await graft('manager', id)).toEqual({ ok: false, error: tr('Document under legal hold: it cannot be changed.') });
     expect((await getChange(db(), id)).status).toBe('accepted');
   });
 
@@ -225,7 +225,7 @@ describe('graft onto the revision being drafted (D-26)', () => {
     await withOpen('draft');
     const id = await waiting();
     const before = await journalOf(db(), ID);
-    expect(await graft(who, id)).toEqual({ ok: false, error: t.not_allowed });
+    expect(await graft(who, id)).toEqual({ ok: false, error: tr('Permission required') });
     expect((await getChange(db(), id)).status).toBe('accepted');
     expect(await journalOf(db(), ID)).toEqual(before);
   });
@@ -234,22 +234,22 @@ describe('graft onto the revision being drafted (D-26)', () => {
     await withOpen('draft');
     const id = await waiting();
     actAs('writer', 'auditeur');
-    expect(await graftChange(id)).toEqual({ ok: false, error: `${t.not_allowed} : ${t.perm_edit}` });
+    expect(await graftChange(id)).toEqual({ ok: false, error: `${tr('Permission required')} : ${tr('Edit#permission')}` });
     expect((await getChange(db(), id)).status).toBe('accepted');
   });
 
   it('answers « not found » about a document the user cannot read', async () => {
     await withOpen('draft', { conf: 'tres_confidentiel' });
     const id = await waiting(null);
-    expect(await graft('writer2', id)).toEqual({ ok: false, error: t.not_found });
-    expect(await graft('writer2', 'ECR-2026-999')).toEqual({ ok: false, error: t.not_found });
+    expect(await graft('writer2', id)).toEqual({ ok: false, error: tr('Document not found.') });
+    expect(await graft('writer2', 'ECR-2026-999')).toEqual({ ok: false, error: tr('Document not found.') });
     expect((await getChange(db(), id)).status).toBe('accepted');
   });
 
   it('finds nothing to graft before Vigie has accepted the change', async () => {
     await withOpen('draft');
     const id = await ask();
-    expect(await graft('manager', id)).toEqual({ ok: false, error: t.graft_not_pending });
+    expect(await graft('manager', id)).toEqual({ ok: false, error: tr('No accepted change waiting to be grafted onto a revision in progress.') });
     expect((await getChange(db(), id)).status).toBe('submitted');
   });
 });
@@ -300,10 +300,10 @@ describe('change request while a revision is open (D-26)', () => {
   it('is accepted, and the simulated acceptance says that it waits for the revision in progress', async () => {
     await withOpen('draft');
     actAs('writer2');
-    expect(await requestChange(ID, 'modification', 'r', '')).toEqual({ ok: true, message: `${t.ecr_sent} : ECR-2026-001` });
+    expect(await requestChange(ID, 'modification', 'r', '')).toEqual({ ok: true, message: `${tr('Request sent to Vigie')} : ECR-2026-001` });
     expect(await getChange(db(), 'ECR-2026-001')).toMatchObject({ kind: 'modification', status: 'submitted', requesterId: 'writer2' });
     actAs('manager');
-    expect(await simulateVigieDecision('ECR-2026-001', true, null)).toEqual({ ok: true, message: `${t.ecr_accepted_waiting} : ${t.ecr_wait_revision} B.` });
+    expect(await simulateVigieDecision('ECR-2026-001', true, null)).toEqual({ ok: true, message: `${tr('Vigie decision accepted, pending application')} : ${tr('it will open the next revision upon entry into force of revision')} B.` });
     expect((await getChange(db(), 'ECR-2026-001')).status).toBe('accepted');
   });
 
@@ -311,19 +311,19 @@ describe('change request while a revision is open (D-26)', () => {
     await withOpen('draft', { legalHold: true });
     const id = await ask();
     actAs('manager');
-    expect(await simulateVigieDecision(id, true, null)).toEqual({ ok: true, message: `${t.ecr_accepted_waiting} : ${t.ecr_wait_revision} B, ${t.ecr_wait_not_before_hold}.` });
+    expect(await simulateVigieDecision(id, true, null)).toEqual({ ok: true, message: `${tr('Vigie decision accepted, pending application')} : ${tr('it will open the next revision upon entry into force of revision')} B, ${tr('not before the legal hold is released')}.` });
   });
 
   it('names the revision waited for, then what a lock adds to the wait (record, simulation)', () => {
-    const wait = (state: 'active' | 'archived' | 'obsolete', legalHold: boolean) => decisionWaitL(t, { state, legalHold, revision: 'B' });
-    expect(wait('active', false)).toBe(`${t.ecr_wait_revision} B`);
-    expect(wait('active', true)).toBe(`${t.ecr_wait_revision} B, ${t.ecr_wait_not_before_hold}`);
-    expect(wait('archived', false)).toBe(`${t.ecr_wait_revision} B, ${t.ecr_wait_not_before_archived}`);
-    expect(wait('archived', true)).toBe(`${t.ecr_wait_revision} B, ${t.ecr_wait_not_before_hold_archived}`);
-    expect(wait('obsolete', false)).toBe(`${t.ecr_wait_revision} B, ${t.ecr_wait_not_while_locked}`);
+    const wait = (state: 'active' | 'archived' | 'obsolete', legalHold: boolean) => decisionWaitL(tr, { state, legalHold, revision: 'B' });
+    expect(wait('active', false)).toBe(`${tr('it will open the next revision upon entry into force of revision')} B`);
+    expect(wait('active', true)).toBe(`${tr('it will open the next revision upon entry into force of revision')} B, ${tr('not before the legal hold is released')}`);
+    expect(wait('archived', false)).toBe(`${tr('it will open the next revision upon entry into force of revision')} B, ${tr('not before the document is restored')}`);
+    expect(wait('archived', true)).toBe(`${tr('it will open the next revision upon entry into force of revision')} B, ${tr('not before the legal hold is released and the document restored')}`);
+    expect(wait('obsolete', false)).toBe(`${tr('it will open the next revision upon entry into force of revision')} B, ${tr('not while the document is locked')}`);
     // Without a revision open (or outside the drafting circle, which knows of none), only the lock is named.
-    expect(decisionWaitL(t, { state: 'archived', legalHold: true, revision: null })).toBe(t.ecr_wait_hold_archived);
-    expect(decisionWaitL(t, { state: 'active', legalHold: true, revision: null })).toBe(t.ecr_wait_hold);
+    expect(decisionWaitL(tr, { state: 'archived', legalHold: true, revision: null })).toBe(tr('it will apply once the legal hold is released and the document restored'));
+    expect(decisionWaitL(tr, { state: 'active', legalHold: true, revision: null })).toBe(tr('it will apply when the legal hold is released'));
   });
 
   it('never promises outside the drafting circle that a change applies when a lock lifts: a hidden revision may hold it too', () => {
@@ -331,33 +331,33 @@ describe('change request while a revision is open (D-26)', () => {
     const doc = (state: 'active' | 'archived' | 'obsolete', legalHold: boolean, revWorking: string | null) => ({ state, legalHold, revWorking });
     // The same words whether a revision is open (or the change grafted onto it) or not: nothing tells which.
     for (const rev of ['B', null]) {
-      expect(acceptedWaitL(t, accepted, doc('active', true, rev), false), String(rev)).toBe(t.ecr_wait_no_earlier_hold);
-      expect(acceptedWaitL(t, accepted, doc('archived', false, rev), false), String(rev)).toBe(t.ecr_wait_no_earlier_archived);
-      expect(acceptedWaitL(t, accepted, doc('archived', true, rev), false), String(rev)).toBe(t.ecr_wait_no_earlier_hold_archived);
-      expect(acceptedWaitL(t, accepted, doc('obsolete', false, rev), false), String(rev)).toBe(t.ecr_wait_no_earlier_lock);
+      expect(acceptedWaitL(tr, accepted, doc('active', true, rev), false), String(rev)).toBe(tr('it will not apply before the legal hold is released'));
+      expect(acceptedWaitL(tr, accepted, doc('archived', false, rev), false), String(rev)).toBe(tr('it will not apply before the document is restored'));
+      expect(acceptedWaitL(tr, accepted, doc('archived', true, rev), false), String(rev)).toBe(tr('it will not apply before the legal hold is released and the document restored'));
+      expect(acceptedWaitL(tr, accepted, doc('obsolete', false, rev), false), String(rev)).toBe(tr('it will not apply while the document is locked'));
       // Without a lock, the reader is given no reason at all: « Acceptée », as listChangeRequests shows it.
-      expect(acceptedWaitL(t, accepted, doc('active', false, rev), false), String(rev)).toBeNull();
+      expect(acceptedWaitL(tr, accepted, doc('active', false, rev), false), String(rev)).toBeNull();
     }
     // A withdrawal waits for the lock alone: when it applies may be said.
-    expect(acceptedWaitL(t, { kind: 'obsolescence', status: 'accepted' }, doc('active', true, 'B'), false)).toBe(t.ecr_wait_hold);
+    expect(acceptedWaitL(tr, { kind: 'obsolescence', status: 'accepted' }, doc('active', true, 'B'), false)).toBe(tr('it will apply when the legal hold is released'));
     // The drafting circle is told exactly (decisionWaitL); nothing is said of a request that does not wait.
-    expect(acceptedWaitL(t, accepted, doc('active', true, 'B'), true)).toBe(`${t.ecr_wait_revision} B, ${t.ecr_wait_not_before_hold}`);
-    expect(acceptedWaitL(t, accepted, doc('active', true, null), true)).toBe(t.ecr_wait_hold);
-    expect(acceptedWaitL(t, accepted, doc('active', false, 'B'), true)).toBe(`${t.ecr_wait_revision} B`);
-    expect(acceptedWaitL(t, { kind: 'modification', status: 'implemented' }, doc('active', true, 'B'), true)).toBeNull();
+    expect(acceptedWaitL(tr, accepted, doc('active', true, 'B'), true)).toBe(`${tr('it will open the next revision upon entry into force of revision')} B, ${tr('not before the legal hold is released')}`);
+    expect(acceptedWaitL(tr, accepted, doc('active', true, null), true)).toBe(tr('it will apply when the legal hold is released'));
+    expect(acceptedWaitL(tr, accepted, doc('active', false, 'B'), true)).toBe(`${tr('it will open the next revision upon entry into force of revision')} B`);
+    expect(acceptedWaitL(tr, { kind: 'modification', status: 'implemented' }, doc('active', true, 'B'), true)).toBeNull();
   });
 
   it('keeps the other refusals: one pending request per document, a lock, no revision in force', async () => {
     await withOpen('draft');
     const id = await waiting();
     actAs('owner');
-    expect(await requestChange(ID, 'modification', 'r', '')).toEqual({ ok: false, error: `${t.change_pending} : ${id}` });
-    expect(await requestChange(ID, 'obsolescence', 'r', '')).toEqual({ ok: false, error: `${t.change_pending} : ${id}` });
+    expect(await requestChange(ID, 'modification', 'r', '')).toEqual({ ok: false, error: `${tr('A request is already pending for this document.')} : ${id}` });
+    expect(await requestChange(ID, 'obsolescence', 'r', '')).toEqual({ ok: false, error: `${tr('A request is already pending for this document.')} : ${id}` });
 
     await addDoc(db(), { id: 'PRO-QUA-0002', legalHold: true, revisions: [{ letter: 'A', status: 'in_force' }, { letter: 'B', status: 'draft' }] });
-    expect(await requestChange('PRO-QUA-0002', 'modification', 'r', '')).toEqual({ ok: false, error: t.locked_hold });
+    expect(await requestChange('PRO-QUA-0002', 'modification', 'r', '')).toEqual({ ok: false, error: tr('Document under legal hold: it cannot be changed.') });
     await addDoc(db(), { id: 'PRO-QUA-0003', revisions: [{ letter: 'A', status: 'draft', versions: ['owner'] }] });
-    expect(await requestChange('PRO-QUA-0003', 'modification', 'r', '')).toEqual({ ok: false, error: t.need_in_force });
+    expect(await requestChange('PRO-QUA-0003', 'modification', 'r', '')).toEqual({ ok: false, error: tr('Only a document in force can be the subject of a change or withdrawal request.') });
   });
 });
 
@@ -427,9 +427,9 @@ describe('drafting circle (D-14)', () => {
     const fd = new FormData();
     fd.set('docId', ID);
     fd.set('file', new File(['%PDF-1.4\n%%EOF'], 'b.pdf', { type: 'application/pdf' }));
-    expect(await addWorkingVersion(fd)).toEqual({ ok: false, error: t.not_allowed });
-    expect(await requestValidation(ID, null, await baseOf(db(), ID))).toEqual({ ok: false, error: t.not_allowed });
-    expect(await graftChange(id)).toEqual({ ok: false, error: t.not_allowed });
+    expect(await addWorkingVersion(fd)).toEqual({ ok: false, error: tr('Permission required') });
+    expect(await requestValidation(ID, null, await baseOf(db(), ID))).toEqual({ ok: false, error: tr('Permission required') });
+    expect(await graftChange(id)).toEqual({ ok: false, error: tr('Permission required') });
     expect(await journalOf(db(), ID)).toEqual(before);
 
     // Grafted onto B, the change is written by B's author: writer2 is no longer designated, and leaves the circle.

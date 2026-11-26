@@ -3,11 +3,11 @@ import { getDb, schema as s } from '@/db';
 import { getCtx } from '@/lib/context';
 import { csvHeaders, csvRow } from '@/lib/csv';
 import { parisStamp, todayIso } from '@/lib/format';
-import type { TKey } from '@/lib/i18n';
 import { audit } from '@/lib/lifecycle';
 import { withRequestLog } from '@/lib/log';
 import { auditDetailL, auditForReader, auditTargetL } from '@/lib/queries';
 import { limitReader } from '@/lib/ratelimit';
+import { ACTIVITY_LABEL, labelOf } from '@/i18n/labels';
 
 const BATCH = 5000;
 
@@ -24,10 +24,10 @@ const filename = () => `codex-journal-audit-${todayIso()}.csv`;
 async function handleGet(req: Request) {
   const ctx = await getCtx();
   // Counted per user as resolved from the session, never per raw cookie (lib/ratelimit.ts).
-  const limited = limitReader(req, 'exports', ctx.user.id, ctx.t);
+  const limited = limitReader(req, 'exports', ctx.user.id, ctx.tr);
   if (limited) return limited;
   if (!ctx.screens.admin) return new Response('Forbidden', { status: 403 });
-  const { t } = ctx;
+  const { tr } = ctx;
   const db = await getDb();
   const enc = new TextEncoder();
   let cursor: { at: string; id: number } | null = null;
@@ -43,7 +43,7 @@ async function handleGet(req: Request) {
     async pull(c) {
       if (!headed) {
         headed = true;
-        c.enqueue(enc.encode('﻿' + csvRow([t.when, t.user, t.action, t.document, t.target, t.detail])));
+        c.enqueue(enc.encode('﻿' + csvRow([tr('Timestamp'), tr('User'), tr('Action'), tr('Document'), tr('Target'), tr('Detail')])));
         return;
       }
       // A batch may be filtered out entirely: read on until something is enqueued, or pull would not be called again.
@@ -61,7 +61,7 @@ async function handleGet(req: Request) {
         if (!rows.length) continue;
         count += rows.length;
         c.enqueue(enc.encode(rows.map((a) => csvRow([
-          parisStamp(a.at), ctx.userName(a.userId), ctx.t[`act_${a.action}` as TKey] ?? a.action, a.docId, a.docId == null ? auditTargetL(ctx, a.targetKind, a.targetId) : '', auditDetailL(ctx, a),
+          parisStamp(a.at), ctx.userName(a.userId), labelOf(ctx.tr, ACTIVITY_LABEL, a.action), a.docId, a.docId == null ? auditTargetL(ctx, a.targetKind, a.targetId) : '', auditDetailL(ctx, a),
         ])).join('')));
         return;
       }
@@ -76,7 +76,7 @@ async function handleGet(req: Request) {
 /** Same check and headers as GET, without reading the journal nor journaling an export (link checkers, download managers). */
 async function handleHead(req: Request) {
   const ctx = await getCtx();
-  const limited = limitReader(req, 'exports', ctx.user.id, ctx.t);
+  const limited = limitReader(req, 'exports', ctx.user.id, ctx.tr);
   if (limited) return new Response(null, { status: limited.status, headers: limited.headers });
   if (!ctx.screens.admin) return new Response(null, { status: 403 });
   return new Response(null, { headers: csvHeaders(filename()) });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { dateIssues, dateIssueText, effectIssue, inForceEffect, issueFrom, latestEffect, type DateRule, type DocDates } from '@/lib/dates';
-import { DICT } from '@/lib/i18n';
+import { translatorFor } from '@/i18n';
 
 // Coherence of a document's dates (docs/audit-deck-epc2i.md §4.6, rule 12: issue ≤ effect ≤ expiry; point 3 of
 // docs/reste-a-faire.md): expiry after the issue and after the revision's effective date, review after the issue,
@@ -144,15 +144,15 @@ describe('dateIssueText', () => {
   ];
 
   it('says, in each language, which date it conflicts with', () => {
-    expect(dateIssueText(DICT.fr, 'fr', { field: 'expiresAt', rule: 'expires_before_effective', ref: '2026-06-01', letter: 'B' }))
+    expect(dateIssueText(translatorFor('fr'), 'fr', { field: 'expiresAt', rule: 'expires_before_effective', ref: '2026-06-01', letter: 'B' }))
       .toBe('La date d’expiration doit être postérieure à la date d’effet de la révision B (01/06/2026) : choisissez une date plus tardive.');
-    expect(dateIssueText(DICT.en, 'en', { field: 'expiresAt', rule: 'expires_before_issued', ref: '2026-03-01' }))
+    expect(dateIssueText(translatorFor('en'), 'en', { field: 'expiresAt', rule: 'expires_before_issued', ref: '2026-03-01' }))
       .toBe('The expiry date must be after the document’s issue date (1 Mar 2026): choose a later date.');
   });
 
   it('has a message of its own for each rule, in French and in English, with every placeholder filled', () => {
     for (const lang of ['fr', 'en'] as const) {
-      const texts = ALL.map((rule) => dateIssueText(DICT[lang], lang, { field: 'expiresAt', rule, ref: '2026-03-01', letter: 'B' }));
+      const texts = ALL.map((rule) => dateIssueText(translatorFor(lang), lang, { field: 'expiresAt', rule, ref: '2026-03-01', letter: 'B' }));
       expect(new Set(texts).size).toBe(ALL.length);
       for (const text of texts) expect(text).not.toMatch(/[{}]/);
       // Every rule but the reception in the future names the date to compare with.

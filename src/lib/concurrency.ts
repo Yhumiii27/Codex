@@ -1,4 +1,4 @@
-import type { T } from './i18n';
+import type { Translate } from '@/i18n';
 
 // Concurrent changes from two views of the same record (point 20 of docs/reste-a-faire.md): a write that starts from
 // what a dialog showed is refused once the record or its working versions moved on since, instead of overwriting them
@@ -58,14 +58,14 @@ export function changeAuthor(entries: readonly ChangeEntry[], docId: string, isS
 }
 
 /** Refusal of a write from an outdated view of the record: who changed it since, when the journal names them. */
-export function staleText(t: T, who: string | null): string {
-  return who ? t.stale.replace('{who}', who) : t.stale_anon;
+export function staleText(tr: Translate, who: string | null): string {
+  return who ? tr('This document was changed in the meantime by {who}; reload the record.').replace('{who}', who) : tr('This document was changed in the meantime; reload the record.');
 }
 
 /**
  * Refusal of an upload (`upload`) or of an approval request (`validate`) whose dialog missed a later working version
  * (`label`, e.g. A.3), uploaded by `who`.
  */
-export function workingStaleText(t: T, label: string, who: string, from: 'upload' | 'validate' = 'upload'): string {
-  return t[from === 'upload' ? 'working_stale' : 'validate_stale'].replace('{label}', label).replace('{who}', who);
+export function workingStaleText(tr: Translate, label: string, who: string, from: 'upload' | 'validate' = 'upload'): string {
+  return (from === 'upload' ? tr('Working version {label} was uploaded in the meantime by {who}; reload the record to start from that version.') : tr('Working version {label} was uploaded in the meantime by {who}; reload the record to see it before requesting approval.')).replace('{label}', label).replace('{who}', who);
 }

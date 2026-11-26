@@ -11,7 +11,7 @@ import { searchUrlWith } from '@/lib/search';
  * results start again from their first page.
  */
 export function SearchField({ q }: { q: string }) {
-  const { t } = useApp();
+  const { tr } = useApp();
   const router = useRouter();
   const [value, setValue] = useState(q);
   const [prevQ, setPrevQ] = useState(q);
@@ -28,8 +28,8 @@ export function SearchField({ q }: { q: string }) {
       <input
         className="input"
         value={value}
-        placeholder={t.search_ph}
-        aria-label={t.search_ph}
+        placeholder={tr('Search documents, references, keywords…')}
+        aria-label={tr('Search documents, references, keywords…')}
         style={{ paddingLeft: 36, minHeight: 40, fontSize: 15 }}
         onChange={(e) => {
           const v = e.target.value;
@@ -71,12 +71,12 @@ function useSearchParamsUpdate() {
 
 /** Order of the results (URL `sort`). */
 export function SortSelect({ value, options }: { value: string; options: { key: string; label: string }[] }) {
-  const { t } = useApp();
+  const { tr } = useApp();
   const update = useSearchParamsUpdate();
   const [pending, start] = useTransition();
   return (
     <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
-      <span className="text-muted">{t.sort_by}</span>
+      <span className="text-muted">{tr('Sort by')}</span>
       <select
         className="input"
         value={value}
@@ -98,7 +98,7 @@ const settled = (v: string) => v === '' || (/^\d{4}-\d{2}-\d{2}$/.test(v) && +v.
  * when both are empty. Choosing another date moves the period onto it.
  */
 export function PeriodFilter({ field, from, to, fields }: { field: string; from: string; to: string; fields: { key: string; label: string }[] }) {
-  const { t } = useApp();
+  const { tr } = useApp();
   const update = useSearchParamsUpdate();
   const [value, setValue] = useState({ field, from, to });
   const [prev, setPrev] = useState({ field, from, to });
@@ -120,22 +120,22 @@ export function PeriodFilter({ field, from, to, fields }: { field: string; from:
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-        <span className="text-muted" style={{ fontSize: 11 }}>{t.period}</span>
+        <span className="text-muted" style={{ fontSize: 11 }}>{tr('Period')}</span>
         {active && (
-          <button type="button" className="btn btn-ghost" style={{ fontSize: 11, padding: '0 4px' }} title={t.period_clear} aria-label={t.period_clear} onClick={() => change({ ...value, from: '', to: '' }, 0)}>
+          <button type="button" className="btn btn-ghost" style={{ fontSize: 11, padding: '0 4px' }} title={tr('Clear the period')} aria-label={tr('Clear the period')} onClick={() => change({ ...value, from: '', to: '' }, 0)}>
             <Icon name="close" size={11} sw={2} />
           </button>
         )}
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px 8px', alignItems: 'center', fontSize: 12 }}>
-        <span className="text-muted">{t.period_date}</span>
-        <select className="input" aria-label={`${t.period} · ${t.period_date}`} value={value.field} onChange={(e) => change({ ...value, field: e.target.value }, 0)} style={{ minHeight: 28, fontSize: 12, padding: '2px 24px 2px 8px' }}>
+        <span className="text-muted">{tr('Date')}</span>
+        <select className="input" aria-label={`${tr('Period')} · ${tr('Date')}`} value={value.field} onChange={(e) => change({ ...value, field: e.target.value }, 0)} style={{ minHeight: 28, fontSize: 12, padding: '2px 24px 2px 8px' }}>
           {fields.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
         </select>
-        <span className="text-muted">{t.period_start}</span>
-        <input className="input" type="date" aria-label={`${t.period} · ${t.period_start}`} value={value.from} max={value.to || undefined} onChange={(e) => change({ ...value, from: e.target.value }, 400)} style={{ minHeight: 28, fontSize: 12, padding: '2px 8px' }} />
-        <span className="text-muted">{t.period_end}</span>
-        <input className="input" type="date" aria-label={`${t.period} · ${t.period_end}`} value={value.to} min={value.from || undefined} onChange={(e) => change({ ...value, to: e.target.value }, 400)} style={{ minHeight: 28, fontSize: 12, padding: '2px 8px' }} />
+        <span className="text-muted">{tr('From')}</span>
+        <input className="input" type="date" aria-label={`${tr('Period')} · ${tr('From')}`} value={value.from} max={value.to || undefined} onChange={(e) => change({ ...value, from: e.target.value }, 400)} style={{ minHeight: 28, fontSize: 12, padding: '2px 8px' }} />
+        <span className="text-muted">{tr('To')}</span>
+        <input className="input" type="date" aria-label={`${tr('Period')} · ${tr('To')}`} value={value.to} min={value.from || undefined} onChange={(e) => change({ ...value, to: e.target.value }, 400)} style={{ minHeight: 28, fontSize: 12, padding: '2px 8px' }} />
       </div>
     </div>
   );

@@ -54,7 +54,7 @@ export function ActionButton({ action, className = 'btn btn-secondary', children
   /** Where to stay after success (keeps the current selection in the URL). */
   after?: string;
 }) {
-  const { t, toast } = useApp();
+  const { tr, toast } = useApp();
   const router = useRouter();
   const menu = useHeaderMenu();
   const [pending, start] = useTransition();
@@ -76,7 +76,7 @@ export function ActionButton({ action, className = 'btn btn-secondary', children
             if (!r.ok) { toast(r.error, true); router.refresh(); }
             else { if (r.href ?? after) router.replace((r.href ?? after)!, { scroll: false }); if (r.message) toast(r.message); if (r.warning) toast(r.warning, 'warn'); }
           } catch (err) {
-            toast(failureText(t, err), true);
+            toast(failureText(tr, err), true);
           }
         });
       }}
@@ -92,22 +92,22 @@ export function ActionButton({ action, className = 'btn btn-secondary', children
  * (point 94 of docs/reste-a-faire.md). Same look as the mock-up's button.
  */
 export function ShareButton() {
-  const { t, toast } = useApp();
+  const { tr, toast } = useApp();
   const menu = useHeaderMenu();
   return (
     <button
       type="button"
       className={menu ? MENU_ROW : 'btn btn-secondary btn-icon'}
       role={menu ? 'menuitem' : undefined}
-      aria-label={menu ? undefined : t.copy_link}
-      title={t.copy_link}
+      aria-label={menu ? undefined : tr('Copy the document link')}
+      title={tr('Copy the document link')}
       onClick={async () => {
         menu?.close();
-        try { await navigator.clipboard.writeText(window.location.href); toast(t.link_copied); } catch { toast(window.location.href); }
+        try { await navigator.clipboard.writeText(window.location.href); toast(tr('Link copied to the clipboard')); } catch { toast(window.location.href); }
       }}
     >
       <Icon name="more" sw={2.6} />
-      {menu && t.copy_link}
+      {menu && tr('Copy the document link')}
     </button>
   );
 }

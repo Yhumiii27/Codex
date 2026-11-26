@@ -36,9 +36,7 @@ export async function generateMetadata({ params }: PageProps<'/departements/[cod
 export default async function DepartmentPage({ params }: PageProps<'/departements/[code]'>) {
   const { code } = await params;
   const ctx = await getCtx();
-  // Facet names come from the search's table of keys (lib/search.ts FACET_LABEL), shared with /recherche.
-  const { t } = ctx;
-  const tr = translatorFor(ctx.lang);
+  const { tr } = ctx;
   const colon = ctx.lang === 'fr' ? ' : ' : ': ';
   // Department codes are three capital letters: nothing to decode, anything else is unknown.
   const page = await departmentPage(ctx, code);
@@ -119,7 +117,7 @@ export default async function DepartmentPage({ params }: PageProps<'/departement
                 <div className={styles.facets}>
                   {page.featured.map((f) => (
                     <div key={f.key}>
-                      <div className="text-muted" style={{ fontSize: 11, marginBottom: 4 }}>{t[FACET_LABEL[f.key]]}</div>
+                      <div className="text-muted" style={{ fontSize: 11, marginBottom: 4 }}>{tr(FACET_LABEL[f.key])}</div>
                       <div style={{ display: 'flex', flexDirection: 'column' }}>
                         {f.values.map((v) => (
                           <Link key={v.value} href={v.href} className={styles.value} title={v.label}>

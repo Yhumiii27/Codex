@@ -26,8 +26,8 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import type { Browser, Page } from 'playwright-core';
-import { DICT, type Lang } from '../src/lib/i18n';
-import { translate } from '../src/i18n/index';
+import type { Lang } from '../src/lib/i18n';
+import { translatorFor, type Translate } from '../src/i18n/index';
 import { launchChromium, pageAction, serverLogTail, startServer, stopServer, waitHealthy } from './codex-browser.mjs';
 import { KIND_LABEL, KINDS, measureLayout, SIZES, type Layout, type Size } from './codex-narrow.mjs';
 
@@ -90,32 +90,31 @@ const PAGES: { name: string; path: string }[] = [
   { name: 'Page introuvable', path: '/introuvable' },
 ];
 
-type T = (typeof DICT)['fr'];
 /**
  * Main dialogs: the screen, then the button that opens it (by its accessible name, from the dictionary). Each is closed
  * with Escape, never sent: the database is not changed.
  */
-const DIALOGS: { name: string; path: string; button: (t: T) => string | RegExp }[] = [
-  { name: 'Nouveau depuis un modèle', path: '/', button: (t) => t.new_from_tpl },
-  { name: 'Déposer un fichier', path: '/', button: (t) => t.upload },
-  { name: 'Notes de conception', path: '/', button: (t) => t.notes },
+const DIALOGS: { name: string; path: string; button: (tr: Translate) => string | RegExp }[] = [
+  { name: 'Nouveau depuis un modèle', path: '/', button: (tr) => tr('New from template') },
+  { name: 'Déposer un fichier', path: '/', button: (tr) => tr('Upload a file') },
+  { name: 'Notes de conception', path: '/', button: (tr) => tr('Design notes') },
   { name: 'Simuler un utilisateur', path: '/', button: () => /Claire Bardet/ },
-  { name: 'Modifier les métadonnées', path: '/documents/PRO-QUA-0001', button: (t) => t.edit_meta },
-  { name: 'Demander une modification', path: '/documents/PRO-HSE-0001', button: (t) => t.request_change },
-  { name: 'Demander le retrait', path: '/documents/PRO-HSE-0001', button: (t) => t.request_obsolete },
-  { name: 'Lecteurs désignés', path: '/documents/RHF-RHU-0001', button: (t) => t.readers },
-  { name: 'Lier un document', path: '/documents/PRO-QUA-0001', button: (t) => t.link_add },
-  { name: 'Nouvelle version de travail', path: '/documents/VAR-HLT-026-001', button: (t) => t.new_working_version },
-  { name: 'Demander la validation', path: '/documents/VAR-HLT-026-001', button: (t) => t.request_validation },
-  { name: 'Comparer', path: '/documents/VAR-HLT-026-001?tab=versions', button: (t) => t.compare },
-  { name: 'Rejeter', path: '/validations', button: (t) => t.reject },
-  { name: 'Déléguer', path: '/validations', button: (t) => t.delegate },
-  { name: 'Rappeler la demande', path: '/validations', button: (t) => t.recall },
-  { name: 'Simulation Vigie', path: '/documents/PRO-QUA-0001?tab=requests', button: (t) => t.vigie_sim },
-  { name: 'Enregistrer la recherche', path: '/recherche?q=levage', button: (t) => t.search_save },
-  { name: 'Nouveau type', path: '/administration', button: (t) => t.new_type },
-  { name: 'Nouvelle fonction', path: '/administration?tab=functions', button: (t) => t.new_function },
-  { name: 'Nouveau département', path: '/administration?tab=org', button: (t) => t.new_department },
+  { name: 'Modifier les métadonnées', path: '/documents/PRO-QUA-0001', button: (tr) => tr('Edit metadata') },
+  { name: 'Demander une modification', path: '/documents/PRO-HSE-0001', button: (tr) => tr('Request a change') },
+  { name: 'Demander le retrait', path: '/documents/PRO-HSE-0001', button: (tr) => tr('Request withdrawal') },
+  { name: 'Lecteurs désignés', path: '/documents/RHF-RHU-0001', button: (tr) => tr('Named readers') },
+  { name: 'Lier un document', path: '/documents/PRO-QUA-0001', button: (tr) => tr('Link a document') },
+  { name: 'Nouvelle version de travail', path: '/documents/VAR-HLT-026-001', button: (tr) => tr('New working version') },
+  { name: 'Demander la validation', path: '/documents/VAR-HLT-026-001', button: (tr) => tr('Request approval#action') },
+  { name: 'Comparer', path: '/documents/VAR-HLT-026-001?tab=versions', button: (tr) => tr('Compare') },
+  { name: 'Rejeter', path: '/validations', button: (tr) => tr('Reject') },
+  { name: 'Déléguer', path: '/validations', button: (tr) => tr('Delegate') },
+  { name: 'Rappeler la demande', path: '/validations', button: (tr) => tr('Recall the request') },
+  { name: 'Simulation Vigie', path: '/documents/PRO-QUA-0001?tab=requests', button: (tr) => tr('Vigie simulation') },
+  { name: 'Enregistrer la recherche', path: '/recherche?q=levage', button: (tr) => tr('Save search') },
+  { name: 'Nouveau type', path: '/administration', button: (tr) => tr('New type') },
+  { name: 'Nouvelle fonction', path: '/administration?tab=functions', button: (tr) => tr('New function') },
+  { name: 'Nouveau département', path: '/administration?tab=org', button: (tr) => tr('New department') },
 ];
 
 type Node = { target: string[]; html: string; failureSummary?: string };
@@ -151,7 +150,7 @@ async function open(page: Page, base: string, p: string) {
 }
 
 /** First Tab stop is « Aller au contenu », shown while focused; Enter moves the focus to <main id="main-content"> (Norma 2.0). */
-async function skipLink(page: Page, base: string, t: T) {
+async function skipLink(page: Page, base: string, tr: Translate) {
   await open(page, base, '/');
   await page.keyboard.press('Tab');
   const first = await page.evaluate(() => {
@@ -159,19 +158,18 @@ async function skipLink(page: Page, base: string, t: T) {
     const r = a?.getBoundingClientRect();
     return { cls: a?.className ?? '', text: a?.textContent?.trim() ?? '', href: a?.getAttribute('href'), w: r?.width ?? 0, h: r?.height ?? 0 };
   });
-  if (!String(first.cls).includes('coque-skip') || first.text !== translate(t === DICT.en ? 'en' : 'fr', 'Skip to main content') || first.href !== '#main-content') problems.push(`Lien d'évitement : premier arrêt de Tab = ${JSON.stringify(first)}`);
+  if (!String(first.cls).includes('coque-skip') || first.text !== tr('Skip to main content') || first.href !== '#main-content') problems.push(`Lien d'évitement : premier arrêt de Tab = ${JSON.stringify(first)}`);
   else if (first.w < 20 || first.h < 10) problems.push(`Lien d'évitement invisible au focus (${first.w}×${first.h})`);
   await page.keyboard.press('Enter');
   const after = await page.evaluate(() => document.activeElement?.id ?? '');
   if (after !== 'main-content') problems.push(`Lien d'évitement : le focus va sur « ${after} » au lieu de <main id="main-content">`);
 }
 
-async function dialog(page: Page, base: string, d: (typeof DIALOGS)[number], t: T, lang: Lang, size?: Size) {
+async function dialog(page: Page, base: string, d: (typeof DIALOGS)[number], tr: Translate, lang: Lang, size?: Size) {
   await open(page, base, d.path);
-  const name = d.button(t);
-  const tl = t === DICT.en ? 'en' : 'fr';
+  const name = d.button(tr);
   // A page action may be a row of the header's « Actions » menu, a sidebar button inside the drawer (Norma 2.0).
-  const btn = await pageAction(page, name, { actions: translate(tl, 'Actions'), menu: translate(tl, 'Menu') });
+  const btn = await pageAction(page, name, { actions: tr('Actions'), menu: tr('Menu') });
   const tag = size && size.key !== 'bureau' ? ` (${size.label})` : '';
   if (!(await btn.count())) { problems.push(`${d.name}${tag} : bouton introuvable sur ${d.path}`); return; }
   if (await btn.isDisabled()) { problems.push(`${d.name}${tag} : bouton inactif sur ${d.path}`); return; }
@@ -207,7 +205,7 @@ const slug = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').t
 
 /** Every screen, then the skip link and the dialogs, in one language and at one size. */
 async function pass(browser: Browser, base: string, lang: Lang, size: Size | undefined) {
-  const t = DICT[lang];
+  const tr = translatorFor(lang);
   const vp = size ?? SIZES[0];
   const ctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: vp.scale });
   // tsx keeps the names of the functions it compiles (__name), which measureLayout carries into the page.
@@ -223,8 +221,8 @@ async function pass(browser: Browser, base: string, lang: Lang, size: Size | und
     if (size) layouts.push({ ...(await page.evaluate(measureLayout, null)), where: p.name, lang, size: size.key });
     if (SHOTS) await shot(page, size, lang, `${String(i + 1).padStart(2, '0')}-${slug(p.name)}`);
   }
-  await skipLink(page, base, t);
-  for (const d of DIALOGS) await dialog(page, base, d, t, lang, size);
+  await skipLink(page, base, tr);
+  for (const d of DIALOGS) await dialog(page, base, d, tr, lang, size);
   await ctx.close();
 }
 

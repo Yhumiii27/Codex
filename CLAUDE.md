@@ -21,19 +21,17 @@ Elle fait partie d'un système de trois apps :
 Dans Codex, Keystone et Vigie sont **simulés**, via `src/server/integrations/keystone/` et `src/server/integrations/vigie/`.
 
 L'utilisateur écrit en français : réponds en français. L'interface et les docs sont en français. Textes de
-l'interface (Norma § 2, CX-N01, en cours) : chaînes sources en anglais `tr('Go to a page…')` traduites par
+l'interface (Norma § 2, CX-N01) : chaînes sources en anglais `tr('Go to a page…')` traduites par
 `src/i18n/fr.ts` (français par défaut ; `src/i18n/index.ts`, `useApp().tr`, `useI18n()` de `src/i18n/client.tsx` pour
 les composants de la charte, `msg()` pour une source rangée dans une table ; contrôle `tests/unit/i18n-sources.test.ts`).
-Côté serveur : `const tr = translatorFor(ctx.lang)`. Deux sources de même anglais et de français différents se
-départagent par un contexte après `#`, jamais affiché (`tr('Approve#permission')` « Valider », `tr('Approve')`
-« Approuver »). La coque (barre latérale, en-tête, recherche de pages, panneau latéral, affichage) est passée, et ces
-écrans (26 novembre 2026) : accueil (`src/app/page.tsx`), départements (`/departements`, `/departements/[code]`),
-validations (`/validations` : page, `MyChangeRequests`, `CommentBox`), pages introuvables (`not-found.tsx`) et erreur
-d'un écran (`error.tsx`). Y restent lus par clé les seuls vocabulaires partagés avec `src/lib` (noms des facettes
-`FACET_LABEL`, messages d'échec `failureText`, composant `Pager`), repris avec eux. Les autres écrans (explorateur,
-recherche, fiche document, archivage, administration, aide) lisent encore le dictionnaire à clés de `src/lib/i18n.ts`
-(`t.key`) jusqu'à leur reprise, écran par écran : une clé reprise se retire des deux langues dès qu'aucun code ne la lit
-plus.
+Côté serveur : `ctx.tr` (`getCtx()`), ailleurs `translatorFor(lang)` ; côté client : `useApp().tr`. Deux sources de même
+anglais et de français différents se départagent par un contexte après `#`, jamais affiché (`tr('Approve#permission')`
+« Valider », `tr('Approve')` « Approuver »). Tous les écrans sont passés (26 novembre 2026) : il n'y a plus de dictionnaire
+à clés (`DICT`, `t.key`, `TKey` retirés de `src/lib/i18n.ts`). Une valeur codée (statut, niveau, rôle, motif d'un refus…)
+se montre par sa table de `src/i18n/labels.ts` (`labelOf(tr, STATUS_LABEL, doc.status)`, ou `tr(LOCK_LABEL[lock])`
+quand la table couvre tout le type) ; une règle de `src/lib` qui refuse rend la source de son message (`msg('…')`) ou
+un code que sa table traduit, jamais une clé. L'aide (`/aide`) est écrite en sources anglaises dans `src/lib/help.ts`,
+son français dans `src/i18n/fr-help.ts`.
 
 ## À lire avant de travailler
 

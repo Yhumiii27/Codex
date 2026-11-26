@@ -3,13 +3,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { schema as s } from '@/db';
 import { graftChange, requestChange } from '@/lib/actions';
 import { COOKIE_LANG, getCtx } from '@/lib/context';
-import { DICT } from '@/lib/i18n';
 import { applyChangeDecision, approveRevision } from '@/lib/lifecycle';
 import { listChangeRequests } from '@/lib/queries';
 import { submitChange, vigieLinkConfigured, vigieUrl } from '@/server/integrations/vigie';
 import { addDoc, fixClock, getRevision, setClock, setupDb } from '../support/db';
 import type { Person } from '../support/fixtures';
 import { actAs, cookieStore } from '../support/session';
+import { translatorFor } from '@/i18n';
 
 // Validations › Mes demandes Vigie (G18): each user follows the change and withdrawal requests they sent to Vigie, and
 // only theirs, on documents they may still read, as the record shows them to that reader: outside the drafting circle,
@@ -25,7 +25,7 @@ afterEach(() => {
 });
 fixClock(); // 10 October 2026, 10:00 in Paris
 
-const t = DICT.fr;
+const tr = translatorFor('fr');
 const ID = 'PRO-QUA-0001';
 const ECO = 'ECO-2026-020';
 
@@ -73,11 +73,11 @@ describe('Mes demandes Vigie', () => {
     const list = await mine('writer2');
     expect(list.map((c) => c.id)).toEqual([last, first]);
     expect(list[1]).toMatchObject({
-      docId: ID, docTitle: ID, docHref: `/documents/${ID}`, kind: 'modification', kindL: t.kind_modification,
-      status: 'submitted', statusL: t.ecr_submitted, requesterId: 'writer2', when: '10/10 10:00', sentDayF: '10/10/2026', sentF: '10/10/2026 10:00',
+      docId: ID, docTitle: ID, docHref: `/documents/${ID}`, kind: 'modification', kindL: tr('Change'),
+      status: 'submitted', statusL: tr('Sent to Vigie'), requesterId: 'writer2', when: '10/10 10:00', sentDayF: '10/10/2026', sentF: '10/10/2026 10:00',
       decidedF: null, waitL: null, carrier: null,
     });
-    expect(list[0]).toMatchObject({ kindL: t.kind_obsolescence, sentF: '10/10/2026 12:00' });
+    expect(list[0]).toMatchObject({ kindL: tr('Withdrawal (obsolete)'), sentF: '10/10/2026 12:00' });
     expect((await mine('engineer')).map((c) => c.id)).toEqual([other]);
     // A records manager sees every request on the record, but « Mes demandes » are only the ones they sent.
     expect(await mine('manager')).toEqual([]);
@@ -101,7 +101,7 @@ describe('Mes demandes Vigie', () => {
     const id = await ask('writer2', ID);
     setClock('2026-10-11T07:30:00Z');
     expect(await decide(id, false)).toEqual({ status: 'rejected' });
-    expect((await mine('writer2'))[0]).toMatchObject({ id, status: 'rejected', statusL: t.ecr_rejected, decisionNote: 'Hors périmètre', decidedF: '11/10/2026 09:30', waitL: null, carrier: null });
+    expect((await mine('writer2'))[0]).toMatchObject({ id, status: 'rejected', statusL: tr('Rejected#request'), decisionNote: 'Hors périmètre', decidedF: '11/10/2026 09:30', waitL: null, carrier: null });
   });
 
   it('keeps the year of a request sent long ago, in the interface language', async () => {
@@ -124,7 +124,7 @@ describe('Mes demandes Vigie', () => {
     expect(await decide(id, true, 'owner')).toEqual({ status: 'implemented' });
     const b = await getRevision(db(), ID, 'B');
     // Nor the decision date: applied at once, it is when B opened, which his journal does not show either.
-    expect((await mine('writer2'))[0]).toMatchObject({ id, status: 'implemented', statusL: t.ecr_implemented, ecoRef: null, modifierId: null, modifier: null, revisionId: null, carrier: null, waitL: null, decidedAt: null, decidedF: null });
+    expect((await mine('writer2'))[0]).toMatchObject({ id, status: 'implemented', statusL: tr('Applied'), ecoRef: null, modifierId: null, modifier: null, revisionId: null, carrier: null, waitL: null, decidedAt: null, decidedF: null });
     // The drafting circle sees which revision it opened, and when.
     expect((await seen('owner', ID))[0]).toMatchObject({ id, ecoRef: ECO, modifier: 'owner', revisionId: b.id, carrier: { letter: 'B', grafted: false }, decidedF: '11/10/2026 09:30' });
 
@@ -143,8 +143,8 @@ describe('Mes demandes Vigie', () => {
     expect(await decide(withdrawal, true)).toMatchObject({ status: 'accepted' });
     const list = await mine('writer2');
     // Outside the drafting circle, a change is never promised to apply when the hold is lifted (acceptedWaitL).
-    expect(list.find((c) => c.id === change)).toMatchObject({ status: 'accepted', statusL: t.ecr_accepted, ecoRef: null, modifier: null, waitL: t.ecr_wait_no_earlier_hold });
-    expect(list.find((c) => c.id === withdrawal)).toMatchObject({ status: 'accepted', ecoRef: ECO, waitL: t.ecr_wait_hold });
+    expect(list.find((c) => c.id === change)).toMatchObject({ status: 'accepted', statusL: tr('Accepted'), ecoRef: null, modifier: null, waitL: tr('it will not apply before the legal hold is released') });
+    expect(list.find((c) => c.id === withdrawal)).toMatchObject({ status: 'accepted', ecoRef: ECO, waitL: tr('it will apply when the legal hold is released') });
   });
 
   it('keeps a change grafted onto a revision the requester does not see « Acceptée », without saying why (D-26)', async () => {

@@ -3,11 +3,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { schema as s } from '@/db';
 import { buildAccessIndex } from '@/lib/access';
 import { decideStep, delegateStep, requestValidation } from '@/lib/actions';
-import { DICT } from '@/lib/i18n';
 import { promoteDue } from '@/lib/lifecycle';
 import { addDoc, baseOf, fixClock, getDoc, getRevision, revisionStatuses, setClock, setupDb } from '../support/db';
 import type { Person } from '../support/fixtures';
 import { actAs } from '../support/session';
+import { translatorFor } from '@/i18n';
 
 // Approval circuits through the Server Actions (D-15, docs/modele-cible.md §6): steps by function, resolved at launch
 // for the document; the requester, the designated author (otherwise the owner) and the authors of the working versions
@@ -21,7 +21,7 @@ const db = setupDb();
 fixClock();
 
 const ID = 'PRO-QUA-0001'; // type PRO: Responsable du département, then Responsable qualité
-const t = DICT.fr;
+const tr = translatorFor('fr');
 
 /** Replaces the holders of a function (for one scope, null: the whole group) by `people`, looked up in that order. */
 async function holders(fn: string, scope: string | null, people: Person[]) {
@@ -113,14 +113,14 @@ describe('requestValidation: resolving the circuit (D-15)', () => {
   it('refuses to launch when every holder of a function is excluded, and writes nothing', async () => {
     await draft(['quality']);
     await holders('resp_qualite', null, ['quality']);
-    expect(await launch('owner')).toEqual({ ok: false, error: `${t.no_holder} : resp_qualite` });
+    expect(await launch('owner')).toEqual({ ok: false, error: `${tr('No holder available for the function')} : resp_qualite` });
     expect(await revisionStatuses(db(), ID)).toEqual({ A: 'draft' });
     expect(await db().select().from(s.workflows)).toEqual([]);
   });
 
   it('puts in force at once a type without approval step, for someone who may publish', async () => {
     await draft(['owner'], { typeCode: 'COR' });
-    expect(await launch('owner')).toEqual({ ok: false, error: `${t.not_allowed} : ${t.perm_publish}` });
+    expect(await launch('owner')).toEqual({ ok: false, error: `${tr('Permission required')} : ${tr('Publish')}` });
     expect(await revisionStatuses(db(), ID)).toEqual({ A: 'draft' });
     expect((await launch('manager')).ok).toBe(true);
     expect(await steps('W-1')).toEqual(['owner']);
@@ -144,10 +144,10 @@ describe('deciding and delegating a step (D-15)', () => {
 
   it('goes through the steps in order and puts the revision in force at the last approval', async () => {
     await running();
-    expect(await decide('quality', true, 1)).toEqual({ ok: false, error: t.not_allowed });
+    expect(await decide('quality', true, 1)).toEqual({ ok: false, error: tr('Permission required') });
     expect(await decide('head', true, 1)).toEqual({ ok: true });
     expect(await workflow('W-1')).toMatchObject({ step: 2, outcome: null });
-    expect(await decide('head', true, 1)).toEqual({ ok: false, error: t.wrong_step });
+    expect(await decide('head', true, 1)).toEqual({ ok: false, error: tr('The workflow moved on in the meantime: the page has been refreshed.') });
     expect(await decide('quality', true, 2)).toEqual({ ok: true });
     expect(await workflow('W-1')).toMatchObject({ step: 3, outcome: 'approved' });
     expect(await revisionStatuses(db(), ID)).toEqual({ A: 'in_force' });
@@ -166,7 +166,7 @@ describe('deciding and delegating a step (D-15)', () => {
   it('refuses a decision from an author of the revision who came to hold the step (holders changed since the launch)', async () => {
     await running();
     await db().update(s.workflowSteps).set({ assigneeId: 'quality2' }).where(and(eq(s.workflowSteps.workflowId, 'W-1'), eq(s.workflowSteps.idx, 1)));
-    expect(await decide('quality2', true, 1)).toEqual({ ok: false, error: t.no_self_approval });
+    expect(await decide('quality2', true, 1)).toEqual({ ok: false, error: tr('The author or requester of a revision cannot approve it.') });
     expect(await workflow('W-1')).toMatchObject({ step: 1, outcome: null });
     expect(await revisionStatuses(db(), ID)).toEqual({ A: 'in_review' });
   });
@@ -176,16 +176,16 @@ describe('deciding and delegating a step (D-15)', () => {
     expect((await launch('manager')).ok).toBe(true);
     await db().update(s.workflowSteps).set({ assigneeId: 'manager' }).where(and(eq(s.workflowSteps.workflowId, 'W-1'), eq(s.workflowSteps.idx, 2)));
     expect(await decide('head', true, 1)).toEqual({ ok: true });
-    expect(await decide('manager', true, 2)).toEqual({ ok: false, error: t.no_self_approval });
+    expect(await decide('manager', true, 2)).toEqual({ ok: false, error: tr('The author or requester of a revision cannot approve it.') });
     expect(await revisionStatuses(db(), ID)).toEqual({ A: 'in_review' });
   });
 
   it('refuses to delegate a step to the requester, an author of the revision, or someone who cannot approve', async () => {
     await running();
     actAs('head');
-    expect(await delegateStep('W-1', 'quality2', 1)).toEqual({ ok: false, error: t.no_self_approval });
-    expect(await delegateStep('W-1', 'owner', 1)).toEqual({ ok: false, error: t.no_self_approval });
-    expect(await delegateStep('W-1', 'writer', 1)).toEqual({ ok: false, error: t.delegate_no_approve });
+    expect(await delegateStep('W-1', 'quality2', 1)).toEqual({ ok: false, error: tr('The author or requester of a revision cannot approve it.') });
+    expect(await delegateStep('W-1', 'owner', 1)).toEqual({ ok: false, error: tr('The author or requester of a revision cannot approve it.') });
+    expect(await delegateStep('W-1', 'writer', 1)).toEqual({ ok: false, error: tr('This person cannot approve with their default role.') });
     expect(await steps('W-1')).toEqual(['owner', 'head', 'quality']);
     expect(await delegateStep('W-1', 'director', 1)).toEqual({ ok: true });
     expect(await steps('W-1')).toEqual(['owner', 'director', 'quality']);
@@ -221,7 +221,7 @@ describe('effective date chosen at launch (D-11, docs/modele-cible.md §4)', () 
   ])('refuses %s as effective date, and writes nothing', async (_, date) => {
     await change('writer', ['writer']);
     actAs('owner');
-    expect(await requestValidation(ID, date, await baseOf(db(), ID))).toEqual({ ok: false, error: t.invalid_date });
+    expect(await requestValidation(ID, date, await baseOf(db(), ID))).toEqual({ ok: false, error: tr('Invalid date: pick today or a later date.') });
     expect(await revisionStatuses(db(), ID)).toEqual({ A: 'in_force', B: 'draft' });
     expect((await getRevision(db(), ID, 'B')).effectiveAt).toBeNull();
     expect(await db().select().from(s.workflows)).toEqual([]);

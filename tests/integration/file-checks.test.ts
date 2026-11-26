@@ -8,7 +8,6 @@ import { POST } from '@/app/api/import/route';
 import { FILES_DIR, schema as s } from '@/db';
 import { addWorkingVersion, createDocument } from '@/lib/actions';
 import { COOKIE_LANG, getCtx } from '@/lib/context';
-import { DICT } from '@/lib/i18n';
 import { auditPage } from '@/lib/queries';
 import { FileRejectedError, stageFile } from '@/lib/storage';
 import { deadAddress, EICAR, fakeClamd, type FakeClamd } from '../support/clamd';
@@ -16,6 +15,7 @@ import { cfb, zip } from '../support/containers';
 import { addDoc, fixClock, setupDb, viewOf } from '../support/db';
 import type { Person } from '../support/fixtures';
 import { actAs, cookieStore } from '../support/session';
+import { translatorFor } from '@/i18n';
 
 // Every way a file enters Codex — new document, copy of a template, working version, import — goes through stageFile
 // (src/lib/storage.ts): formats and size (src/lib/filetypes.ts), then the virus scan (src/lib/antivirus.ts), before the
@@ -34,7 +34,7 @@ vi.mock('next/cache', () => ({ refresh: () => {} }));
 const db = setupDb();
 fixClock();
 
-const t = DICT.fr;
+const tr = translatorFor('fr');
 const TOKEN = 'test-token';
 let clamd: FakeClamd;
 
@@ -116,7 +116,7 @@ describe('formats and size, on every way in', () => {
   });
 
   it('refuses a program whatever its name, and a content that is not its extension', async () => {
-    expect(await create(file(PE, 'rapport.pdf', 'application/pdf'))).toEqual({ ok: false, error: t.file_executable });
+    expect(await create(file(PE, 'rapport.pdf', 'application/pdf'))).toEqual({ ok: false, error: tr('This file is an executable program: it is refused, whatever its name.') });
     expect(await create(file('pas un PDF', 'rapport.pdf', 'application/pdf'))).toEqual({ ok: false, error: 'Le contenu de ce fichier n’est pas celui d’un fichier .pdf : il est refusé.' });
     expect(await documents()).toEqual([]);
     expect(stored()).toEqual([]);
@@ -169,7 +169,7 @@ describe('formats and size, on every way in', () => {
 
   it('refuses VBA macros whatever the extension, on screen and on import', async () => {
     const xls = cfb(['Workbook', '_VBA_PROJECT_CUR', 'VBA', '_VBA_PROJECT']);
-    expect(await create(file(xls, 'calcul.xls'))).toEqual({ ok: false, error: t.file_macros });
+    expect(await create(file(xls, 'calcul.xls'))).toEqual({ ok: false, error: tr('This file contains macros: it is refused. Save it in a format without macros (.docx, .xlsx, .pptx…).') });
     const res = await importWith('L-M', 'calcul.xls', xls);
     expect([res.status, await res.json()]).toMatchObject([415, { error: 'file_format', reason: 'macros', ext: '.xls' }]);
     // An encrypted Office Open XML file is a compound file too: admitted under its own extension.
@@ -293,7 +293,7 @@ describe('virus scan', () => {
 
   it('refuses the file when clamd cannot be reached, unless CODEX_CLAMD_ON_ERROR=accept', async () => {
     vi.stubEnv('CODEX_CLAMD', await deadAddress());
-    expect(await create(file(PDF, 'a.pdf', 'application/pdf'))).toEqual({ ok: false, error: t.file_scan_failed });
+    expect(await create(file(PDF, 'a.pdf', 'application/pdf'))).toEqual({ ok: false, error: tr('Upload refused: the virus scan could not be run. Try again later or tell the administrator.') });
     const res = await importWith('L-9', 'a.pdf', PDF);
     expect([res.status, res.headers.get('retry-after'), await res.json()]).toEqual([503, '60', { error: 'scan_unavailable' }]);
     expect(await documents()).toEqual([]);
@@ -307,12 +307,12 @@ describe('virus scan', () => {
 
   it('refuses a file beyond clamd\'s limits as such, without asking to send it again', async () => {
     clamd.mode = 'limit';
-    expect(await create(file(PDF, 'gros.pdf', 'application/pdf'))).toEqual({ ok: false, error: t.file_scan_too_large });
+    expect(await create(file(PDF, 'gros.pdf', 'application/pdf'))).toEqual({ ok: false, error: tr('File refused: it is beyond the limits of the virus scan (size or nested content), which could not examine it. It was not stored; sending it again will change nothing. Tell the administrator: clamd’s limits (StreamMaxLength, MaxFileSize, MaxScanSize) need raising.') });
     const res = await importWith('L-BIG', 'gros.pdf', PDF);
     expect([res.status, res.headers.get('retry-after'), await res.json()]).toEqual([413, null, { error: 'scan_too_large' }]);
     // Reported by clamd with AlertExceedsMax: not a threat, not journaled.
     clamd.mode = 'exceeds';
-    expect(await create(file(PDF, 'gros.pdf', 'application/pdf'))).toEqual({ ok: false, error: t.file_scan_too_large });
+    expect(await create(file(PDF, 'gros.pdf', 'application/pdf'))).toEqual({ ok: false, error: tr('File refused: it is beyond the limits of the virus scan (size or nested content), which could not examine it. It was not stored; sending it again will change nothing. Tell the administrator: clamd’s limits (StreamMaxLength, MaxFileSize, MaxScanSize) need raising.') });
     expect(await documents()).toEqual([]);
     expect(stored()).toEqual([]);
     expect(await refusals()).toEqual([]);

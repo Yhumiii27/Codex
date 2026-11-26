@@ -2,11 +2,13 @@ import type { Attachment, Conf, Disposition, Origin, RetentionTrigger } from '@/
 import { FAMILIES, TYPES, type RegistryType } from '@/db/registry';
 import { DEPARTMENTS, FUNCTIONS, HOLDERS, PROGRAMS, PROJECTS, USERS } from '@/db/seed-org';
 import { csv, parseCsv, unneutralise } from './csv';
-import { ATTACHMENTS, CONF_LEVELS, DICT, ORIGINS, type TKey } from './i18n';
+import { ATTACHMENTS, CONF_LEVELS, ORIGINS } from './i18n';
 import {
   BASIS_MAX, BUILT_IN_FUNCTIONS, builtInScopeIssue, builtInTypeIssue, DISPOSITIONS, FUNCTION_SCOPES, ISO_MAX, keyIssue, LABEL_MAX,
   parseSubtypes, RETENTION_TRIGGERS, RETENTION_YEARS_MAX, typeCodeIssue, type CodeSpace, type FunctionScope,
 } from './registry-rules';
+import { msg, translate, translatorFor } from '@/i18n';
+import { TRIGGER_LABEL, labelOf } from '@/i18n/labels';
 
 // Validation workbooks of the register (Lot 10, step 2; O-05, O-06, O-07, O-08 of docs/decisions.md): the types of
 // src/db/registry.ts and the functions and holders of src/db/seed-org.ts written as CSV, one row each, with the open
@@ -46,7 +48,7 @@ export const departmentCodes = (): string[] => DEPARTMENTS.map(([code]) => code)
 /** Which open questions a type of the register is tied to, in a fixed order, with the text shown in the workbook. */
 export function typeFlags(t: RegistryType, departments: readonly string[] = departmentCodes()): { flag: TypeFlag; text: string }[] {
   const out: { flag: TypeFlag; text: string }[] = [];
-  if (t.retention.years == null) out.push({ flag: 'no_years', text: `O-07 : aucune durée (${DICT.fr[`trig_${t.retention.trigger}` as TKey]})` });
+  if (t.retention.years == null) out.push({ flag: 'no_years', text: `O-07 : aucune durée (${labelOf(translatorFor('fr'), TRIGGER_LABEL, t.retention.trigger)})` });
   if (t.retention.trigger === 'project_end') out.push({ flag: 'project_end', text: 'Registre, question 3 (O-05) : conservation à la fin du projet, date que Codex ne connaît pas' });
   if (t.confAllowed.includes('public')) out.push({ flag: 'public', text: 'O-08 : admet « Public »' });
   if (departments.includes(t.code)) out.push({ flag: 'code_clash', text: `Registre, question 1 (O-05) : aussi code de département (${t.code}-${t.code}-0001)` });
@@ -168,7 +170,7 @@ export type ReviewReport = {
 /** People and departments the holders and the codes are checked against: the demonstration's, or an org chart's (org:check). */
 export type ReviewRefs = { people?: readonly string[]; departments?: readonly string[]; functions?: readonly string[] };
 
-const msg = (key: TKey) => DICT.fr[key];
+const frText = (key: string) => translate('fr', key);
 const splitList = (cell: string, commas = true) => cell.split(commas ? /[|,]/ : /\|/).map((s) => s.trim()).filter(Boolean);
 const lower = (s: string) => s.trim().toLocaleLowerCase('fr');
 
@@ -248,50 +250,50 @@ export function checkTypesWorkbook(text: string, refs: ReviewRefs = {}): ReviewR
     else {
       // A code of the register keeps its letters (as in the Administration); a new one is checked as a new code.
       const issue = typeCodeIssue(code, space, known ? code : undefined);
-      if (issue) err('Code', msg(issue));
+      if (issue) err('Code', frText(issue));
       if (!known) report.added.push(code);
     }
     const renamed = cells['Nouveau code (renommage)'].toUpperCase();
     if (renamed && renamed !== code) {
       const issue = typeCodeIssue(renamed, space);
-      if (issue) err('Nouveau code (renommage)', msg(issue));
+      if (issue) err('Nouveau code (renommage)', frText(issue));
       else if (renames.indexOf(renamed) !== renames.lastIndexOf(renamed)) err('Nouveau code (renommage)', 'même nouveau code sur deux lignes');
       report.renamed.push({ from: code, to: renamed });
     }
 
     const labelFr = cells['Libellé FR'];
     const labelEn = cells['Libellé EN'] || labelFr;
-    if (!labelFr) err('Libellé FR', msg('reg_label_required'));
-    if (labelFr.length > LABEL_MAX) err('Libellé FR', msg('reg_text_too_long'));
-    if (labelEn.length > LABEL_MAX) err('Libellé EN', msg('reg_text_too_long'));
+    if (!labelFr) err('Libellé FR', frText(msg('The label is required.')));
+    if (labelFr.length > LABEL_MAX) err('Libellé FR', frText(msg('Text too long.')));
+    if (labelEn.length > LABEL_MAX) err('Libellé EN', frText(msg('Text too long.')));
     const family = cells.Famille;
     if (!families.includes(family)) err('Famille', `famille « ${family} » inconnue (clés : colonne Famille du cahier d'origine)`);
     const origins = pick<Origin>(cells.Origines, ORIGINS, (v) => err('Origines', `« ${v} » : ${ORIGINS.join(', ')}`));
-    if (!origins.length) err('Origines', msg('reg_origins_required'));
+    if (!origins.length) err('Origines', frText(msg('At least one origin allowed.')));
     const attachments = pick<Attachment>(cells.Rattachements, ATTACHMENTS, (v) => err('Rattachements', `« ${v} » : ${ATTACHMENTS.join(', ')}`));
-    if (!attachments.length) err('Rattachements', msg('reg_attachments_required'));
+    if (!attachments.length) err('Rattachements', frText(msg('At least one attachment allowed.')));
     const builtIn = code ? builtInTypeIssue(code, { attachments }) : null;
-    if (builtIn) err('Rattachements', msg(builtIn));
+    if (builtIn) err('Rattachements', frText(builtIn));
     const subtypes = parseSubtypes(splitList(cells['Sous-types FR'], false), splitList(cells['Sous-types EN'], false));
-    if (!subtypes) err('Sous-types FR', msg('reg_subtypes_invalid'));
+    if (!subtypes) err('Sous-types FR', frText(msg('Sub-types: 40 at most, of 120 characters each at most.')));
     const circuit = splitList(cells.Circuit);
     for (const f of circuit) if (!functions.includes(f)) err('Circuit', `fonction « ${f} » inconnue`);
     if (new Set(circuit).size !== circuit.length) err('Circuit', 'même fonction deux fois');
     const yearsRaw = cells['Durée (ans)'];
     const yearsOk = !yearsRaw || (/^\d{1,3}$/.test(yearsRaw) && Number(yearsRaw) <= RETENTION_YEARS_MAX);
-    if (!yearsOk) err('Durée (ans)', msg('reg_years_invalid'));
+    if (!yearsOk) err('Durée (ans)', frText(msg('Retention period: a whole number of years, from 0 to 200, or empty.')));
     const trigger = RETENTION_TRIGGERS.find((x) => x === cells['Déclencheur']);
     if (!trigger) err('Déclencheur', `« ${cells['Déclencheur']} » : ${RETENTION_TRIGGERS.join(', ')}`);
     const disposition = DISPOSITIONS.find((x) => x === cells['Sort final']);
     if (!disposition) err('Sort final', `« ${cells['Sort final']} » : ${DISPOSITIONS.join(', ')}`);
-    if (cells.Fondement.length > BASIS_MAX) err('Fondement', msg('reg_text_too_long'));
-    if (cells['Fondement EN'].length > BASIS_MAX) err('Fondement EN', msg('reg_text_too_long'));
+    if (cells.Fondement.length > BASIS_MAX) err('Fondement', frText(msg('Text too long.')));
+    if (cells['Fondement EN'].length > BASIS_MAX) err('Fondement EN', frText(msg('Text too long.')));
     const confAllowed = pick<Conf>(cells['Niveaux admis'], CONF_LEVELS, (v) => err('Niveaux admis', `« ${v} » : ${CONF_LEVELS.join(', ')}`));
     const confDefault = cells['Niveau par défaut'] as Conf;
-    if (!confAllowed.length || !confAllowed.includes(confDefault)) err('Niveau par défaut', msg('conf_not_allowed'));
+    if (!confAllowed.length || !confAllowed.includes(confDefault)) err('Niveau par défaut', frText(msg('Confidentiality level not allowed for this type.')));
     const deliverable = lower(cells['Livrable client']);
     if (deliverable && deliverable !== YES && deliverable !== NO) err('Livrable client', `« ${cells['Livrable client']} » : oui ou non`);
-    if (cells.ISO.length > ISO_MAX) err('ISO', msg('reg_text_too_long'));
+    if (cells.ISO.length > ISO_MAX) err('ISO', frText(msg('Text too long.')));
     readAnswer(cells['Validé (oui/non)'], line, code, report);
 
     if (!known || !code || codes.indexOf(code) !== i) return;
@@ -353,18 +355,18 @@ export function checkFunctionsWorkbook(text: string, refs: ReviewRefs = {}): Rev
     const known = FUNCTIONS.find(([k]) => k === key);
     const format = keyIssue(key, []);
     const duplicate = !format && keys.indexOf(key) !== i;
-    if (format) err('Clé', msg(format));
+    if (format) err('Clé', frText(format));
     else if (duplicate) err('Clé', 'clé en double dans le cahier');
     else if (!known) report.added.push(key);
     const labelFr = cells['Libellé FR'];
     const labelEn = cells['Libellé EN'] || labelFr;
-    if (!labelFr) err('Libellé FR', msg('reg_label_required'));
-    if (labelFr.length > LABEL_MAX) err('Libellé FR', msg('reg_text_too_long'));
-    if (labelEn.length > LABEL_MAX) err('Libellé EN', msg('reg_text_too_long'));
+    if (!labelFr) err('Libellé FR', frText(msg('The label is required.')));
+    if (labelFr.length > LABEL_MAX) err('Libellé FR', frText(msg('Text too long.')));
+    if (labelEn.length > LABEL_MAX) err('Libellé EN', frText(msg('Text too long.')));
     const scope = FUNCTION_SCOPES.find((s) => s === cells['Portée']);
     if (!scope) err('Portée', `« ${cells['Portée']} » : ${FUNCTION_SCOPES.join(', ')}`);
     const fixed = scope ? builtInScopeIssue(key, scope) : null;
-    if (fixed) err('Portée', msg(fixed));
+    if (fixed) err('Portée', frText(fixed));
     const holders = parseHolders(cells.Titulaires);
     for (const h of holders) {
       if (!people.includes(h.user)) err('Titulaires', `personne « ${h.user} » inconnue${refs.people ? ' de l’organigramme' : ' (personnes de démonstration, ou --org <organigramme.csv>)'}`);

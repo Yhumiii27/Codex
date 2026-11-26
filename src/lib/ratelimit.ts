@@ -1,5 +1,5 @@
-import type { T } from './i18n';
 import { logger } from './log';
+import type { Translate } from '@/i18n';
 
 // Rate limiting of the sensitive endpoints (point 24 of docs/reste-a-faire.md): a token bucket per family and per key,
 // in memory. A key may send `limit` requests at once, then regains one every windowMs / limit; beyond, the request is
@@ -187,8 +187,8 @@ function tooManyJson(wait: number): Response {
 }
 
 /** Browser endpoints (a download, the preview frame): a line of text in the reader's language. */
-function tooManyText(wait: number, t: T): Response {
-  return new Response(t.rate_limited.replace('{n}', String(wait)), {
+function tooManyText(wait: number, tr: Translate): Response {
+  return new Response(tr('Too many requests in a short time: try again in {n} s.').replace('{n}', String(wait)), {
     status: 429,
     headers: { 'Retry-After': String(wait), ...NO_STORE, 'Content-Type': 'text/plain; charset=utf-8' },
   });
@@ -211,13 +211,13 @@ export function limitRequest(req: Request, family: 'import' | 'documents' | 'vig
  * the raw cookie) has used up its bucket of `family`, or, behind a trusted proxy, the client's address has; otherwise
  * null, the request counted in both.
  */
-export function limitReader(req: Request, family: 'files' | 'exports' | 'compare' | 'clientErrors' | 'lookups', userId: string, t: T): Response | null {
+export function limitReader(req: Request, family: 'files' | 'exports' | 'compare' | 'clientErrors' | 'lookups', userId: string, tr: Translate): Response | null {
   const rule = ruleFor(family);
   if (!rule) return null;
   const keys = [`user:${userId}`, ...(trustProxy() ? [`address:${clientAddress(req.headers)}`] : [])];
   // Both buckets must have room before either is counted: a request refused by one spends nothing in the other.
   const wait = Math.max(...keys.map((k) => waitFor(family, k, rule))) || Math.max(...keys.map((k) => take(family, k, rule)));
-  return wait ? tooManyText(wait, t) : null;
+  return wait ? tooManyText(wait, tr) : null;
 }
 
 /**

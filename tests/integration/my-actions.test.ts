@@ -3,12 +3,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { schema as s } from '@/db';
 import { decideStep, graftChange, recordReview, requestChange, requestValidation } from '@/lib/actions';
 import { getCtx } from '@/lib/context';
-import { DICT, MATRIX_ROLE, type SimRole } from '@/lib/i18n';
+import { MATRIX_ROLE, type SimRole } from '@/lib/i18n';
 import { applyChangeDecision } from '@/lib/lifecycle';
 import { myActions } from '@/lib/queries';
 import { addDoc, addWorkflow, baseOf, fixClock, setupDb } from '../support/db';
 import type { Person } from '../support/fixtures';
 import { actAs } from '../support/session';
+import { translatorFor } from '@/i18n';
 
 // « À traiter » (G19): what waits for the user, the one list of the home, the sidebar badge and the bell. An item shows
 // only on a document the user may see (D-14) and when the server would let them act on it (lib/actions.ts).
@@ -20,7 +21,7 @@ vi.mock('next/cache', () => ({ refresh: () => {} }));
 const db = setupDb();
 fixClock(); // 10 October 2026, 10:00 in Paris
 
-const t = DICT.fr;
+const tr = translatorFor('fr');
 const ID = 'PRO-QUA-0001'; // type PRO: head of the QUA department, then the quality manager
 const ECO = 'ECO-2026-010';
 
@@ -53,7 +54,7 @@ describe('approval steps', () => {
     await addWorkflow(db(), { id: 'W-1', docId: ID, letter: 'B', requesterId: 'owner', author: 'owner', approvers: ['head', 'quality'] });
     expect(await todo('head')).toEqual([{
       key: 'step:W-1', kind: 'step', docId: ID, docTitle: ID, href: '/validations?r=W-1', due: '2026-10-20', note: null,
-      detail: `${ID} · ${t.rev_short} B · ${t.requested_by} owner · ${t.step} : step 1 · ${t.due} 20/10/2026`,
+      detail: `${ID} · ${tr('Rev.')} B · ${tr('Requested by')} owner · ${tr('Step')} : step 1 · ${tr('Due')} 20/10/2026`,
     }]);
     // The next approver, the requester and a records manager have nothing to decide yet.
     for (const who of ['quality', 'owner', 'manager'] as const) expect(await kinds(who), who).toEqual([]);
@@ -66,7 +67,7 @@ describe('approval steps', () => {
     await addDoc(db(), { id: ID, revisions: [{ letter: 'A', status: 'in_force' }, { letter: 'B', status: 'in_review', versions: ['owner'] }] });
     await addWorkflow(db(), { id: 'W-1', docId: ID, letter: 'B', requesterId: 'owner', author: 'owner', approvers: ['auditor'] });
     expect(await kinds('auditor')).toEqual([]);
-    expect(await act('auditor', () => decideStep('W-1', true, 1))).toEqual({ ok: false, error: t.forbidden });
+    expect(await act('auditor', () => decideStep('W-1', true, 1))).toEqual({ ok: false, error: tr('The simulated role cannot access this screen.') });
     // The same person simulated as an approver may decide it: the step is listed.
     expect(await kinds('auditor', 'validateur')).toEqual([`step ${ID}`]);
   });
@@ -89,12 +90,12 @@ describe('revisions being drafted', () => {
     await db().transaction((tx) => applyChangeDecision(tx, req.id, { accepted: true, ecoRef: ECO, modifierId: 'writer' }, 'vigie'));
     expect(await todo('writer')).toEqual([{
       key: `eco:${ID}`, kind: 'eco', docId: ID, docTitle: ID, href: `/documents/${ID}?tab=versions`, due: null, note: null,
-      detail: `${ID} · ${t.rev_short} B ${t.todo_eco} · ${ECO}`,
+      detail: `${ID} · ${tr('Rev.')} B ${tr('to draft')} · ${ECO}`,
     }]);
     // A draft of his never submitted: the owner may send it for approval too, and is told who was designated to write it.
     expect(await todo('owner')).toEqual([{
       key: `draft:${ID}`, kind: 'draft', docId: ID, docTitle: ID, href: `/documents/${ID}?tab=versions`, due: null, note: null,
-      detail: `${ID} · ${t.rev_short} B ${t.todo_draft} · ${t.todo_assigned} writer · ${ECO}`,
+      detail: `${ID} · ${tr('Rev.')} B ${tr('drafted, never sent for approval')} · ${tr('assigned to')} writer · ${ECO}`,
     }]);
     // The requester, a records manager and the approvers have nothing to do.
     for (const who of ['writer2', 'manager', 'head'] as const) expect(await kinds(who), who).toEqual([]);
@@ -104,12 +105,12 @@ describe('revisions being drafted', () => {
 
   it('the owner designated by the ECO drafts it as its modifier, the last working version named', async () => {
     await drafting({ modifier: 'owner', authors: ['owner', 'owner'] });
-    expect((await todo('owner')).map((a) => [a.kind, a.detail])).toEqual([['eco', `${ID} · ${t.rev_short} B.2 ${t.todo_eco} · ${ECO}`]]);
+    expect((await todo('owner')).map((a) => [a.kind, a.detail])).toEqual([['eco', `${ID} · ${tr('Rev.')} B.2 ${tr('to draft')} · ${ECO}`]]);
   });
 
   it('a draft never submitted waits for its owner until it is sent for approval', async () => {
     await addDoc(db(), { id: ID, revisions: [{ letter: 'A', status: 'draft', versions: ['owner'] }] });
-    expect(await todo('owner')).toEqual([{ key: `draft:${ID}`, kind: 'draft', docId: ID, docTitle: ID, href: `/documents/${ID}?tab=versions`, due: null, note: null, detail: `${ID} · ${t.rev_short} A.1 ${t.todo_draft}` }]);
+    expect(await todo('owner')).toEqual([{ key: `draft:${ID}`, kind: 'draft', docId: ID, docTitle: ID, href: `/documents/${ID}?tab=versions`, due: null, note: null, detail: `${ID} · ${tr('Rev.')} A.1 ${tr('drafted, never sent for approval')}` }]);
     for (const who of ['writer', 'head', 'manager'] as const) expect(await kinds(who), who).toEqual([]);
     expect(await act('owner', async () => requestValidation(ID, null, await baseOf(db(), ID)))).toMatchObject({ ok: true });
     expect(await kinds('owner')).toEqual([]);
@@ -136,10 +137,10 @@ describe('revisions being drafted', () => {
     expect(await kinds('writer')).toEqual([]);
     expect(await act('head', () => decideStep('W-1', false, 1, 'Tableau 3 à corriger'))).toEqual({ ok: true });
     // Who sent it back, and why on a line of its own (the reason of a rejection is required).
-    const sentBack = `${ID} · ${t.rev_short} B.1 ${t.todo_rejected} head · ${ECO}`;
+    const sentBack = `${ID} · ${tr('Rev.')} B.1 ${tr('sent back to drafting by')} head · ${ECO}`;
     for (const who of ['writer', 'owner'] as const) {
       expect((await todo(who)).map((a) => [a.kind, a.detail, a.note, a.href]), who).toEqual([
-        ['rejected', sentBack, `${t.ecr_reason} : Tableau 3 à corriger`, `/documents/${ID}?tab=versions`],
+        ['rejected', sentBack, `${tr('Reason')} : Tableau 3 à corriger`, `/documents/${ID}?tab=versions`],
       ]);
     }
     // The approvers left the drafting circle with the circuit (D-14): nothing for them, nor for a records manager.
@@ -172,13 +173,13 @@ describe('accepted change waiting for the revision being drafted (D-26)', () => 
     expect(res).toMatchObject({ status: 'accepted', revision: 'B' });
     return req.id;
   }
-  const graft = `${ID} · ECO-2026-020 ${t.ecr_accepted_l}, ${t.todo_graft} B`;
+  const graft = `${ID} · ECO-2026-020 ${tr('accepted')}, ${tr('may be grafted onto revision')} B`;
 
   it('may be grafted by the author of that revision and by records managers, not by the author Vigie designated', async () => {
     await waiting();
     expect((await todo('owner')).map((a) => [a.kind, a.detail, a.href])).toEqual([
       ['graft', graft, `/documents/${ID}?tab=requests`],
-      ['draft', `${ID} · ${t.rev_short} B.1 ${t.todo_draft}`, `/documents/${ID}?tab=versions`],
+      ['draft', `${ID} · ${tr('Rev.')} B.1 ${tr('drafted, never sent for approval')}`, `/documents/${ID}?tab=versions`],
     ]);
     expect(await kinds('manager')).toEqual([`graft ${ID}`]);
     for (const who of ['writer', 'writer2', 'head'] as const) expect(await kinds(who), who).toEqual([]);
@@ -190,7 +191,7 @@ describe('accepted change waiting for the revision being drafted (D-26)', () => 
     await db().update(s.documents).set({ legalHold: true }).where(eq(s.documents.id, ID));
     expect(await kinds('owner')).toEqual([]);
     expect(await kinds('manager')).toEqual([]);
-    expect(await act('owner', () => graftChange(id))).toEqual({ ok: false, error: t.locked_hold });
+    expect(await act('owner', () => graftChange(id))).toEqual({ ok: false, error: tr('Document under legal hold: it cannot be changed.') });
   });
 
   it('no longer once the revision is in review', async () => {
@@ -219,8 +220,8 @@ describe('review and expiry dates', () => {
     await dated();
     // Past due, worded as the record's indicator (point 13): « Expiré, valable jusqu’au … ».
     const items = [
-      { key: `review:${ID}`, kind: 'review', docId: ID, docTitle: ID, href: `/documents/${ID}?tab=meta`, due: '2026-11-30', note: null, detail: `${ID} · ${t.dl_review} 30/11/2026 · 51 ${t.days_left}` },
-      { key: `renew:${ID}`, kind: 'renew', docId: ID, docTitle: ID, href: `/documents/${ID}?tab=meta`, due: '2026-10-01', note: null, detail: `${ID} · ${t.dl_expired} 01/10/2026 · 9 ${t.days_late}` },
+      { key: `review:${ID}`, kind: 'review', docId: ID, docTitle: ID, href: `/documents/${ID}?tab=meta`, due: '2026-11-30', note: null, detail: `${ID} · ${tr('Review due')} 30/11/2026 · 51 ${tr('days left')}` },
+      { key: `renew:${ID}`, kind: 'renew', docId: ID, docTitle: ID, href: `/documents/${ID}?tab=meta`, due: '2026-10-01', note: null, detail: `${ID} · ${tr('Expired, valid until')} 01/10/2026 · 9 ${tr('days overdue')}` },
     ];
     expect(await todo('owner')).toEqual(items);
     expect(await todo('writer')).toEqual(items);
@@ -248,7 +249,7 @@ describe('review and expiry dates', () => {
 
   it('a review past due is worded as the record says it, « Revue en retard », and leaves once recorded', async () => {
     await dated({ reviewDueAt: '2026-09-30', expiresAt: null });
-    expect((await todo('owner')).map((a) => a.detail)).toEqual([`${ID} · ${t.dl_review_late} 30/09/2026 · 10 ${t.days_late}`]);
+    expect((await todo('owner')).map((a) => a.detail)).toEqual([`${ID} · ${tr('Review overdue, due')} 30/09/2026 · 10 ${tr('days overdue')}`]);
     expect(await act('writer', () => recordReview(ID, '2027-09-30'))).toMatchObject({ ok: true });
     expect(await kinds('owner')).toEqual([]);
     expect(await kinds('writer')).toEqual([]);

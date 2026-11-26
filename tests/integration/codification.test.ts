@@ -4,10 +4,10 @@ import { schema as s } from '@/db';
 import { updateMeta } from '@/lib/actions';
 import { nextDocId, nextNumber, nextWorkflowId, reserveDocId } from '@/lib/codification';
 import type { IdInput } from '@/lib/codes';
-import { DICT } from '@/lib/i18n';
 import { submitChange } from '@/server/integrations/vigie';
 import { addDoc, addWorkflow, fixClock, getDoc, getRevisions, journalOf, setClock, setupDb, viewOf, type DocSpec } from '../support/db';
 import { actAs } from '../support/session';
+import { translatorFor } from '@/i18n';
 
 // Identifiers on a real database (D-09, D-10, docs/modele-cible.md §3; counters of step 5): one counter per
 // (type, context), never a number already used as an ID or kept as an alias, W-n circuits, ECR-AAAA-NNN requests.
@@ -102,7 +102,7 @@ describe('nextDocId (D-09, D-10)', () => {
 });
 
 describe('updateMeta: reclassification (D-10, docs/modele-cible.md §3 and §6)', () => {
-  const t = DICT.fr;
+  const tr = translatorFor('fr');
 
   /** The owner submits the metadata form with these fields; the others keep their stored values. */
   async function edit(id: string, fields: Record<string, string>) {
@@ -123,7 +123,7 @@ describe('updateMeta: reclassification (D-10, docs/modele-cible.md §3 and §6)'
 
   it('re-codifies a document never approved, keeps its former ID as an alias, and never hands that number out again', async () => {
     await addDoc(db(), { id: 'PRO-QUA-0001', revisions: [{ letter: 'A', status: 'draft', versions: ['owner'] }] });
-    expect(await moveToIng('PRO-QUA-0001')).toMatchObject({ ok: true, message: `${t.act_reclass} : PRO-ING-0001` });
+    expect(await moveToIng('PRO-QUA-0001')).toMatchObject({ ok: true, message: `${tr('Reclassification')} : PRO-ING-0001` });
     expect(await getDoc(db(), 'PRO-ING-0001')).toMatchObject({ department: 'ING', aliases: ['PRO-QUA-0001'], status: 'draft', revWorking: 'A' });
     expect(await db().select({ id: s.documents.id }).from(s.documents)).toEqual([{ id: 'PRO-ING-0001' }]);
     // The revision being drafted follows the new ID, and the journal links the two IDs on it.
@@ -138,7 +138,7 @@ describe('updateMeta: reclassification (D-10, docs/modele-cible.md §3 and §6)'
     ['a revision approved, waiting for its effective date', [{ letter: 'A', status: 'approved', effectiveAt: '2026-10-20' }]],
   ])('never changes the ID of a document with %s', async (_, revisions) => {
     await addDoc(db(), { id: 'PRO-QUA-0001', revisions });
-    expect(await moveToIng('PRO-QUA-0001')).toMatchObject({ ok: true, message: t.saved_ok });
+    expect(await moveToIng('PRO-QUA-0001')).toMatchObject({ ok: true, message: tr('Changes saved') });
     expect(await getDoc(db(), 'PRO-QUA-0001')).toMatchObject({ department: 'ING', aliases: [] });
     expect((await journalOf(db(), 'PRO-QUA-0001')).map((e) => e.action)).toEqual(['edit']);
   });
@@ -146,14 +146,14 @@ describe('updateMeta: reclassification (D-10, docs/modele-cible.md §3 and §6)'
   it('re-codifies a project document moved to the department that shares its client code', async () => {
     await addQuaProject();
     await addDoc(db(), { id: 'COR-QUA-012-001', typeCode: 'COR', projectCode: 'QUA-012', revisions: draft });
-    expect(await edit('COR-QUA-012-001', { attachment: 'none' })).toMatchObject({ ok: true, message: `${t.act_reclass} : COR-QUA-0001` });
+    expect(await edit('COR-QUA-012-001', { attachment: 'none' })).toMatchObject({ ok: true, message: `${tr('Reclassification')} : COR-QUA-0001` });
     expect(await getDoc(db(), 'COR-QUA-0001')).toMatchObject({ attachment: 'none', projectCode: null, department: 'QUA', aliases: ['COR-QUA-012-001'] });
   });
 
   it('re-codifies a department document attached to a project whose client code is the department', async () => {
     await addQuaProject();
     await addDoc(db(), { id: 'COR-QUA-0001', typeCode: 'COR', revisions: draft });
-    expect(await edit('COR-QUA-0001', { attachment: 'project', projectCode: 'QUA-012' })).toMatchObject({ ok: true, message: `${t.act_reclass} : COR-QUA-012-001` });
+    expect(await edit('COR-QUA-0001', { attachment: 'project', projectCode: 'QUA-012' })).toMatchObject({ ok: true, message: `${tr('Reclassification')} : COR-QUA-012-001` });
     expect(await getDoc(db(), 'COR-QUA-012-001')).toMatchObject({ attachment: 'project', projectCode: 'QUA-012', aliases: ['COR-QUA-0001'] });
   });
 
@@ -166,7 +166,7 @@ describe('updateMeta: reclassification (D-10, docs/modele-cible.md §3 and §6)'
   ])('keeps the ID of %s never approved when neither its type nor its context changes', async (_, spec, fields) => {
     await addDoc(db(), { ...spec, revisions: draft });
     if (spec.typeCode === 'PRT') await db().update(s.documents).set({ attachment: 'research', programCode: 'R2601' }).where(sql`${s.documents.id} = ${spec.id}`);
-    expect(await edit(spec.id, { ...fields, title: 'Nouveau titre' })).toMatchObject({ ok: true, message: t.saved_ok });
+    expect(await edit(spec.id, { ...fields, title: 'Nouveau titre' })).toMatchObject({ ok: true, message: tr('Changes saved') });
     expect(await getDoc(db(), spec.id)).toMatchObject({ title: 'Nouveau titre', aliases: [] });
     expect((await journalOf(db(), spec.id)).map((e) => e.action)).toEqual(['edit']);
   });
@@ -174,7 +174,7 @@ describe('updateMeta: reclassification (D-10, docs/modele-cible.md §3 and §6)'
   it('refuses to change the type or context while a circuit runs, and changes nothing', async () => {
     await addDoc(db(), { id: 'PRO-QUA-0001', revisions: [{ letter: 'A', status: 'in_review', versions: ['owner'] }] });
     await addWorkflow(db(), { id: 'W-1', docId: 'PRO-QUA-0001', letter: 'A', requesterId: 'owner', author: 'owner', approvers: ['head', 'quality'] });
-    expect(await moveToIng('PRO-QUA-0001')).toEqual({ ok: false, error: t.circuit_running });
+    expect(await moveToIng('PRO-QUA-0001')).toEqual({ ok: false, error: tr('Approval workflow in progress: wait for its decision, or for its requester (or a records manager) to recall the request, before changing the type or context.') });
     expect(await getDoc(db(), 'PRO-QUA-0001')).toMatchObject({ department: 'QUA', aliases: [] });
     expect(await journalOf(db(), 'PRO-QUA-0001')).toEqual([]);
     expect(await db().select().from(s.idCounters)).toEqual([]);

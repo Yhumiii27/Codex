@@ -26,7 +26,7 @@ function versionId(raw: string | null): number | null {
 
 async function handleGet(req: Request, { params }: RouteContext<'/api/documents/[id]/compare'>) {
   const ctx = await getCtx();
-  const limited = limitReader(req, 'compare', ctx.user.id, ctx.t);
+  const limited = limitReader(req, 'compare', ctx.user.id, ctx.tr);
   if (limited) return limited;
   const url = new URL(req.url);
   const a = versionId(url.searchParams.get('a'));
@@ -35,7 +35,7 @@ async function handleGet(req: Request, { params }: RouteContext<'/api/documents/
   const result = await compareVersions(ctx, safeDecode((await params).id), a, b);
   if (!result) return notFound();
   if (result === 'busy') {
-    return new Response(ctx.t.compare_busy, { status: 503, headers: { 'Retry-After': '5', 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'private, no-store' } });
+    return new Response(ctx.tr('Too many comparisons in progress: try again in a moment.'), { status: 503, headers: { 'Retry-After': '5', 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'private, no-store' } });
   }
   return Response.json(result, { headers: { 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' } });
 }

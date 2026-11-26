@@ -73,7 +73,7 @@ export function Modal({ title, children, actions, width = 640, style }: { title:
  * field (`field`) is returned as such, for the dialog to show it under that field, which gets the focus in `form`.
  */
 export function useSubmit() {
-  const { t, close, toast } = useApp();
+  const { tr, close, toast } = useApp();
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -105,7 +105,7 @@ export function useSubmit() {
         if (r.warning) toast(r.warning, 'warn');
       } catch (err) {
         // Never the error's message: a reference the technical log carries (lib/errors.ts).
-        setError(failureText(t, err));
+        setError(failureText(tr, err));
       }
     });
   /** After a refusal from an outdated view (ActionResult `stale`): closes the dialog and reloads the record; else undefined. */
@@ -156,7 +156,7 @@ export function Select({ id, name, value, onChange, options, defaultValue, requi
  * content and virus scan included (lib/storage.ts stageFile).
  */
 export function FilePicker({ label, required }: { label: string; required?: boolean }) {
-  const { lang, t, data } = useApp();
+  const { lang, tr, data } = useApp();
   const rules = data.files;
   const [file, setFile] = useState<File | null>(null);
   const [issue, setIssue] = useState<string | null>(null);
@@ -175,7 +175,7 @@ export function FilePicker({ label, required }: { label: string; required?: bool
             const input = e.currentTarget;
             const f = input.files?.[0] ?? null;
             const found = f ? fileIssue(f.name, f.size, null, rules) : null;
-            const text = found ? fileIssueText(t, lang, found, rules) : null;
+            const text = found ? fileIssueText(tr, lang, found, rules) : null;
             input.setCustomValidity(text ?? '');
             setFile(f);
             setIssue(text);
@@ -183,7 +183,7 @@ export function FilePicker({ label, required }: { label: string; required?: bool
         />
         <Icon name="upload" style={{ color: 'var(--color-accent)', flex: 'none' }} />
         <span className="ellipsis" style={{ flex: 1 }}>{file ? file.name : label}</span>
-        <span className="text-muted sub nowrap">{file ? fmtSize(file.size, lang) : t.file_max_hint.replace('{max}', fmtMax(rules.maxBytes, lang))}</span>
+        <span className="text-muted sub nowrap">{file ? fmtSize(file.size, lang) : tr('{max} at most').replace('{max}', fmtMax(rules.maxBytes, lang))}</span>
       </label>
       {issue && <p id={errorId} className="form-error" role="alert">{issue}</p>}
     </div>

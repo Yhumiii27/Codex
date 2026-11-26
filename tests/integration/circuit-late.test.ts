@@ -3,11 +3,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { schema as s } from '@/db';
 import { getCtx } from '@/lib/context';
 import { fmtDate } from '@/lib/format';
-import { DICT } from '@/lib/i18n';
 import { departmentPage, docWorkflows, validationsPage } from '@/lib/queries';
 import { addDoc, addWorkflow, setClock, setupDb } from '../support/db';
 import type { Person } from '../support/fixtures';
 import { actAs, setLangCookie } from '../support/session';
+import { translate, translatorFor } from '@/i18n';
 
 // Indicateur « en retard » des circuits (point 87 of docs/reste-a-faire.md, display only): a running circuit whose due day
 // (workflows.due) has passed in Paris time, in Validations (list and header), the Validation tab of the record and the
@@ -18,7 +18,7 @@ vi.mock('next/headers', () => ({ cookies: async () => (await import('../support/
 vi.mock('next/cache', () => ({ refresh: () => {} }));
 
 const db = setupDb();
-const t = DICT.fr;
+const tr = translatorFor('fr');
 
 /** A procedure of QUA in review, its circuit due on 20 October 2026 (addWorkflow), waiting for `head`. */
 async function running(id = 'PRO-QUA-0001', wf = 'WF-1', conf: 'interne' | 'confidentiel' = 'interne') {
@@ -36,12 +36,12 @@ describe('circuit overdue indicator (point 87)', () => {
     setClock('2026-10-20T22:30:00Z'); // 00:30 in Paris, the next day
     const ctx = await as('head');
     const page = await validationsPage(ctx);
-    const title = t.wf_late_title.replace('{date}', fmtDate('2026-10-20', 'fr')).replace('{n}', '1');
-    expect(late(page.selected!)).toEqual([1, t.wf_late, title]);
-    expect(late(page.list[0])).toEqual([1, t.wf_late, title]);
+    const title = tr('Circuit past its due date: due {date}, {n} days overdue').replace('{date}', fmtDate('2026-10-20', 'fr')).replace('{n}', '1');
+    expect(late(page.selected!)).toEqual([1, tr('Overdue'), title]);
+    expect(late(page.list[0])).toEqual([1, tr('Overdue'), title]);
     // The Validation tab of the record (drafting circle) and the department page.
-    expect(late((await docWorkflows(ctx, 'PRO-QUA-0001'))[0])).toEqual([1, t.wf_late, title]);
-    expect((await departmentPage(ctx, 'QUA'))!.workflows.map(late)).toEqual([[1, t.wf_late, title]]);
+    expect(late((await docWorkflows(ctx, 'PRO-QUA-0001'))[0])).toEqual([1, tr('Overdue'), title]);
+    expect((await departmentPage(ctx, 'QUA'))!.workflows.map(late)).toEqual([[1, tr('Overdue'), title]]);
     vi.useRealTimers();
   });
 
@@ -52,8 +52,8 @@ describe('circuit overdue indicator (point 87)', () => {
     setLangCookie('en');
     const w = (await validationsPage(await getCtx(), { filter: 'requested' })).selected!;
     expect(w.daysLate).toBe(10);
-    expect(w.lateL).toBe(DICT.en.wf_late);
-    expect(w.lateTitle).toBe(DICT.en.wf_late_title.replace('{date}', fmtDate('2026-10-20', 'en')).replace('{n}', '10'));
+    expect(w.lateL).toBe(translate('en', 'Overdue'));
+    expect(w.lateTitle).toBe(translate('en', 'Circuit past its due date: due {date}, {n} days overdue').replace('{date}', fmtDate('2026-10-20', 'en')).replace('{n}', '10'));
     vi.useRealTimers();
   });
 

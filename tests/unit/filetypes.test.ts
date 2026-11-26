@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { acceptAttr, admittedExtensions, cfbNames, cleanFileName, DEFAULT_EXTENSIONS, DENIED_EXTENSIONS, extensionOf, fileIssue, fileIssueReason, fileIssueText, fileRules, hasMacros, isExecutable, maxFileBytes, zipEntries } from '@/lib/filetypes';
-import { DICT } from '@/lib/i18n';
 import { cfb, zip } from '../support/containers';
+import { translate, translatorFor } from '@/i18n';
 
 // Formats and size admitted for a file entering Codex (src/lib/filetypes.ts), whatever the way in: new document, working
 // version, copy of a template, import (point 32 of docs/reste-a-faire.md). Executables and scripts are refused by name
@@ -267,19 +267,19 @@ describe('refusal texts', () => {
   const small = fileRules({ CODEX_MAX_FILE_MB: '1', CODEX_FILE_EXTENSIONS: 'pdf,docx' });
 
   it('give the limit, or the formats admitted', () => {
-    expect(fileIssueText(DICT.fr, 'fr', { code: 'too_large', size: 3 * MB, maxBytes: MB }, small)).toBe('Fichier trop volumineux : 3,0 Mo, pour 1 Mo au plus.');
-    expect(fileIssueText(DICT.en, 'en', { code: 'too_large', size: 3 * MB, maxBytes: MB }, small)).toBe('File too large: 3.0 MB, 1 MB at most.');
-    expect(fileIssueText(DICT.fr, 'fr', { code: 'format', ext: '.exe' }, small)).toBe('Format non admis : .exe. Formats admis : .pdf, .docx.');
-    expect(fileIssueText(DICT.en, 'en', { code: 'signature', ext: '.pdf' }, small)).toBe('The content of this file is not that of a .pdf file: it is refused.');
-    expect(fileIssueText(DICT.fr, 'fr', { code: 'executable' }, small)).toBe(DICT.fr.file_executable);
-    expect(fileIssueText(DICT.fr, 'fr', { code: 'no_extension' }, small)).toContain('Formats admis : .pdf, .docx.');
-    expect(fileIssueText(DICT.en, 'en', { code: 'macros', ext: '.xls' }, small)).toBe(DICT.en.file_macros);
+    expect(fileIssueText(translatorFor('fr'), 'fr', { code: 'too_large', size: 3 * MB, maxBytes: MB }, small)).toBe('Fichier trop volumineux : 3,0 Mo, pour 1 Mo au plus.');
+    expect(fileIssueText(translatorFor('en'), 'en', { code: 'too_large', size: 3 * MB, maxBytes: MB }, small)).toBe('File too large: 3.0 MB, 1 MB at most.');
+    expect(fileIssueText(translatorFor('fr'), 'fr', { code: 'format', ext: '.exe' }, small)).toBe('Format non admis : .exe. Formats admis : .pdf, .docx.');
+    expect(fileIssueText(translatorFor('en'), 'en', { code: 'signature', ext: '.pdf' }, small)).toBe('The content of this file is not that of a .pdf file: it is refused.');
+    expect(fileIssueText(translatorFor('fr'), 'fr', { code: 'executable' }, small)).toBe(translate('fr', 'This file is an executable program: it is refused, whatever its name.'));
+    expect(fileIssueText(translatorFor('fr'), 'fr', { code: 'no_extension' }, small)).toContain('Formats admis : .pdf, .docx.');
+    expect(fileIssueText(translatorFor('en'), 'en', { code: 'macros', ext: '.xls' }, small)).toBe(translate('en', 'This file contains macros: it is refused. Save it in a format without macros (.docx, .xlsx, .pptx…).'));
   });
 
   it('give a short reason, for a sentence that names the file', () => {
-    expect(fileIssueReason(DICT.fr, 'fr', { code: 'format', ext: '.dotm' })).toBe('format .dotm non admis');
-    expect(fileIssueReason(DICT.en, 'en', { code: 'signature', ext: '.docx' })).toBe('its content is not that of a .docx file');
-    expect(fileIssueReason(DICT.fr, 'fr', { code: 'too_large', size: 3 * MB, maxBytes: MB })).toBe('trop volumineux : 3,0 Mo, pour 1 Mo au plus');
-    expect(fileIssueReason(DICT.fr, 'fr', { code: 'macros', ext: '.xls' })).toBe('il contient des macros');
+    expect(fileIssueReason(translatorFor('fr'), 'fr', { code: 'format', ext: '.dotm' })).toBe('format .dotm non admis');
+    expect(fileIssueReason(translatorFor('en'), 'en', { code: 'signature', ext: '.docx' })).toBe('its content is not that of a .docx file');
+    expect(fileIssueReason(translatorFor('fr'), 'fr', { code: 'too_large', size: 3 * MB, maxBytes: MB })).toBe('trop volumineux : 3,0 Mo, pour 1 Mo au plus');
+    expect(fileIssueReason(translatorFor('fr'), 'fr', { code: 'macros', ext: '.xls' })).toBe('il contient des macros');
   });
 });

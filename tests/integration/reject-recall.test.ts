@@ -4,11 +4,12 @@ import { schema as s } from '@/db';
 import { buildAccessIndex } from '@/lib/access';
 import { decideStep, recallValidation, requestValidation } from '@/lib/actions';
 import { getCtx } from '@/lib/context';
-import { DICT, type SimRole } from '@/lib/i18n';
+import { type SimRole } from '@/lib/i18n';
 import { getDoc as getRecord, listAudit, listWorkflows, myActions } from '@/lib/queries';
 import { addDoc, baseOf, fixClock, getDoc, getRevision, journalOf, revisionStatuses, setupDb } from '../support/db';
 import type { Person } from '../support/fixtures';
 import { actAs } from '../support/session';
+import { translatorFor } from '@/i18n';
 
 // Ending a running circuit before its last approval (docs/modele-cible.md §6): an approver rejects the current step,
 // with a reason (G17); its requester, or a records manager, recalls the request. Either way the revision goes back to
@@ -21,7 +22,7 @@ vi.mock('next/cache', () => ({ refresh: () => {} }));
 const db = setupDb();
 fixClock(); // 10 October 2026
 
-const t = DICT.fr;
+const tr = translatorFor('fr');
 const ID = 'PRO-QUA-0001'; // type PRO: head of the QUA department, then the quality manager
 const ECO = 'ECO-2026-010';
 
@@ -79,7 +80,7 @@ describe('rejecting a step: the reason is required (G17)', () => {
   it('refuses a rejection without a reason, and writes nothing', async () => {
     await running();
     for (const reason of [undefined, '', '   \n\t ']) {
-      expect(await act('head', () => decideStep('W-1', false, 1, reason)), JSON.stringify(reason)).toEqual({ ok: false, error: t.reason_required });
+      expect(await act('head', () => decideStep('W-1', false, 1, reason)), JSON.stringify(reason)).toEqual({ ok: false, error: tr('A reason is required to reject.') });
     }
     await untouched();
     // An approval needs none.
@@ -88,7 +89,7 @@ describe('rejecting a step: the reason is required (G17)', () => {
 
   it('refuses a reason over 2,000 characters, and takes one of 2,000', async () => {
     await running();
-    expect(await act('head', () => decideStep('W-1', false, 1, 'x'.repeat(2001)))).toEqual({ ok: false, error: t.reason_too_long });
+    expect(await act('head', () => decideStep('W-1', false, 1, 'x'.repeat(2001)))).toEqual({ ok: false, error: tr('Reason too long: 2,000 characters at most.') });
     await untouched();
     expect(await act('head', () => decideStep('W-1', false, 1, ` ${'x'.repeat(2000)} `))).toEqual({ ok: true });
     expect((await workflow()).reason).toBe('x'.repeat(2000));
@@ -113,7 +114,7 @@ describe('rejecting a step: the reason is required (G17)', () => {
     await running();
     expect(await act('head', () => decideStep('W-1', false, 1, 'Tableau 3 faux.'))).toEqual({ ok: true });
     for (const who of ['writer', 'owner'] as const) {
-      expect(await seenBy(who), who).toMatchObject({ outcomeL: t.wf_rejected, closer: 'head', closedF: '10/10/2026', reason: 'Tableau 3 faux.', stepName: t.wf_rejected });
+      expect(await seenBy(who), who).toMatchObject({ outcomeL: tr('Rejected'), closer: 'head', closedF: '10/10/2026', reason: 'Tableau 3 faux.', stepName: tr('Rejected') });
       // The record's Validation tab lists the circuits of revisions its drafting circle sees.
       actAs(who);
       const ctx = await getCtx();
@@ -177,14 +178,14 @@ describe('recalling a request (docs/modele-cible.md §6)', () => {
     ]);
     const B = await getRevision(db(), ID, 'B');
     expect((await entries('recall')).map((e) => [e.userId, e.detail, e.revisionId])).toEqual([['writer', 'W-1', B.id]]);
-    expect(await seenBy('writer')).toMatchObject({ visible: true, done: true, outcomeL: t.wf_recalled, stepName: t.wf_recalled, closer: 'writer', recallable: false });
+    expect(await seenBy('writer')).toMatchObject({ visible: true, done: true, outcomeL: tr('Recalled'), stepName: tr('Recalled'), closer: 'writer', recallable: false });
 
     // The approver whose step was waiting no longer sees it, nor has anything to decide; a stale click changes nothing.
     expect((await buildAccessIndex(db())).approvers(ID).size).toBe(0);
     for (const who of ['head', 'quality'] as const) expect((await seenBy(who)).visible, who).toBe(false);
     actAs('quality');
     expect(await myActions(await getCtx())).toEqual([]);
-    expect(await act('quality', () => decideStep('W-1', true, 2))).toEqual({ ok: false, error: t.wrong_step });
+    expect(await act('quality', () => decideStep('W-1', true, 2))).toEqual({ ok: false, error: tr('The workflow moved on in the meantime: the page has been refreshed.') });
     expect(await revisionStatuses(db(), ID)).toEqual({ A: 'in_force', B: 'draft' });
 
     // B may be sent for approval again: a new circuit.
@@ -194,7 +195,7 @@ describe('recalling a request (docs/modele-cible.md §6)', () => {
 
   it('keeps an optional reason, bounded like a rejection’s, on the circuit, in its comments and in the journal', async () => {
     await running();
-    expect(await act('writer', () => recallValidation('W-1', 1, 'y'.repeat(2001)))).toEqual({ ok: false, error: t.reason_too_long });
+    expect(await act('writer', () => recallValidation('W-1', 1, 'y'.repeat(2001)))).toEqual({ ok: false, error: tr('Reason too long: 2,000 characters at most.') });
     await untouched();
     expect(await act('writer', () => recallValidation('W-1', 1, '  Mauvaise version jointe '))).toEqual({ ok: true });
     expect(await workflow()).toMatchObject({ outcome: 'recalled', reason: 'Mauvaise version jointe' });
@@ -211,22 +212,22 @@ describe('recalling a request (docs/modele-cible.md §6)', () => {
 
   it('refuses anyone else: an approver, the owner who did not request it, a reader outside the circle, a role without « Modifier »', async () => {
     await running();
-    expect(await act('head', () => recallValidation('W-1', 1))).toEqual({ ok: false, error: t.not_allowed });
-    expect(await act('owner', () => recallValidation('W-1', 1))).toEqual({ ok: false, error: t.not_allowed });
+    expect(await act('head', () => recallValidation('W-1', 1))).toEqual({ ok: false, error: tr('Permission required') });
+    expect(await act('owner', () => recallValidation('W-1', 1))).toEqual({ ok: false, error: tr('Permission required') });
     // The revision under review does not exist for a reader outside the drafting circle (D-14).
-    expect(await act('writer2', () => recallValidation('W-1', 1))).toEqual({ ok: false, error: t.not_found });
-    expect(await act('writer', () => recallValidation('W-1', 1), 'auditeur')).toEqual({ ok: false, error: `${t.not_allowed} : ${t.perm_edit}` });
+    expect(await act('writer2', () => recallValidation('W-1', 1))).toEqual({ ok: false, error: tr('Document not found.') });
+    expect(await act('writer', () => recallValidation('W-1', 1), 'auditeur')).toEqual({ ok: false, error: `${tr('Permission required')} : ${tr('Edit#permission')}` });
     // A records manager simulating another role is outside the circle like anyone else.
-    expect(await act('manager', () => recallValidation('W-1', 1), 'collaborateur')).toEqual({ ok: false, error: t.not_found });
-    expect(await act('writer', () => recallValidation('W-9', 1))).toEqual({ ok: false, error: t.not_found });
+    expect(await act('manager', () => recallValidation('W-1', 1), 'collaborateur')).toEqual({ ok: false, error: tr('Document not found.') });
+    expect(await act('writer', () => recallValidation('W-9', 1))).toEqual({ ok: false, error: tr('Document not found.') });
     await untouched();
   });
 
   it('is refused while the document is locked: the circuit waits for the lock to lift', async () => {
     await running();
     await db().update(s.documents).set({ legalHold: true }).where(eq(s.documents.id, ID));
-    expect(await act('writer', () => recallValidation('W-1', 1))).toEqual({ ok: false, error: t.locked_hold });
-    expect(await act('manager', () => recallValidation('W-1', 1))).toEqual({ ok: false, error: t.locked_hold });
+    expect(await act('writer', () => recallValidation('W-1', 1))).toEqual({ ok: false, error: tr('Document under legal hold: it cannot be changed.') });
+    expect(await act('manager', () => recallValidation('W-1', 1))).toEqual({ ok: false, error: tr('Document under legal hold: it cannot be changed.') });
     await untouched();
   });
 
@@ -234,12 +235,12 @@ describe('recalling a request (docs/modele-cible.md §6)', () => {
     await running();
     expect(await act('head', () => decideStep('W-1', true, 1))).toEqual({ ok: true });
     // The requester saw step 1: the circuit moved on, the page is refreshed and nothing changes.
-    expect(await act('writer', () => recallValidation('W-1', 1))).toEqual({ ok: false, error: t.wrong_step });
+    expect(await act('writer', () => recallValidation('W-1', 1))).toEqual({ ok: false, error: tr('The workflow moved on in the meantime: the page has been refreshed.') });
     expect(await workflow()).toMatchObject({ outcome: null, step: 2 });
     expect(await act('writer', () => recallValidation('W-1', 2))).toEqual({ ok: true });
     // A second click on the same button, or by a records manager: one recall only.
-    expect(await act('writer', () => recallValidation('W-1', 2))).toEqual({ ok: false, error: t.wrong_step });
-    expect(await act('manager', () => recallValidation('W-1', 2, 'Encore'))).toEqual({ ok: false, error: t.wrong_step });
+    expect(await act('writer', () => recallValidation('W-1', 2))).toEqual({ ok: false, error: tr('The workflow moved on in the meantime: the page has been refreshed.') });
+    expect(await act('manager', () => recallValidation('W-1', 2, 'Encore'))).toEqual({ ok: false, error: tr('The workflow moved on in the meantime: the page has been refreshed.') });
     expect(await workflow()).toMatchObject({ outcome: 'recalled', closedBy: 'writer', reason: null });
     expect(await comments()).toHaveLength(1);
     expect(await entries('recall')).toHaveLength(1);
@@ -248,15 +249,15 @@ describe('recalling a request (docs/modele-cible.md §6)', () => {
   it('cannot undo a rejection or the last approval', async () => {
     await running();
     expect(await act('head', () => decideStep('W-1', false, 1, 'Incomplet'))).toEqual({ ok: true });
-    expect(await act('writer', () => recallValidation('W-1', 1))).toEqual({ ok: false, error: t.wrong_step });
+    expect(await act('writer', () => recallValidation('W-1', 1))).toEqual({ ok: false, error: tr('The workflow moved on in the meantime: the page has been refreshed.') });
     expect(await workflow()).toMatchObject({ outcome: 'rejected', closedBy: 'head' });
 
     expect(await act('writer', async () => requestValidation(ID, null, await baseOf(db(), ID)))).toMatchObject({ ok: true });
     expect(await act('head', () => decideStep('W-2', true, 1))).toEqual({ ok: true });
     expect(await act('quality', () => decideStep('W-2', true, 2))).toEqual({ ok: true });
     expect(await workflow('W-2')).toMatchObject({ outcome: 'approved', closedBy: 'quality', closedAt: '2026-10-10' });
-    expect(await act('writer', () => recallValidation('W-2', 3))).toEqual({ ok: false, error: t.wrong_step });
-    expect(await act('manager', () => recallValidation('W-2', 3))).toEqual({ ok: false, error: t.wrong_step });
+    expect(await act('writer', () => recallValidation('W-2', 3))).toEqual({ ok: false, error: tr('The workflow moved on in the meantime: the page has been refreshed.') });
+    expect(await act('manager', () => recallValidation('W-2', 3))).toEqual({ ok: false, error: tr('The workflow moved on in the meantime: the page has been refreshed.') });
     expect(await revisionStatuses(db(), ID)).toEqual({ A: 'superseded', B: 'in_force' });
     expect(await db().select().from(s.auditLog).where(and(eq(s.auditLog.docId, ID), eq(s.auditLog.action, 'recall')))).toEqual([]);
   });
@@ -264,11 +265,11 @@ describe('recalling a request (docs/modele-cible.md §6)', () => {
   it('puts B back in « À traiter » for its author and the owner, with who recalled it and why; nothing for the approvers', async () => {
     await running();
     expect(await act('manager', () => recallValidation('W-1', 1, 'Doublon de PRO-QUA-0002'))).toEqual({ ok: true });
-    const recalled = `${ID} · ${t.rev_short} B.1 ${t.todo_recalled} manager · ${ECO}`;
+    const recalled = `${ID} · ${tr('Rev.')} B.1 ${tr('approval request recalled by')} manager · ${ECO}`;
     for (const who of ['writer', 'owner'] as const) {
       actAs(who);
       expect((await myActions(await getCtx())).map((a) => [a.kind, a.detail, a.note, a.href]), who).toEqual([
-        ['recalled', recalled, `${t.ecr_reason} : Doublon de PRO-QUA-0002`, `/documents/${ID}?tab=versions`],
+        ['recalled', recalled, `${tr('Reason')} : Doublon de PRO-QUA-0002`, `/documents/${ID}?tab=versions`],
       ]);
     }
     for (const who of ['head', 'quality'] as const) {
@@ -289,8 +290,8 @@ describe('recalling a request (docs/modele-cible.md §6)', () => {
     actAs('owner');
     const [item] = await myActions(await getCtx());
     expect(item.kind).toBe('rejected');
-    expect(item.note).toHaveLength(`${t.ecr_reason} : `.length + 140);
-    expect(item.note?.startsWith(`${t.ecr_reason} : Voir les remarques détaillées`)).toBe(true);
+    expect(item.note).toHaveLength(`${tr('Reason')} : `.length + 140);
+    expect(item.note?.startsWith(`${tr('Reason')} : Voir les remarques détaillées`)).toBe(true);
     expect(item.note?.endsWith('…')).toBe(true);
     expect((await seenBy('owner', 'W-2')).reason).toBe(long.trim());
   });

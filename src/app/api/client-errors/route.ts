@@ -13,7 +13,7 @@ const NO_STORE = { 'Cache-Control': 'no-store' };
 
 async function handlePost(req: Request) {
   const ctx = await getCtx();
-  const limited = limitReader(req, 'clientErrors', ctx.user.id, ctx.t);
+  const limited = limitReader(req, 'clientErrors', ctx.user.id, ctx.tr);
   if (limited) return limited;
   const length = Number(req.headers.get('content-length') ?? 0);
   if (length > MAX_CLIENT_REPORT_BYTES) return new Response(null, { status: 413, headers: NO_STORE });

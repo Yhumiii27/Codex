@@ -25,7 +25,7 @@ export type DueRow = {
 
 /** Deadlines tab: selection and the two bulk actions of the design (archive, legal hold); `filters`: those past due only. */
 export function DueTable({ title, tabs, filters, rows, canArchive }: { title: string; tabs: ReactNode; filters: ReactNode; rows: DueRow[]; canArchive: boolean }) {
-  const { t, toast } = useApp();
+  const { tr, toast } = useApp();
   const [sel, setSel] = useState<Record<string, boolean>>({});
   const [pending, start] = useTransition();
   const docIds = [...new Set(rows.map((x) => x.id))];
@@ -35,12 +35,12 @@ export function DueTable({ title, tabs, filters, rows, canArchive }: { title: st
     start(async () => {
       try {
         const r = await fn(ids);
-        if (r.ok) { setSel({}); toast(r.message ?? t.saved_ok); } else toast(r.error, true);
+        if (r.ok) { setSel({}); toast(r.message ?? tr('Changes saved')); } else toast(r.error, true);
       } catch (err) {
-        toast(failureText(t, err), true);
+        toast(failureText(tr, err), true);
       }
     });
-  const denied = canArchive ? undefined : `${t.not_allowed} : ${t.perm_archive}`;
+  const denied = canArchive ? undefined : `${tr('Permission required')} : ${tr('Archive')}`;
 
   return (
     <>
@@ -48,13 +48,13 @@ export function DueTable({ title, tabs, filters, rows, canArchive }: { title: st
           the filter and the count of the selection. */}
       <PageHeader
         title={title}
-        actions={<button type="button" className="btn btn-secondary" disabled={!ids.length || pending || !canArchive} title={denied} onClick={() => run(archiveDocuments)}><Icon name="archive" size={14} />{t.archive_sel}</button>}
-        primary={<button type="button" className="btn btn-primary" disabled={!ids.length || pending || !canArchive} title={denied} onClick={() => run(holdDocuments)}><Icon name="lock" size={14} />{t.hold_sel}</button>}
+        actions={<button type="button" className="btn btn-secondary" disabled={!ids.length || pending || !canArchive} title={denied} onClick={() => run(archiveDocuments)}><Icon name="archive" size={14} />{tr('Archive selection')}</button>}
+        primary={<button type="button" className="btn btn-primary" disabled={!ids.length || pending || !canArchive} title={denied} onClick={() => run(holdDocuments)}><Icon name="lock" size={14} />{tr('Apply legal hold')}</button>}
         toolbar={
           <FilterBar>
             {tabs}
             {filters}
-            <FilterNote>{ids.length} {t.selected}</FilterNote>
+            <FilterNote>{ids.length} {tr('selected')}</FilterNote>
           </FilterBar>
         }
       />
@@ -62,8 +62,8 @@ export function DueTable({ title, tabs, filters, rows, canArchive }: { title: st
         <table className="table" style={{ fontSize: 13 }}>
           <thead>
             <tr>
-              <th style={{ width: 36 }}><input type="checkbox" aria-label={t.selected} checked={all} disabled={!docIds.length} onChange={() => setSel(all ? {} : Object.fromEntries(docIds.map((id) => [id, true])))} style={{ margin: 0, display: 'block' }} /></th>
-              <th>{t.document}</th><th>{t.type}</th><th>{t.due_kind}</th><th>{t.due}</th><th>{t.proposed}</th><th><span className="sr-only">{t.col_actions}</span></th>
+              <th style={{ width: 36 }}><input type="checkbox" aria-label={tr('selected')} checked={all} disabled={!docIds.length} onChange={() => setSel(all ? {} : Object.fromEntries(docIds.map((id) => [id, true])))} style={{ margin: 0, display: 'block' }} /></th>
+              <th>{tr('Document')}</th><th>{tr('Type')}</th><th>{tr('Kind')}</th><th>{tr('Due')}</th><th>{tr('Proposed action')}</th><th><span className="sr-only">{tr('Actions')}</span></th>
             </tr>
           </thead>
           <tbody>
@@ -75,18 +75,18 @@ export function DueTable({ title, tabs, filters, rows, canArchive }: { title: st
                 <td><div className="text-muted">{x.kindL}</div>{x.detail && <div className="text-muted" style={{ fontSize: 11 }}>{x.detail}</div>}</td>
                 <td className="nowrap">
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>{x.endF}{x.overdueL && <span className="tag tag-outline">{x.overdueL}</span>}</div>
-                  <div className="text-muted" style={{ fontSize: 11 }}>{x.days >= 0 ? `${x.days} ${t.days_left}` : `${-x.days} ${t.days_late}`}</div>
+                  <div className="text-muted" style={{ fontSize: 11 }}>{x.days >= 0 ? `${x.days} ${tr('days left')}` : `${-x.days} ${tr('days overdue')}`}</div>
                 </td>
                 <td><span className={x.held ? 'tag tag-neutral' : 'tag tag-outline'}>{x.held && <Icon name="lock" size={11} style={{ marginRight: 4 }} />}{x.actionLabel}</span></td>
                 <td style={{ textAlign: 'right' }}>
                   <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                    {x.review && <DialogButton spec={x.review.spec} className="btn btn-ghost nowrap" style={{ fontSize: 12 }} deniedTitle={x.review.denied}>{t.review_done}</DialogButton>}
-                    <Link href={x.href} className="btn btn-ghost" style={{ fontSize: 12 }}>{t.open}</Link>
+                    {x.review && <DialogButton spec={x.review.spec} className="btn btn-ghost nowrap" style={{ fontSize: 12 }} deniedTitle={x.review.denied}>{tr('Review done')}</DialogButton>}
+                    <Link href={x.href} className="btn btn-ghost" style={{ fontSize: 12 }}>{tr('Open')}</Link>
                   </div>
                 </td>
               </tr>
             ))}
-            {rows.length === 0 && <tr><td colSpan={7} className="text-muted" style={{ padding: '16px 8px' }}>{t.no_results}</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={7} className="text-muted" style={{ padding: '16px 8px' }}>{tr('No document matches these criteria.')}</td></tr>}
           </tbody>
         </table>
       </div>

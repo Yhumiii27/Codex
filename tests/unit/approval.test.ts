@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { followsCircuit, mayGetApprovalRecord } from '@/lib/access';
 import { parseDelegation, stepOutcome, visaCircuit, visaFileName, visaFooter, visaLines, type JournalRow, type VisaRecord } from '@/lib/approval';
-import { DICT } from '@/lib/i18n';
+import { translatorFor } from '@/i18n';
 
 // Approval record of a revision (« fiche de visa », point 21 of docs/reste-a-faire.md): who may have it (D-14), what
 // each step came to, the delegations read from the journal, what a reader who does not follow a circuit gets of it,
 // and what the sheet says, the legacy approval of a migrated revision and the absence of electronic signature included.
 
-const t = DICT.fr;
+const tr = translatorFor('fr');
 const names: Record<string, string> = { writer: 'Julien Wagner', head: 'Gabriel Comte', director: 'Lucie Fabre', quality: 'Anne Roy', quality2: 'Marc Petit', vigie: 'Vigie' };
 const name = (id: string | null | undefined) => (id ? names[id] ?? id : '—');
 
@@ -133,7 +133,7 @@ const RECORD: VisaRecord = {
   circuits: [],
   issued: { at: '2026-10-12 10:15:00', by: 'James Holt' },
 };
-const text = (r: VisaRecord) => visaLines(t, 'fr', r).map((l) => (l.label ? `${l.label} ${l.text}` : l.text));
+const text = (r: VisaRecord) => visaLines(tr, 'fr', r).map((l) => (l.label ? `${l.label} ${l.text}` : l.text));
 
 describe('what the sheet says', () => {
   it('names the approved file and its SHA-256 recorded at upload, or says it was not computed (point 31)', () => {
@@ -141,7 +141,7 @@ describe('what the sheet says', () => {
     const withFile = text({ ...RECORD, rev: { ...RECORD.rev, file: { name: 'procedure.pdf', size: '12 Ko', sha256: sha } } });
     expect(withFile).toEqual(expect.arrayContaining(['Fichier approuvé procedure.pdf · 12 Ko', `SHA-256 ${sha}`]));
     const before = text({ ...RECORD, rev: { ...RECORD.rev, file: { name: 'procedure.pdf', size: '12 Ko', sha256: null } } });
-    expect(before).toContain(`SHA-256 ${t.visa_no_sha}`);
+    expect(before).toContain(`SHA-256 ${tr('not computed (file uploaded before fingerprints were computed)')}`);
     expect(text(RECORD).some((l) => l.startsWith('SHA-256'))).toBe(false);
   });
   it('names the document, the revision, its dates and every change order, and says it is an extract of the journal', () => {
@@ -151,9 +151,9 @@ describe('what the sheet says', () => {
       'Modificateur désigné Julien Wagner', 'Références ECO ECO-2026-010, ECO-2026-012', 'Approbation 09/10/2026', 'Date d’effet 09/10/2026',
       'Mise en vigueur 09/10/2026', 'Circuit de validation W-2', 'Demandé par Julien Wagner le 05/10/2026 09:12', 'Approuvé le 09/10/2026 16:45',
       '2. Responsable de département', 'Lucie Fabre · Approuvée · 07/10/2026 14:05', 'Déléguée par Gabriel Comte à Lucie Fabre le 06/10/2026 11:30',
-      'Extrait du journal de Codex édité le 12/10/2026 10:15 par James Holt.', t.visa_no_signature,
+      'Extrait du journal de Codex édité le 12/10/2026 10:15 par James Holt.', tr('This record bears no electronic signature: it reproduces what the Codex journal records about the approval of the revision.'),
     ]));
-    expect(lines).not.toContain(t.visa_no_circuit);
+    expect(lines).not.toContain(tr('No approval workflow is recorded in Codex for this revision.'));
   });
 
   it('gives the reason of a rejected circuit', () => {
@@ -176,8 +176,8 @@ describe('what the sheet says', () => {
     const imported = text({ ...RECORD, imported: { at: '2026-10-10 10:00:00', legacyRef: 'LEG-0042', approved: true } });
     expect(imported).toContain('Approbation Dans l’ancien système');
     expect(imported).toContain('Révision reprise de l’ancien système (référence LEG-0042) le 10/10/2026 : son approbation a eu lieu dans l’ancien système. Codex n’en a repris ni les visas ni les dates.');
-    expect(imported).not.toContain(t.visa_no_circuit);
-    expect(text(RECORD)).toContain(t.visa_no_circuit);
+    expect(imported).not.toContain(tr('No approval workflow is recorded in Codex for this revision.'));
+    expect(text(RECORD)).toContain(tr('No approval workflow is recorded in Codex for this revision.'));
   });
 
   it('gives the approval date of a draft migrated from the legacy system and approved in Codex, and says when it came', () => {
@@ -189,6 +189,6 @@ describe('what the sheet says', () => {
 
   it('is named {ID}_{letter}_VISA.pdf, and numbers its pages in the footer', () => {
     expect(visaFileName('PRO-QUA-0001', 'B')).toBe('PRO-QUA-0001_B_VISA.pdf');
-    expect(visaFooter(t, 'PRO-QUA-0001', 'B')(2, 3)).toBe('PRO-QUA-0001 · Rév. B · Fiche de visa · Page 2/3');
+    expect(visaFooter(tr, 'PRO-QUA-0001', 'B')(2, 3)).toBe('PRO-QUA-0001 · Rév. B · Fiche de visa · Page 2/3');
   });
 });

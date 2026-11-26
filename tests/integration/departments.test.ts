@@ -4,13 +4,13 @@ import { schema as s } from '@/db';
 import { setDepartmentFeatured } from '@/lib/actions';
 import { getCtx } from '@/lib/context';
 import { DEFAULT_FEATURED } from '@/lib/departments';
-import { DICT } from '@/lib/i18n';
 import { auditDetailL, departmentPage } from '@/lib/queries';
 import { parseSearch } from '@/lib/search';
 import { addDoc, addWorkflow, fixClock, setupDb } from '../support/db';
 import type { Person } from '../support/fixtures';
 import { searchChecked } from '../support/search';
 import { actAs } from '../support/session';
+import { translatorFor } from '@/i18n';
 
 // Department pages (/departements/[code], point 11 of docs/reste-a-faire.md, G12): documents in force, due dates,
 // running circuits, shared saved searches and featured filters of one department, under the rules of the other screens
@@ -24,7 +24,7 @@ vi.mock('next/cache', () => ({ refresh: () => {} }));
 const db = setupDb();
 fixClock(); // 10 October 2026
 
-const t = DICT.fr;
+const tr = translatorFor('fr');
 
 type Meta = Partial<typeof s.documents.$inferInsert>;
 async function doc(id: string, spec: Omit<Parameters<typeof addDoc>[1], 'id'> = {}, meta: Meta = {}) {
@@ -141,7 +141,7 @@ describe('featured filters', () => {
     expect(p.featured.map((f) => f.key)).toEqual(DEFAULT_FEATURED.filter((k) => k !== 'project'));
 
     actAs('manager');
-    expect(await setDepartmentFeatured('QUA', ['keywords', 'owner'])).toEqual({ ok: true, message: t.saved_ok });
+    expect(await setDepartmentFeatured('QUA', ['keywords', 'owner'])).toEqual({ ok: true, message: tr('Changes saved') });
     const q = await page('auditor', 'QUA');
     expect(q.featuredDefault).toBe(false);
     expect(q.featured.map((f) => [f.key, f.values.map((v) => v.value)])).toEqual([['keywords', ['ATEX']], ['owner', ['owner']]]);
@@ -197,7 +197,7 @@ describe('setDepartmentFeatured', () => {
   it('is reserved to whoever administers Codex', async () => {
     for (const who of ['writer', 'head', 'auditor'] as const) {
       actAs(who);
-      expect(await setDepartmentFeatured('QUA', ['keywords']), who).toEqual({ ok: false, error: t.forbidden });
+      expect(await setDepartmentFeatured('QUA', ['keywords']), who).toEqual({ ok: false, error: tr('The simulated role cannot access this screen.') });
     }
     expect(await featuredOfQua()).toBeNull();
     expect(await entries()).toEqual([]);
@@ -205,10 +205,10 @@ describe('setDepartmentFeatured', () => {
 
   it('refuses an invalid list or an unknown department, without changing anything', async () => {
     actAs('manager');
-    expect(await setDepartmentFeatured('QUA', ['keywords', 'keywords'])).toEqual({ ok: false, error: t.featured_invalid });
-    expect(await setDepartmentFeatured('QUA', ['department'])).toEqual({ ok: false, error: t.featured_invalid });
-    expect(await setDepartmentFeatured('QUA', ['type', 'status', 'project', 'owner', 'keywords', 'site', 'lang'])).toEqual({ ok: false, error: t.featured_invalid });
-    expect(await setDepartmentFeatured('XYZ', ['type'])).toEqual({ ok: false, error: t.error });
+    expect(await setDepartmentFeatured('QUA', ['keywords', 'keywords'])).toEqual({ ok: false, error: tr('Invalid filters: 6 at most, each one once.') });
+    expect(await setDepartmentFeatured('QUA', ['department'])).toEqual({ ok: false, error: tr('Invalid filters: 6 at most, each one once.') });
+    expect(await setDepartmentFeatured('QUA', ['type', 'status', 'project', 'owner', 'keywords', 'site', 'lang'])).toEqual({ ok: false, error: tr('Invalid filters: 6 at most, each one once.') });
+    expect(await setDepartmentFeatured('XYZ', ['type'])).toEqual({ ok: false, error: tr('Something went wrong') });
     expect(await featuredOfQua()).toBeNull();
     expect(await entries()).toEqual([]);
   });
@@ -226,7 +226,7 @@ describe('setDepartmentFeatured', () => {
       ['department', 'QUA', null, [{ field: 'featured', before: 'default', after: ['keywords', 'owner'] }]],
     ]);
     const ctx = await getCtx();
-    expect(auditDetailL(ctx, rows[2])).toBe(`${t.featured_filters} : ${t.featured_default} → ${t.keywords}, ${t.owner}`);
-    expect(auditDetailL(ctx, rows[1])).toBe(`${t.featured_filters} : ${t.keywords}, ${t.owner} → ${t.featured_none}`);
+    expect(auditDetailL(ctx, rows[2])).toBe(`${tr('Featured filters')} : ${tr('Default filters')} → ${tr('Keywords')}, ${tr('Owner')}`);
+    expect(auditDetailL(ctx, rows[1])).toBe(`${tr('Featured filters')} : ${tr('Keywords')}, ${tr('Owner')} → ${tr('None')}`);
   });
 });

@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { ActionButton, ActionLink, DialogButton } from '@/components/ui/client';
 import { FilterBar, FilterNote } from '@norma/charte/ds/FilterBar';
 import { PageHeader } from '@/components/shell/PageHeader';
-import { translate } from '@/i18n';
+import { msg } from '@/i18n';
 import { Icon } from '@/components/ui/Icon';
 import { Pager } from '@/components/ui/Pager';
 import { deleteSavedSearch } from '@/lib/actions';
@@ -20,13 +20,13 @@ import { screenTitle } from '@/lib/titles';
 const SHOWN = 8;
 
 export function generateMetadata() {
-  return screenTitle('nav_search');
+  return screenTitle(msg('Search'));
 }
 
 export default async function SearchPage({ searchParams }: PageProps<'/recherche'>) {
   const sp = await searchParams;
   const ctx = await getCtx();
-  const { t } = ctx;
+  const { tr } = ctx;
   const search = parseSearch(sp);
   const { q, facets, period } = search;
   // The database filters, counts and sorts the documents the user may see; only the page shown is read whole.
@@ -72,7 +72,7 @@ export default async function SearchPage({ searchParams }: PageProps<'/recherche
     // Chosen values always show; the others beyond SHOWN fold away (unless only one would).
     const fold = opts.length > SHOWN + 1;
     return {
-      key: k, label: t[FACET_LABEL[k]],
+      key: k, label: tr(FACET_LABEL[k]),
       shown: fold ? opts.filter((o, i) => i < SHOWN || o.checked) : opts,
       more: fold ? opts.filter((o, i) => i >= SHOWN && !o.checked) : [],
     };
@@ -80,9 +80,9 @@ export default async function SearchPage({ searchParams }: PageProps<'/recherche
   const hasActive = hasCriteria(search);
   const sort = sortOf(search);
   // Date at the end of each result: the one the results are sorted by, the modification date otherwise.
-  const dateShown = sort === 'issued' ? { label: t.issued_at, of: (d: (typeof results)[number]) => d.issuedF }
-    : sort === 'due' ? { label: t.sort_due, of: (d: (typeof results)[number]) => fmtDate(dueOf(d), ctx.lang) }
-    : { label: t.date_modified, of: (d: (typeof results)[number]) => d.modifiedF };
+  const dateShown = sort === 'issued' ? { label: tr('Issue date'), of: (d: (typeof results)[number]) => d.issuedF }
+    : sort === 'due' ? { label: tr('Next due date'), of: (d: (typeof results)[number]) => fmtDate(dueOf(d), ctx.lang) }
+    : { label: tr('Modification date'), of: (d: (typeof results)[number]) => d.modifiedF };
   const check = (k: FacetKey, o: { key: string; label: string; count: number; checked: boolean }) => (
     <FacetCheck key={o.key} href={searchHref({ ...search, facets: toggled(k, o.key) })} checked={o.checked} label={o.label} count={o.count} />
   );
@@ -90,35 +90,35 @@ export default async function SearchPage({ searchParams }: PageProps<'/recherche
   return (
     <>
       <PageHeader
-        title={translate(ctx.lang, 'Advanced search')}
+        title={tr('Advanced search')}
         actions={<>
           {hasActive && ctx.can('read') && (
-            <DialogButton spec={{ kind: 'saveSearch', search, criteria: searchCriteriaL(ctx, search), mayShare: mayShareSearches(ctx) }} icon="bookmark">{t.search_save}</DialogButton>
+            <DialogButton spec={{ kind: 'saveSearch', search, criteria: searchCriteriaL(ctx, search), mayShare: mayShareSearches(ctx) }} icon="bookmark">{tr('Save search')}</DialogButton>
           )}
-          <ActionLink native href={searchHref(search, '/api/export/search')} icon="download">{t.export_list}</ActionLink>
+          <ActionLink native href={searchHref(search, '/api/export/search')} icon="download">{tr('Export list')}</ActionLink>
         </>}
         toolbar={
           <FilterBar>
             <SortSelect value={sort} options={SORT_KEYS.map((k) => ({ key: k, label: sortL(ctx, k) }))} />
-            <FilterNote>{total} {total === 1 ? t.result_one : t.results}</FilterNote>
+            <FilterNote>{total} {total === 1 ? tr('result') : tr('results')}</FilterNote>
           </FilterBar>
         }
       />
     <div className="screen panes" data-screen-label="Recherche">
       <aside className={styles.side}>
         <section>
-          <h2 className="sec-title" style={{ marginBottom: 8 }}>{t.saved}</h2>
+          <h2 className="sec-title" style={{ marginBottom: 8 }}>{tr('Saved searches')}</h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {saved.length === 0 && <p className="text-muted" style={{ margin: 0, padding: '6px 8px', fontSize: 12.5 }}>{t.search_none}</p>}
+            {saved.length === 0 && <p className="text-muted" style={{ margin: 0, padding: '6px 8px', fontSize: 12.5 }}>{tr('No saved search.')}</p>}
             {saved.map((x) => (
               <div key={x.id} className={styles.savedRow}>
                 <Link href={x.href} className={styles.saved} title={x.title}>
                   <Icon name="bookmark" size={14} className={x.scope === 'personal' ? 'text-muted' : undefined} style={{ flex: 'none', color: x.scope === 'personal' ? undefined : 'var(--color-accent)' }} />
                   <span className={styles.savedLabel}>{x.labelL}</span>
-                  {x.scope !== 'group' && <span className={`text-muted ${styles.scope}`}>{x.scope === 'personal' ? t.search_mine : x.department}</span>}
+                  {x.scope !== 'group' && <span className={`text-muted ${styles.scope}`}>{x.scope === 'personal' ? tr('Mine') : x.department}</span>}
                 </Link>
                 {x.mayDelete && (
-                  <ActionButton className={styles.remove} ariaLabel={`${t.search_delete} · ${x.labelL}`} title={t.search_delete} confirm={`${t.search_delete_confirm}\n${x.labelL}`} action={deleteSavedSearch.bind(null, x.id)}>
+                  <ActionButton className={styles.remove} ariaLabel={`${tr('Delete search')} · ${x.labelL}`} title={tr('Delete search')} confirm={`${tr('Delete this saved search?')}\n${x.labelL}`} action={deleteSavedSearch.bind(null, x.id)}>
                     <Icon name="close" size={12} sw={2} />
                   </ActionButton>
                 )}
@@ -128,8 +128,8 @@ export default async function SearchPage({ searchParams }: PageProps<'/recherche
         </section>
         <section>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <h2 className="sec-title">{t.filters}</h2>
-            {hasActive && <Link href={searchHref({ sort: search.sort })} className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 6px' }}>{t.clear}</Link>}
+            <h2 className="sec-title">{tr('Filters')}</h2>
+            {hasActive && <Link href={searchHref({ sort: search.sort })} className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 6px' }}>{tr('Clear')}</Link>}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {groups.map((g) => (
@@ -139,7 +139,7 @@ export default async function SearchPage({ searchParams }: PageProps<'/recherche
                   {g.shown.map((o) => check(g.key, o))}
                   {g.more.length > 0 && (
                     <details className={styles.more}>
-                      <summary>{g.more.length} {t.facet_more}</summary>
+                      <summary>{g.more.length} {tr('more')}</summary>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>{g.more.map((o) => check(g.key, o))}</div>
                     </details>
                   )}
@@ -148,7 +148,7 @@ export default async function SearchPage({ searchParams }: PageProps<'/recherche
             ))}
             <PeriodFilter
               field={period?.field ?? 'modified'} from={period?.from ?? ''} to={period?.to ?? ''}
-              fields={DATE_FIELDS.map((k) => ({ key: k, label: t[DATE_LABEL[k]] }))}
+              fields={DATE_FIELDS.map((k) => ({ key: k, label: tr(DATE_LABEL[k]) }))}
             />
           </div>
         </section>
@@ -159,7 +159,7 @@ export default async function SearchPage({ searchParams }: PageProps<'/recherche
         </div>
         {/* A page opens at its top: the list is mounted again for each page. */}
         <div key={page} className={styles.results}>
-          {total === 0 && <p className="text-muted" style={{ padding: '20px 8px' }}>{t.no_results}</p>}
+          {total === 0 && <p className="text-muted" style={{ padding: '20px 8px' }}>{tr('No document matches these criteria.')}</p>}
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             {results.map((d) => {
               const code = d.attachedCode;
@@ -171,17 +171,17 @@ export default async function SearchPage({ searchParams }: PageProps<'/recherche
                       <span style={{ fontSize: 14 }}>{d.title}</span>
                       {code && <span className="tag tag-accent">{code}</span>}
                       <span className={d.tagClass}>{d.statusLabel}</span>
-                      {d.expired && <span className="tag tag-outline">{t.ind_expired}</span>}
-                      {d.reviewOverdue && <span className="tag tag-outline">{t.ind_review_late}</span>}
+                      {d.expired && <span className="tag tag-outline">{tr('Expired#indicator')}</span>}
+                      {d.reviewOverdue && <span className="tag tag-outline">{tr('Review overdue')}</span>}
                     </div>
-                    <div className="text-muted" style={{ fontSize: 12, marginTop: 2 }}>{d.id} · {d.typeLabel} · {t.rev_short} {d.rev} · {d.path}</div>
+                    <div className="text-muted" style={{ fontSize: 12, marginTop: 2 }}>{d.id} · {d.typeLabel} · {tr('Rev.')} {d.rev} · {d.path}</div>
                   </div>
                   <div className="text-muted nowrap" style={{ fontSize: 12, flex: 'none' }} title={dateShown.label}>{dateShown.of(d)}</div>
                 </Link>
               );
             })}
           </div>
-          {pages > 1 && <div className={styles.pager}><Pager t={t} page={page} pages={pages} href={(n) => searchHref(search, '/recherche', n)} /></div>}
+          {pages > 1 && <div className={styles.pager}><Pager tr={tr} page={page} pages={pages} href={(n) => searchHref(search, '/recherche', n)} /></div>}
         </div>
       </section>
     </div>

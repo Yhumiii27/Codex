@@ -1,10 +1,12 @@
 import { fmtDate } from './format';
-import type { Lang, T } from './i18n';
+import type { Lang } from './i18n';
+import type { Translate } from '@/i18n';
+import { DATE_RULE_LABEL } from '@/i18n/labels';
 
 // Coherence of a document's dates (docs/audit-deck-epc2i.md §4.6, rule 12: issue ≤ effect ≤ expiry), checked by the
 // Server Actions (lib/actions.ts) and by the import (lib/importer.ts). Days are "YYYY-MM-DD" strings, compared as text.
 
-/** Each rule has its message in lib/i18n.ts, where {date} is the date it conflicts with and {rev} the revision. */
+/** Each rule has its message in src/i18n/labels.ts (DATE_RULE_LABEL), where {date} is the date it conflicts with and {rev} the revision. */
 export type DateRule =
   | 'expires_before_issued' | 'expires_before_effective' | 'expires_before_approval' | 'expires_before_first_issue'
   | 'effective_before_issued' | 'review_before_issued' | 'review_before_first_issue'
@@ -111,6 +113,6 @@ export function effectIssue(d: Pick<DocDates, 'issuedAt' | 'expiresAt' | 'review
 }
 
 /** The message of an issue, which says what to correct. */
-export function dateIssueText(t: T, lang: Lang, i: DateIssue): string {
-  return t[i.rule].replace('{date}', fmtDate(i.ref, lang)).replace('{rev}', i.letter ?? '');
+export function dateIssueText(tr: Translate, lang: Lang, i: DateIssue): string {
+  return tr(DATE_RULE_LABEL[i.rule]).replace('{date}', fmtDate(i.ref, lang)).replace('{rev}', i.letter ?? '');
 }
