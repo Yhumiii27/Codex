@@ -20,9 +20,9 @@ function viewer(id: string, { department = 'COM', perms = ['read'], seesAll = fa
 }
 
 /** People around documents (keyed by document ID) and project teams (keyed by project code). */
-function index({ readers = {}, modifiers = {}, designated = {}, approvers = {}, team = {} }: People = {}): AccessIndex {
+function index({ readers = {}, modifiers = {}, designated = {}, approvers = {}, team = {} }: People = {}, hr: string[] = []): AccessIndex {
   const lookup = (m: Record<string, string[]>) => (key: string) => new Set(m[key] ?? []);
-  return { readers: lookup(readers), modifiers: lookup(modifiers), designated: lookup(designated), approvers: lookup(approvers), team: (code) => (code ? lookup(team)(code) : new Set()) };
+  return { readers: lookup(readers), modifiers: lookup(modifiers), designated: lookup(designated), approvers: lookup(approvers), hrReader: (u) => hr.includes(u), team: (code) => (code ? lookup(team)(code) : new Set()) };
 }
 
 /** A QUA document owned by `owner`, revision A in force. */
@@ -585,5 +585,20 @@ describe('saved searches (personal, department, group)', () => {
     }
     // A shared search its author no longer may share: only those who share delete it.
     expect(mayDeleteSearch(collaborator, { ...group, ownerId: 'writer' })).toBe(false);
+  });
+});
+
+describe('canRead, highly confidential records of Cursus (lot 16, D-32)', () => {
+  const record = doc({ id: 'DPE-RHU-0001', ownerId: 'cursus', department: 'RHU', conf: 'tres_confidentiel' });
+  const ix = index({ readers: { 'DPE-RHU-0001': ['named'] } }, ['hr']);
+  it('is read by the HR readers and the named readers only, never by records managers nor the department', () => {
+    expect(canRead(viewer('hr', { department: 'ING' }), record, ix)).toBe(true);
+    expect(canRead(viewer('named', { department: 'ING' }), record, ix)).toBe(true);
+    expect(canRead(viewer('manager', { department: 'RHU', seesAll: true }), record, ix)).toBe(false);
+    expect(canRead(viewer('someone', { department: 'RHU' }), record, ix)).toBe(false);
+  });
+  it('needs the read permission, and leaves the other documents of Cursus to the usual rules', () => {
+    expect(canRead(viewer('hr', { department: 'ING', perms: [] }), record, ix)).toBe(false);
+    expect(canRead(viewer('someone', { department: 'RHU' }), { ...record, conf: 'confidentiel' }, ix)).toBe(true);
   });
 });

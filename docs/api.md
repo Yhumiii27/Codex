@@ -7,6 +7,7 @@ Points d'entrée prévus par `docs/modele-cible.md` §1 pour les applications vo
 | `/api/registry` | `GET` | Keystone | aucune par défaut (lecture seule, réseau du groupe) ; jeton `CODEX_REGISTRY_TOKEN` s'il est défini |
 | `/api/import` | `POST` | outil de migration | jeton `CODEX_IMPORT_TOKEN` et/ou signature `CODEX_IMPORT_SECRET` |
 | `/api/documents` | `POST` | applications du groupe (Arche) | jeton `CODEX_DOCUMENTS_TOKEN` et/ou signature `CODEX_DOCUMENTS_SECRET` |
+| `/api/documents` (enregistrements), `/api/documents/{id}/file`, `/api/documents/{id}/destroy` | `POST`, `GET`, `POST` | Cursus (dossier du personnel, demande « lot 16 ») | jeton `CODEX_CURSUS_TOKEN` (obligatoire) et signature `CODEX_CURSUS_SECRET` si elle est définie |
 | `/api/integrations/vigie` | `POST` | Vigie (webhook) | jeton `VIGIE_WEBHOOK_TOKEN` et/ou signature `VIGIE_WEBHOOK_SECRET` |
 | `/api/health` | `GET`, `HEAD` | supervision | aucune (200 ou 503, sans détail : `docs/exploitation.md`) |
 
@@ -27,11 +28,12 @@ lisent dans les vues `pub_` du serveur commun (`pub_documents`, `pub_revisions_d
 | `CODEX_MAX_FILE_MB` | Taille maximale d'un fichier, en Mo, la même pour l'import et pour les dépôts à l'écran (50 par défaut ; 250 au plus avec `CODEX_STORAGE=sharepoint`). Remplace `CODEX_IMPORT_MAX_MB`, qui n'est plus lue. |
 | `CODEX_FILE_EXTENSIONS` | Extensions admises (liste complète) ; par défaut, voir le README, « Fichiers déposés ». |
 | `CODEX_CLAMD`, `CODEX_CLAMD_TIMEOUT_MS`, `CODEX_CLAMD_ON_ERROR` | Analyse antivirus par clamd avant stockage ; absente : pas d'analyse. Voir le README, « Fichiers déposés ». |
+| `CODEX_CURSUS_TOKEN`, `CODEX_CURSUS_SECRET` | Jeton et secret de Cursus : dépôt, lecture et destruction de ses enregistrements (voir « Enregistrements du dossier du personnel (Cursus) »). Sans jeton, ces routes sont **désactivées** (503), même avec un secret. |
 | `VIGIE_WEBHOOK_TOKEN`, `VIGIE_WEBHOOK_SECRET` | Jeton et secret de signature de `/api/integrations/vigie`. Ni l'un ni l'autre : le webhook est **désactivé** (503). |
 | `CODEX_REGISTRY_TOKEN` | Jeton de `GET /api/registry`. Absente (défaut) : le registre est **ouvert**, comme Keystone le lit aujourd'hui. |
-| `…_NEXT` | Seconde valeur de chacune des sept variables ci-dessus, acceptée à côté de la première pendant une rotation. |
+| `…_NEXT` | Seconde valeur de chacune des neuf variables ci-dessus, acceptée à côté de la première pendant une rotation. |
 | `CODEX_SIGNATURE_WINDOW_S` | Fenêtre de validité d'une requête signée, en secondes de part et d'autre de son horodatage (300 par défaut, de 30 à 3 600). |
-| `CODEX_RATE_IMPORT`, `CODEX_RATE_DOCUMENTS`, `CODEX_RATE_VIGIE`, `CODEX_RATE_REGISTRY` | Requêtes admises par adresse de client (600, 600, 600 et 300 par minute par défaut ; voir « Limites de débit »). |
+| `CODEX_RATE_IMPORT`, `CODEX_RATE_DOCUMENTS`, `CODEX_RATE_CURSUS`, `CODEX_RATE_VIGIE`, `CODEX_RATE_REGISTRY` | Requêtes admises par adresse de client (600, 600, 600, 600 et 300 par minute par défaut ; voir « Limites de débit »). |
 | `CODEX_RATE_TOKEN_FAILURES` | Jetons refusés admis par adresse de client sur `/api/import`, `/api/documents` et `/api/integrations/vigie` (20 par 15 minutes par défaut). |
 | `CODEX_TRUST_PROXY` | `1` quand un proxy inverse placé devant Codex écrit `X-Forwarded-For` ; coupé par défaut (voir « Limites de débit »). |
 
@@ -76,6 +78,7 @@ Chaque point d'entrée accepte deux preuves, réglées séparément ; **celles q
 |---|---|---|---|
 | `POST /api/import` | `CODEX_IMPORT_TOKEN` | `CODEX_IMPORT_SECRET` | 503 `disabled` |
 | `POST /api/documents` | `CODEX_DOCUMENTS_TOKEN` | `CODEX_DOCUMENTS_SECRET` | 503 `disabled` |
+| Cursus : `POST /api/documents`, `GET …/{id}/file`, `POST …/{id}/destroy` | `CODEX_CURSUS_TOKEN` (exigé : il désigne Cursus) | `CODEX_CURSUS_SECRET` | 503 `disabled` |
 | `POST /api/integrations/vigie` | `VIGIE_WEBHOOK_TOKEN` | `VIGIE_WEBHOOK_SECRET` | 503 `disabled` |
 | `GET /api/registry` | `CODEX_REGISTRY_TOKEN` | — (un `GET` n'a pas de corps) | ouvert |
 
@@ -144,6 +147,7 @@ d'un coup autant que sa limite, puis en regagne une à intervalle régulier (une
 |---|---|---|---|
 | `POST /api/import` | `CODEX_RATE_IMPORT` | 600 par minute | adresse du client, une fois le jeton vérifié |
 | `POST /api/documents` | `CODEX_RATE_DOCUMENTS` | 600 par minute | adresse du client, une fois le jeton vérifié |
+| routes de Cursus (dépôt, fichier, destruction) | `CODEX_RATE_CURSUS` | 600 par minute | adresse du client, une fois le jeton vérifié |
 | `POST /api/integrations/vigie` | `CODEX_RATE_VIGIE` | 600 par minute | adresse du client, une fois le jeton vérifié |
 | jetons ou signatures refusés (401) sur `/api/import`, `/api/documents`, `/api/integrations/vigie` et le registre protégé | `CODEX_RATE_TOKEN_FAILURES` | 20 par 15 minutes, communs aux trois | adresse du client |
 | `GET /api/registry` | `CODEX_RATE_REGISTRY` | 300 par minute (les réponses 304 comptent) | adresse du client, avec `CODEX_TRUST_PROXY=1` seulement |
@@ -535,7 +539,8 @@ Demande d'Arche CX-03 (`REQUESTS.md`). Une application du groupe crée **un** do
 reçoit son identifiant. Le document est **nouveau** : il naît en **brouillon A.1**, comme un document créé à l'écran, et
 passe ensuite par un circuit de validation comme tout brouillon (`docs/decisions.md` : les révisions sont validées par
 un circuit). Ce point d'entrée ne met jamais une révision en vigueur ni ne l'approuve : la reprise de l'existant reste
-`POST /api/import`.
+`POST /api/import`. Seule exception : les enregistrements du dossier du personnel que Cursus dépose avec son propre jeton,
+en vigueur dès le dépôt et sans circuit (voir « Enregistrements du dossier du personnel (Cursus) » plus bas).
 
 Mêmes conventions, même corps et même simulation (`?dryRun=1`) que l'import (voir plus haut « Format de la requête » et
 « Simulation ») : `multipart/form-data` avec une partie `meta` et une partie `file`, ou `application/json` sans fichier.
@@ -618,6 +623,126 @@ Demande d'Arche CX-08. Le lien d'un document est `/documents/{id}` ; c'est le co
 outils. Il ouvre la fiche sous l'identifiant actuel et sous tout identifiant que le document a eu (reclassement, reprise :
 `aliases`), en redirigeant vers l'identifiant actuel (`tests/integration/deep-link.test.ts`). Un document que la
 personne ne peut pas lire reste masqué, quel que soit l'identifiant demandé.
+
+---
+
+## Enregistrements du dossier du personnel (Cursus)
+
+Demande « lot 16 » de Cursus (`REQUESTS.md`, 10 novembre 2026 ; décision D-32 de `docs/decisions.md`, choix à
+confirmer). Cursus dépose dans Codex chaque pièce justificative de ses dossiers (justificatif d'absence, attestation de
+formation, justificatif de note de frais…), la relit pour la servir à ses propres utilisateurs, et la détruit (pièce
+jointe par erreur, terme de la conservation, effacement). Code : `src/lib/records.ts` (catégories, règles),
+`src/lib/importer.ts` (dépôt), `src/lib/app-records.ts` (lecture, destruction).
+
+**Identifiants** : `Authorization: Bearer <CODEX_CURSUS_TOKEN>` sur chaque appel, c'est ce jeton qui désigne Cursus ;
+avec `CODEX_CURSUS_SECRET`, la signature est exigée en plus. Pour le dépôt, elle couvre le corps brut, comme ailleurs ;
+pour la lecture et la destruction, elle couvre `<MÉTHODE> <chemin>\n` suivi du corps brut (vide pour un `GET`) :
+
+```
+X-Codex-Signature: v1=<hex de HMAC-SHA256(secret, "<horodatage>." + "GET /api/documents/DPE-RHU-0001/file\n")>
+```
+
+Ainsi deux lectures de deux pièces dans la même seconde ne passent pas pour un rejeu.
+
+### Catégories
+
+Un seul type, `DPE` « Dossier du personnel — enregistrement » (département `RHU`, sans circuit), publié dans
+`codex.pub_types_document` ; la catégorie (`category`) en est le sous-type et fixe confidentialité et conservation.
+**Durées à confirmer par le DPO.**
+
+| `category` | Sous-type | Confidentialité | Conservation | Santé |
+| --- | --- | --- | --- | --- |
+| `absence` | Justificatif d’absence | Très confidentiel | 5 ans après le départ | oui |
+| `identity` | Passeport ou visa | Très confidentiel | détruit au départ (0 an) | non |
+| `vaccination` | Carnet de vaccination | Très confidentiel | 5 ans après le départ | oui |
+| `training_certificate` | Attestation de formation | Confidentiel | 5 ans après le départ | non |
+| `authorisation` | Titre d’habilitation signé | Confidentiel | 5 ans après le départ | non |
+| `travel` | Pièce de dossier de déplacement | Confidentiel | 5 ans après le départ | non |
+| `expense` | Justificatif de note de frais | Confidentiel | jusqu'à `expiresAt` (10 ans après le paiement, calculé par Cursus) | non |
+| `expense_health` | Justificatif de note de frais (accès restreint) | Très confidentiel | jusqu'à `expiresAt` | oui |
+| `personal_vehicle` | Carte grise ou assurance du véhicule personnel | Confidentiel | jusqu'à `expiresAt` | non |
+| `opco` | Pièce de dossier OPCO | Confidentiel | jusqu'à `expiresAt` (10 ans après l'exercice) | non |
+| `interview_report` | Compte rendu d’entretien signé | Confidentiel | 5 ans après le départ | non |
+
+Un enregistrement **Très confidentiel** n'est lu, dans Codex, que par les titulaires de la fonction « Lecteur du dossier
+du personnel » (`lecteur_dossier_personnel`, désignés par le service RH dans Administration › Fonctions & circuits) et
+ses lecteurs nommés : ni les gestionnaires documentaires, ni le département RH. Il ne figure dans aucune des vues
+`pub_documents`, `pub_revisions_document`, `pub_validations` (voir le brouillon de demande à Matrix
+`docs/demandes/matrix-lot16-enregistrements.md` pour `pub_journal`). Le titre que Cursus envoie reste neutre
+(« Justificatif d’absence — EMP-0042 — 2026-11 »), sans donnée de santé.
+
+### Dépôt : `POST /api/documents` avec le jeton de Cursus
+
+Même corps que le dépôt (multipart : `meta` + `file`), avec ces règles :
+
+| Champ | Obligatoire | Description |
+|---|---|---|
+| `sourceRef` | oui | `cursus:piece/<identifiant>` (préfixe `cursus:` exigé). Rejouable : le même envoi rend le même document (200 `replayed`). |
+| `title` | oui | Titre neutre, jamais une donnée de santé. |
+| `category` | oui | Une des catégories ci-dessus. |
+| `subjectMatricule` | oui | Matricule de la personne concernée : `EMP-0042`, ou `I…` / `E…` pour une personne sur site (`documents.subject_matricule`). |
+| `sha256` | oui | Empreinte du fichier, vérifiée avant tout enregistrement (422 `sha256_mismatch`). |
+| fichier | oui | `file_required` sans lui. |
+| `expiresAt` | non | Fin de conservation calculée par Cursus quand elle ne dépend pas du départ (`AAAA-MM-JJ`). |
+| `typeCode` | non | `DPE` ou absent. |
+| `legalHold`, `keywords`, `lang`, `site`, `author`, `comment` | non | Comme pour tout dépôt. |
+
+Fixés par Codex, refusés s'ils sont envoyés : propriétaire (`ownerId`, `ownerMatricule` : `record_owner` ; c'est le
+compte de service `cursus`), `subtype`, `attachment`, `origin`, `readers`, `projectCode`, `programCode`, `capexCode`
+(`record_field`) ; `department` autre que `RHU` (`record_department`) ; `conf` autre que celle de la catégorie
+(`record_conf`) ; comme tout dépôt, `status`, `revision` et les dates de reprise (`not_allowed`). Inversement, le jeton
+des autres applications ne peut ni déposer sous `cursus:` (`source_ref_app`) ni déposer un `DPE` (`record_type_app`), et
+`category`, `subjectMatricule` lui sont refusés (`record_only`).
+
+Ce que crée le dépôt : un document `DPE-RHU-nnnn` **en vigueur** dès le dépôt (révision A en vigueur, une version,
+fichier `{ID}_A.{ext}`), sans circuit, que personne ne modifie dans Codex (ni métadonnées, ni lecteurs, ni conservation,
+ni demande de modification ou d'obsolescence : « Enregistrement du dossier du personnel tenu par Cursus »). Journal :
+« Dépôt » sous l'acteur `cursus`, détail `A · cursus:piece/<id>`.
+
+| Code | Corps |
+|---|---|
+| **201** | `{"id":"DPE-RHU-0001","revision":"A","version":"A.1","status":"in_force","file":true,"href","warnings"}` |
+| **200** | `{"id","href","replayed":true}` : même `sourceRef`, même fichier |
+| **400** | `{"error":"validation","issues"}` ; codes ci-dessus, `category_required`, `invalid_matricule`, `record_type_required`, `source_ref_app` |
+| **409** | `source_ref_reused` : la `sourceRef` a servi pour un autre fichier |
+| **410** | `{"error":"destroyed","id"}` : l'enregistrement de cette `sourceRef` a été détruit ; il ne se redépose pas |
+| autres | comme le dépôt : 401, 503 `disabled`, 413, 415, 422, 429, 500 |
+
+```bash
+SHA=$(sha256sum attestation.pdf | cut -d' ' -f1)
+curl -s -X POST "$CODEX/api/documents" -H "Authorization: Bearer $CODEX_CURSUS_TOKEN" \
+  -F "meta={\"sourceRef\":\"cursus:piece/1042\",\"title\":\"Attestation de formation — EMP-0042 — 2026-11\",\"category\":\"training_certificate\",\"subjectMatricule\":\"EMP-0042\",\"sha256\":\"$SHA\"}" \
+  -F 'file=@./attestation.pdf;type=application/pdf'
+# → 201 {"id":"DPE-RHU-0001","revision":"A","version":"A.1","status":"in_force","file":true,"href":"/documents/DPE-RHU-0001","warnings":[]}
+```
+
+### `GET /api/documents/{id}/file` avec le jeton de Cursus
+
+Le fichier tel qu'il a été déposé, entier (pas de plage, pas de paramètre : 400 `invalid_query`), avec
+`Content-Type`, `Content-Length`, `X-Codex-SHA256` (l'empreinte enregistrée) et `Cache-Control: no-store` ; il est
+vérifié contre son empreinte pendant l'envoi (coupé avant la fin s'il a été altéré, journalisé « Fichier altéré »).
+**404** pour un document qui n'a pas été déposé sous `cursus:` (rien n'est dit de son existence), ou détruit. Chaque
+lecture est journalisée (« Téléchargement », acteur `cursus`, détail `A · cursus:piece/<id>`) ; Cursus tient son propre
+journal des consultations (personne, pièce, heure). `HEAD` : mêmes contrôles et en-têtes, sans lire le fichier ni
+journaliser. Sans `Authorization` ni signature, la route reste celle du navigateur (session, droits de
+`src/lib/access.ts`).
+
+### `POST /api/documents/{id}/destroy`
+
+Corps JSON `{"reason":"retrait" | "conservation" | "effacement"}` : pièce jointe par erreur, terme de la conservation,
+droit à l'effacement ou anonymisation d'un dossier.
+
+- Le document, ses révisions, versions de travail, aperçus, lecteurs nommés et liens sont supprimés, puis ses fichiers
+  retirés du stockage. Une **trace sans contenu** reste (`codex.destroyed_documents` : identifiant, type, catégorie,
+  `sourceRef`, date du dépôt, date de la destruction, motif, application) ; le journal note « Destruction » (acteur
+  `cursus`, détail `<motif> · cursus:piece/<id>`) et garde ses entrées antérieures, qui ne portent ni titre ni fichier.
+- **409** `legal_hold` sous gel juridique (rien n'est fait) ; **409** `in_use` si un circuit ou une demande de
+  modification le vise (à régler dans Codex) ; **404** pour un document non déposé par Cursus ; **400** pour un motif
+  absent ou inconnu.
+- **200** `{"id","destroyed":true,"reason","destroyedAt"}` ; renvoyé pour un enregistrement déjà détruit :
+  `{"id","destroyed":true,"alreadyDestroyed":true,"reason","destroyedAt"}` (rejouable) ; `"filesPending":n` si le
+  stockage n'a pas pu retirer `n` fichiers (le contrôle des fichiers orphelins de l'Administration les retire).
+- Les sauvegardes déjà faites gardent le fichier jusqu'à leur rotation (`docs/sauvegarde.md`).
 
 ---
 

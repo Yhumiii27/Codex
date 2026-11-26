@@ -16,6 +16,10 @@ import { dropRendering, ensureRendering, previewRow, type PreviewFailure } from 
 import { convertible } from '@/lib/preview-config';
 import { limitReader } from '@/lib/ratelimit';
 import { FileNotFoundError, normalizeMime, openStored, storedExt, type FileSource } from '@/lib/storage';
+import { cursusRecord, recordVersion } from '@/lib/app-records';
+import { CURSUS_ACTOR } from '@/lib/records';
+import { limitRequest } from '@/lib/ratelimit';
+import { checkCursus, checkSignature, credentialsOf, routeSigned, TIMESTAMP_HEADER } from '@/lib/server-auth';
 
 // A stored file, streamed from its store (never read whole into memory), with byte ranges (206, 416) and validators
 // (ETag, Last-Modified, 304) after RFC 9110: lib/ranges.ts decides, once access is granted. Point 46 of
@@ -266,6 +270,7 @@ const fileDetail = (x: Target) => x.render
  * the pages turned add nothing.
  */
 async function handleGet(req: Request, { params }: RouteContext<'/api/documents/[id]/file'>) {
+  if (fromApplication(req)) return applicationFile(req, (await params).id);
   const x = await resolve(req, (await params).id);
   if (x instanceof Response) return x;
   const { ctx, doc, version } = x;
@@ -311,6 +316,11 @@ async function handleGet(req: Request, { params }: RouteContext<'/api/documents/
  * download (link checkers, download managers). The store is asked whether the file exists, as GET does.
  */
 async function handleHead(req: Request, { params }: RouteContext<'/api/documents/[id]/file'>) {
+  if (fromApplication(req)) {
+    const res = await applicationFile(req, (await params).id, false);
+    await res.body?.cancel().catch(() => {});
+    return new Response(null, { status: res.status, headers: res.headers });
+  }
   const x = await resolve(req, (await params).id);
   if (x instanceof Response) return new Response(null, { status: x.status, headers: x.headers });
   let file: Source;
@@ -323,6 +333,76 @@ async function handleHead(req: Request, { params }: RouteContext<'/api/documents
   }
   const a = fileAnswer(req.headers, { method: 'HEAD', size: file.src.size, etag: file.etag, modified: file.src.modified, conditional: x.keep && !file.stand });
   return new Response(null, { status: a.status, headers: headers(x, file, a) });
+}
+
+// ── Read by the application that filed the record (Cursus, request « lot 16 ») ──
+
+/** A call from an application, not from the browser: it carries a bearer token or a signature, never a session. */
+function fromApplication(req: Request): boolean {
+  return req.headers.has('authorization') || req.headers.has(TIMESTAMP_HEADER);
+}
+
+const jsonAnswer = (body: unknown, status: number) => Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } });
+
+/**
+ * The file of a record of Cursus exactly as filed, for Cursus (docs/api.md « GET /api/documents/{id}/file (Cursus) »):
+ * its token (CODEX_CURSUS_TOKEN), and its signature over `GET <path>` when CODEX_CURSUS_SECRET is set. Only a document
+ * filed under `cursus:` is served (any other: 404, nothing said), whole, checked against its SHA-256 on the way, with
+ * that fingerprint in `X-Codex-SHA256`. Each read is journaled (« Téléchargement », actor cursus, detail
+ * `A · cursus:piece/…`); Cursus keeps its own journal of who consulted it. `journal`: false for HEAD.
+ */
+async function applicationFile(req: Request, rawId: string, journal = true): Promise<Response> {
+  const denied = checkCursus(req);
+  if (denied) return denied;
+  const limited = limitRequest(req, 'cursus');
+  if (limited) return limited;
+  const url = new URL(req.url);
+  if (credentialsOf('cursus').secrets.length) {
+    const unsigned = await checkSignature(req, 'cursus', routeSigned(req.method, url.pathname));
+    if (unsigned) return unsigned;
+  }
+  if ([...url.searchParams].length) return jsonAnswer({ error: 'invalid_query' }, 400);
+  const db = await getDb();
+  const d = await cursusRecord(db, safeDecode(rawId));
+  const found = d ? await recordVersion(db, d) : null;
+  if (!d || !found) return jsonAnswer({ error: 'not_found' }, 404);
+  const { version, letter } = found;
+  let src: FileSource;
+  try {
+    src = await openStored(version.storage, version.fileKey!, version.size);
+  } catch (err) {
+    return storeFailure(err);
+  }
+  const name = version.fileName ?? '';
+  const mime = normalizeMime(version.mime, name);
+  const h = new Headers({
+    'Cache-Control': 'no-store',
+    'Content-Type': mime,
+    'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(`${d.id}_${letter}${storedExt(name, mime)}`)}`,
+    'X-Content-Type-Options': 'nosniff',
+  });
+  if (version.sha256) h.set('X-Codex-SHA256', version.sha256);
+  if (src.size != null) h.set('Content-Length', String(src.size));
+  if (!journal) return new Response(null, { status: 200, headers: h });
+  let body: ReadableStream<Uint8Array>;
+  try {
+    body = await src.read();
+  } catch (err) {
+    return storeFailure(err);
+  }
+  if (version.sha256) {
+    body = verifiedStream(body, version.sha256, async () => {
+      logger('storage').error('stored file altered', { doc: d.id, version: version.id, key: version.fileKey });
+      await audit(await getDb(), CURSUS_ACTOR, 'file_altered', d.id, letter, version.revisionId);
+    });
+  }
+  try {
+    await audit(db, CURSUS_ACTOR, 'download', d.id, `${letter} · ${d.legacyRef}`, version.revisionId);
+  } catch (err) {
+    await body.cancel().catch(() => {});
+    throw err;
+  }
+  return new Response(body, { status: 200, headers: h });
 }
 
 export const GET = withRequestLog('/api/documents/[id]/file', handleGet);

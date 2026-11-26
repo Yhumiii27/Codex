@@ -76,6 +76,8 @@ export const FUNCTIONS: [key: string, fr: string, en: string, scope: 'global' | 
   ['resp_communication', 'Responsable communication', 'Communication manager', 'global'],
   ['resp_recherche', 'Responsable recherche', 'Head of research', 'global'],
   ['resp_programme', 'Responsable de programme', 'Programme manager', 'research'],
+  // Readers of Cursus's highly confidential records, designated by HR (lib/records.ts HR_RECORD_READER, D-32): never a circuit step.
+  ['lecteur_dossier_personnel', 'Lecteur du dossier du personnel', 'Personnel file reader', 'global'],
 ];
 
 /** [function, scope value or null, user]. Project and programme managers also answer for their own scope by default. */
@@ -94,6 +96,7 @@ export const HOLDERS: [string, string | null, string][] = [
   ['chef_projet', null, 'mlefebvre'], ['validation_client', null, 'mlefebvre'],
   ['resp_achats', null, 'fbertrand'], ['resp_achats', null, 'mlefebvre'],
   ['resp_rh', null, 'nbenali'], ['resp_rh', null, 'hcosta'],
+  ['lecteur_dossier_personnel', null, 'nbenali'],
   ['resp_finance', null, 'tweil'], ['resp_finance', null, 'hcosta'],
   ['resp_juridique', null, 'irahmani'], ['resp_juridique', null, 'hcosta'],
   ['resp_si', null, 'mdelorme'], ['resp_si', null, 'hcosta'],

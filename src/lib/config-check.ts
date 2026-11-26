@@ -116,6 +116,10 @@ export function checkConfig(env: Env, { production }: { production: boolean }): 
       else add('info', 'token_unset', `${e.token}${e.secret ? ` and ${e.secret} are` : ' is'} not set: ${e.route} is disabled (503)`);
     }
   }
+  // Cursus is told by its token (POST /api/documents): its secret alone opens nothing (request « lot 16 »).
+  if (!set('CODEX_CURSUS_TOKEN') && !set('CODEX_CURSUS_TOKEN_NEXT') && (set('CODEX_CURSUS_SECRET') || set('CODEX_CURSUS_SECRET_NEXT'))) {
+    add('warn', 'cursus_token_required', 'CODEX_CURSUS_SECRET is set without CODEX_CURSUS_TOKEN: Cursus is told by its token, its routes stay disabled (503)');
+  }
   // One value under two names: whoever holds one credential holds the other (a secret equal to a token travels in a header).
   for (let i = 0; i < values.length; i++) {
     for (let j = i + 1; j < values.length; j++) {

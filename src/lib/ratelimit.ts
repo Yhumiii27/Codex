@@ -32,6 +32,8 @@ export const RATE_LIMITS = {
   documents: { env: 'CODEX_RATE_DOCUMENTS', def: '600/1m' },
   /** POST /api/integrations/vigie (Vigie's decisions), per address, once the token is checked. */
   vigie: { env: 'CODEX_RATE_VIGIE', def: '600/1m' },
+  /** Cursus's records (deposit, file read, destruction: request « lot 16 »), per address, once its token is checked. */
+  cursus: { env: 'CODEX_RATE_CURSUS', def: '600/1m' },
   /** Credentials refused (token or signature missing or wrong) on those three and on a registry behind a token, per address: beyond, 429 instead of 401. */
   tokens: { env: 'CODEX_RATE_TOKEN_FAILURES', def: '20/15m' },
   /** GET /api/registry (Keystone), per address, behind a trusted proxy only. */
@@ -197,7 +199,7 @@ function tooManyText(wait: number, t: T): Response {
  * the request counted. Import, documents and Vigie call it once the token is checked, so that only its holder spends the budget.
  * The registry has no token: it is limited behind a trusted proxy only, where a client cannot spend another's budget.
  */
-export function limitRequest(req: Request, family: 'import' | 'documents' | 'vigie' | 'registry'): Response | null {
+export function limitRequest(req: Request, family: 'import' | 'documents' | 'vigie' | 'registry' | 'cursus'): Response | null {
   if (family === 'registry' && !trustProxy()) return null;
   const rule = ruleFor(family);
   const wait = rule ? take(family, clientAddress(req.headers), rule) : 0;

@@ -29,7 +29,8 @@ async function handlePost(req: Request) {
       case 'file_rejected':
         return refused(res.rejection);
       case 'ref_reused':
-        // A deposit's answer (POST /api/documents): an import never gets it.
+      case 'destroyed':
+        // Deposits' answers (POST /api/documents): an import never gets them.
         return json({ error: 'duplicate', id: res.id }, 409);
       case 'dry_run':
         return json({ dryRun: true, id: res.id, warnings: res.warnings }, 200);

@@ -29,8 +29,9 @@ describe('the default configuration', () => {
   });
 
   it('says the integration endpoints are disabled and the registry open, and in production that files go unscanned and users are simulated (O-02)', () => {
-    expect(codes(dev({}))).toEqual(['token_unset', 'token_unset', 'token_unset', 'registry_open']);
-    expect(codes(prod({}))).toEqual(['token_unset', 'token_unset', 'token_unset', 'registry_open', 'clamd_off', 'auth_simulated']);
+    // Import, documents, Vigie, then Cursus's records (request « lot 16 »).
+    expect(codes(dev({}))).toEqual(['token_unset', 'token_unset', 'token_unset', 'registry_open', 'token_unset']);
+    expect(codes(prod({}))).toEqual(['token_unset', 'token_unset', 'token_unset', 'registry_open', 'token_unset', 'clamd_off', 'auth_simulated']);
     expect(codes(prod({}), 'warn')).toEqual(['clamd_off', 'auth_simulated']);
   });
 });
@@ -98,8 +99,10 @@ describe('signing secrets and rotation', () => {
   });
 
   it('enables an endpoint by its secret alone, and the registry by its token', () => {
-    expect(codes(dev({ VIGIE_WEBHOOK_SECRET: TOKEN }))).toEqual(['token_unset', 'token_unset', 'registry_open']);
-    expect(codes(dev({ CODEX_REGISTRY_TOKEN: TOKEN }))).toEqual(['token_unset', 'token_unset', 'token_unset']);
+    expect(codes(dev({ VIGIE_WEBHOOK_SECRET: TOKEN }))).toEqual(['token_unset', 'token_unset', 'registry_open', 'token_unset']);
+    expect(codes(dev({ CODEX_REGISTRY_TOKEN: TOKEN }))).toEqual(['token_unset', 'token_unset', 'token_unset', 'token_unset']);
+    // Cursus is told by its token: its secret alone opens nothing.
+    expect(codes(dev({ CODEX_CURSUS_SECRET: TOKEN }))).toEqual(['token_unset', 'token_unset', 'token_unset', 'registry_open', 'cursus_token_required']);
   });
 
   it('warns of a _NEXT without its current value, and of one value under two names', () => {
@@ -288,7 +291,7 @@ describe('at start', () => {
     vi.spyOn(console, 'info').mockImplementation(() => {});
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    await expect(startupCheck({ NODE_ENV: 'production', CODEX_DATA_DIR: tmp, CODEX_STORAGE: 'nas', CODEX_CONFIG_CHECK: 'warn' }, { cwd: tmp })).resolves.toHaveLength(7);
+    await expect(startupCheck({ NODE_ENV: 'production', CODEX_DATA_DIR: tmp, CODEX_STORAGE: 'nas', CODEX_CONFIG_CHECK: 'warn' }, { cwd: tmp })).resolves.toHaveLength(8);
     expect(warn.mock.calls.at(-1)?.[0]).toContain('started anyway');
     await expect(startupCheck({ NODE_ENV: 'development', CODEX_DATA_DIR: tmp, CODEX_STORAGE: 'nas' }, { cwd: tmp })).resolves.toBeDefined();
   });

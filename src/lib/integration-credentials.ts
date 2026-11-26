@@ -1,13 +1,16 @@
 // The variables that hold the credentials of the integration endpoints (lib/server-auth.ts), apart from it so that the
 // configuration check (lib/config-check.ts) reads them as the endpoints do, without loading the database.
 
-export type Endpoint = 'import' | 'documents' | 'vigie' | 'registry';
+export type Endpoint = 'import' | 'documents' | 'vigie' | 'registry' | 'cursus';
 
 export const ENDPOINTS: Record<Endpoint, { token: string; secret: string | null; route: string }> = {
   import: { token: 'CODEX_IMPORT_TOKEN', secret: 'CODEX_IMPORT_SECRET', route: 'POST /api/import' },
   documents: { token: 'CODEX_DOCUMENTS_TOKEN', secret: 'CODEX_DOCUMENTS_SECRET', route: 'POST /api/documents' },
   vigie: { token: 'VIGIE_WEBHOOK_TOKEN', secret: 'VIGIE_WEBHOOK_SECRET', route: 'POST /api/integrations/vigie' },
   registry: { token: 'CODEX_REGISTRY_TOKEN', secret: null, route: 'GET /api/registry' },
+  // Cursus's own credentials (request « lot 16 »): its records filed by POST /api/documents, read and destroyed by
+  // GET /api/documents/{id}/file and POST /api/documents/{id}/destroy. Cursus is told by its token: it is required.
+  cursus: { token: 'CODEX_CURSUS_TOKEN', secret: 'CODEX_CURSUS_SECRET', route: 'Cursus: POST /api/documents, GET /api/documents/{id}/file, POST /api/documents/{id}/destroy' },
 };
 
 type Env = Readonly<Record<string, string | undefined>>;

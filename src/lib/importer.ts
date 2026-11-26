@@ -11,6 +11,8 @@ import { ATTACHMENTS, CONF_LEVELS, DICT, ORIGINS } from './i18n';
 import { audit, refreshHeadline, type Tx } from './lifecycle';
 import { logger } from './log';
 import { sameFiles } from './queries';
+import { CURSUS_ACTOR, CURSUS_PREFIX, isRecordType, RECORD_DEPARTMENT, RECORD_TYPE, recordCategory, SUBJECT_MATRICULE_RE, type RecordCategory } from './records';
+import { sameRule } from './retention';
 import { checkFile, discardFile, FileRejectedError, fileColumns, nameStoredFile, stageFile, type CheckedFile, type FileRejection, type StagedFile } from './storage';
 import { addTerms, loadTerms, readTerms } from './vocab';
 import { canonicalSubtype, cleanTerm, docLang, VOCAB_MAX } from './vocab-rules';
@@ -70,6 +72,17 @@ const MESSAGES: Record<string, string> = {
   invalid_lang: 'Langue attendue : fr, en ou vide.',
   subtype_unlisted: 'Sous-type absent de la liste du type : gardé tel quel, proposé aux administrateurs du registre (Administration › Vocabulaires).',
   term_added: 'Terme ajouté au vocabulaire contrôlé : {terms}.',
+  source_ref_app: 'Référence d’origine d’une autre application : une application dépose sous son propre préfixe, avec ses propres identifiants (Cursus : cursus:…, jeton CODEX_CURSUS_TOKEN).',
+  record_type_app: 'Type réservé aux enregistrements du dossier du personnel, déposés par Cursus avec ses identifiants (CODEX_CURSUS_TOKEN).',
+  record_type_required: 'Cursus dépose des enregistrements du dossier du personnel : typeCode DPE (ou absent).',
+  record_owner: 'Propriétaire fixé par Codex : le compte de service de Cursus.',
+  record_only: 'Champ réservé aux enregistrements du dossier du personnel déposés par Cursus.',
+  record_field: 'Champ fixé par Codex pour un enregistrement (d’après sa catégorie) : à ne pas envoyer.',
+  record_conf: 'Confidentialité fixée par la catégorie de l’enregistrement.',
+  record_department: 'Département fixé : RHU (dossier du personnel).',
+  category_required: 'Catégorie de l’enregistrement obligatoire (absence, identity, vaccination, training_certificate, authorisation, travel, expense, expense_health, personal_vehicle, opco, interview_report).',
+  invalid_matricule: 'Matricule attendu : EMP-0042, ou I… / E… pour une personne sur site.',
+  file_required: 'Fichier obligatoire pour un enregistrement.',
 };
 
 type TypeRow = typeof s.docTypes.$inferSelect;
@@ -135,7 +148,7 @@ function recordedDates(v: Pick<ImportInput, 'status' | 'inForceAt' | 'issuedAt'>
 }
 
 /** Validates the `meta` part: shape, then the rules of the register (type admits origin, attachment, confidentiality…). */
-function parseImportMeta(raw: unknown, refs: Refs): { value: ImportInput | null; issues: Issue[]; warnings: Issue[] } {
+function parseImportMeta(raw: unknown, refs: Refs, o: { systemOwner?: string } = {}): { value: ImportInput | null; issues: Issue[]; warnings: Issue[] } {
   const issues: Issue[] = [], warnings: Issue[] = [];
   const issue = (field: string, code: string) => issues.push({ field, code, message: MESSAGES[code] ?? code });
   if (!isRecord(raw)) {
@@ -175,6 +188,8 @@ function parseImportMeta(raw: unknown, refs: Refs): { value: ImportInput | null;
     const v = need ? required(k, 64) : text(k, 64);
     if (v == null) return null;
     const u = refs.users.get(v);
+    // The owner of a record is the account of the application that files it (a system user), set by depositMeta.
+    if (u?.isSystem && k === 'ownerId' && v === o.systemOwner) return v;
     if (!u || u.isSystem) { issue(k, 'unknown_user'); return null; }
     return v;
   };
@@ -323,7 +338,9 @@ export type ImportResult =
   /** The file was refused (format, size, virus scan: lib/storage.ts stageFile); nothing was imported. */
   | { kind: 'file_rejected'; rejection: FileRejection }
   /** A deposit whose source reference already made the document `id` from another file: nothing was written. */
-  | { kind: 'ref_reused'; id: string };
+  | { kind: 'ref_reused'; id: string }
+  /** A deposit whose source reference made a record since destroyed (destroyed_documents): never filed again. */
+  | { kind: 'destroyed'; id: string };
 
 /** `legacyRef` as parseImportMeta reads it, or null when it is missing or invalid. */
 function legacyRefOf(raw: unknown): string | null {
@@ -360,10 +377,22 @@ const DEPOSIT_REFUSED = ['legacyRef', 'status', 'revision', 'inForceAt', 'issued
  * The metadata of a deposit as the import reads them: the source reference as legacy reference, a draft, and the owner
  * given by Codex ID or by matricule (the person's number shared by the tools of the group, users.matricule).
  */
-function depositMeta(raw: unknown, refs: Refs): { meta: unknown; issues: Issue[]; legalHold: boolean } {
+/** What a deposit of a record of the personnel file adds to the document (lib/records.ts). */
+type RecordDeposit = { category: RecordCategory; subjectMatricule: string };
+
+/** Fields only a record takes, filed by Cursus with its own credentials. */
+const RECORD_FIELDS = ['category', 'subjectMatricule'] as const;
+
+/**
+ * The application that files a deposit, as its credentials tell (POST /api/documents): Cursus with CODEX_CURSUS_TOKEN,
+ * or any other application of the group with CODEX_DOCUMENTS_TOKEN (`null`).
+ */
+export type DepositApp = 'cursus' | null;
+
+function depositMeta(raw: unknown, refs: Refs, app: DepositApp = null): { meta: unknown; issues: Issue[]; legalHold: boolean; record: RecordDeposit | null } {
   const issues: Issue[] = [];
   const issue = (field: string, code: string) => issues.push({ field, code, message: MESSAGES[code] ?? code });
-  if (!isRecord(raw)) return { meta: raw, issues, legalHold: false };
+  if (!isRecord(raw)) return { meta: raw, issues, legalHold: false, record: null };
   // Legal hold put at creation (Arche's request CX-07, decision of 1 November 2026: a gate file G1, G2, G3 stays as it was
   // filed): neither changed nor removed until a records manager lifts it. A boolean only.
   if (raw.legalHold != null && typeof raw.legalHold !== 'boolean') issue('legalHold', 'invalid_type');
@@ -379,13 +408,38 @@ function depositMeta(raw: unknown, refs: Refs): { meta: unknown; issues: Issue[]
   delete meta.createdAt;
   delete meta.modifiedAt;
   const matricule = typeof raw.ownerMatricule === 'string' || typeof raw.ownerMatricule === 'number' ? String(raw.ownerMatricule).trim() : '';
-  if (matricule) {
+  if (matricule && app !== 'cursus') {
     const u = [...refs.users.values()].find((x) => !x.isSystem && x.matricule === matricule);
     if (!u) issue('ownerMatricule', 'unknown_user');
     else if (meta.ownerId != null && String(meta.ownerId).trim() !== '' && String(meta.ownerId).trim() !== u.id) issue('ownerId', 'owner_ambiguous');
     else meta.ownerId = u.id;
   }
-  return { meta, issues, legalHold };
+  const given = (k: string) => raw[k] != null && raw[k] !== '';
+  if (app !== 'cursus') {
+    // Another application never files under Cursus's prefix nor a record: those are read and destroyed by Cursus's routes.
+    if (ref?.startsWith(CURSUS_PREFIX)) issue('sourceRef', 'source_ref_app');
+    if (typeof raw.typeCode === 'string' && isRecordType(raw.typeCode.trim().toUpperCase())) issue('typeCode', 'record_type_app');
+    for (const k of RECORD_FIELDS) if (given(k)) issue(k, 'record_only');
+    return { meta, issues, legalHold, record: null };
+  }
+  // Cursus files a record of the personnel file (Cursus's request « lot 16 », D-32): in force at once, without circuit nor
+  // later revision; owner, department, confidentiality and retention set by Codex from its category.
+  if (ref && !ref.startsWith(CURSUS_PREFIX)) issue('sourceRef', 'source_ref_app');
+  const typeCode = typeof raw.typeCode === 'string' ? raw.typeCode.trim().toUpperCase() : raw.typeCode == null ? RECORD_TYPE : '';
+  if (typeCode !== RECORD_TYPE) issue('typeCode', 'record_type_required');
+  for (const k of ['ownerId', 'ownerMatricule', 'processOwnerId', 'readers', 'subtype', 'attachment', 'projectCode', 'programCode', 'capexCode', 'origin']) if (given(k)) issue(k, k.startsWith('owner') ? 'record_owner' : 'record_field');
+  const category = recordCategory(raw.category);
+  if (!category) issue('category', given('category') ? 'invalid_value' : 'category_required');
+  const dept = typeof raw.department === 'string' ? raw.department.trim().toUpperCase() : null;
+  if (given('department') && dept !== RECORD_DEPARTMENT) issue('department', 'record_department');
+  if (category && given('conf') && raw.conf !== category.conf) issue('conf', 'record_conf');
+  const subject = typeof raw.subjectMatricule === 'string' ? raw.subjectMatricule.trim() : '';
+  if (!subject) issue('subjectMatricule', given('subjectMatricule') ? 'invalid_type' : 'required');
+  else if (!SUBJECT_MATRICULE_RE.test(subject)) issue('subjectMatricule', 'invalid_matricule');
+  const out: Record<string, unknown> = { ...meta, typeCode: RECORD_TYPE, department: RECORD_DEPARTMENT, ownerId: CURSUS_ACTOR, status: 'in_force' };
+  for (const k of ['ownerMatricule', 'category', 'subjectMatricule', 'readers', 'processOwnerId']) delete out[k];
+  if (category) Object.assign(out, { conf: category.conf, subtype: category.label.fr });
+  return { meta: out, issues, legalHold, record: category && subject ? { category, subjectMatricule: subject } : null };
 }
 
 /**
@@ -447,24 +501,44 @@ class DryRun extends Error {
  * written (document, counters, vocabularies, audit trail), an infected file not journaled. The ID given is the one a
  * real import would get if nothing changes in between.
  */
-export async function importDocument(raw: unknown, file: ImportFile | null, o: { dryRun?: boolean; mode?: 'import' | 'deposit' } = {}): Promise<ImportResult> {
+export async function importDocument(raw: unknown, file: ImportFile | null, o: { dryRun?: boolean; mode?: 'import' | 'deposit'; app?: DepositApp } = {}): Promise<ImportResult> {
   const dryRun = !!o.dryRun;
   const deposit = o.mode === 'deposit';
   const db = await getDb();
   // A replay answers whatever the register has become since the first run (a type deactivated meanwhile…): 409 for an
   // import, the document already made for a deposit.
   const ref = deposit ? sourceRefOf(raw) : legacyRefOf(raw);
+  // Cursus's account, owner of its records, is created at its first deposit (as the actor matrix of codex.pub_editer):
+  // a new database holds no row until then.
+  if (deposit && o.app === 'cursus') {
+    await db.insert(s.users).values({ id: CURSUS_ACTOR, name: 'Cursus', initials: 'CU', role: 'system', isSystem: true }).onConflictDoNothing();
+  }
+  // A record destroyed by its application is never filed again under its reference (a retry after the destruction).
+  if (deposit && ref) {
+    const [gone] = await db.select({ id: s.destroyedDocuments.id }).from(s.destroyedDocuments).where(eq(s.destroyedDocuments.sourceRef, ref)).limit(1);
+    if (gone) return { kind: 'destroyed', id: gone.id };
+  }
   const known = ref ? await findByRef(db, ref) : null;
   if (known) return deposit && known.kind === 'duplicate' ? replayedDeposit(db, known.id, file) : known;
   const refs = await loadRefs(db);
-  const pre = deposit ? depositMeta(raw, refs) : { meta: raw, issues: [], legalHold: false };
-  const parsed = parseImportMeta(pre.meta, refs);
+  const pre = deposit ? depositMeta(raw, refs, o.app ?? null) : { meta: raw, issues: [], legalHold: false, record: null };
+  const parsed = parseImportMeta(pre.meta, refs, { systemOwner: pre.record ? CURSUS_ACTOR : undefined });
   const { warnings } = parsed;
   const issues = [...pre.issues, ...parsed.issues.filter((i) => !(deposit && i.field === 'legacyRef'))];
+  // A record is the file it carries: never filed without one.
+  if (deposit && o.app === 'cursus' && !file) issues.push({ field: 'file', code: 'file_required', message: MESSAGES.file_required });
+  // The owner of a record is Cursus's system account (created above); a person under that ID would not do.
+  if (pre.record && !refs.users.get(CURSUS_ACTOR)?.isSystem) issues.push({ field: 'ownerId', code: 'unknown_user', message: MESSAGES.unknown_user });
   const v = issues.length ? null : parsed.value;
   if (!v) return { kind: 'invalid', issues, warnings };
   const type = refs.types.get(v.typeCode)!;
   const today = todayIso();
+  // A record's retention is its category's (lib/records.ts), apart from its type's when they differ.
+  const rec = pre.record;
+  const retention = rec
+    ? { retentionYears: rec.category.retention.years, retentionTrigger: rec.category.retention.trigger, retentionDisposition: rec.category.retention.disposition }
+    : { retentionYears: type.retentionYears, retentionTrigger: type.retentionTrigger, retentionDisposition: type.retentionDisposition };
+  const retentionOverride = !!rec && !sameRule(retention, type);
 
   // In force on its date; a date still to come leaves the revision approved until lifecycle.promoteDue puts it in force.
   const { inForceAt, revStatus, issuedAt } = recordedDates(v, today);
@@ -529,7 +603,8 @@ export async function importDocument(raw: unknown, file: ImportFile | null, o: {
         department: v.department, site: v.site, ownerId: v.ownerId, authorId: v.authorId, authorText: v.authorText,
         conf: v.conf, keywords: v.keywords, lang: v.lang, status: revStatus,
         issuedAt, reviewDueAt: v.reviewDueAt, expiresAt: v.expiresAt,
-        retentionYears: type.retentionYears, retentionTrigger: type.retentionTrigger, retentionDisposition: type.retentionDisposition,
+        ...retention, retentionOverride,
+        ...(rec ? { subjectMatricule: rec.subjectMatricule } : {}),
         sourceOrg: v.sourceOrg, externalRef: v.externalRef, receivedAt: v.receivedAt,
         projectPhase: v.projectPhase, workPackage: v.workPackage, discipline: v.discipline,
         researchTheme: v.researchTheme, studyId: v.studyId, ipStatus: v.ipStatus, processOwnerId: v.processOwnerId,
@@ -560,11 +635,13 @@ export async function importDocument(raw: unknown, file: ImportFile | null, o: {
     // A deposit is journaled as a document created on screen (an upload of its first version), under Codex's system user,
     // its source reference in the detail; an import as the arrival of a document migrated from the legacy system.
     if (deposit) {
-      await audit(tx, IMPORT_ACTOR, 'upload', id, `${withVersion ? label : v.letter} · ${v.legacyRef}`, rev.id, {
+      // A record of Cursus is journaled under Cursus's account, which filed it (lib/records.ts).
+      const actor = rec ? CURSUS_ACTOR : IMPORT_ACTOR;
+      await audit(tx, actor, 'upload', id, `${withVersion ? label : v.letter} · ${v.legacyRef}`, rev.id, {
         ...(stored ? { sha256: stored.sha256 } : {}),
         text: { code: 'version', params: { label: withVersion ? label : v.letter, ...(stored ? { size: stored.size } : {}) } },
       });
-      if (pre.legalHold) await audit(tx, IMPORT_ACTOR, 'hold', id, type.code);
+      if (pre.legalHold) await audit(tx, actor, 'hold', id, type.code);
     } else {
       await audit(tx, IMPORT_ACTOR, 'import', id, `${v.legacyRef} → ${withVersion ? label : v.letter}`, rev.id, {
         ...(stored ? { sha256: stored.sha256 } : {}),
