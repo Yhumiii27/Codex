@@ -135,18 +135,18 @@ describe('Vigie and Keystone', () => {
     for (const v of ['localhost:3200', 'javascript:alert(1)', 'ftp://vigie', 'vigie.local/api', 'http://']) {
       expect(codes(prod({ NEXT_PUBLIC_VIGIE_URL: v }), 'error'), v).toEqual(['url_invalid']);
     }
-    expect(codes(prod({ NEXT_PUBLIC_KEYSTONE_URL: 'https://user:pw@keystone.epc2i.fr' }), 'error')).toEqual(['url_credentials']);
+    expect(codes(prod({ NEXT_PUBLIC_KEYSTONE_URL: 'https://user:pw@keystone.atrium.example' }), 'error')).toEqual(['url_credentials']);
     // Never the value: without its scheme, an address with credentials reads as "scheme:password@host".
-    for (const v of ['admin:S3cretPass@vigie.epc2i.local:3200/api', 'ftp://codex:S3cretPass@vigie.interne/api', 'vigie.local/api?apikey=S3cretKey', 'https://user:S3cretPass@keystone.epc2i.fr']) {
+    for (const v of ['admin:S3cretPass@vigie.atrium.local:3200/api', 'ftp://codex:S3cretPass@vigie.interne/api', 'vigie.local/api?apikey=S3cretKey', 'https://user:S3cretPass@keystone.atrium.example']) {
       const f = prod({ NEXT_PUBLIC_VIGIE_URL: v, NEXT_PUBLIC_KEYSTONE_URL: v });
       expect(codes(f, 'error').length, v).toBe(2);
       expect(JSON.stringify(f), v).not.toMatch(/S3cret/);
     }
-    expect(codes(prod({ NEXT_PUBLIC_KEYSTONE_URL: 'https://keystone.epc2i.fr', NEXT_PUBLIC_VIGIE_URL: 'http://localhost:3200' }), 'error')).toEqual([]);
+    expect(codes(prod({ NEXT_PUBLIC_KEYSTONE_URL: 'https://keystone.atrium.example', NEXT_PUBLIC_VIGIE_URL: 'http://localhost:3200' }), 'error')).toEqual([]);
   });
 
   it('warns that VIGIE_API_URL is no longer read (D-31: Vigie is reached through its function)', () => {
-    expect(codes(prod({ VIGIE_API_URL: 'https://vigie.epc2i.fr/api' }), 'warn')).toContain('vigie_api_url_ignored');
+    expect(codes(prod({ VIGIE_API_URL: 'https://vigie.atrium.example/api' }), 'warn')).toContain('vigie_api_url_ignored');
     expect(codes(prod({}), 'warn')).not.toContain('vigie_api_url_ignored');
   });
 });
@@ -253,7 +253,7 @@ describe('folders', () => {
 
   it('warns, on a PostgreSQL server, of a files backup on the same disk as the files (docs/stockage-serveur.md)', async () => {
     const data = path.join(tmp, 'd');
-    const pg = { DATABASE_URL: 'postgres://codex_app@db:5432/epc2i', CODEX_DATA_DIR: data };
+    const pg = { DATABASE_URL: 'postgres://codex_app@db:5432/atrium', CODEX_DATA_DIR: data };
     // A temporary folder holds both: one disk.
     expect(codes(await checkDirectories({ ...pg, CODEX_BACKUP_DIR: path.join(tmp, 'b') }, '/'))).toEqual(['backup_same_disk']);
     // With the embedded database, the archive is the backup of the database too: no warning.
@@ -262,7 +262,7 @@ describe('folders', () => {
 });
 
 describe('the files backup on a PostgreSQL server', () => {
-  const pg = { DATABASE_URL: 'postgres://codex_app@db:5432/epc2i' };
+  const pg = { DATABASE_URL: 'postgres://codex_app@db:5432/atrium' };
   it('warns in production when CODEX_SCHEDULE_BACKUP does not run it', () => {
     expect(codes(prod(pg), 'warn')).toContain('files_backup_off');
     expect(codes(prod({ ...pg, CODEX_SCHEDULE_BACKUP: 'off' }), 'warn')).toContain('files_backup_off');

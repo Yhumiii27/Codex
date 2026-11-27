@@ -35,7 +35,7 @@ let claimsOverride: Record<string, unknown> = {};
 const b64 = (o: object) => Buffer.from(JSON.stringify(o)).toString('base64url');
 function idToken(extra: Record<string, unknown> = {}) {
   const now = Math.floor(Date.now() / 1000);
-  const body = `${b64({ alg: 'RS256', kid: 'k1' })}.${b64({ iss: ISSUER, aud: 'codex', sub: PID, oid: PID, nonce, iat: now, exp: now + 3600, email: 'claire.dupont@epc-groupe.com', name: 'Claire Dupont', ...extra })}`;
+  const body = `${b64({ alg: 'RS256', kid: 'k1' })}.${b64({ iss: ISSUER, aud: 'codex', sub: PID, oid: PID, nonce, iat: now, exp: now + 3600, email: 'claire.dupont@atrium.example', name: 'Claire Dupont', ...extra })}`;
   return `${body}.${sign('sha256', Buffer.from(body), privateKey).toString('base64url')}`;
 }
 
@@ -66,7 +66,7 @@ beforeEach(async () => {
   await db().execute(sql.raw('create schema clavis'));
   await db().execute(sql.raw('create table clavis.pub_acces (personne_id uuid, application text, autorise boolean, niveau text, domaine text, role text, ouvert boolean, maj_le timestamptz)'));
   await db().execute(sql.raw('create table clavis.pub_personnes (personne_id uuid, matricule text, prenom text, nom text, nom_affiche text, email text, poste text, departement text, pole text, responsable_id uuid, dans_annuaire boolean, actif boolean, maj_le timestamptz)'));
-  await db().execute(sql`insert into clavis.pub_personnes values (${PID}, null, 'Claire', 'Dupont', 'Claire Dupont', 'claire.dupont@epc-groupe.com', 'Responsable qualité', 'Qualité', null, null, true, true, now())`);
+  await db().execute(sql`insert into clavis.pub_personnes values (${PID}, null, 'Claire', 'Dupont', 'Claire Dupont', 'claire.dupont@atrium.example', 'Responsable qualité', 'Qualité', null, null, true, true, now())`);
   await db().execute(sql`insert into clavis.pub_acces values (${PID}, 'codex', true, 'referent', 'quality', 'gestionnaire', true, now()), (${PID}, 'keystone', true, 'reader', null, 'member', true, now())`);
 });
 

@@ -3,7 +3,7 @@ import type { Lang } from './i18n';
 import type { Translate } from '@/i18n';
 import { DATE_RULE_LABEL } from '@/i18n/labels';
 
-// Coherence of a document's dates (docs/audit-deck-epc2i.md §4.6, rule 12: issue ≤ effect ≤ expiry), checked by the
+// Coherence of a document's dates (docs/audit-deck-ged.md §4.6, rule 12: issue ≤ effect ≤ expiry), checked by the
 // Server Actions (lib/actions.ts) and by the import (lib/importer.ts). Days are "YYYY-MM-DD" strings, compared as text.
 
 /** Each rule has its message in src/i18n/labels.ts (DATE_RULE_LABEL), where {date} is the date it conflicts with and {rev} the revision. */

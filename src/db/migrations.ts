@@ -6,7 +6,7 @@ import { DB_SCHEMA } from './schema';
 import type { SqlQueryable } from './sql-client';
 
 // Versioned migrations (drizzle/, point 41 of docs/reste-a-faire.md). Since 22 October 2026 (lot 11, decision M-01: one
-// shared EPC2I PostgreSQL database, one schema per tool) every table, function, trigger and collation of Codex lives in
+// shared PostgreSQL database of the Atrium suite, one schema per tool) every table, function, trigger and collation of Codex lives in
 // the schema `codex`, in PGlite as on the shared server, and so does the journal of the migrations
 // (codex.__drizzle_migrations). 0000_init is the base, equal to src/db/schema.ts on that day, 0001_partage the
 // prerequisites and `pub_` views of the shared data (Matrix, infra/postgres/partage/40-codex.sql); each later change of

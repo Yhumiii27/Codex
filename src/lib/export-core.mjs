@@ -474,7 +474,7 @@ async function takeSnapshot(pg, onStart) {
     // First statement of the transaction: one snapshot for every table (a no-op for PGlite's one connection).
     await tx.exec('set transaction isolation level repeatable read');
     const all = await listTables(tx);
-    // The shared EPC2I server gives Codex's role no TEMPORARY on the database (Matrix, infra/postgres/init/01): the copies
+    // The shared Atrium server gives Codex's role no TEMPORARY on the database (Matrix, infra/postgres/init/01): the copies
     // are then unlogged tables of the schema codex, under the same names, dropped as temporary ones are (dropSnapshot).
     // An export cut short by a crash leaves them behind (codex_export_*, never read by another export: listTables).
     const [{ temp }] = (await tx.query(`select has_database_privilege(current_database(), 'TEMPORARY') as temp`)).rows;
@@ -776,7 +776,7 @@ async function journalExport(q, actor, action, archive) {
 /** @param {Date} now */
 function readme(now) {
   return [
-    'Export complet de Codex, la GED du groupe EPC2I',
+    'Export complet de Codex, la GED du groupe',
     `Fait le ${now.toISOString()} (UTC).`,
     '',
     'Contenu :',

@@ -6,8 +6,8 @@ depuis une session cloud, sans reposer des questions déjà tranchées.
 
 - Décisions de l'utilisateur, citées mot pour mot, et questions encore ouvertes : [decisions.md](decisions.md).
 - Modèle fonctionnel qui fait foi : [modele-cible.md](modele-cible.md).
-- Audit du deck : [audit-deck-epc2i.md](audit-deck-epc2i.md). Deck d'origine : `docs/sources/creation-ged-epc2i.pptx`,
-  transcrit en texte dans `docs/sources/deck-ged-epc2i.md`.
+- Audit du deck : [audit-deck-ged.md](audit-deck-ged.md). Deck d'origine : `docs/sources/creation-ged.pptx`,
+  transcrit en texte dans `docs/sources/deck-ged.md`.
 - État d'avancement et reste à faire : [avancement-v2.md](avancement-v2.md).
 
 Conventions :
@@ -88,9 +88,9 @@ La session a été coupée plusieurs fois par une limite d'usage ou de dépense 
 ## 2. Audit du deck et décisions (7 oct., 12:19 → 17:52)
 
 - **Demande** : « Audit le fichier ci-joint qui décrit comment je voulais créer la GED. Fait moi un retour de ce que tu
-  as compris avant d'intégrer cela au projet. » Le fichier joint est le deck « Création de la GED EPC2I » (18 slides),
-  versionné depuis dans `docs/sources/creation-ged-epc2i.pptx`.
-- **Méthode** : un workflow multi-agents, dont le rapport complet est dans [audit-deck-epc2i.md](audit-deck-epc2i.md).
+  as compris avant d'intégrer cela au projet. » Le fichier joint est le deck « Création de la GED » (18 slides),
+  versionné depuis dans `docs/sources/creation-ged.pptx`.
+- **Méthode** : un workflow multi-agents, dont le rapport complet est dans [audit-deck-ged.md](audit-deck-ged.md).
   - Exigences : 64 relevées.
   - Modèle de métadonnées : 4 niveaux.
   - Écarts avec le code, vérifiés un par un : sur 48 éléments, 6 couverts, 21 partiels, 12 absents et 9 en conflit.
@@ -375,7 +375,7 @@ Constats confirmés, dans la numérotation du workflow :
   - `make-alias` supprimait sans vérification ce qui se trouvait à l'emplacement de l'alias, y compris un dossier
     (majeur). Il ne remplace plus qu'un alias existant (`desktop/make-alias.swift`).
   - Les bundles étaient supprimés sans vérifier qu'il s'agissait de Codex. Seul un bundle d'identifiant
-    `com.epc2i.codex` est désormais supprimé (fonction `ours()` de `desktop/build-app.sh`).
+    `com.atrium.codex` est désormais supprimé (fonction `ours()` de `desktop/build-app.sh`).
 - **Encore à corriger** (8 constats, aussi listés dans [avancement-v2.md](avancement-v2.md)) :
   - le message « Compilation de Codex… » ne s'affiche pas ;
   - si l'on quitte pendant la compilation, `next build` continue de tourner ;
@@ -424,8 +424,8 @@ Constats confirmés, dans la numérotation du workflow :
 - **Ajouté au dépôt** :
   - `CLAUDE.md` : le point d'entrée, avec le contexte, les décisions structurantes, les documents à lire et les limites
     en session cloud ;
-  - `docs/sources/` : le deck `creation-ged-epc2i.pptx` et sa transcription `deck-ged-epc2i.md` ;
-  - [audit-deck-epc2i.md](audit-deck-epc2i.md) : l'audit du 7 octobre ;
+  - `docs/sources/` : le deck `creation-ged.pptx` et sa transcription `deck-ged.md` ;
+  - [audit-deck-ged.md](audit-deck-ged.md) : l'audit du 7 octobre ;
   - [decisions.md](decisions.md) : le journal des décisions, avec citations, et les questions ouvertes ;
   - ce fichier ;
   - un renvoi vers ces documents dans `README.md`, section « Décisions et points ouverts ».
@@ -1415,7 +1415,7 @@ table, et le stash supprimé.
   - nouveaux tests : export CSV de plus d'une page appelé par sa route, `pageOf`, `searchHref` et `searchUrlWith`,
     lecture du journal par lots au-delà de 1 000 entrées masquées, bornes des jours et curseurs ; chacun échoue si
     l'on retire la règle qu'il vérifie ;
-  - `docs/audit-deck-epc2i.md` : statut de G15 et de la ligne « Slide 7 · 2 » mis à jour.
+  - `docs/audit-deck-ged.md` : statut de G15 et de la ligne « Slide 7 · 2 » mis à jour.
 - **Reste** (point 50 « fait en partie ») : l'en-tête commun (`src/app/layout.tsx`) charge encore, à chaque chargement
   complet d'une page, tous les documents visibles (`listDocs`, pour l'activité récente, les modèles et « À traiter »)
   et tous les circuits avec leurs documents (`listWorkflows`) : 0,19 s à 3 000 documents, 0,4 s à 6 000. Une navigation
@@ -3199,7 +3199,7 @@ codex soit en postgresql 16 comme le reste des outils ».
 | Élément | Résolution |
 | --- | --- |
 | `codex_fold` : `collate pg_unicode_fast` (18) | collation choisie au démarrage selon `server_version_num` (`foldCollation`, `src/db/index.ts`) : `"und-x-icu"` avant la 18, `pg_unicode_fast` dès la 18 et en PGlite (inchangé) |
-| `SERVER_MIN_VERSION = 180000` | `160000` ; message pour une version plus ancienne (« Codex needs PostgreSQL 16 or later, the version of the shared EPC2I server… ») ; serveur sans ICU refusé avec un message |
+| `SERVER_MIN_VERSION = 180000` | `160000` ; message pour une version plus ancienne (« Codex needs PostgreSQL 16 or later, the version of the shared Atrium server… ») ; serveur sans ICU refusé avec un message |
 | Migrations `0000_init`, `0001_partage` | aucune syntaxe 17 ou 18 : inchangées, appliquées telles quelles sur 16.15 |
 | Tests : `unicode_assigned()`, `unicode_version()`, `icu_unicode_version()` (17) | sur 16 : caractères inconnus de l'ICU du serveur et laissés tels quels mis de côté ; tri `codex_fr` sauté seulement si le serveur distingue `'` de `’` |
 | Test de structure : contraintes `NOT NULL` de `pg_constraint` (18) | laissées de côté, `is_nullable` les compare |
@@ -3379,3 +3379,20 @@ CX-049). Revérifiés dans le code : seuls deux restes ne dépendent d'aucune d�
   SharePoint (point 36, O-01, SharePoint non activé, D-28), relances et envois sortants (point 38, M19, T-01, O-03,
   O-10), dépôt en flux avec l'import par morceaux (point 46, points 98 et 106, O-01, O-11) et essai sous WebKit (macOS),
   chiffrement, copie hors du serveur et durées de la sauvegarde (point 48, M22, point 88).
+
+### 20.13 Suite Atrium (27 nov.)
+
+Décision du propriétaire : la suite s'appelle **Atrium** ; l'ancienne appellation et le nom de l'entreprise disparaissent
+de tous les fichiers (« l'entreprise », « le groupe » là où un texte nommait l'entreprise ; « Filiale partenaire » pour la
+filiale). Fait dans Codex :
+- Norma 3.1.0 copiée (`norma.mjs copier`) ; cookie d'affichage `atrium-theme` écrit, l'ancien nom lu à défaut pendant la
+  transition (`src/lib/theme.ts` reprend `themeFromCookies` de `norma/charte/ds/theme.ts` ; `tests/unit/theme.test.ts`).
+- Fichiers renommés : `docs/audit-deck-ged.md`, `docs/sources/deck-ged.md`, `docs/sources/creation-ged.pptx` (dans le
+  `.pptx` : titre, masques, thèmes et propriétés sans le nom ; logo blanc remplacé par une image transparente).
+- App Mac : identifiant `com.atrium.codex` ; `ours()` de `desktop/build-app.sh` reconnaît encore l'ancien pour remplacer
+  une installation existante.
+- Serveur commun : Codex lit base et hôte dans `DATABASE_URL` seulement, sans contrôle du nom ; renommage par Matrix
+  décrit dans `docs/postgres.md`. Exemples avec la base `atrium`.
+- Registre des types et données de démonstration : aucun libellé ni aucune donnée ne portait l'ancien nom (rien à passer
+  par `npm run registry:apply` ; un code ne se renomme jamais). Migration `0001_partage` déjà appliquée : laissée telle
+  quelle (son commentaire d'en-tête garde l'ancien nom).

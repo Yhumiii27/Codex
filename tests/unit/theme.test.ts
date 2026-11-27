@@ -1,16 +1,24 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { translate } from '@/i18n';
-import { THEME_COOKIE, themeCookie, themeFromCookies, themeOf } from '@/lib/theme';
+import { LEGACY_THEME_COOKIE, THEME_COOKIE, themeCookie, themeFromCookies, themeOf } from '@/lib/theme';
 
-// Dark / light display (Norma 1.0, owner 24 November 2026): the epc2i-theme cookie, read by the server (app/layout.tsx)
+// Dark / light display (Norma 1.0, owner 24 November 2026; Norma 3.0: atrium-theme, the former name still read): the cookie,
+// read by the server (app/layout.tsx)
 // which sets data-theme on <html>, and the switch under the FR / EN one (Norma 2.0, PrefsStack) in every page header.
 
-const jar = (value?: string) => ({ get: (name: string) => (name === THEME_COOKIE && value !== undefined ? { value } : undefined) });
+const jar = (value?: string, name = THEME_COOKIE) => ({ get: (n: string) => (n === name && value !== undefined ? { value } : undefined) });
+const both = (values: Record<string, string>) => ({ get: (n: string) => (n in values ? { value: values[n] } : undefined) });
 
 describe('theme from the cookie', () => {
   it('is the cookie shared by every tool of the suite', () => {
-    expect(THEME_COOKIE).toBe('epc2i-theme');
+    expect(THEME_COOKIE).toBe('atrium-theme');
+  });
+
+  it('still reads the former cookie when the new one is absent, the new one first (Norma 3.0 transition)', () => {
+    expect(LEGACY_THEME_COOKIE).not.toBe(THEME_COOKIE);
+    expect(themeFromCookies(jar('light', LEGACY_THEME_COOKIE))).toBe('light');
+    expect(themeFromCookies(both({ [THEME_COOKIE]: 'dark', [LEGACY_THEME_COOKIE]: 'light' }))).toBe('dark');
   });
 
   it('is dark by default, light only when asked', () => {
@@ -21,8 +29,8 @@ describe('theme from the cookie', () => {
   });
 
   it('is kept a year for the whole site', () => {
-    expect(themeCookie('light')).toBe('epc2i-theme=light; path=/; max-age=31536000; samesite=lax');
-    expect(themeCookie('dark')).toMatch(/^epc2i-theme=dark; path=\/; max-age=31536000;/);
+    expect(themeCookie('light')).toBe('atrium-theme=light; path=/; max-age=31536000; samesite=lax');
+    expect(themeCookie('dark')).toMatch(/^atrium-theme=dark; path=\/; max-age=31536000;/);
   });
 });
 

@@ -11,7 +11,7 @@ import { addDoc, baseOf, fixClock, getDoc, getRevision, journalOf, revisionStatu
 import { actAs, cookieStore } from '../support/session';
 import { translatorFor } from '@/i18n';
 
-// Dates of a document (point 3 of docs/reste-a-faire.md; docs/audit-deck-epc2i.md §4.6, rule 12: issue ≤ effect ≤
+// Dates of a document (point 3 of docs/reste-a-faire.md; docs/audit-deck-ged.md §4.6, rule 12: issue ≤ effect ≤
 // expiry): real calendar days whatever a Server Action is sent, then expiry after the issue and after the revision's
 // effective date, review after the issue, reception neither in the future nor after the issue. A document not issued
 // yet will be on the day its first revision takes effect, today at the earliest. The metadata form, the request for

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { dateIssues, dateIssueText, effectIssue, inForceEffect, issueFrom, latestEffect, type DateRule, type DocDates } from '@/lib/dates';
 import { translatorFor } from '@/i18n';
 
-// Coherence of a document's dates (docs/audit-deck-epc2i.md §4.6, rule 12: issue ≤ effect ≤ expiry; point 3 of
+// Coherence of a document's dates (docs/audit-deck-ged.md §4.6, rule 12: issue ≤ effect ≤ expiry; point 3 of
 // docs/reste-a-faire.md): expiry after the issue and after the revision's effective date, review after the issue,
 // reception neither in the future nor after the issue (the issue date is the first entry into force, docs/api.md).
 

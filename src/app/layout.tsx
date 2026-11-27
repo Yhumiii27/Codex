@@ -28,7 +28,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function RootLayout({ children }: LayoutProps<'/'>) {
-  // Dark / light display (Norma 1.0): the epc2i-theme cookie, set on <html> at render so that the page never flashes.
+  // Dark / light display (Norma 1.0): the atrium-theme cookie, set on <html> at render so that the page never flashes.
   const theme = themeFromCookies(await cookies());
   // A server database left empty (no CODEX_SEED): one page that says how to fill it, in place of the shell and of every
   // screen, which need a person to act as (getCtx leads them to /base-vide).

@@ -135,7 +135,7 @@ describe('seedModeOf (CODEX_SEED, CODEX_SEED_DEMO)', () => {
   });
 
   it('fills nothing on a PostgreSQL server (DATABASE_URL) unless asked, as main did (CODEX_SEED_DEMO=1)', () => {
-    const url = 'postgres://codex_app@db/epc2i';
+    const url = 'postgres://codex_app@db/atrium';
     expect(seedModeOf({ DATABASE_URL: url })).toBe('none');
     expect(seedModeOf({ DATABASE_URL: ' ' })).toBe('demo');
     expect(seedModeOf({ DATABASE_URL: url, CODEX_SEED: 'demo' })).toBe('demo');

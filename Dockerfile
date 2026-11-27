@@ -9,7 +9,7 @@
 # - port interne 3000 ;
 # - données dans /data (CODEX_DATA_DIR) : fichiers déposés (/data/files), base PGlite de repli (/data/pglite) et
 #   sauvegardes (/data/backups). Monter un volume persistant sur /data, sinon tout est perdu à chaque déploiement ;
-# - base : le serveur PostgreSQL commun EPC2I (schéma codex, rôle codex_app) quand DATABASE_URL est posée au lancement.
+# - base : le serveur PostgreSQL commun de la suite Atrium (schéma codex, rôle codex_app) quand DATABASE_URL est posée au lancement.
 #   Jamais DATABASE_URL dans l'image ni au build. Sans elle : PGlite dans /data/pglite.
 #
 #   docker build -t codex .

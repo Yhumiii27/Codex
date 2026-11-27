@@ -24,7 +24,7 @@ export function previewKind(mime: string | null | undefined): PreviewKind | null
 //
 // Every file entering Codex (new document, working version, copy of a template, import) is checked by stageFile
 // (src/lib/storage.ts) against these rules; the upload dialogs check name and size beforehand (FilePicker). Which
-// formats and what size are open questions (M12 of docs/audit-deck-epc2i.md): the defaults below are the assistant's,
+// formats and what size are open questions (M12 of docs/audit-deck-ged.md): the defaults below are the assistant's,
 // set through CODEX_FILE_EXTENSIONS and CODEX_MAX_FILE_MB (.env.example).
 
 /**

@@ -25,7 +25,7 @@ afterEach(() => {
 describe('a new database on a server, without CODEX_SEED', () => {
   it('is left empty, and every page leads to /base-vide instead of failing', async () => {
     await emptyAll();
-    vi.stubEnv('DATABASE_URL', 'postgres://codex_app@db/epc2i');
+    vi.stubEnv('DATABASE_URL', 'postgres://codex_app@db/atrium');
     vi.stubEnv('CODEX_SEED', '');
     vi.stubEnv('CODEX_SEED_DEMO', '');
     await seedIfEmpty(currentDb());
@@ -37,7 +37,7 @@ describe('a new database on a server, without CODEX_SEED', () => {
 
   it('receives the reference data and the initial administrator with CODEX_SEED=minimal', async () => {
     await emptyAll();
-    vi.stubEnv('DATABASE_URL', 'postgres://codex_app@db/epc2i');
+    vi.stubEnv('DATABASE_URL', 'postgres://codex_app@db/atrium');
     vi.stubEnv('CODEX_SEED', 'minimal');
     await seedIfEmpty(currentDb());
     expect(await people()).toBe(1);
@@ -47,7 +47,7 @@ describe('a new database on a server, without CODEX_SEED', () => {
 
   it('receives the demonstration with CODEX_SEED_DEMO=1, and is never seeded again', { timeout: 60_000 }, async () => {
     await emptyAll();
-    vi.stubEnv('DATABASE_URL', 'postgres://codex_app@db/epc2i');
+    vi.stubEnv('DATABASE_URL', 'postgres://codex_app@db/atrium');
     vi.stubEnv('CODEX_SEED', '');
     vi.stubEnv('CODEX_SEED_DEMO', '1');
     await seedIfEmpty(currentDb());

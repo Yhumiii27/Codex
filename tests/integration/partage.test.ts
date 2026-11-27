@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { addDoc, addWorkflow, fixClock, setupDb } from '../support/db';
 
-// Shared data of the EPC2I suite (decision M-01; Matrix, infra/postgres/partage/40-codex.sql, migration 0001_partage):
+// Shared data of the Atrium suite (decision M-01; Matrix, infra/postgres/partage/40-codex.sql, migration 0001_partage):
 // Codex publishes views pub_ in its schema, read by Keystone, Vigie, Matrix and Crucible (pub_programmes_recherche,
 // migration 0002, Crucible's request CX-2). Their contract: a column is never
 // removed nor renamed (a new view _v2 instead), only added at the end; « très confidentiel » documents are never

@@ -79,7 +79,7 @@ create or replace trigger documents_version before update on documents for each 
  * removed, then lower case by full Unicode case mapping (a capital sigma ending a word becomes a final sigma, ẞ becomes
  * ß), as JavaScript's toLowerCase does, under the collation foldCollation() picks: pg_unicode_fast (built-in provider,
  * PostgreSQL 18 and PGlite 0.5), or the ICU root collation "und-x-icu" on PostgreSQL 16 and 17 (ICU's case mapping,
- * the same rules; the shared EPC2I server stays on PostgreSQL 16, Matrix decision P-01). codex_unbom drops a leading
+ * the same rules; the shared Atrium server stays on PostgreSQL 16, Matrix decision P-01). codex_unbom drops a leading
  * byte order mark from a text column: PGlite's decoder drops it from every text value it hands back, so the
  * application never sees it (the values inside a jsonb keep theirs). tests/integration/search-sql.test.ts compares codex_fold with fold
  * on every code point: it tells when another version of Node or PGlite parts them.
@@ -209,7 +209,7 @@ async function foldCollation(q: SqlQueryable): Promise<string> {
 }
 
 /**
- * PostgreSQL 16 at least (the shared EPC2I server, Matrix decision P-01): normalize() (13), the ICU collations
+ * PostgreSQL 16 at least (the shared Atrium server, Matrix decision P-01): normalize() (13), the ICU collations
  * codex_fr and "und-x-icu" whose lower() codex_fold uses below 18, and what the migrations and queries use.
  */
 const SERVER_MIN_VERSION = 160000;
@@ -249,7 +249,7 @@ async function openServer(url: string, opts: OpenOptions, onClose?: () => Promis
     if (!own.found || !own.usable) {
       throw new Error(own.found
         ? `the role of DATABASE_URL (${redactUrl(url)}) may not create objects in the schema ${DB_SCHEMA}: it must own it (shared server: role codex_app, Matrix infra/postgres/init/02-schemas.sql)`
-        : `the database of DATABASE_URL (${redactUrl(url)}) has no schema ${DB_SCHEMA}. Codex never creates it: on the shared EPC2I server it is laid by Matrix (infra/postgres/init/02-schemas.sql); on a server of one's own, run CREATE SCHEMA ${DB_SCHEMA} AUTHORIZATION <Codex's role> once`);
+        : `the database of DATABASE_URL (${redactUrl(url)}) has no schema ${DB_SCHEMA}. Codex never creates it: on the shared Atrium server it is laid by Matrix (infra/postgres/init/02-schemas.sql); on a server of one's own, run CREATE SCHEMA ${DB_SCHEMA} AUTHORIZATION <Codex's role> once`);
     }
     await conn.query(`select pg_advisory_lock(hashtext($1))`, [MIGRATION_LOCK_KEY]);
     const locked: SqlQueryable = { query: async <T,>(text: string, params?: unknown[]) => ({ rows: (await conn.query(text, params)).rows as T[] }), exec: (text: string) => conn.query(text) };
@@ -305,7 +305,7 @@ async function trigramsReady(tx: SqlQueryable): Promise<void> {
 
 /**
  * A new, empty database on the server of `adminUrl` (CODEX_TEST_DATABASE_URL), for one test file, laid out as the
- * shared EPC2I server lays Codex's (Matrix, infra/postgres/init): a role of its own that owns the schema codex and
+ * shared Atrium server lays Codex's (Matrix, infra/postgres/init): a role of its own that owns the schema codex and
  * nothing else, without CREATE on the database nor TEMPORARY, public closed, search_path codex, pg_trgm in a schema
  * `extensions` of the superuser that the role may use (docs/postgres.md). Its
  * address (that role's), and drop() which removes database and role (WITH (FORCE): connections a failed test left open

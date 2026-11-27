@@ -62,7 +62,7 @@ jobs:
       # served by the build above on a throwaway demo database; fails on a serious or critical violation (about 1 min).
       - run: npx playwright-core install --with-deps chromium
       - run: npm run a11y
-      # Same check on the light display (Norma 1.0, cookie epc2i-theme): its contrasts too (about 1 min).
+      # Same check on the light display (Norma 1.0, cookie atrium-theme): its contrasts too (about 1 min).
       - run: npm run a11y -- --theme light
       # End-to-end paths (scripts/codex-e2e.mts), same build, a throwaway demo database: approval step by step, a
       # rejection with its reason then a new request, a recall, a change accepted by the Vigie simulation then grafted or
@@ -72,7 +72,7 @@ jobs:
 
   # The whole suite again on a PostgreSQL server (option DATABASE_URL, docs/postgres.md): each test file gets a database
   # of its own there (CODEX_TEST_DATABASE_URL), and tests/integration/postgres-server.test.ts races transactions between
-  # connections, which PGlite cannot. PostgreSQL 16, the version of the shared EPC2I server (Matrix decision P-01), where
+  # connections, which PGlite cannot. PostgreSQL 16, the version of the shared Atrium server (Matrix decision P-01), where
   # codex_fold lowers case with ICU, and 18, as PGlite 0.5, where it uses pg_unicode_fast (src/db/index.ts foldCollation).
   postgres:
     name: Tests on PostgreSQL ${{ matrix.pg }}
