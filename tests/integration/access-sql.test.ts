@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { schema as s } from '@/db';
 import { SIM_ROLES } from '@/lib/i18n';
@@ -24,6 +25,15 @@ describe('readableSql and draftingCircleSql select what canRead and inDraftingCi
     await db().insert(s.users).values({ id: 'nodept', name: 'nodept', initials: 'ND', role: 'collaborateur', department: null });
     await variedDocuments(db(), 2026, 90);
     expect(await compareAccess(db())).toBe((PERSONS.length + 1) * SIM_ROLES.length);
+  });
+
+  it('with HLT-026 confidential in Keystone, its team only (D-33)', async () => {
+    await db().update(s.projects).set({ confidentiality: 'confidentiel' });
+    await db().update(s.users).set({ matricule: 'EMP-0101' }).where(eq(s.users.id, 'engineer'));
+    await db().insert(s.projectTeam).values({ projectCode: 'HLT-026', matricule: 'EMP-0101', name: 'Engineer', origin: 'equipe', syncedAt: '2026-10-01T08:00:00Z' });
+    await db().insert(s.functionHolders).values({ functionKey: 'chef_projet', scopeValue: 'HLT-026', userId: 'writer2' });
+    await variedDocuments(db(), 2026, 90);
+    expect(await compareAccess(db())).toBe(PERSONS.length * SIM_ROLES.length);
   });
 
   it('on other draws', async () => {

@@ -6,6 +6,7 @@ import { getDb, schema as s, type Db } from '@/db';
 import type { SchedulerStatus } from '@/db/schema';
 import { backUpNow } from './backup';
 import { syncCapex } from '@/server/integrations/arche/capex';
+import { syncKeystoneConfidentiality } from '@/server/integrations/keystone/confidentiality';
 import { scheduledExportDir, scheduledExportKeep, writeFullExport } from './full-export';
 import { checkFilesNow } from './integrity';
 import { applyDuePendingDecisions, promoteDue } from './lifecycle';
@@ -56,6 +57,12 @@ export const TASKS: Record<TaskName, { run: (db: Db) => Promise<TaskOutcome> }> 
     run: async (db) => {
       const r = await syncCapex(db);
       return r.status === 'skipped' ? { status: 'skipped', summary: { reason: r.reason } } : { status: 'ok', summary: { read: r.read, added: r.added, updated: r.updated, inactivated: r.inactivated } };
+    },
+  },
+  keystone: {
+    run: async (db) => {
+      const r = await syncKeystoneConfidentiality(db);
+      return r.status === 'skipped' ? { status: 'skipped', summary: { reason: 'no_keystone_source' } } : { status: 'ok', summary: { projects: r.projects, changed: r.changed, team: r.team, members: r.members } };
     },
   },
   orphans: {

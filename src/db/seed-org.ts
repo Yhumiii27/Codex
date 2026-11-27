@@ -28,11 +28,11 @@ export const SITES: [key: string, fr: string, en: string][] = [
 ];
 
 /** Holders of an approval function (HOLDERS) have a role that may approve (seed.ts checks it). */
-export const USERS: { id: string; name: string; role: string; dept?: string; site?: string; title?: Pair; system?: boolean }[] = [
+export const USERS: { id: string; name: string; role: string; dept?: string; site?: string; title?: Pair; system?: boolean; matricule?: string }[] = [
   { id: 'cbardet', name: 'Claire Bardet', role: 'gestionnaire', dept: 'HSE', site: 'lyon', title: ['Responsable HSE & gestion documentaire', 'HSE & records manager'] },
   { id: 'gcomte', name: 'Gabriel Comte', role: 'validateur', dept: 'QUA', site: 'lyon', title: ['Responsable qualité', 'Quality manager'] },
   { id: 'hcosta', name: 'Hélène Costa', role: 'validateur', dept: 'DIR', site: 'lyon', title: ['Directrice générale', 'Managing director'] },
-  { id: 'mlefebvre', name: 'Marie Lefebvre', role: 'validateur', dept: 'PRJ', site: 'lyon', title: ['Directrice de portefeuille', 'Portfolio director'] },
+  { id: 'mlefebvre', name: 'Marie Lefebvre', role: 'validateur', dept: 'PRJ', site: 'lyon', title: ['Directrice de portefeuille', 'Portfolio director'], matricule: 'EMP-9101' },
   { id: 'raubert', name: 'Romain Aubert', role: 'validateur', dept: 'PRJ', site: 'le_havre', title: ['Chef de projet', 'Project manager'] },
   { id: 'sperrin', name: 'Sophie Perrin', role: 'validateur', dept: 'PRJ', site: 'lyon', title: ['Cheffe de projet', 'Project manager'] },
   { id: 'cmoreau', name: 'Cédric Moreau', role: 'validateur', dept: 'PRJ', site: 'lyon', title: ['Chef de projet', 'Project manager'] },
@@ -40,7 +40,7 @@ export const USERS: { id: string; name: string; role: string; dept?: string; sit
   { id: 'agirard', name: 'Antoine Girard', role: 'validateur', dept: 'ING', site: 'lyon', title: ['Référent ingénierie', 'Engineering lead'] },
   { id: 'jwagner', name: 'Julien Wagner', role: 'collaborateur', dept: 'ING', site: 'lyon', title: ['Ingénieur structure', 'Structural engineer'] },
   { id: 'shaddad', name: 'Samir Haddad', role: 'collaborateur', dept: 'ING', site: 'lyon', title: ['Ingénieur électricité', 'Electrical engineer'] },
-  { id: 'cmorvan', name: 'Camille Morvan', role: 'collaborateur', dept: 'ING', site: 'lyon', title: ['Automaticienne', 'Controls engineer'] },
+  { id: 'cmorvan', name: 'Camille Morvan', role: 'collaborateur', dept: 'ING', site: 'lyon', title: ['Automaticienne', 'Controls engineer'], matricule: 'EMP-9102' },
   { id: 'pnogues', name: 'Pauline Noguès', role: 'validateur', dept: 'MEP', site: 'lyon', title: ['Responsable MEP', 'MEP lead'] },
   { id: 'oblanc', name: 'Olivier Blanc', role: 'validateur', dept: 'CHA', site: 'le_havre', title: ['Responsable opérations chantier', 'Site operations manager'] },
   { id: 'lfabre', name: 'Lucas Fabre', role: 'validateur', dept: 'CHA', site: 'le_havre', title: ['Responsable de chantier', 'Site manager'] },
@@ -105,10 +105,22 @@ export const HOLDERS: [string, string | null, string][] = [
   ['resp_programme', null, 'yait'],
 ];
 
-export const PROJECTS: { code: string; name: string; client: string; stage: string; manager: string; site: string; tiers: string; synced: string }[] = [
+export const PROJECTS: { code: string; name: string; client: string; stage: string; manager: string; site: string; tiers: string; synced: string; confidential?: boolean }[] = [
   { code: 'HLT-026', name: 'Harbor Line Terminal Expansion', client: 'Autorité portuaire du Havre', stage: 'Chantier', manager: 'raubert', site: 'Le Havre — quai 4', tiers: 'Nordvolt (variateurs) · Levage Ouest (grues)', synced: '2026-10-07 08:40' },
   { code: 'NDC-031', name: 'Northgate Data Center Retrofit', client: 'Infrastructure BU', stage: 'Etudes', manager: 'sperrin', site: 'Northgate', tiers: 'ThermoCool (groupes froids)', synced: '2026-10-07 08:40' },
   { code: 'RCF-019', name: 'Clinique Pasteur Lyon — aménagement', client: 'Health trust', stage: 'Mise Service & SAT', manager: 'cmoreau', site: 'Lyon — clinique Pasteur', tiers: 'Elec Rhône (CFO/CFA)', synced: '2026-10-06 17:15' },
+  // A confidential R&D project of Keystone (D-33): its documents exist only for its team (DEMO_PROJECT_TEAM).
+  { code: 'FTU-052', name: 'Fleet Telematics Upgrade', client: 'R&D interne', stage: 'Proposition', manager: 'yait', site: 'Lyon', tiers: '', synced: '2026-10-07 08:40', confidential: true },
+];
+
+/**
+ * Team of the confidential demo project, as keystone.pub_equipes_projets publishes it (mirror project_team, D-33): the
+ * portfolio director, added by the project lead, and a controls engineer assigned to a task, matched by personnel number.
+ * Its manager (yait) is on it as its lead. Nobody else sees its documents, records managers included.
+ */
+export const DEMO_PROJECT_TEAM: { project: string; matricule: string; name: string; origin: 'equipe' | 'affectation'; role?: string }[] = [
+  { project: 'FTU-052', matricule: 'EMP-9101', name: 'Marie Lefebvre', origin: 'equipe', role: 'director' },
+  { project: 'FTU-052', matricule: 'EMP-9102', name: 'Camille Morvan', origin: 'affectation' },
 ];
 
 export const PROGRAMS: { code: string; name: string; manager: string }[] = [

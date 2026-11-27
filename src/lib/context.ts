@@ -7,6 +7,7 @@ import { getDb, schema as s } from '@/db';
 import { MATRIX_ROLE, SIM_ROLES, type Lang, type Perm, type SimRole } from './i18n';
 import { translatorFor, type Translate } from '@/i18n';
 import { promoteDue } from './lifecycle';
+import { openProjectCodes } from './access';
 import { schedulerPromotes } from './scheduler-state';
 import { SESSION_COOKIE, roleNow, unseal, type SessionData } from '@/server/integrations/clavis/auth';
 import { authMode, clavisConfig } from '@/server/integrations/clavis/rules';
@@ -77,7 +78,7 @@ export const getCtx = cache(async (): Promise<Ctx> => {
   // this process does it (lib/scheduler.ts, every 5 minutes by default): then requests no longer pay for it.
   if (!schedulerPromotes()) await promoteDue(db);
   const lang: Lang = jar.get(COOKIE_LANG)?.value === 'en' ? 'en' : 'fr';
-  const [users, departments, sites, families, types, functions, projects, programs, capex, rows] = await Promise.all([
+  const [users, departments, sites, families, types, functions, allProjects, programs, capex, rows] = await Promise.all([
     db.select().from(s.users),
     // Code or key break a tie of ranks: the order must not follow a row's place in the table, which an update changes.
     db.select().from(s.departments).orderBy(asc(s.departments.sort), asc(s.departments.code)),
@@ -107,6 +108,9 @@ export const getCtx = cache(async (): Promise<Ctx> => {
     const cookieRole = jar.get(COOKIE_ROLE)?.value as SimRole | undefined;
     role = cookieRole && SIM_ROLES.includes(cookieRole) ? cookieRole : SIM_ROLES.includes(user.role as SimRole) ? (user.role as SimRole) : 'collaborateur';
   }
+  // A confidential Keystone project exists only for its team (D-33, lib/access.ts): left out of every list of projects.
+  const openCodes = await openProjectCodes(db, user.id, allProjects.map((p) => p.code));
+  const projects = allProjects.filter((p) => openCodes.has(p.code));
   const perms = new Set(rows.filter((r) => r.role === MATRIX_ROLE[role] && r.granted).map((r) => r.perm as Perm));
   const fr = lang === 'fr';
   const labels = new Map<string, string>();

@@ -913,6 +913,8 @@ export const FR: Record<string, string> = {
   'files: {n}': 'fichiers : {n}',
   'already running': 'déjà en cours',
   'view arche.pub_capex not readable (link to be granted by Matrix)': 'vue arche.pub_capex non lisible (lien à accorder par Matrix)',
+  'view keystone.pub_projets not readable (link to be granted by Matrix)': 'vue keystone.pub_projets non lisible (lien à accorder par Matrix)',
+  'Confidentiality and teams of the Keystone projects': 'Confidentialité et équipes des projets Keystone',
   'PostgreSQL database: to be backed up by its own tools': 'base PostgreSQL : à sauvegarder par ses propres outils',
   'backup less than 15 minutes old': 'sauvegarde de moins de 15 minutes',
   '… and {n} more': '… et {n} de plus',

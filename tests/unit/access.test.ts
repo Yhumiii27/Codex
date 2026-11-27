@@ -5,7 +5,7 @@ import { CONF_LEVELS, PERMS, type Perm } from '@/lib/i18n';
 // Who sees what: confidentiality levels (D-13), drafting circle (D-14), docs/modele-cible.md §5.
 
 type Doc = Parameters<typeof canRead>[1];
-type People = Partial<Record<'readers' | 'modifiers' | 'designated' | 'approvers' | 'team', Record<string, string[]>>>;
+type People = Partial<Record<'readers' | 'modifiers' | 'designated' | 'approvers' | 'team' | 'confidential', Record<string, string[]>>>;
 
 const REV_STATUSES = ['draft', 'in_review', 'approved', 'in_force', 'superseded', 'cancelled'] as const;
 
@@ -20,9 +20,9 @@ function viewer(id: string, { department = 'COM', perms = ['read'], seesAll = fa
 }
 
 /** People around documents (keyed by document ID) and project teams (keyed by project code). */
-function index({ readers = {}, modifiers = {}, designated = {}, approvers = {}, team = {} }: People = {}, hr: string[] = []): AccessIndex {
+function index({ readers = {}, modifiers = {}, designated = {}, approvers = {}, team = {}, confidential = {} }: People = {}, hr: string[] = []): AccessIndex {
   const lookup = (m: Record<string, string[]>) => (key: string) => new Set(m[key] ?? []);
-  return { readers: lookup(readers), modifiers: lookup(modifiers), designated: lookup(designated), approvers: lookup(approvers), hrReader: (u) => hr.includes(u), team: (code) => (code ? lookup(team)(code) : new Set()) };
+  return { projectOpen: (code, u) => !code || !(code in confidential) || confidential[code].includes(u), readers: lookup(readers), modifiers: lookup(modifiers), designated: lookup(designated), approvers: lookup(approvers), hrReader: (u) => hr.includes(u), team: (code) => (code ? lookup(team)(code) : new Set()) };
 }
 
 /** A QUA document owned by `owner`, revision A in force. */
@@ -600,5 +600,30 @@ describe('canRead, highly confidential records of Cursus (lot 16, D-32)', () => 
   it('needs the read permission, and leaves the other documents of Cursus to the usual rules', () => {
     expect(canRead(viewer('hr', { department: 'ING', perms: [] }), record, ix)).toBe(false);
     expect(canRead(viewer('someone', { department: 'RHU' }), { ...record, conf: 'confidentiel' }, ix)).toBe(true);
+  });
+});
+
+describe('documents of a confidential Keystone project (D-33)', () => {
+  // HLT-026 is confidential in Keystone; its team: pm and approver (matched by Clavis person id or personnel number).
+  const ix = index({ team: { 'HLT-026': ['pm'] }, readers: { 'PID-HLT-026-001': ['reader'] }, approvers: { 'PID-HLT-026-001': ['approver'] }, confidential: { 'HLT-026': ['pm', 'approver'] } });
+  const d = doc({ id: 'PID-HLT-026-001', projectCode: 'HLT-026', conf: 'interne' });
+
+  it('are seen by the team only, records managers, owner and named readers outside it included', () => {
+    expect(canRead(pm, d, ix)).toBe(true);
+    expect(canRead(approver, d, ix)).toBe(true);
+    for (const v of [recordsManager, owner, reader, colleague, stranger]) expect(canRead(v, d, ix)).toBe(false);
+    expect(inDraftingCircle(recordsManager, d, ix)).toBe(false);
+    expect(mayWorkOnDraft(owner, d, ix)).toBe(false);
+  });
+
+  it('keep the document’s own confidentiality on top: the stricter rule wins', () => {
+    expect(canRead(pm, { ...d, conf: 'tres_confidentiel' }, ix)).toBe(false);
+    expect(canRead(approver, { ...d, conf: 'confidentiel', department: 'QUA' }, ix)).toBe(true); // a running approver is in the circle
+    expect(canRead(pm, { ...d, revInForce: null }, ix)).toBe(false); // a draft: the drafting circle only
+  });
+
+  it('leave the other projects to the usual rules', () => {
+    expect(canRead(stranger, { ...d, projectCode: 'NDC-031' }, ix)).toBe(true);
+    expect(canRead(recordsManager, { ...d, projectCode: null }, ix)).toBe(true);
   });
 });

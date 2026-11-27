@@ -88,6 +88,13 @@ numéro, sans les trancher à la place de l'utilisateur.
 - **Bibliothèque sur notre serveur, pour le moment (D-28, 2 novembre 2026)** : fichiers en stockage local sur le
   serveur de l'entreprise, SharePoint non activé (O-01 répondue pour le moment). Avec la base sur le serveur commun, Codex
   sauvegarde les fichiers lui-même (`src/lib/files-backup-core.mjs`) ; exploitation : `docs/stockage-serveur.md`.
+- **Projets confidentiels de Keystone (D-33, 27 novembre 2026)** : Keystone donne la confidentialité de ses projets
+  (`keystone.pub_projets.confidentialite`) et leur équipe (`keystone.pub_equipes_projets`), recopiées dans le miroir
+  (`projects.confidentiality`, `project_team`) par la tâche « keystone » (`src/server/integrations/keystone/confidentiality.ts`).
+  Un document d'un projet confidentiel n'existe que pour l'équipe (personne Clavis, sinon matricule ; chef de projet
+  compris), gestionnaires documentaires compris : règle `projectOpenTo` / `projectGateSql` de `src/lib/access.ts`, avant
+  toutes les autres ; toute requête qui contourne `readableSql` / `draftingCircleSql` pour un gestionnaire (`seesAll`)
+  pose `projectGateSql` elle-même.
 - **Non tranché** : fournisseur d'authentification (O-02 ; Entra ID est proposé, pas
   confirmé), liaison avec Keystone par API ou base partagée (O-03, en partie répondue par M-01 : base commune, un
   schéma par outil, la liaison reste une API), organigramme (O-04), arbitrages du registre (O-05).

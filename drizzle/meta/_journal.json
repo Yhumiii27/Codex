@@ -50,6 +50,13 @@
       "when": 1795685082673,
       "tag": "0006_lot16_dossier_personnel",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795788157356,
+      "tag": "0007_projets_confidentiels",
+      "breakpoints": true
     }
   ]
 }

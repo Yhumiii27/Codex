@@ -148,6 +148,7 @@ Inventaire du 1er novembre 2026 (code de `main`, `796e315`) :
 | Écriture reçue | décisions de Vigie | API `POST /api/integrations/vigie` | oui (R4) |
 | Écriture reçue | reprise de l'existant (outil de migration) | API `POST /api/import` | oui (R4) |
 | Lecture reçue | registre des types par Keystone | API `GET /api/registry` | oui |
+| Lecture chez un autre outil (27 novembre 2026, D-33) | confidentialité et équipes des projets Keystone : `keystone.pub_projets` (colonne `confidentialite`) et `keystone.pub_equipes_projets`, recopiées dans `projects.confidentiality` et `project_team` (`src/server/integrations/keystone/confidentiality.ts`, tâche « keystone ») ; liens `lecture` de `codex_app` à accorder par Matrix (`docs/demandes/matrix-projets-confidentiels.md`) | vues `pub_` | oui (R2) |
 | Lecture reçue | 8 vues `codex.pub_*` (Keystone, Vigie, Arche, Crucible, Matrix) | vues `pub_`, droits du registre de Matrix | oui (R2) |
 
 Codex fournit une fonction `pub_` depuis le 5 novembre 2026 : **`codex.pub_editer(p_table, p_action, p_cle, p_valeurs,

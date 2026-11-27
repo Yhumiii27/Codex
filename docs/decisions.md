@@ -587,6 +587,42 @@ Règles de lecture :
   (aujourd'hui celui du disque du serveur, `docs/stockage-serveur.md`) ; vues `pub_` à resserrer par Matrix (brouillon
   `docs/demandes/matrix-lot16-enregistrements.md`).
 
+### D-33 — Projets confidentiels de Keystone : leurs documents réservés à l'équipe du projet
+- **Date** : 27 novembre 2026.
+- **Décision du propriétaire** (27 novembre 2026) : « Tous les projets industriels ou R&D doivent être dans Keystone ;
+  c'est donc Keystone qui donnera le niveau de confidentialité à Ingenium et aux autres softs (valable aussi pour les
+  documents dans Codex par exemple). » Et auparavant : un projet confidentiel n'est accessible qu'aux personnes qui font
+  partie du projet (ajoutées par son responsable) et n'apparaît jamais pour les autres.
+- **Source** : Keystone publie `confidentialite` (`normal` | `confidentiel`) en fin de `keystone.pub_projets` et l'équipe
+  de chaque projet dans la nouvelle vue `keystone.pub_equipes_projets` (équipe nommée, personnes affectées, parties
+  prenantes internes ; PR Keystone#90). Matrix les publie et accorde leur lecture à `codex_app` (M-18) ; tant qu'elles
+  manquent sur le serveur, rien ne change.
+- **Mise en œuvre** : le miroir des projets garde la confidentialité (`projects.confidentiality`) et l'équipe
+  (`project_team`), relus par la tâche planifiée « keystone » (`CODEX_SCHEDULE_KEYSTONE`, 15 min ;
+  `src/server/integrations/keystone/confidentiality.ts`). Source illisible : un état (tâche « sautée »), jamais une
+  erreur ; le miroir garde ce qu'il a (un projet confidentiel le reste, l'équipe reste la dernière lue). Colonne absente :
+  projet non confidentiel. La règle est dans `src/lib/access.ts` (`projectOpenTo`, `projectGateSql`), avant toutes les
+  autres, en mémoire comme en SQL : un document rattaché à un projet confidentiel n'existe que pour l'équipe — absent des
+  listes, de la recherche, des compteurs, des exports CSV, des circuits, du journal ; sa fiche répond « introuvable »
+  (404, pas « accès refusé ») ; le projet lui-même disparaît des listes de projets (`getCtx`). Pour un membre, les règles
+  de Codex s'appliquent en plus (confidentialité du document, cercle de rédaction, droits) : la plus stricte l'emporte.
+- **Rapprochement d'une personne** : par l'identifiant de personne Clavis (`users.clavis_person_id` =
+  `personne_clavis_id`), sinon par le matricule (`users.matricule`). Codex ne garde pas l'adresse e-mail de ses
+  utilisateurs : l'e-mail publié n'est gardé que pour l'affichage. Le chef de projet du miroir (`projects.manager_id`)
+  compte toujours dans l'équipe. Une personne publiée sans identifiant Clavis ni matricule n'est pas reprise.
+- **Choix de l'assistant, à confirmer par le propriétaire** :
+  - **Les gestionnaires documentaires ne voient pas** les documents d'un projet confidentiel s'ils ne sont pas dans son
+    équipe (comme les Très confidentiel du dossier du personnel, D-32) ; un gestionnaire ajouté à l'équipe les voit avec
+    ses droits de gestionnaire.
+  - Restent hors de cette règle, comme pour tout document : la sauvegarde, l'export complet et la reprise d'un ensemble
+    (administration, `docs/sauvegarde.md`), et les comptes de la page Vocabulaires des gestionnaires.
+  - Les vues `pub_` de Codex publient encore ces documents (lecteurs : Keystone, Vigie, Matrix) : resserrement proposé à
+    Matrix, brouillon `docs/demandes/matrix-projets-confidentiels.md` (aucune vue `pub_` dans une migration, M-18).
+- **Démonstration** : projet `FTU-052` « Fleet Telematics Upgrade », confidentiel, chef de projet Yasmine Aït-Saïd,
+  équipe Marie Lefebvre et Camille Morvan (par matricule) ; Claire Bardet (gestionnaire) ne le voit pas.
+- **Essais** : `tests/integration/confidential-projects.test.ts`, `tests/unit/access.test.ts`,
+  `tests/integration/access-sql.test.ts`.
+
 ## Questions posées restées sans réponse directe
 
 | Date | Question de l'assistant | Suite |

@@ -52,6 +52,65 @@ export class Members implements Who {
 /** `column` is one of `values`, passed as one array (an empty one selects nothing). */
 const among = (column: SQLWrapper, values: readonly string[]) => sql`${column} = any(${sql.param([...values])}::text[])`;
 
+// ── Confidential Keystone projects (D-33, decision of the owner of 27 November 2026) ──
+// « Tous les projets industriels ou R&D doivent être dans Keystone ; c'est donc Keystone qui donnera le niveau de
+// confidentialité […] (valable aussi pour les documents dans Codex). » A document attached to a project Keystone marks
+// confidential (projects.confidentiality, mirrored from keystone.pub_projets) exists only for the project's team: its
+// manager (projects.manager_id, Keystone's project lead) and the people of keystone.pub_equipes_projets (project_team),
+// matched to a Codex user by Clavis person id, else by personnel number. For anyone else it is absent everywhere
+// (lists, search, counters, exports, its pages answer « introuvable »), records managers included unless they are on
+// the team; for a member, Codex's own rules still apply on top (conf, drafting circle, permissions): the stricter wins.
+
+/**
+ * The projects user `me` is on the team of, as an SQL condition on a row `p` of projects: their manager, or a person of
+ * project_team matched by Clavis person id or personnel number.
+ */
+function projectMemberSql(me: string): SQL {
+  return sql`(p.manager_id = ${me} or exists (select 1 from project_team t join users u on u.id = ${me}
+    where t.project_code = p.code and ((t.clavis_person_id is not null and u.clavis_person_id is not null and lower(t.clavis_person_id) = u.clavis_person_id::text)
+      or (t.matricule is not null and u.matricule is not null and t.matricule = u.matricule))))`;
+}
+
+/** The codes of the confidential projects `me` is not on the team of: their documents do not exist for them. */
+function closedProjectsSql(me: string): SQL {
+  return sql`select p.code from projects p where p.confidentiality = 'confidentiel' and not ${projectMemberSql(me)}`;
+}
+
+/**
+ * The confidential projects and, for each, the Codex users on its team (`users`: these people only; null: everyone).
+ * A handful of rows: the confidential projects are few, their teams small.
+ */
+async function confidentialMembers(q: Q, users: readonly string[] | null): Promise<Map<string, Set<string>>> {
+  const rows = await q.select({ code: s.projects.code, managerId: s.projects.managerId }).from(s.projects).where(eq(s.projects.confidentiality, 'confidentiel'));
+  const out = new Map(rows.map((r) => [r.code, new Set<string>()]));
+  if (!rows.length || (users && !users.length)) return out;
+  const wanted = (id: string) => !users || users.includes(id);
+  rows.forEach((r) => { if (wanted(r.managerId)) out.get(r.code)!.add(r.managerId); });
+  const t = s.projectTeam, u = s.users;
+  const team = await q.select({ code: t.projectCode, userId: u.id }).from(t)
+    .innerJoin(u, or(
+      and(isNotNull(t.clavisPersonId), isNotNull(u.clavisPersonId), sql`lower(${t.clavisPersonId}) = ${u.clavisPersonId}::text`),
+      and(isNotNull(t.matricule), isNotNull(u.matricule), eq(t.matricule, u.matricule)),
+    ))
+    .where(and(inArray(t.projectCode, rows.map((r) => r.code)), users ? among(u.id, users) : undefined));
+  team.forEach((m) => { if (wanted(m.userId)) out.get(m.code)?.add(m.userId); });
+  return out;
+}
+
+/**
+ * The project codes `userId` may see (D-33): every project but the confidential ones they are not on the team of. For
+ * the project lists of the interface (lib/context.ts): a confidential project never appears for others.
+ */
+export async function openProjectCodes(q: Q, userId: string, codes: readonly string[]): Promise<Set<string>> {
+  const confidential = await confidentialMembers(q, [userId]);
+  return new Set(codes.filter((c) => !confidential.has(c) || confidential.get(c)!.has(userId)));
+}
+
+/** Is the document's project open to the viewer (D-33)? Checked before every other rule, records managers included. */
+export function projectOpenTo(v: Pick<Viewer, 'user'>, d: { projectCode: string | null }, ix: AccessIndex): boolean {
+  return ix.projectOpen(d.projectCode, v.user.id);
+}
+
 /**
  * People around each document: named readers, designated authors of open revisions, authors Vigie designated for an
  * accepted change that waits to open the next one (`designated`; D-14: whoever « modifiera un document via une ECO »,
@@ -94,6 +153,7 @@ export async function buildAccessIndex(q: Q, { pending = true, users, docs: scop
     // The HR readers of Cursus's highly confidential records (lib/records.ts): a handful of holders, read whole.
     q.select({ userId: s.functionHolders.userId }).from(s.functionHolders).where(eq(s.functionHolders.functionKey, HR_RECORD_READER)),
   ]);
+  const confidential = await confidentialMembers(q, everything ? null : userIds);
   const hrReaders = new Set(hr.map((h) => h.userId));
   const add = (m: Map<string, Set<string>>, k: string, v: string | null) => { if (!v) return; if (!m.has(k)) m.set(k, new Set()); m.get(k)!.add(v); };
   const readersBy = new Map<string, Set<string>>(), modifiersBy = new Map<string, Set<string>>(), designatedBy = new Map<string, Set<string>>();
@@ -110,6 +170,15 @@ export async function buildAccessIndex(q: Q, { pending = true, users, docs: scop
   const members = (m: Map<string, Set<string>>, key: string, inScope: boolean, what: string): Who =>
     new Members(m.get(key) ?? none, everything || inScope, userSet, `${what} of ${key}`);
   return {
+    /**
+     * May `userId` see anything of the documents of this project (D-33)? Yes unless Keystone made it confidential and the
+     * person is not on its team (projectMembersSql). Asked about a person outside the scope, it throws (Members).
+     */
+    projectOpen: (projectCode: string | null, userId: string): boolean => {
+      if (!projectCode || !confidential.has(projectCode)) return true;
+      if (!everything && !userSet!.has(userId)) throw new Error(`access index: team of ${projectCode}, ${userId} is outside its scope`);
+      return confidential.get(projectCode)!.has(userId);
+    },
     readers: (docId: string) => members(readersBy, docId, docSet.has(docId), 'named readers'),
     modifiers: (docId: string) => members(modifiersBy, docId, docSet.has(docId), 'designated authors'),
     designated: (docId: string) => members(designatedBy, docId, docSet.has(docId), 'authors of a waiting change'),
@@ -136,6 +205,7 @@ const accessIndexOf = cache(async (userId: string) => buildAccessIndex(await get
  * records managers: they see drafts and working versions (D-14).
  */
 export function inDraftingCircle(ctx: Viewer, d: AccessDoc, ix: AccessIndex): boolean {
+  if (!projectOpenTo(ctx, d, ix)) return false;
   return mayWorkOnDraft(ctx, d, ix) || ix.designated(d.id).has(ctx.user.id);
 }
 
@@ -146,6 +216,7 @@ export function inDraftingCircle(ctx: Viewer, d: AccessDoc, ix: AccessIndex): bo
  */
 export function mayWorkOnDraft(ctx: Viewer, d: AccessDoc, ix: AccessIndex): boolean {
   const me = ctx.user.id;
+  if (!projectOpenTo(ctx, d, ix)) return false;
   return ctx.seesAll || d.ownerId === me || ix.modifiers(d.id).has(me) || ix.approvers(d.id).has(me);
 }
 
@@ -159,6 +230,8 @@ export function readersApply(conf: string): boolean {
  * Outside the drafting circle, the "read" permission of the matrix is required as well.
  */
 export function canRead(ctx: Viewer, d: AccessDoc, ix: AccessIndex): boolean {
+  // A document of a confidential Keystone project: its team only, whoever else (D-33); then the rules below.
+  if (!projectOpenTo(ctx, d, ix)) return false;
   // A highly confidential record of Cursus: its HR readers and named readers only, records managers included (D-32).
   if (isRestrictedRecord(d)) return ctx.can('read') && (ix.hrReader(ctx.user.id) || ix.readers(d.id).has(ctx.user.id));
   if (inDraftingCircle(ctx, d, ix)) return true;
@@ -193,9 +266,10 @@ const filled = (c: SQLWrapper) => sql`coalesce(${c}, '') <> ''`;
 
 /** inDraftingCircle as an SQL condition: never null, so that it may be negated. */
 export function draftingCircleSql(v: Viewer): SQL {
-  if (v.seesAll) return sql`true`;
+  const gate = projectGateSql(v);
+  if (v.seesAll) return gate;
   const me = v.user.id;
-  return sql`(${docs.ownerId} = ${me}
+  return sql`${gate} and (${docs.ownerId} = ${me}
     or ${docs.id} in (select r.doc_id from revisions r where r.status in (${sql.join(OPEN_REVISION.map((x) => sql`${x}`), sql`, `)}) and r.modifier_id = ${me})
     or ${docs.id} in (select w.doc_id from workflows w join workflow_steps x on x.workflow_id = w.id
       where coalesce(w.outcome, '') = '' and x.assignee_id = ${me} and w.step < (select count(*) from workflow_steps y where y.workflow_id = w.id))
@@ -207,7 +281,17 @@ export function draftingCircleSql(v: Viewer): SQL {
  * team is the project's manager and whoever holds a function scoped to the project (buildAccessIndex).
  */
 export function readableSql(v: Viewer, circle: SQL = draftingCircleSql(v)): SQL {
-  return sql`(case when ${restrictedSql} then ${recordReaderSql(v)} else ${readableBaseSql(v, circle)} end)`;
+  return sql`(${projectGateSql(v)} and (case when ${restrictedSql} then ${recordReaderSql(v)} else ${readableBaseSql(v, circle)} end))`;
+}
+
+/**
+ * projectOpenTo as an SQL condition on the row of `documents`, never null (D-33): no project, a project that is not
+ * confidential, or one whose team the viewer is on. Every query listing, counting or exporting documents for a person
+ * goes through readableSql or draftingCircleSql, which carry it; a query that shortcuts them for a records manager
+ * (`seesAll`) puts it in itself.
+ */
+export function projectGateSql(v: Pick<Viewer, 'user'>): SQL {
+  return sql`(${docs.projectCode} is null or ${docs.projectCode} not in (${closedProjectsSql(v.user.id)}))`;
 }
 
 /** A highly confidential record of Cursus (lib/records.ts isRestrictedRecord), as an SQL condition. */
