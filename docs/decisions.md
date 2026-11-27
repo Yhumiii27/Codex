@@ -1478,8 +1478,10 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     3 plus récents sont gardés (`CODEX_SCHEDULE_EXPORT_KEEP`) ; la sauvegarde planifiée garde la rotation et l'écart
     minimal de 15 minutes de la sauvegarde manuelle, et est sautée sur un serveur PostgreSQL ;
   - **aucune relance ni notification hors application**, faute de destinataires, d'échéances (M19) et de canal décidés
-    (Teams ou Outlook, non discuté), et aucun envoi vers Vigie ou Keystone (T-01, O-03, O-10) : seul le point
-    d'extension est prévu et documenté (`docs/exploitation.md` §4).
+    (Teams ou Outlook, non discuté) : seul le point d'extension est prévu et documenté (`docs/exploitation.md` §4) ;
+  - **aucune tâche d'envoi vers Vigie ou Keystone** (27 novembre 2026) : une demande part vers Vigie par sa fonction
+    `pub_` dans la transaction de l'action (D-31), et Vigie et Keystone lisent Codex par les vues `pub_` de Matrix
+    (M-18) ; aucune file d'envoi n'est donc à vider.
 - **Authentification entre serveurs** (point 23, 18 octobre) : sans décision sur Vigie et Keystone eux-mêmes (O-03,
   O-10) ni sur le fournisseur d'identité (O-02), Codex vérifie un contrat qu'il fixe (`docs/api.md`,
   « Authentification »). Choix prudents, à confirmer :
