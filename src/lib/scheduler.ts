@@ -32,10 +32,13 @@ export { intervalOf, MIN_INTERVAL_MS, parseInterval, SCHEDULE, schedulerEnabled,
 // Every run is written to the technical log (scope "scheduler"); what it changes is journaled by the task itself, under
 // the system actor Codex (entry into force, decision applied, files removed, check, backup, export).
 //
-// Extension point: reminders and notifications outside the application (overdue validations, reviews, retention), and
-// sends to Vigie or Keystone, will be tasks of TASKS below. Neither exists: who to alert, when, and through which channel
-// (M19, Teams or Outlook not discussed) are not decided, and outgoing calls wait for the real integrations (T-01, O-03,
-// O-10). A task returns its figures; the scheduler does the rest (lease, log, state shown in Administration).
+// Sends to the other tools need no task: a change request reaches Vigie through its function
+// vigie.pub_creer_demande_modification inside the transaction that writes Codex's mirror (D-31), so it is never left
+// waiting; Keystone and Vigie read Codex through the pub_ views Matrix publishes (M-18), and Vigie sends its decisions to
+// POST /api/integrations/vigie. Extension point: reminders and notifications outside the application (overdue
+// validations, reviews, retention) will be tasks of TASKS below. None exists: who to alert, when, and through which
+// channel (M19, Teams or Outlook not discussed) are not decided. A task returns its figures; the scheduler does the rest
+// (lease, log, state shown in Administration).
 
 const log = logger('scheduler');
 

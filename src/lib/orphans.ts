@@ -3,13 +3,14 @@ import { eq, isNotNull, sql } from 'drizzle-orm';
 import { getDb, schema as s } from '@/db';
 import { audit } from './lifecycle';
 import { logger } from './log';
-import { activeStore, listStoredFiles, localTouched, removeLocalFile, type ListedFile, type StoreName } from './storage';
+import { activeStore, listStoredFiles, localTouched, removeStoredFile, type ListedFile, type StoreName } from './storage';
 
 // Files of the store that no working version points to (point 36 of docs/reste-a-faire.md). A file is stored before
 // the transaction that records it (lib/storage.ts stageFile), then renamed after it (nameStoredFile): a process stopped
 // in between, a failed transaction whose clean-up failed too, or a rename that could not finish leaves a file no record
-// names. Administration lists them (a dry run: nothing is removed) and a records manager removes, journaled, those of
-// the local store that the list showed. SharePoint files are listed only: removing them waits for a test on a real
+// names. Administration lists them (a dry run: nothing is removed) and a records manager removes, journaled, those
+// the list showed, from the local store and from SharePoint's _staging folder; the scheduler removes the oldest ones
+// (CODEX_SCHEDULE_ORPHANS). The removal on SharePoint is tried against the fake Microsoft Graph, not yet on a real
 // tenant (O-01).
 //
 // What is never removed: a file a working version points to (looked up again just before removing), a file written,
@@ -48,7 +49,7 @@ export function isCodexKey(store: StoreName, key: string): boolean {
 /** What a look at one store found. */
 export type OrphanScan = {
   store: StoreName;
-  /** Orphans older than the grace period, oldest first: what a purge removes (local store). */
+  /** Orphans older than the grace period, oldest first: what a purge removes. */
   orphans: ListedFile[];
   /** Their total size. */
   bytes: number;
@@ -102,16 +103,14 @@ export type OrphanReport = {
   sharepoint: OrphanScan | { error: true } | null;
 };
 
-/** The dry run: what a purge would remove from the local store, and the SharePoint orphans, which it never removes. */
+/** The dry run: what a purge would remove from the local store and from SharePoint's _staging folder. */
 export async function orphanReport(opts: { now?: number; env?: Record<string, string | undefined> } = {}): Promise<OrphanReport> {
   const hours = graceHours(opts.env ?? process.env);
   const now = opts.now ?? Date.now();
   const graceMs = hours * 3_600_000;
   const local = await scan('local', now, graceMs);
   let sharepoint: OrphanReport['sharepoint'] = null;
-  const db = await getDb();
-  const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(s.workingVersions).where(eq(s.workingVersions.storage, 'sharepoint'));
-  if (activeStore() === 'sharepoint' || n > 0) {
+  if (await sharepointInUse()) {
     try {
       sharepoint = await scan('sharepoint', now, graceMs);
     } catch (err) {
@@ -133,13 +132,27 @@ export type PurgeResult = { removed: ListedFile[]; bytes: number; failed: number
 // Actions; both must see a run in progress.
 const busy = ((globalThis as unknown as { __codexBusy?: Set<string> }).__codexBusy ??= new Set<string>());
 
+/** Whether SharePoint's _staging folder is looked at: it is the active store, or records still point to it. */
+async function sharepointInUse(): Promise<boolean> {
+  if (activeStore() === 'sharepoint') return true;
+  const db = await getDb();
+  const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(s.workingVersions).where(eq(s.workingVersions.storage, 'sharepoint'));
+  return n > 0;
+}
+
 /**
- * Removes orphans of the local store, at most MAX_PER_RUN, and journals them in one entry by `userId` (action
- * 'files_purged', target the local store), each with its size and last change; the server log names each one as it
- * goes. `keys`: the files the dry run showed, of which only those still orphans go (an orphan that turned up since
- * waits for the next look; a key that is not an orphan, whatever a page sent back, is never removed); without it (the
- * scheduler, point 38), the oldest orphans. Each candidate is checked again just before: still old enough, still named
- * by no record. 'busy' while another purge runs in this process (Administration or the scheduler).
+ * Removes orphans, at most MAX_PER_RUN in all, from the local store and, when it is looked at (sharepointInUse), from
+ * SharePoint's _staging folder, and journals them in one entry per store by `userId` (action 'files_purged', target
+ * the store), each with its size and last change; the server log names each one as it goes. `keys`: the files the dry
+ * run showed, of which only those still orphans go (an orphan that turned up since waits for the next look; a key that
+ * is not an orphan, whatever a page sent back, is never removed); without it (the scheduler, point 38), the oldest
+ * orphans, local ones first. Each candidate is checked again just before: still old enough (a local file is looked at
+ * again; SharePoint's folder is listed again by the run itself), still named by no record. 'busy' while another purge
+ * runs in this process (Administration or the scheduler).
+ *
+ * SharePoint (point 36, O-01): only files of `_staging` are ever listed, where Codex alone writes and from which a
+ * named file is moved out; each removal is a DELETE of the driveItem, which SharePoint keeps in its recycle bin. Tried
+ * against the fake Microsoft Graph only (tests/integration/sharepoint-store.test.ts), not on a real tenant yet.
  */
 export async function purgeOrphans(
   userId: string,
@@ -150,37 +163,68 @@ export async function purgeOrphans(
   try {
     const now = opts.now ?? Date.now();
     const graceMs = graceHours(opts.env ?? process.env) * 3_600_000;
-    const { orphans } = await scan('local', now, graceMs);
     const shown = opts.keys ? new Set(opts.keys.slice(0, MAX_PER_RUN)) : null;
-    const batch = (shown ? orphans.filter((f) => shown.has(f.key)) : orphans).slice(0, MAX_PER_RUN);
-    // Touched since the scan (a rename links the file again): no longer a candidate.
-    const still: ListedFile[] = [];
+    const total: PurgeResult = { removed: [], bytes: 0, failed: 0, kept: 0, left: 0 };
+    let room = MAX_PER_RUN;
+    const stores: StoreName[] = ['local'];
+    if (await sharepointInUse()) stores.push('sharepoint');
+    for (const store of stores) {
+      let orphans: ListedFile[];
+      try {
+        ({ orphans } = await scan(store, now, graceMs));
+      } catch (err) {
+        // SharePoint out of reach: nothing removed there this time; the local store is done.
+        log.error('store not listed, no orphan removed from it', { store, err });
+        continue;
+      }
+      const batch = (shown ? orphans.filter((f) => shown.has(f.key)) : orphans).slice(0, room);
+      room -= batch.length;
+      const r = await purgeBatch(store, userId, batch, now, graceMs);
+      total.removed.push(...r.removed);
+      total.bytes += r.bytes;
+      total.failed += r.failed;
+      total.left += orphans.length - r.removed.length;
+      if (!shown) total.kept += batch.length - r.removed.length - r.failed;
+    }
+    if (shown) total.kept = shown.size - total.removed.length - total.failed;
+    return total;
+  } finally {
+    busy.delete('orphans');
+  }
+}
+
+/** Removes the candidates of one store that are still orphans, and journals them in one entry. */
+async function purgeBatch(store: StoreName, userId: string, batch: ListedFile[], now: number, graceMs: number): Promise<Pick<PurgeResult, 'removed' | 'bytes' | 'failed'>> {
+  // A local file touched since the scan (a rename links the file again) is no longer a candidate. SharePoint's folder
+  // was listed by this run: its dates are those of now.
+  const still: ListedFile[] = [];
+  if (store === 'local') {
     for (const f of batch) {
       const touched = await localTouched(f.key);
       if (touched != null && now - touched >= graceMs) still.push({ ...f, touched });
     }
-    const named = still.length ? await referencedKeys('local', still.map((f) => f.key)) : new Set<string>();
-    const removed: ListedFile[] = [];
-    let failed = 0;
-    for (const f of still.filter((x) => !named.has(x.key))) {
-      try {
-        await removeLocalFile(f.key);
-        log.info('orphan file removed', { key: f.key, size: f.size, lastChanged: new Date(f.touched).toISOString() });
-        removed.push(f);
-      } catch (err) {
-        failed++;
-        log.error('orphan file not removed', { key: f.key, err });
-      }
-    }
-    const bytes = removed.reduce((n, f) => n + f.size, 0);
-    if (removed.length) {
-      const db = await getDb();
-      await audit(db, userId, 'files_purged', { kind: 'storage', id: 'local' }, '', null, {
-        purge: { files: removed.map((f) => ({ key: f.key, size: f.size, touched: new Date(f.touched).toISOString() })), bytes, ...(failed ? { failed } : {}) },
-      });
-    }
-    return { removed, bytes, failed, kept: (shown ? shown.size : batch.length) - removed.length - failed, left: orphans.length - removed.length };
-  } finally {
-    busy.delete('orphans');
+  } else {
+    still.push(...batch);
   }
+  const named = still.length ? await referencedKeys(store, still.map((f) => f.key)) : new Set<string>();
+  const removed: ListedFile[] = [];
+  let failed = 0;
+  for (const f of still.filter((x) => !named.has(x.key))) {
+    try {
+      await removeStoredFile(store, f.key);
+      log.info('orphan file removed', { store, key: f.key, size: f.size, lastChanged: new Date(f.touched).toISOString() });
+      removed.push(f);
+    } catch (err) {
+      failed++;
+      log.error('orphan file not removed', { store, key: f.key, err });
+    }
+  }
+  const bytes = removed.reduce((n, f) => n + f.size, 0);
+  if (removed.length) {
+    const db = await getDb();
+    await audit(db, userId, 'files_purged', { kind: 'storage', id: store }, '', null, {
+      purge: { files: removed.map((f) => ({ key: f.key, size: f.size, touched: new Date(f.touched).toISOString() })), bytes, ...(failed ? { failed } : {}) },
+    });
+  }
+  return { removed, bytes, failed };
 }

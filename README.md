@@ -456,11 +456,13 @@ Points 46 et 36 de `docs/reste-a-faire.md`.
   (arrêt du serveur entre le dépôt et l'enregistrement, renommage inachevé). Dans **Administration › Journal
   d'audit**, un gestionnaire documentaire (seul à voir les noms stockés, qui portent l'identifiant et la version des
   brouillons) clique sur « Rechercher » (`?tab=audit&orphans=1`) : c'est une **simulation**, qui liste sans rien
-  supprimer. « Supprimer ces fichiers » retire ensuite, du stockage local, les fichiers que cette liste montre et
+  supprimer. « Supprimer ces fichiers » retire ensuite, du stockage local et du dossier `_staging` de SharePoint
+  quand il sert, les fichiers que cette liste montre et
   eux seuls (200 au plus par passage, les plus anciens d'abord) : un orphelin apparu depuis attend la recherche
   suivante. Chacun est revérifié juste avant (toujours sans référence, toujours ancien) ; un fichier qui ne l'est plus
   est laissé en place et compté dans le message. La suppression est
-  inscrite au journal (« Fichiers orphelins supprimés », cible « Stockage des fichiers · local », avec nom, taille et
+  inscrite au journal (« Fichiers orphelins supprimés », une entrée par stockage, cible « Stockage des fichiers · local » ou
+  « · sharepoint », avec nom, taille et
   date de chaque fichier) et dans le journal du serveur (`[orphans] removed …`).
   - Délai de grâce `CODEX_ORPHAN_GRACE_HOURS` (24 h par défaut, 1 h au moins) : un fichier écrit, lié ou déplacé
     depuis moins longtemps n'est jamais compté (dépôt en cours). La date retenue est la plus récente de `mtime` et
