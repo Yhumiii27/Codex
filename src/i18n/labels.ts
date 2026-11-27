@@ -300,6 +300,7 @@ export const TRANSFER_REASON_LABEL: Readonly<Record<string, string>> = {
 export const SCHEDULE_REASON_LABEL: Readonly<Record<string, string>> = {
   busy: msg('already running'),
   no_source: msg('view arche.pub_capex not readable (link to be granted by Matrix)'),
+  no_keystone_source: msg('view keystone.pub_projets not readable (link to be granted by Matrix)'),
   server: msg('PostgreSQL database: to be backed up by its own tools'),
   recent: msg('backup less than 15 minutes old'),
 };
@@ -308,6 +309,7 @@ export const SCHEDULE_REASON_LABEL: Readonly<Record<string, string>> = {
 export const SCHEDULE_TASK_LABEL: Readonly<Record<string, string>> = {
   promote: msg('Deferred entry into force and pending decisions'),
   capex: msg('CAPEX published by Arche'),
+  keystone: msg('Confidentiality and teams of the Keystone projects'),
   orphans: msg('Removal of orphan files'),
   renames: msg('Rename of files left under a provisional name'),
   integrity: msg('Integrity check'),

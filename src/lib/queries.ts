@@ -3,7 +3,7 @@ import { cache } from 'react';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, notInArray, or, sql, type SQL, type SQLWrapper } from 'drizzle-orm';
 import { getDb, schema as s } from '@/db';
 import type { AuditChange, AuditData, AuditTargetKind, AuditText, AuditValue, Conf, LinkRel, RetentionTrigger, TermField } from '@/db/schema';
-import { canRead, changeAsSeen, CONSULT_ACTIONS, deadlineActor, draftingCircleSql, draftTodo, followsCircuit, getAccessIndex, inDraftingCircle, isUsableTemplate, mayDeleteSearch, mayTransferHoldings, mayEditLinks, mayGetApprovalRecord, mayRecall, mayWorkOnDraft, openRevisionView, readableSql, readerMaySeeEntry, readerMaySeeRevision, readerMaySeeVersion, savedSearchesSeenBy, type AccessIndex } from './access';
+import { canRead, changeAsSeen, projectGateSql, projectOpenTo, CONSULT_ACTIONS, deadlineActor, draftingCircleSql, draftTodo, followsCircuit, getAccessIndex, inDraftingCircle, isUsableTemplate, mayDeleteSearch, mayTransferHoldings, mayEditLinks, mayGetApprovalRecord, mayRecall, mayWorkOnDraft, openRevisionView, readableSql, readerMaySeeEntry, readerMaySeeRevision, readerMaySeeVersion, savedSearchesSeenBy, type AccessIndex } from './access';
 import { visaCircuit, type VisaRecord } from './approval';
 import { isFinalStatus, TEMPLATE_TYPE } from './codes';
 import { revLabel } from './codification';
@@ -635,6 +635,9 @@ export async function getDoc(ctx: Ctx, id: string): Promise<{ doc: DocView; circ
     if (!d) return null;
   }
   const ix = await getAccessIndex(ctx);
+  // A document of a confidential Keystone project the user is not on the team of does not exist for them (D-33):
+  // « introuvable », not « accès refusé », which would tell it exists.
+  if (!projectOpenTo(ctx, d, ix)) return null;
   if (!canRead(ctx, d, ix)) return 'hidden';
   const circle = inDraftingCircle(ctx, d, ix);
   const [wl, vm] = await Promise.all([workingLabels([d.id]), visibleModified(!circle && d.revWorking ? [d.id] : [])]);
@@ -917,7 +920,7 @@ export async function workflowsWhere(ctx: Ctx, where?: SQL) {
        * Records managers follow every workflow; others the ones they take part in, as long as they may read the
        * document and see the revision (D-14: once the circuit is over, its approvers leave the drafting circle).
        */
-      visible: followsCircuit(ctx, w, ws) && (ctx.seesAll || (!!doc && canRead(ctx, doc, ix) && readerMaySeeRevision(inDraftingCircle(ctx, doc, ix), rev?.status))),
+      visible: followsCircuit(ctx, w, ws) && (ctx.seesAll ? !doc || projectOpenTo(ctx, doc, ix) : (!!doc && canRead(ctx, doc, ix) && readerMaySeeRevision(inDraftingCircle(ctx, doc, ix), rev?.status))),
       progress: `${Math.min(w.step, ws.length)}/${ws.length}`,
       comments: (commentsBy.get(w.id) ?? []).map((c) => {
         const who = ctx.userName(c.authorId);
@@ -961,7 +964,8 @@ function workflowFilterSql(ctx: Ctx, f: WorkflowFilter): SQL {
  * they may read, whose revision they see (D-14: once a circuit is over, its approvers leave the drafting circle).
  */
 function workflowVisibleSql(ctx: Ctx): SQL {
-  if (ctx.seesAll) return sql`true`;
+  // A circuit on a document of a confidential project the records manager is not on the team of: absent (D-33).
+  if (ctx.seesAll) return projectGateSql(ctx);
   const me = ctx.user.id;
   const circle = draftingCircleSql(ctx);
   return sql`((${W.requesterId} = ${me} or exists (select 1 from ${s.workflowSteps} x where x.workflow_id = ${W.id} and x.assignee_id = ${me}))
@@ -1407,6 +1411,16 @@ function editValuesShown(doc: AuditData['doc'], conf: string): boolean {
 }
 
 /**
+ * IDs (current and former) of the documents the project gate hides from `ctx` (access.ts projectGateSql, D-33): those of
+ * the confidential projects they are not on the team of. Usually none.
+ */
+async function closedDocIds(ctx: Ctx): Promise<Set<string>> {
+  const db = await getDb();
+  const rows = await db.select({ id: s.documents.id, aliases: s.documents.aliases }).from(s.documents).where(sql`not ${projectGateSql(ctx)}`);
+  return new Set(rows.flatMap((r) => [r.id, ...((r.aliases as string[] | null) ?? [])]));
+}
+
+/**
  * Journal entries the user may read. Entries without a document (administration, exports) belong to the
  * administration screen. Records managers read every entry about a document. Others, whatever ID the entry was
  * written under: outside a document's drafting circle, its work in progress stays hidden (access.ts,
@@ -1416,8 +1430,14 @@ function editValuesShown(doc: AuditData['doc'], conf: string): boolean {
  */
 export async function auditForReader(ctx: Ctx, all: AuditRow[]): Promise<AuditEntry[]> {
   const rows = ctx.screens.admin ? all : all.filter((a) => a.docId != null);
-  if (ctx.seesAll || !rows.length) return rows.map((a) => ({ ...a, readable: true }));
+  if (!rows.length) return [];
   const db = await getDb();
+  // An entry about a document of a confidential project the reader is not on the team of does not exist for them,
+  // records managers included (D-33): neither its action nor its ID is shown.
+  if (ctx.seesAll) {
+    const closed = await closedDocIds(ctx);
+    return rows.filter((a) => (a.docId == null || !closed.has(a.docId)) && !(a.data?.link && closed.has(a.data.link.other))).map((a) => ({ ...a, readable: true }));
+  }
   const current = await currentIds();
   const cur = (id: string) => current.get(id) ?? id;
   // Documents the entries are about, and the other end of the links they record.
@@ -1433,6 +1453,7 @@ export async function auditForReader(ctx: Ctx, all: AuditRow[]): Promise<AuditEn
   return rows.flatMap((a): AuditEntry[] => {
     if (a.docId == null) return [{ ...a, readable: true }];
     const d = docBy.get(cur(a.docId));
+    if (d && !projectOpenTo(ctx, d, ix)) return [];
     const circle = !!d && inDraftingCircle(ctx, d, ix);
     if (!readerMaySeeEntry(circle, a, a.revisionId == null ? undefined : statusBy.get(a.revisionId))) return [];
     if (!d || !canRead(ctx, d, ix)) return [{ ...a, detail: '', data: null, readable: false }];
@@ -2209,7 +2230,7 @@ export type VocabRow = { id: number; name: string; aliases: string[]; uses: numb
 export async function vocabOverview(ctx: Ctx): Promise<Record<VocabKind, { terms: VocabRow[]; unlisted: { value: string; uses: number | null }[] }> & { subtypes: { typeCode: string; value: string; uses: number | null }[] }> {
   const db = await getDb();
   const full = ctx.seesAll;
-  const readable = full ? sql`true` : readableSql(ctx);
+  const readable = full ? projectGateSql(ctx) : readableSql(ctx);
   const byUses = <T extends { uses: number | null }>(p: T, q: T) => (q.uses ?? 0) - (p.uses ?? 0);
   const one = async (kind: VocabKind) => {
     const [terms, values] = await Promise.all([loadTerms(db, kind), documentValues(db, kind, readable)]);

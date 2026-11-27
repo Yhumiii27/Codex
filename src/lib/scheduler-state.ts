@@ -27,7 +27,7 @@ export function schedulerPromotes(): boolean {
 
 // ── Settings ────────────────────────────────────────────────────────────
 
-export type TaskName = 'promote' | 'capex' | 'orphans' | 'renames' | 'integrity' | 'backup' | 'export';
+export type TaskName = 'promote' | 'capex' | 'keystone' | 'orphans' | 'renames' | 'integrity' | 'backup' | 'export';
 
 /**
  * Each task's variable and its interval when the variable is unset. Only the deferred entry into force is on by
@@ -37,6 +37,9 @@ export const SCHEDULE: Record<TaskName, { env: string; def: string }> = {
   promote: { env: 'CODEX_SCHEDULE_PROMOTE', def: '5m' },
   // The CAPEX Arche publishes (src/server/integrations/arche/capex.ts): skipped while arche.pub_capex cannot be read.
   capex: { env: 'CODEX_SCHEDULE_CAPEX', def: '15m' },
+  // Confidentiality and teams of the Keystone projects (src/server/integrations/keystone/confidentiality.ts, D-33):
+  // skipped while keystone.pub_projets cannot be read.
+  keystone: { env: 'CODEX_SCHEDULE_KEYSTONE', def: '15m' },
   orphans: { env: 'CODEX_SCHEDULE_ORPHANS', def: 'off' },
   renames: { env: 'CODEX_SCHEDULE_RENAMES', def: 'off' },
   integrity: { env: 'CODEX_SCHEDULE_INTEGRITY', def: 'off' },

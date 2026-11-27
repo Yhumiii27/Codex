@@ -146,7 +146,14 @@ export const functionHolders = codex.table('function_holders', {
 
 // ── Projects (Keystone) and research programmes ─────────────────────────
 
-/** Projects mirrored from Keystone (simulated until the Keystone integration exists). */
+/** Confidentiality of a Keystone project (keystone.pub_projets.confidentialite; decision D-33 of 27 November 2026). */
+export type ProjectConfidentiality = 'normal' | 'confidentiel';
+
+/**
+ * Projects mirrored from Keystone (simulated until the Keystone integration exists). `confidentiality` follows
+ * keystone.pub_projets.confidentialite (src/server/integrations/keystone/confidentiality.ts; D-33): the documents of a
+ * confidential project are seen only by its team (project_team), whatever Codex's own rules say (lib/access.ts).
+ */
 export const projects = codex.table('projects', {
   code: text('code').primaryKey(),
   name: text('name').notNull(),
@@ -156,7 +163,34 @@ export const projects = codex.table('projects', {
   site: text('site').notNull(),
   tiers: text('tiers').notNull(),
   syncedAt: timestamp('synced_at', { mode: 'string' }).notNull(),
-});
+  confidentiality: text('confidentiality').$type<ProjectConfidentiality>().notNull().default('normal'),
+}, (t) => [
+  check('projects_confidentiality_check', sql`${t.confidentiality} IN ('normal', 'confidentiel')`),
+]);
+
+/**
+ * Team of each Keystone project, mirrored from keystone.pub_equipes_projets (D-33): its named team, the people assigned
+ * to its tasks and its internal stakeholders, as Keystone publishes them. A person is matched to a Codex user by the
+ * Clavis person id (users.clavis_person_id), else by the Cursus personnel number (users.matricule); Codex keeps no
+ * e-mail of its users, so the e-mail is kept for display only. Codex never edits it: the project lead adds people in
+ * Keystone. Read by lib/access.ts for the documents of confidential projects.
+ */
+export const projectTeam = codex.table('project_team', {
+  id: serial('id').primaryKey(),
+  projectCode: text('project_code').notNull().references(() => projects.code),
+  clavisPersonId: text('clavis_person_id'),
+  matricule: text('matricule'),
+  name: text('name').notNull(),
+  email: text('email'),
+  origin: text('origin').notNull(),
+  role: text('role'),
+  syncedAt: timestamp('synced_at', { mode: 'string', withTimezone: true }).notNull(),
+}, (t) => [
+  index('project_team_project').on(t.projectCode),
+  check('project_team_origin_check', sql`${t.origin} IN ('equipe', 'affectation', 'partie_prenante')`),
+  check('project_team_person_check', sql`${t.clavisPersonId} IS NOT NULL OR ${t.matricule} IS NOT NULL`),
+  check('project_team_name_check', sql`btrim(${t.name}) <> ''`),
+]);
 
 /**
  * Research programmes, the context of a research document's ID (PRT-R2601-004). Managed in Administration › Fonctions &

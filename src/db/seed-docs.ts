@@ -62,6 +62,10 @@ export const DEMO_DOCS: DemoDoc[] = [
   { key: 'pid-ndc', type: 'PID', title: 'P&ID — boucle de refroidissement', dept: 'MEP', owner: 'pnogues', project: 'NDC-031', inForce: 'B', issued: '2026-06-15', modified: '2026-09-04', conf: 'restreint', discipline: 'Procédé' },
   { type: 'NCR', title: 'Espacement des supports de chemins de câbles', dept: 'QUA', owner: 'gcomte', project: 'NDC-031', inForce: 'A', issued: '2026-09-16', modified: '2026-09-16' },
 
+  // ── FTU-052 Fleet Telematics Upgrade: confidential in Keystone (D-33), its team only ──
+  { type: 'FDS', title: 'Spécification fonctionnelle — boîtier télématique', dept: 'RDI', owner: 'yait', project: 'FTU-052', inForce: 'A', issued: '2026-09-28', modified: '2026-09-28', discipline: 'Automatisme' },
+  { type: 'MIN', title: 'Compte rendu de lancement du projet', dept: 'RDI', owner: 'yait', project: 'FTU-052', inForce: 'A', issued: '2026-09-21', modified: '2026-09-21', conf: 'confidentiel', readers: ['cmorvan'] },
+
   // ── Documents of the departments ──
   { key: 'pro-doc', type: 'PRO', title: 'Procédure de maîtrise documentaire', dept: 'QUA', owner: 'gcomte', inForce: 'E', issued: '2022-02-03', modified: '2026-02-03', reviewDue: '2026-11-30', kw: ['GED', 'codification', 'révision'] },
   { type: 'PRO', title: 'Traitement des non-conformités', dept: 'QUA', owner: 'gcomte', inForce: 'C', issued: '2023-03-11', modified: '2026-03-11', reviewDue: '2026-09-30', kw: ['NC', 'CAPA'] },
