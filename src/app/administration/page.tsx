@@ -524,8 +524,10 @@ async function Orphans({ ctx, open }: { ctx: Ctx; open: boolean }) {
       </tbody>
     </table>
   );
-  // The removal is given the keys shown here: an orphan that turns up while the page is open is not removed with them.
-  const shown = report.local.orphans.slice(0, MAX_PER_RUN).map((f) => f.key);
+  // The removal is given the keys shown here (both stores, at most MAX_PER_RUN): an orphan that turns up while the page
+  // is open is not removed with them.
+  const spScan = report.sharepoint && !('error' in report.sharepoint) ? report.sharepoint : null;
+  const shown = [...report.local.orphans, ...(spScan?.orphans ?? [])].slice(0, MAX_PER_RUN).map((f) => f.key);
   const n = shown.length;
   return (
     <section className={styles.orphans} aria-label={tr('Orphan files')}>
@@ -533,7 +535,7 @@ async function Orphans({ ctx, open }: { ctx: Ctx; open: boolean }) {
         <strong>{tr('Orphan files')}</strong>
         <span style={{ flex: 1 }} />
         {n > 0 && (
-          <ActionButton action={purgeOrphanFiles.bind(null, shown)} className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} confirm={tr('Permanently remove the listed orphan files ({n}) from local storage? Each file is checked again just before, and the removal is journaled.').replace('{n}', String(n))} after="/administration?tab=audit&orphans=1">
+          <ActionButton action={purgeOrphanFiles.bind(null, shown)} className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} confirm={tr('Permanently remove the listed orphan files ({n})? Each file is checked again just before, and the removal is journaled.').replace('{n}', String(n))} after="/administration?tab=audit&orphans=1">
             {tr('Remove these files ({n})').replace('{n}', String(n))}
           </ActionButton>
         )}
@@ -547,7 +549,7 @@ async function Orphans({ ctx, open }: { ctx: Ctx; open: boolean }) {
           ? <p><span className={styles.orphanStore}>{tr('SharePoint (_staging folder)')}</span><span className={styles.filesOff}>{tr('SharePoint could not be listed: see the server log.')}</span></p>
           : (
             <>
-              <p><span className={styles.orphanStore}>{tr('SharePoint (_staging folder)')}</span>{counts(report.sharepoint)} · <span className="text-muted">{tr('Listed only: removal on SharePoint waits for a trial on a real tenant (O-01).')}</span></p>
+              <p><span className={styles.orphanStore}>{tr('SharePoint (_staging folder)')}</span>{counts(report.sharepoint)}</p>
               {list(report.sharepoint)}
             </>
           )

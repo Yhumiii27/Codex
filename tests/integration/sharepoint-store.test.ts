@@ -204,7 +204,7 @@ describe('listing _staging', () => {
     expect(g.callsTo('GET', /\/children/).map((c) => new URL(c.url).searchParams.get('$skiptoken'))).toEqual([null, null, '2', '4']);
   });
 
-  it('gives a file left under its provisional name its final name, journaled; the orphan check lists and never removes', async () => {
+  it('gives a file left under its provisional name its final name, journaled; the orphan check removes the orphans of _staging', async () => {
     const named = await stage(pdf('A.1'));
     await recorded('PRO-QUA-0001', named, 'draft');
     const orphan = await stage(pdf('nobody'));
@@ -220,9 +220,29 @@ describe('listing _staging', () => {
 
     const orphans = await orphanReport({ now, env: {} });
     expect(orphans.sharepoint).toMatchObject({ orphans: [{ key: orphan.fileKey }], recent: 0 });
-    expect(await purgeOrphans('manager', { now, env: {} })).toMatchObject({ removed: [] });
+    // Within the grace period: nothing is removed.
+    expect(await purgeOrphans('manager', { now: Date.now(), env: {} })).toMatchObject({ removed: [], left: 0 });
     expect(g.callsTo('DELETE', /graph\.microsoft\.com/)).toEqual([]);
+    // A key the page did not show, or that names a record, is never removed, whatever was sent back.
+    expect(await purgeOrphans('manager', { now, env: {}, keys: [named.fileKey] })).toMatchObject({ removed: [], kept: 1 });
+    expect(g.items.has(named.fileKey)).toBe(true);
+    const res = await purgeOrphans('manager', { now, env: {}, keys: [orphan.fileKey] });
+    expect(res).toMatchObject({ removed: [{ key: orphan.fileKey }], failed: 0, kept: 0, left: 0 });
+    expect(g.callsTo('DELETE', /graph\.microsoft\.com/).map((c) => c.url)).toEqual([expect.stringContaining(`/items/${encodeURIComponent(orphan.fileKey)}`)]);
+    expect(g.items.has(orphan.fileKey)).toBe(false);
+    expect(g.at('PRO-QUA-0001/PRO-QUA-0001_A.1.pdf')?.id).toBe(named.fileKey);
+    const [purged] = await db().select().from(s.auditLog).where(eq(s.auditLog.action, 'files_purged'));
+    expect(purged).toMatchObject({ userId: 'manager', targetKind: 'storage', targetId: 'sharepoint' });
+    expect(purged.data).toMatchObject({ purge: { files: [{ key: orphan.fileKey }] } });
+  });
+
+  it('leaves an orphan of _staging in place when Graph refuses its removal, and counts it', async () => {
+    const orphan = await stage(pdf('nobody'));
+    g.fail(/^DELETE /, 403);
+    const res = await purgeOrphans('manager', { now: Date.now() + 25 * HOUR, env: {} });
+    expect(res).toMatchObject({ removed: [], failed: 1, left: 1 });
     expect(g.items.has(orphan.fileKey)).toBe(true);
+    expect(await db().select().from(s.auditLog).where(eq(s.auditLog.action, 'files_purged'))).toEqual([]);
   });
 });
 

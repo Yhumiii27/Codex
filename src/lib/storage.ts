@@ -655,9 +655,9 @@ export async function listStoredFiles(storage: StoreName): Promise<ListedFile[]>
   return stores(storage).list();
 }
 
-/** Removes a file of the local store; SharePoint files are never removed by the orphan check (O-01). */
-export async function removeLocalFile(fileKey: string): Promise<void> {
-  await local.remove(fileKey);
+/** Removes a file of a store (the orphan check, lib/orphans.ts); a SharePoint file already gone is no error. */
+export async function removeStoredFile(storage: StoreName, fileKey: string): Promise<void> {
+  await stores(storage).remove(fileKey);
 }
 
 /** The last time a local file was written, linked or moved (as list() gives it), or null when it is gone. */

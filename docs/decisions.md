@@ -998,8 +998,10 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     que la simulation a listés, chacun revérifié juste avant (un orphelin apparu depuis attend la recherche suivante) ;
     délai de grâce de 24 h (1 h au moins, `CODEX_ORPHAN_GRACE_HOURS`) compté depuis la dernière écriture, le dernier
     lien ou le dernier déplacement du fichier ; 200 fichiers au plus par passage, une entrée de journal par passage avec
-    la liste ; seuls les noms que Codex donne sont examinés. SharePoint est listé, jamais nettoyé, tant que le pilote n'a pas été essayé sur un vrai
-    tenant (O-01). Pas de commande npm : PGlite n'ouvre la base que dans un seul processus, celui du serveur ; le
+    la liste ; seuls les noms que Codex donne sont examinés. Sur SharePoint, seul le dossier `_staging` est examiné (Codex
+    seul y écrit, un fichier nommé en sort) et nettoyé de la même façon, par une suppression de l'élément que SharePoint
+    garde dans sa corbeille, une entrée de journal par stockage (27 novembre 2026, point 36 ; essayé contre le faux
+    Microsoft Graph, pas encore sur un vrai tenant, O-01). Pas de commande npm : PGlite n'ouvre la base que dans un seul processus, celui du serveur ; le
     planificateur (point 38) appelle la même fonction quand `CODEX_SCHEDULE_ORPHANS` en donne la fréquence (désactivé
     par défaut, voir « Planificateur interne »).
 - **Sauvegarde et restauration** (point 48 de `docs/reste-a-faire.md`, 15 octobre ; procédure dans

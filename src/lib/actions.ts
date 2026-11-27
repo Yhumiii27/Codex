@@ -1768,10 +1768,10 @@ function adminOnly(ctx: Ctx): ActionResult | null {
 }
 
 /**
- * Removes the orphan files of the local store that Administration listed (lib/orphans.ts): `keys`, those the dry run
- * showed, of which only the files still orphans go: named by no working version, older than the grace period, each
- * checked again just before; journaled in one entry. A records manager with access to Administration only
- * (lib/access.ts mayCleanStorage). SharePoint files are never removed (O-01).
+ * Removes the orphan files that Administration listed (lib/orphans.ts), from the local store and from SharePoint's
+ * _staging folder: `keys`, those the dry run showed, of which only the files still orphans go: named by no working
+ * version, older than the grace period, each checked again just before; journaled in one entry per store. A records
+ * manager with access to Administration only (lib/access.ts mayCleanStorage).
  */
 export async function purgeOrphanFiles(...args: Parameters<typeof purgeOrphanFilesNow>): Promise<ActionResult> {
   return traceAction('purgeOrphanFiles', () => purgeOrphanFilesNow(...args));
