@@ -4,8 +4,8 @@ import pg from 'pg';
 // The raw SQL connection behind Codex's drizzle database (db.$client), whichever engine holds the data (point 51 of
 // docs/reste-a-faire.md):
 // - PGlite, embedded, one connection, in DATA_DIR/pglite: the default, local use, demonstration, Mac app;
-// - a PostgreSQL server, through a pool of node-postgres connections, when DATABASE_URL is set: the shared EPC2I server
-//   (decision M-01: base epc2i, schema codex, role codex_app), or a server of one's own laid out the same way.
+// - a PostgreSQL server, through a pool of node-postgres connections, when DATABASE_URL is set: the shared Atrium server
+//   (decision M-01: base atrium after Matrix renames it, its name read from DATABASE_URL only, never hard-coded; schema codex, role codex_app), or a server of one's own laid out the same way.
 // What the code asks of either is the subset PGlite offers and the pool is made to offer here: query (with $n
 // parameters), exec (several statements, no parameter), transaction (one connection for the callback, committed or
 // rolled back) and close. What only PGlite can do (copy its data directory: the backup) is reached through embedded().

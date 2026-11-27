@@ -187,7 +187,7 @@ Keystone ». Le « oui fusionne les deux bases » de D-07 porte sur les listes d
 
 **En partie répondue le 15 octobre 2026 (décision M-01, dépôt Matrix)** : « Oui, je valide le format postgreSQL
 commun avec un schema par outil » ([decisions.md](decisions.md)). Codex et Keystone partagent donc un serveur
-(base `epc2i`), chacun dans son schéma, sans accès croisé hors des vues `pub_` (convention de partage du dépôt
+(base `atrium`), chacun dans son schéma, sans accès croisé hors des vues `pub_` (convention de partage du dépôt
 Matrix) ; aucun outil ne lit les tables d'un autre, et les écritures d'un outil chez un autre passent par une API.
 L'option B ci-dessous, au sens « Codex lit les tables de Keystone », n'est donc plus ouverte telle quelle ; la
 lecture des projets par la vue `keystone.pub_projets` (convention de partage) relève du reste de la question. Reste
@@ -336,7 +336,7 @@ Les questions sont reprises de `docs/registre-points-ouverts.md` (texte abrégé
 | 2 | MIN, PO, HSE et VIS admettent « sans rattachement » mais leur circuit a une étape « chef de projet » : hors projet, l'étape revient au titulaire « groupe » (Marie Lefebvre). OK ? | Repli sur le titulaire sans portée (`resolveFunction`). | Confirmer ; retirer l'étape hors projet ; refuser « sans rattachement » pour ces types. | `resolveFunction` (`src/lib/actions.ts`) ou `attachments` du type. | Non. |
 | 3 | « Fin de projet » pour DQF, CER, COC, HSE hors projet, et 12 types recherche : déclencheur « fin de programme » et repli sur la date de création hors projet ? | Pas de date de fin calculée (`triggerDate`, `src/lib/retention.ts`) ; aucun programme n'a de date de fin. | Ajouter « fin de programme » ; ajouter un repli ; attendre Keystone (O-03). | `RetentionTrigger` (`src/db/schema.ts`, colonne texte : pas de migration pour la valeur) ; date de fin sur `research_programs` et clôture sur `projects` (migration) ; `triggerDate`. | Non. |
 | 4 | Livrables client : LDC, AVT, DEF, CLO aussi ? | Drapeau sur 14 types (MIN, COC, EXG, FDS, HMI, PID, SCH, GA, MES, RPT, HSE, REM, PV, MAN), sans aucun effet. | Compléter la liste ; dire ce que le drapeau déclenche (point 80). | Données seules, puis selon l'effet voulu. | Non. |
-| 5 | COC n'admet que l'origine externe : EPC2I émet-elle ses propres déclarations CE ? | `origins: externe` seulement. | Ajouter l'origine interne ; laisser. | Données (`origins`). | Non. |
+| 5 | COC n'admet que l'origine externe : l'entreprise émet-elle ses propres déclarations CE ? | `origins: externe` seulement. | Ajouter l'origine interne ; laisser. | Données (`origins`). | Non. |
 | 6 | Durées : RSQ à 40 ans pour tous ses sous-types ; RHF « départ du salarié + 5 ans » aussi pour supports de formation et fiches de poste. | Appliqué tel quel. | Voir O-07. | Données. | Non. |
 | 7 | Doublons conservés : « demande d'achat » (FIN / ADC), « journal de décisions » (GOV / PIL), « RFQ » (COM / RFQ). | Les six types existent. | Garder ; supprimer un des deux (désactivé s'il est utilisé). | Données ; désactivation si utilisé. | Le code d'un type utilisé reste. |
 | 8 | Clauses ISO discutables : CER 8.4.3 (8.4.2 ?), CTR 8.2 (8.4 ?). | Reprises de Keystone. | Corriger ; garder. | Données (`iso`). | Non. |
@@ -693,7 +693,7 @@ hébergement (point 112, avec M22).
 
 ## Annexe A — Questions de l'audit sans numéro O
 
-Questions de `docs/audit-deck-epc2i.md` restées ouvertes ou répondues en partie, qui bloquent des points de
+Questions de `docs/audit-deck-ged.md` restées ouvertes ou répondues en partie, qui bloquent des points de
 `docs/reste-a-faire.md`. On peut les poser en citant leur référence.
 
 | Réf. | Question (abrégée) | État actuel | Ce qu'elle débloque |

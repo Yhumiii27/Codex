@@ -4,7 +4,7 @@ Gestion électronique des documents du groupe, construite d'après la maquette C
 (`design/GED Groupe.dc.html`, design system Nocturne dans `design/_ds/`).
 
 Même socle que Keystone : **Next.js 16 (App Router) · React 19 · PGlite (Postgres embarqué) + Drizzle**. En
-ligne, Codex utilise le serveur PostgreSQL commun EPC2I (décision M-01 : base `epc2i`, schéma `codex`, rôle
+ligne, Codex utilise le serveur PostgreSQL commun de la suite Atrium (décision M-01 : base `atrium`, schéma `codex`, rôle
 `codex_app`) ; PGlite reste la base locale et de repli (`DATABASE_URL`, `docs/postgres.md`).
 
 ## Démarrer
@@ -85,7 +85,7 @@ Les fichiers déposés sont stockés dans `.data/files/` (ou dans SharePoint, vo
   npm run registry:review -- --check <cahier.csv>     # contrôle un cahier rempli, écart avec le code (--org <csv> en plus)
   npm run org:check -- <organigramme.csv>             # modèle docs/modeles/organigramme.csv : règles, doublons, collisions
   ```
-- **Serveur PostgreSQL commun** (`docs/postgres.md`) : `DATABASE_URL=postgres://codex_app:…@hôte:5432/epc2i` fait
+- **Serveur PostgreSQL commun** (`docs/postgres.md`) : `DATABASE_URL=postgres://codex_app:…@hôte:5432/atrium` fait
   travailler Codex sur ce serveur (PostgreSQL 16 au moins, ICU, `pg_trgm` installé par son superutilisateur) au lieu
   de PGlite, avec les mêmes migrations, fonctions et déclencheurs, dans le schéma `codex`. Sans cette variable, rien ne
   change (développement, démonstration, app Mac).
@@ -93,7 +93,7 @@ Les fichiers déposés sont stockés dans `.data/files/` (ou dans SharePoint, vo
   | `DATABASE_URL` | Base | Remplissage d'une base vide |
   | --- | --- | --- |
   | absente ou vide | PGlite dans `$CODEX_DATA_DIR/pglite` (développement, app Mac) | `CODEX_SEED`, `demo` par défaut |
-  | `postgres://codex_app:…@hôte:5432/epc2i` | serveur commun EPC2I, schéma `codex` | seulement sur demande : `CODEX_SEED=minimal`, `CODEX_SEED=demo` ou `CODEX_SEED_DEMO=1` ; sinon la base reste vide et chaque page mène à `/base-vide`, qui dit quoi poser |
+  | `postgres://codex_app:…@hôte:5432/atrium` | serveur commun de la suite Atrium, schéma `codex` | seulement sur demande : `CODEX_SEED=minimal`, `CODEX_SEED=demo` ou `CODEX_SEED_DEMO=1` ; sinon la base reste vide et chaque page mène à `/base-vide`, qui dit quoi poser |
 
   Sur le serveur, le schéma, le rôle `codex_app` (aucun droit `CREATE` sur la base, aucun accès hors de `codex`) et les
   droits des lecteurs des vues `pub_` (`partage/90-droits.sql`) sont posés par le socle (dépôt Matrix,
@@ -769,7 +769,7 @@ tests/
 ## Décisions et points ouverts
 
 Les décisions prises avec l'utilisateur et les questions encore ouvertes sont dans `docs/decisions.md` ; le deck
-d'origine et son audit dans `docs/sources/` et `docs/audit-deck-epc2i.md`. Voir aussi `docs/registre-points-ouverts.md`
+d'origine et son audit dans `docs/sources/` et `docs/audit-deck-ged.md`. Voir aussi `docs/registre-points-ouverts.md`
 (registre des types) et les points *provisoires* de `docs/modele-cible.md` (organisation, stockage SharePoint).
 
 ## Mise en ligne (Docker, Coolify)

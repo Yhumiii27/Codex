@@ -12,7 +12,7 @@ maquette (`design/GED Groupe.dc.html`, design system Nocturne, thème sombre seu
 ```bash
 npm run build && npm run a11y           # build de production, base de démo jetable, interface en français
 npm run a11y -- --lang all              # français puis anglais
-npm run a11y -- --theme light           # affichage clair (Norma 1.0, cookie epc2i-theme) ; sombre par défaut
+npm run a11y -- --theme light           # affichage clair (Norma 1.0, cookie atrium-theme) ; sombre par défaut
 npm run a11y -- --dev                   # next dev au lieu du build (plus lent ; aucun autre next dev dans le dépôt)
 npm run a11y -- --url http://localhost:3100 --json rapport.json   # application déjà lancée, rapport complet
 ```

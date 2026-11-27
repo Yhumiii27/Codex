@@ -1,16 +1,16 @@
 @norma/REGLES.md
 
-Règles communes de la suite EPC2I : copie versionnée de Norma (`norma/`, `norma/VERSION`), contrôlée par
+Règles communes de la suite Atrium : copie versionnée de Norma (`norma/`, `norma/VERSION`), contrôlée par
 `npm run norma:check` ; elles se changent dans le dépôt `Yhumiii27/Norma`, jamais ici. Ce fichier n'ajoute que les
 règles propres à Codex.
 
 @AGENTS.md
 
-# Codex — GED du groupe EPC2I
+# Codex — GED du groupe
 
-Codex est la gestion électronique des documents (GED) du groupe EPC2I. C'est une app Next.js 16 avec PGlite (Postgres
+Codex est la gestion électronique des documents (GED) du groupe. C'est une app Next.js 16 avec PGlite (Postgres
 embarqué) et Drizzle. Elle a été construite d'après la maquette Claude Design (`design/`, design system Nocturne) puis
-adaptée au modèle documentaire du deck « Création de la GED EPC2I ».
+adaptée au modèle documentaire du deck « Création de la GED ».
 
 Elle fait partie d'un système de trois apps :
 - **Keystone** : gestion de projets. Port 3000, dépôt `github.com/Yhumiii27/Keystone`.
@@ -45,8 +45,8 @@ numéro, sans les trancher à la place de l'utilisateur.
 | `docs/decisions.md` | **Journal des décisions de l'utilisateur** (citations exactes) et questions encore ouvertes. Les questions qui y sont tranchées ne se reposent pas. |
 | `docs/fiches-decision.md` | Fiches d'aide à la décision pour O-01 à O-11 : état du code, options, effort, ce qui deviendrait irréversible, données attendues. Elles ne tranchent rien ; `docs/decisions.md` prévaut. |
 | `docs/modele-cible.md` | Modèle fonctionnel qui fait foi : identifiants, révisions, confidentialité, circuits, conservation. Les propositions non confirmées qu'il contient sont signalées en tête ; en cas de doute, `docs/decisions.md` prévaut. |
-| `docs/audit-deck-epc2i.md` | Audit du deck (7 octobre 2026) : exigences, modèle de métadonnées, écarts avec Codex et leur statut actuel, architecture. |
-| `docs/sources/deck-ged-epc2i.md` | Texte intégral du deck. L'original est `docs/sources/creation-ged-epc2i.pptx`. |
+| `docs/audit-deck-ged.md` | Audit du deck (7 octobre 2026) : exigences, modèle de métadonnées, écarts avec Codex et leur statut actuel, architecture. |
+| `docs/sources/deck-ged.md` | Texte intégral du deck. L'original est `docs/sources/creation-ged.pptx`. |
 | `docs/historique.md` | Chronologie du travail : construction, audit, modèle v2, revues, app Mac, GitHub. |
 | `docs/avancement-v2.md` | État d'avancement jusqu'au 24 novembre 2026 (archive : le reste à faire est dans Norma, ci-dessous). |
 | `docs/postgres.md` | PostgreSQL serveur en option (`DATABASE_URL`), limites, `npm run test:pg`. |
@@ -86,7 +86,7 @@ numéro, sans les trancher à la place de l'utilisateur.
 - **Conservation par type de document, selon les règles d'usage.** La migration de l'existant se fera par un code
   dédié, **hors de Codex**.
 - **Bibliothèque sur notre serveur, pour le moment (D-28, 2 novembre 2026)** : fichiers en stockage local sur le
-  serveur EPC2I, SharePoint non activé (O-01 répondue pour le moment). Avec la base sur le serveur commun, Codex
+  serveur de l'entreprise, SharePoint non activé (O-01 répondue pour le moment). Avec la base sur le serveur commun, Codex
   sauvegarde les fichiers lui-même (`src/lib/files-backup-core.mjs`) ; exploitation : `docs/stockage-serveur.md`.
 - **Non tranché** : fournisseur d'authentification (O-02 ; Entra ID est proposé, pas
   confirmé), liaison avec Keystone par API ou base partagée (O-03, en partie répondue par M-01 : base commune, un
@@ -100,7 +100,7 @@ npm run dev          # http://localhost:3100
 npm test             # Vitest : tests/unit et tests/integration (PGlite en mémoire), ~20 s, sans serveur ni .data/
 npm run typecheck && npm run lint && npm run build
 npm run a11y         # après le build : axe-core dans Chromium sur une base de démo jetable (docs/accessibilite.md)
-npm run a11y -- --theme light   # même contrôle en affichage clair (cookie epc2i-theme)
+npm run a11y -- --theme light   # même contrôle en affichage clair (cookie atrium-theme)
 npm run norma:check  # copie de Norma intacte, dépendances conformes à norma/dependances.json
 ```
 
@@ -113,8 +113,8 @@ npm run norma:check  # copie de Norma intacte, dépendances conformes à norma/d
     le référentiel (registre, fonctions, matrice des droits, organisation provisoire, acteurs système) et un
     administrateur initial (`admin`). Lu seulement sur une base vide. `CODEX_SEED_DEMO=1` (variable du serveur commun)
     vaut `demo` ; posée avec un autre `CODEX_SEED`, le serveur refuse de démarrer.
-- **Serveur commun (décision M-01).** Avec `DATABASE_URL`, Codex se connecte au serveur PostgreSQL commun EPC2I en
-  tant que `codex_app` (base `epc2i`, schéma `codex`, aucun accès ailleurs, aucun droit `CREATE` sur la base), pool
+- **Serveur commun (décision M-01).** Avec `DATABASE_URL`, Codex se connecte au serveur PostgreSQL commun de la suite Atrium en
+  tant que `codex_app` (base `atrium` après son renommage par Matrix, nom lu dans `DATABASE_URL`, jamais écrit en dur ; schéma `codex`, aucun accès ailleurs, aucun droit `CREATE` sur la base), pool
   `search_path=codex`, `application_name=codex`, taille `CODEX_DB_POOL`. Sur le serveur, rien n'est rempli sans
   `CODEX_SEED` ni `CODEX_SEED_DEMO=1` : la base reste vide et toutes les pages mènent à `/base-vide`, qui dit quoi
   poser. Socle, rôles et partage : dépôt Matrix (`infra/postgres/`) ; détail et écarts : `docs/postgres.md`.
@@ -236,7 +236,7 @@ Détail et inventaire : `docs/postgres.md`, « Échanges avec les autres outils 
 
 - **Fidélité à la maquette** : `design/GED Groupe.dc.html`, Nocturne copié dans `src/app/nocturne.css`, un CSS module
   par écran.
-- **Affichage sombre / clair** (Norma 1.0) : cookie `epc2i-theme` lu par `src/app/layout.tsx`, qui pose `data-theme`
+- **Affichage sombre / clair** (Norma 1.0 ; nom de Norma 3.0, l'ancien nom lu à défaut pendant la transition, jamais écrit) : cookie `atrium-theme` lu par `src/app/layout.tsx`, qui pose `data-theme`
   sur `<html>` ; bouton `src/components/shell/ThemeToggle.tsx` à droite du sélecteur FR / EN. Le bloc clair de
   `src/app/nocturne.css` est celui de `norma/charte/nocturne.css` (mêmes valeurs, `tests/unit/theme.test.ts`). Une
   couleur en dur se remplace par une variable ; un écart propre au thème clair s'écrit `:root[data-theme="light"] …`

@@ -1,6 +1,6 @@
-# Codex — modèle cible (GED EPC2I)
+# Codex — modèle cible (GED du groupe)
 
-Synthèse du deck « Création de la GED EPC2I », de la spec Keystone (`Keystone/docs/spec/10-site-docs-mywork-settings.md` §4-5)
+Synthèse du deck « Création de la GED », de la spec Keystone (`Keystone/docs/spec/10-site-docs-mywork-settings.md` §4-5)
 et des arbitrages du 7 octobre 2026. Ce document fait foi pour l'implémentation ; les points marqués *provisoire* seront revus.
 
 Certaines règles ci-dessous sont des propositions de l'assistant, implémentées mais **non confirmées par l'utilisateur** :

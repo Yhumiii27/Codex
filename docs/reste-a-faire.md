@@ -98,7 +98,7 @@ peut dépendre de plusieurs questions ; aucune n'a été tranchée à la place d
     O-02) ;
   - ajoutés le 26 octobre 2026 (analyse comparative avec les GED du commerce), à valider par l'utilisateur avant de
     développer : 130 (M22, O-05, M10), 131 (P04, Q06, M12), 132 (M22, O-02, M10).
-- **Des données de l'utilisateur** : 119 (vrais modèles EPC2I, aussi le reste de 6), 120 (date de clôture de
+- **Des données de l'utilisateur** : 119 (vrais modèles de l'entreprise, aussi le reste de 6), 120 (date de clôture de
   l'exercice).
 - **Une session sur macOS** : 121 à 129 (app Mac, T-02), et les essais sous macOS des restes de 43 (contrôle de version
   de `desktop/build-app.sh`) et 46 (aperçu paginé dans WebKit).
@@ -222,7 +222,7 @@ src/lib/actions.ts:464-475 : `decideStep` exige que l'utilisateur soit le titula
 </details>
 
 #### 6. Modèles : les rattacher aux types de document
-- **Fait en partie le 17 octobre 2026** : un modèle FRM peut viser un ou plusieurs types (table `template_types`, migration régénérée) ; son propriétaire ou un gestionnaire documentaire (droit Modifier, `mayLinkTemplate` dans src/lib/access.ts) les règle par `setTemplateTypes` (src/lib/actions.ts : contrôle de version, refus sur un document gelé, journalisé comme une modification de métadonnées) depuis la section « Types cibles » de la fiche du modèle ou Administration › Modèles (QMS), qui affiche la colonne. « Nouveau depuis un modèle » range d'abord les modèles du type choisi, puis les autres (toujours proposés et acceptés) ; choisir un modèle avant d'avoir choisi un type prend son type cible. Un type visé par un modèle compte comme utilisé dans le registre ; un document reclassé hors de FRM perd ses types cibles. Reste : refuser côté serveur un modèle non prévu pour le type (choix laissé à l'utilisateur, voir docs/decisions.md), exclure le sous-type « Formulaire », fournir les vrais modèles EPC2I (G06). Tests : tests/integration/author-templates.test.ts, `mayLinkTemplate` dans tests/unit/access.test.ts.
+- **Fait en partie le 17 octobre 2026** : un modèle FRM peut viser un ou plusieurs types (table `template_types`, migration régénérée) ; son propriétaire ou un gestionnaire documentaire (droit Modifier, `mayLinkTemplate` dans src/lib/access.ts) les règle par `setTemplateTypes` (src/lib/actions.ts : contrôle de version, refus sur un document gelé, journalisé comme une modification de métadonnées) depuis la section « Types cibles » de la fiche du modèle ou Administration › Modèles (QMS), qui affiche la colonne. « Nouveau depuis un modèle » range d'abord les modèles du type choisi, puis les autres (toujours proposés et acceptés) ; choisir un modèle avant d'avoir choisi un type prend son type cible. Un type visé par un modèle compte comme utilisé dans le registre ; un document reclassé hors de FRM perd ses types cibles. Reste : refuser côté serveur un modèle non prévu pour le type (choix laissé à l'utilisateur, voir docs/decisions.md), exclure le sous-type « Formulaire », fournir les vrais modèles de l'entreprise (G06). Tests : tests/integration/author-templates.test.ts, `mayLinkTemplate` dans tests/unit/access.test.ts.
 
 - **Effort** : faible · **Références** : FON-12, PAR-05, G06
 
@@ -232,7 +232,7 @@ La création ne peut pas partir d'un modèle adapté au type (FON-12). À faire 
 - la présélection du type quand on choisit un modèle ;
 - un contrôle serveur dans `createDocument` qui refuse un modèle non prévu pour le type ;
 - l'option d'exclure le sous-type « Formulaire » de la liste des modèles.
-Régénérer la migration. Les vrais modèles EPC2I restent à fournir par l'utilisateur ; ceux de la démo n'ont pas de fichier (G06).
+Régénérer la migration. Les vrais modèles de l'entreprise restent à fournir par l'utilisateur ; ceux de la démo n'ont pas de fichier (G06).
 
 <details><summary>Constat dans le code</summary>
 
@@ -326,7 +326,7 @@ Le squelette peut se construire dès maintenant sur la table `departments`, mêm
 
 <details><summary>Constat dans le code</summary>
 
-src/components/shell/Sidebar.tsx:10-17 ne propose que home, explorer, search, workflow, retention et admin. src/app ne contient aucune route `/departements` (seulement administration, archivage, documents, explorateur, recherche et validations). Les briques existent : l'axe `department` (src/app/explorateur/page.tsx:10), les facettes dans l'URL (src/lib/search.ts) et `users.department` (src/db/schema.ts:41). docs/audit-deck-epc2i.md:699 classe G12 « partiel ». Le deck, ligne 348 de sa transcription, annonce des pages dédiées par métier.
+src/components/shell/Sidebar.tsx:10-17 ne propose que home, explorer, search, workflow, retention et admin. src/app ne contient aucune route `/departements` (seulement administration, archivage, documents, explorateur, recherche et validations). Les briques existent : l'axe `department` (src/app/explorateur/page.tsx:10), les facettes dans l'URL (src/lib/search.ts) et `users.department` (src/db/schema.ts:41). docs/audit-deck-ged.md:699 classe G12 « partiel ». Le deck, ligne 348 de sa transcription, annonce des pages dédiées par métier.
 
 </details>
 
@@ -379,7 +379,7 @@ Ni le deck ni la maquette ne fixent le niveau attendu (texte ou visuel). C'est �
 
 <details><summary>Constat dans le code</summary>
 
-src/components/dialogs/Dialogs.tsx:531-550 : le dialogue `Compare` n'affiche que le libellé, la date, l'auteur, le commentaire, le nom, la taille et le nombre de pages, et surligne les cellules qui diffèrent. Il est ouvert depuis `RevisionsTab` (src/app/documents/[id]/DocClient.tsx:135). Aucune bibliothèque d'extraction de texte n'est installée : package.json ne dépend que de pglite, drizzle-orm, next, react et server-only. L'audit garde cette réserve (docs/audit-deck-epc2i.md:636, G05). Dans la maquette, « Comparer » n'est qu'un bouton sans comportement défini (design/GED Groupe.dc.html:309) ; le deck n'exige pas de comparaison de contenu.
+src/components/dialogs/Dialogs.tsx:531-550 : le dialogue `Compare` n'affiche que le libellé, la date, l'auteur, le commentaire, le nom, la taille et le nombre de pages, et surligne les cellules qui diffèrent. Il est ouvert depuis `RevisionsTab` (src/app/documents/[id]/DocClient.tsx:135). Aucune bibliothèque d'extraction de texte n'est installée : package.json ne dépend que de pglite, drizzle-orm, next, react et server-only. L'audit garde cette réserve (docs/audit-deck-ged.md:636, G05). Dans la maquette, « Comparer » n'est qu'un bouton sans comportement défini (design/GED Groupe.dc.html:309) ; le deck n'exige pas de comparaison de contenu.
 
 </details>
 
@@ -399,7 +399,7 @@ Si SharePoint est activé (O-01), la conversion PDF de Microsoft Graph est une a
 
 <details><summary>Constat dans le code</summary>
 
-src/app/documents/[id]/DocClient.tsx:12-16 : le commentaire dit « no conversion exists ». Aux lignes 36-42, un fichier qui n'est ni PDF, ni image, ni texte affiche « Aperçu indisponible » et un bouton de téléchargement. La clé `preview_note` est définie (src/lib/i18n.ts:18 et 112) mais utilisée nulle part dans src/ (vérifié par grep) ; la maquette l'affiche sous la pagination (design/GED Groupe.dc.html:221). Aucune dépendance de conversion dans package.json. `working_versions` n'a pas de colonne pour un rendu PDF (src/db/schema.ts:239-244). M12 est marqué « Ouvert » dans l'audit (docs/audit-deck-epc2i.md:1568-1572).
+src/app/documents/[id]/DocClient.tsx:12-16 : le commentaire dit « no conversion exists ». Aux lignes 36-42, un fichier qui n'est ni PDF, ni image, ni texte affiche « Aperçu indisponible » et un bouton de téléchargement. La clé `preview_note` est définie (src/lib/i18n.ts:18 et 112) mais utilisée nulle part dans src/ (vérifié par grep) ; la maquette l'affiche sous la pagination (design/GED Groupe.dc.html:221). Aucune dépendance de conversion dans package.json. `working_versions` n'a pas de colonne pour un rendu PDF (src/db/schema.ts:239-244). M12 est marqué « Ouvert » dans l'audit (docs/audit-deck-ged.md:1568-1572).
 
 </details>
 
@@ -416,7 +416,7 @@ Les autres relations (référence, annexe, enregistrement issu d'une procédure,
 
 <details><summary>Constat dans le code</summary>
 
-src/db/schema.ts:120-174 : la table `documents` n'a aucune colonne de lien, et aucune table de relations n'existe parmi celles du schéma. Aucune occurrence de replacedBy, supersededBy ou d'un lien similaire dans src/. L'audit le confirme : « Ouvert. Le lien « remplacé par » proposé par l'assistant le 7 octobre à 17:33 n'est pas implémenté » (docs/audit-deck-epc2i.md:1562-1566). Nuance : au niveau des révisions, le statut « Remplacé » existe déjà (`revisions.supersededAt`, schema.ts:217). Comme une révision garde l'ID (D-11), la révision qui en remplace une autre est implicitement la lettre suivante du même document.
+src/db/schema.ts:120-174 : la table `documents` n'a aucune colonne de lien, et aucune table de relations n'existe parmi celles du schéma. Aucune occurrence de replacedBy, supersededBy ou d'un lien similaire dans src/. L'audit le confirme : « Ouvert. Le lien « remplacé par » proposé par l'assistant le 7 octobre à 17:33 n'est pas implémenté » (docs/audit-deck-ged.md:1562-1566). Nuance : au niveau des révisions, le statut « Remplacé » existe déjà (`revisions.supersededAt`, schema.ts:217). Comme une révision garde l'ID (D-11), la révision qui en remplace une autre est implicitement la lettre suivante du même document.
 
 </details>
 
@@ -432,7 +432,7 @@ Un écrivain ZIP minimal sans compression, sur le modèle de src/lib/pdf.ts, év
 
 <details><summary>Constat dans le code</summary>
 
-Seuls deux exports existent. src/app/api/export/search/route.ts:7-23 produit un CSV des métadonnées des résultats visibles, sans fichiers, révisions ni historique. src/app/api/export/audit/route.ts:14-38 produit le CSV du journal, réservé à l'administration. Aucune autre route d'export dans src/app/api, aucune dépendance ZIP dans package.json. M22 est marqué « Ouvert » (docs/audit-deck-epc2i.md:1628-1632). Ce n'est pas écarté par D-21, qui ne vise que la migration entrante (import).
+Seuls deux exports existent. src/app/api/export/search/route.ts:7-23 produit un CSV des métadonnées des résultats visibles, sans fichiers, révisions ni historique. src/app/api/export/audit/route.ts:14-38 produit le CSV du journal, réservé à l'administration. Aucune autre route d'export dans src/app/api, aucune dépendance ZIP dans package.json. M22 est marqué « Ouvert » (docs/audit-deck-ged.md:1628-1632). Ce n'est pas écarté par D-21, qui ne vise que la migration entrante (import).
 
 </details>
 
@@ -508,7 +508,7 @@ Constaté. updateMeta (src/lib/actions.ts:278-322) relit le document, puis réé
 
 <details><summary>Constat dans le code</summary>
 
-Constaté. src/app/api/documents/[id] ne contient que file/route.ts. Aucune route ni action n'exporte un circuit. simplePdf (src/lib/pdf.ts:19-52) n'est utilisé que pour le fichier de remplacement (file/route.ts:102) ; il ne produit qu'une page (`/Count 1`, ligne 37) et ne fait pas de retour à la ligne. Les données existent : étapes avec titulaire et date (workflow_steps), commentaires, approvedAt, inForceAt, changeRef (schema.ts). Le constat d'audit P08 est « Ouvert » (docs/audit-deck-epc2i.md:1672-1674).
+Constaté. src/app/api/documents/[id] ne contient que file/route.ts. Aucune route ni action n'exporte un circuit. simplePdf (src/lib/pdf.ts:19-52) n'est utilisé que pour le fichier de remplacement (file/route.ts:102) ; il ne produit qu'une page (`/Count 1`, ligne 37) et ne fait pas de retour à la ligne. Les données existent : étapes avec titulaire et date (workflow_steps), commentaires, approvedAt, inForceAt, changeRef (schema.ts). Le constat d'audit P08 est « Ouvert » (docs/audit-deck-ged.md:1672-1674).
 
 </details>
 
@@ -525,7 +525,7 @@ L'onglet Historique sait déjà afficher le détail. L'effort est donc faible po
 
 <details><summary>Constat dans le code</summary>
 
-src/lib/actions.ts:306 : `tx.update(s.documents).set({ ...f, ... })` écrase les champs. src/lib/actions.ts:307 : `audit(tx, ctx.user.id, 'edit', id, d.revInForce ?? d.revWorking ?? '')` ne journalise que la lettre de révision. L'onglet Historique (src/app/documents/[id]/page.tsx:460-465) affiche déjà `h.detail`. docs/audit-deck-epc2i.md:636 (G05) : « les métadonnées ne sont toujours pas versionnées ».
+src/lib/actions.ts:306 : `tx.update(s.documents).set({ ...f, ... })` écrase les champs. src/lib/actions.ts:307 : `audit(tx, ctx.user.id, 'edit', id, d.revInForce ?? d.revWorking ?? '')` ne journalise que la lettre de révision. L'onglet Historique (src/app/documents/[id]/page.tsx:460-465) affiche déjà `h.detail`. docs/audit-deck-ged.md:636 (G05) : « les métadonnées ne sont toujours pas versionnées ».
 
 </details>
 
@@ -638,7 +638,7 @@ Si le volume pose problème, on peut se limiter à Confidentiel et Très confide
 
 <details><summary>Constat dans le code</summary>
 
-Le manque est confirmé dans le code. Dans src/app/api/documents/[id]/file/route.ts, la ligne 112 n'appelle audit() que si x.download est vrai (lignes 112-115), et le commentaire de la ligne 86 le dit (« ?download=1 forces a download and is logged »). L'aperçu en ligne passe par cette même route sans download=1 : fileUrl est construit en src/app/documents/[id]/page.tsx:99, puis chargé par l'iframe PDF (src/app/documents/[id]/DocClient.tsx:30), par l'img (:33) et par l'iframe texte (:35). L'ouverture de la fiche (page.tsx:63, getDoc) n'écrit rien non plus. Les seuls appels à audit() sont la route fichier (download), src/lib/actions.ts, src/lib/lifecycle.ts et src/lib/importer.ts ; aucun ne porte l'action 'view'. HEAD ne journalise déjà rien (route.ts:119-124). G48 (docs/audit-deck-epc2i.md:1023) liste encore « les consultations ne sont pas journalisées ». M05 (:1526-1530) est une question d'audit sans numéro O-xx et ne fait l'objet d'aucune décision contraire dans docs/decisions.md.
+Le manque est confirmé dans le code. Dans src/app/api/documents/[id]/file/route.ts, la ligne 112 n'appelle audit() que si x.download est vrai (lignes 112-115), et le commentaire de la ligne 86 le dit (« ?download=1 forces a download and is logged »). L'aperçu en ligne passe par cette même route sans download=1 : fileUrl est construit en src/app/documents/[id]/page.tsx:99, puis chargé par l'iframe PDF (src/app/documents/[id]/DocClient.tsx:30), par l'img (:33) et par l'iframe texte (:35). L'ouverture de la fiche (page.tsx:63, getDoc) n'écrit rien non plus. Les seuls appels à audit() sont la route fichier (download), src/lib/actions.ts, src/lib/lifecycle.ts et src/lib/importer.ts ; aucun ne porte l'action 'view'. HEAD ne journalise déjà rien (route.ts:119-124). G48 (docs/audit-deck-ged.md:1023) liste encore « les consultations ne sont pas journalisées ». M05 (:1526-1530) est une question d'audit sans numéro O-xx et ne fait l'objet d'aucune décision contraire dans docs/decisions.md.
 
 </details>
 
@@ -691,7 +691,7 @@ Constaté. src/app/api/export/search/route.ts:8-22 et src/app/api/export/audit/r
 
 <details><summary>Constat dans le code</summary>
 
-Constaté : src/db/schema.ts:229-247 (working_versions : storage, file_key, file_name, mime, size, pages, aucune colonne d'empreinte) ; src/lib/storage.ts:195-201 (stageFile ne calcule rien) et :258-260 (readStored renvoie les octets sans vérification) ; la seule utilisation de SHA-256 dans src/lib est la comparaison des jetons (src/lib/importer.ts:26) ; l'import ne détecte que le rejeu d'une legacyRef (importer.ts:279 et suivantes) ; docs/audit-deck-epc2i.md:1664-1666 (P06 : « aucune détection de doublons (aucune empreinte de fichier) »).
+Constaté : src/db/schema.ts:229-247 (working_versions : storage, file_key, file_name, mime, size, pages, aucune colonne d'empreinte) ; src/lib/storage.ts:195-201 (stageFile ne calcule rien) et :258-260 (readStored renvoie les octets sans vérification) ; la seule utilisation de SHA-256 dans src/lib est la comparaison des jetons (src/lib/importer.ts:26) ; l'import ne détecte que le rejeu d'une legacyRef (importer.ts:279 et suivantes) ; docs/audit-deck-ged.md:1664-1666 (P06 : « aucune détection de doublons (aucune empreinte de fichier) »).
 
 </details>
 
@@ -707,7 +707,7 @@ Quand l'utilisateur aura tranché M12 (formats acceptés, taille maximale, PDF/A
 
 <details><summary>Constat dans le code</summary>
 
-Constaté : src/lib/storage.ts:195-205 (stageFile/stageUpload stockent tout fichier, exécutables et archives compris, sans analyse) ; src/components/dialogs/Modal.tsx:127 (input file sans `accept`) ; next.config.ts:7 (Server Actions jusqu'à 50 Mo). Atténuation déjà en place : la route fichier ne sert inline que des types sûrs (src/app/api/documents/[id]/file/route.ts:14 et :76-82) et force les autres en téléchargement (octet-stream, nosniff). La liste des formats admis relève de la question d'audit M12 (docs/audit-deck-epc2i.md:1568-1572), qui n'est pas reprise dans O-01..O-11 ; l'antivirus n'en dépend pas.
+Constaté : src/lib/storage.ts:195-205 (stageFile/stageUpload stockent tout fichier, exécutables et archives compris, sans analyse) ; src/components/dialogs/Modal.tsx:127 (input file sans `accept`) ; next.config.ts:7 (Server Actions jusqu'à 50 Mo). Atténuation déjà en place : la route fichier ne sert inline que des types sûrs (src/app/api/documents/[id]/file/route.ts:14 et :76-82) et force les autres en téléchargement (octet-stream, nosniff). La liste des formats admis relève de la question d'audit M12 (docs/audit-deck-ged.md:1568-1572), qui n'est pas reprise dans O-01..O-11 ; l'antivirus n'en dépend pas.
 
 </details>
 
@@ -1011,7 +1011,7 @@ Ce qui peut se faire maintenant :
 (3) Ajouter src/instrumentation.ts avec onRequestError, pour enregistrer toutes les erreurs serveur : rendu, Server Actions et routes.
 (4) Ajouter GET /api/health, qui exécute un select 1 via getDb() et vérifie l'accès en écriture à FILES_DIR, ou à SharePoint quand ce stockage est actif. Elle répond 200 ou 503 et ne divulgue aucune donnée.
 
-Les métriques et les alertes dépendent de la plateforme d'hébergement. Qui héberge et exploite Codex n'a pas été tranché (question 3 de l'audit, docs/audit-deck-epc2i.md:1217-1218). Ce n'est pas une des questions O-01 à O-11, donc ce point n'est pas classé comme bloqué par une décision.
+Les métriques et les alertes dépendent de la plateforme d'hébergement. Qui héberge et exploite Codex n'a pas été tranché (question 3 de l'audit, docs/audit-deck-ged.md:1217-1218). Ce n'est pas une des questions O-01 à O-11, donc ce point n'est pas classé comme bloqué par une décision.
 
 <details><summary>Constat dans le code</summary>
 
@@ -1049,7 +1049,7 @@ Vérifié :
 
 - **Fait en partie le 18 octobre 2026** (option, PGlite reste le défaut ; `docs/postgres.md`) : `DATABASE_URL` fait travailler Codex sur un serveur PostgreSQL 18 (pilote node-postgres, pool de `CODEX_DB_POOL_MAX` connexions, 10 par défaut ; `src/db/sql-client.ts`), avec les mêmes migrations, fonctions et déclencheurs, `pg_trgm` et ICU, posés sous un verrou consultatif (deux serveurs démarrés ensemble sur une base vide : une migration, un amorçage) ; serveur antérieur à PostgreSQL 18 refusé (`pg_unicode_fast`) ; valeurs lues comme sur PGlite (`int8` en nombre, dates à minuit UTC, marque d'ordre d'octets retirée) ; base serveur neuve amorcée en référentiel minimal par défaut ; `DATABASE_URL` déclarée dans .env.example et vérifiée au démarrage. Sauvegarde (Administration, `npm run backup`, `restore`), `npm run export` et `integrity` refusent avec un message ; migration en attente refusée sans `CODEX_MIGRATION_BACKUP=off` ; export complet en `REPEATABLE READ` sur une connexion gardée ; `registry:apply` marche sur le serveur (`--apply --no-backup`). `npm run test:pg` (`CODEX_TEST_DATABASE_URL`, une base par fichier) : toute la suite passe sur PostgreSQL 18.3 (1 172 tests) et la CI la rejoue sur un service `postgres:18` ; `tests/integration/postgres-server.test.ts` prouve entre connexions l'attente sur un compteur, le numéro rendu par une transaction annulée, l'absence de doublon (60 créations simultanées), l'échec de l'ancien max + 1 et l'import un par un. **Reste** : la sauvegarde du serveur et l'hébergement (M22, O-03) ; les migrations au déploiement plutôt qu'au premier accès ; la revue une à une des transactions qui relisent avant d'écrire, en `READ COMMITTED` ; plusieurs processus (limites de débit en mémoire, fichiers locaux, verrou du dossier de données).
 - **Complété le 18 octobre 2026** (lot 9, étape 9, ce qui ne dépend pas de l'hébergement) : `npm run db:migrate` (`scripts/codex-migrate.mts`) applique les migrations au déploiement, comme le démarrage (`openDb` : schéma vérifié, migrations en une transaction, fonctions et déclencheurs reposés), sans amorcer ; `--check` dit ce qui est en attente sans rien changer (code 1) ; PGlite : serveur arrêté (verrou `codex.lock`, nouveau type `migrate`), sauvegarde avant migration journalisée ; serveur PostgreSQL : une base qui a des données seulement avec `--no-backup` ; le démarrage migre toujours si la commande n'a pas été lancée. Revue une à une des transactions qui relisent avant d'écrire, en `READ COMMITTED` (`docs/postgres.md`, « Transactions ») : règle du verrou de la ligne du document en tête (`lockDoc`, `lockDocs`, `lockWorkflow`, dans l'ordre des identifiants), appliquée aux décisions de circuit (`decideStep`, rappel, délégation, réassignation), à `promoteDue`, aux décisions Vigie et à la greffe (demande relue sous verrou), aux demandes de validation et de modification, à la revue, au dépôt et à la restauration de versions, à l'archivage, au gel et à sa levée, aux liens, au transfert ; pièce attendue remplie par mise à jour conditionnelle ; ligne verrouillée pour les droits, le registre et les filtres de département. `tests/integration/read-committed.test.ts` : sur PostgreSQL 18.3, ses 6 tests échouaient tous avec l'ancien code (double approbation, double mise en vigueur, demandes en double, décision Vigie appliquée deux fois, bascule de droit perdue) et passent ; `tests/integration/migrate-command.test.ts` (base neuve, migration en attente sauvegardée et journalisée, refus pendant le serveur). Plusieurs processus : documenté comme limite (`docs/exploitation.md` §7 : limites de débit en mémoire, fichiers locaux et verrou du dossier, verrous « déjà en cours » par processus), pas développé. Restent : la sauvegarde du serveur et l'hébergement (M22, O-03), plusieurs processus.
-- **Complété le 22 octobre 2026** (lot 11, décision M-01 : base commune `epc2i`, un schéma par outil) : réunion avec la bascule de `main` ; toutes les tables, fonctions et déclencheurs et le journal des migrations dans le schéma `codex`, sur le serveur et en PGlite ; rôle `codex_app` sans `CREATE` sur la base (migrateur propre, aucune migration avec `CREATE SCHEMA`, `CREATE EXTENSION` ni `public`) ; base de migrations refaite (`0000_init`, `0001_partage` avec les 7 vues `pub_` du partage) ; reprise automatique d'une base PGlite de la branche d'avant le lot 11, refus avec remède des autres ; sur le serveur, rien n'est rempli sans `CODEX_SEED` ou `CODEX_SEED_DEMO=1` (page `/base-vide`) ; déclaration du schéma à Matrix ; `npm run test:pg` dans des bases disposées comme le socle (rôle sans `CREATE` ni `TEMPORARY`) ; socle Matrix rejoué sur PostgreSQL 18.3, `verifier-droits.sql` conforme avec Codex en place. Écarts à porter dans le dépôt Matrix (`pub_journal.quand`, `pg_trgm`, version 18) : `docs/postgres.md`. Restent : la mise en service du serveur commun et sa sauvegarde (M22), plusieurs processus.
+- **Complété le 22 octobre 2026** (lot 11, décision M-01 : base commune de la suite, un schéma par outil) : réunion avec la bascule de `main` ; toutes les tables, fonctions et déclencheurs et le journal des migrations dans le schéma `codex`, sur le serveur et en PGlite ; rôle `codex_app` sans `CREATE` sur la base (migrateur propre, aucune migration avec `CREATE SCHEMA`, `CREATE EXTENSION` ni `public`) ; base de migrations refaite (`0000_init`, `0001_partage` avec les 7 vues `pub_` du partage) ; reprise automatique d'une base PGlite de la branche d'avant le lot 11, refus avec remède des autres ; sur le serveur, rien n'est rempli sans `CODEX_SEED` ou `CODEX_SEED_DEMO=1` (page `/base-vide`) ; déclaration du schéma à Matrix ; `npm run test:pg` dans des bases disposées comme le socle (rôle sans `CREATE` ni `TEMPORARY`) ; socle Matrix rejoué sur PostgreSQL 18.3, `verifier-droits.sql` conforme avec Codex en place. Écarts à porter dans le dépôt Matrix (`pub_journal.quand`, `pg_trgm`, version 18) : `docs/postgres.md`. Restent : la mise en service du serveur commun et sa sauvegarde (M22), plusieurs processus.
 - **Complété le 22 octobre 2026** (serveur commun en PostgreSQL 16, décision P-01 de Matrix) : Codex admet PostgreSQL 16 au lieu de 18 ; `codex_fold` replie la casse avec `pg_unicode_fast` quand la base l'a (PGlite, PostgreSQL 18), sinon avec la collation ICU `und-x-icu` (`foldCollation`, `src/db/index.ts`) ; aucune migration ne change. `npm run test:pg` rejoué sur l'image du socle Matrix (PostgreSQL 16.15, ICU 72) et sur `postgres:18-bookworm` ; la CI rejoue les deux. Écarts restants du repli et du tri : `docs/postgres.md`, « Repli de la recherche selon la version ».
 - **Effort** : important · **Références** : D-02, G02, ARC-01, M22, O-03, M-01
 
@@ -1105,9 +1105,9 @@ Ce ne sont que des corrections de documentation, sans développement :
 
 <details><summary>Constat dans le code</summary>
 
-(1) docs/audit-deck-epc2i.md:627 contient encore « Réserve : après un reclassement, les fichiers déjà stockés gardent leur ancien nom… (T-03) ». Or renameDocFiles existe (src/lib/storage.ts:233) et updateMeta l'appelle (src/lib/actions.ts:319).
+(1) docs/audit-deck-ged.md:627 contient encore « Réserve : après un reclassement, les fichiers déjà stockés gardent leur ancien nom… (T-03) ». Or renameDocFiles existe (src/lib/storage.ts:233) et updateMeta l'appelle (src/lib/actions.ts:319).
 (2) docs/avancement-v2.md:1 est daté du « 8 octobre 2026 » et range T-03 dans « Reste à faire » (lignes 43-45).
-(3) Depuis 9986f2d, docs/api.md, docs/avancement-v2.md et src/app/api/registry/route.ts ne mentionnent plus Entra ID (dans d05d498, ils le faisaient : registry/route.ts:7, avancement-v2.md:43). docs/modele-cible.md:7 et :22 le présentent comme « proposé, non confirmé ». Pourtant docs/decisions.md:451-454 et :541-543 disent encore que ces fichiers le présentent comme la cible. L'audit M16 (docs/audit-deck-epc2i.md:1596) cite « simulée jusqu'au branchement Entra ID », une formule qui n'existait que dans d05d498:docs/modele-cible.md:17.
+(3) Depuis 9986f2d, docs/api.md, docs/avancement-v2.md et src/app/api/registry/route.ts ne mentionnent plus Entra ID (dans d05d498, ils le faisaient : registry/route.ts:7, avancement-v2.md:43). docs/modele-cible.md:7 et :22 le présentent comme « proposé, non confirmé ». Pourtant docs/decisions.md:451-454 et :541-543 disent encore que ces fichiers le présentent comme la cible. L'audit M16 (docs/audit-deck-ged.md:1596) cite « simulée jusqu'au branchement Entra ID », une formule qui n'existait que dans d05d498:docs/modele-cible.md:17.
 (4) docs/historique.md:308-309 marque le constat 33 « Partiel ». Or les pages sont comptées au dépôt (storage.ts:200, countPdfPages), et si le nombre est inconnu, le lecteur natif prend le relais (src/app/documents/[id]/DocClient.tsx:24).
 
 </details>
@@ -1368,7 +1368,7 @@ Ce qui relève de M14 (formation, pilote, date d'interdiction des dépôts hors 
 
 <details><summary>Constat dans le code</summary>
 
-Constaté. La seule aide est le bouton « Notes » de la barre latérale (src/components/shell/Sidebar.tsx:64-65), qui ouvre NOTES (src/components/dialogs/Dialogs.tsx:624-641). Correctif au constat initial : ces notes ne sont pas seulement techniques. Elles résument le modèle (classement, identifiant, révisions, Vigie, confidentialité, simulation). En revanche, aucune page ne donne la marche à suivre pour créer, faire valider ou demander une modification, et aucune route d'aide n'existe dans src/app. M14 (formation, utilisateurs clés, pilote) est « Ouvert » (docs/audit-deck-epc2i.md:1580-1584).
+Constaté. La seule aide est le bouton « Notes » de la barre latérale (src/components/shell/Sidebar.tsx:64-65), qui ouvre NOTES (src/components/dialogs/Dialogs.tsx:624-641). Correctif au constat initial : ces notes ne sont pas seulement techniques. Elles résument le modèle (classement, identifiant, révisions, Vigie, confidentialité, simulation). En revanche, aucune page ne donne la marche à suivre pour créer, faire valider ou demander une modification, et aucune route d'aide n'existe dans src/app. M14 (formation, utilisateurs clés, pilote) est « Ouvert » (docs/audit-deck-ged.md:1580-1584).
 
 </details>
 
@@ -1383,7 +1383,7 @@ Ces points dépendent d'une question ouverte (O-01 à O-11 dans `docs/decisions.
 - **Effort** : faible · **Références** : MET-19, G43, C11
 - **Revérifié le 18 octobre 2026** : toujours aucun champ de sens. Références à jour : colonnes `source_org`, `external_ref`, `received_at` (src/db/schema.ts:231-233 ; l'organisme source est devenu un vocabulaire contrôlé, point 59) ; `readFields` et `validateFields` (src/lib/actions.ts:191 et 303) ; champ Organisme source dans `DocFields` (src/components/dialogs/Dialogs.tsx:294 et 382) ; `parseImportMeta` (src/lib/importer.ts:220-259). Reste après la décision : inchangé.
 
-L'absence est confirmée. D-08 (« Origine et rattachement ») réduit le besoin, puisqu'un document émis par EPC2I est d'origine interne, mais l'utilisateur n'a pas écarté explicitement le champ. Il faut lui demander de le garder ou de l'écarter. Ce n'est pas une question O-xx : elle relève de C11 et G43.
+L'absence est confirmée. D-08 (« Origine et rattachement ») réduit le besoin, puisqu'un document émis par l'entreprise est d'origine interne, mais l'utilisateur n'a pas écarté explicitement le champ. Il faut lui demander de le garder ou de l'écarter. Ce n'est pas une question O-xx : elle relève de C11 et G43.
 
 S'il est retenu :
 - une colonne à deux valeurs (entrant, sortant), puis régénérer la migration ;
@@ -1394,7 +1394,7 @@ S'il est retenu :
 
 <details><summary>Constat dans le code</summary>
 
-src/db/schema.ts:154-157 : documents.source_org, external_ref et received_at, sans colonne de sens. Aucune occurrence dans Dialogs.tsx (l.246-264), readFields (actions.ts:100-102) ni importer.ts. docs/modele-cible.md:97 ne cite pas le sens. Le deck, ligne 610 de sa transcription, l'exige pour l'origine externe. Dans l'audit, C11 et G43 (docs/audit-deck-epc2i.md:1473 et 978) notent : « l'utilisateur ne s'est pas prononcé ».
+src/db/schema.ts:154-157 : documents.source_org, external_ref et received_at, sans colonne de sens. Aucune occurrence dans Dialogs.tsx (l.246-264), readFields (actions.ts:100-102) ni importer.ts. docs/modele-cible.md:97 ne cite pas le sens. Le deck, ligne 610 de sa transcription, l'exige pour l'origine externe. Dans l'audit, C11 et G43 (docs/audit-deck-ged.md:1473 et 978) notent : « l'utilisateur ne s'est pas prononcé ».
 
 </details>
 
@@ -1410,7 +1410,7 @@ src/db/schema.ts:154-157 : documents.source_org, external_ref et received_at, sa
 
 <details><summary>Constat dans le code</summary>
 
-Constaté. issuedAt vaut la première mise en vigueur dans Codex (src/lib/lifecycle.ts:51). Les documents externes n'ont que sourceOrg, externalRef et receivedAt (src/db/schema.ts:155-157), affichés en src/app/documents/[id]/page.tsx:340-344. Il n'existe aucun champ d'édition ou d'indice de l'émetteur, ni par document ni par révision (revisions, schema.ts). Dans A17, la date d'émission d'un document externe est « ouverte » (docs/audit-deck-epc2i.md:1370-1374).
+Constaté. issuedAt vaut la première mise en vigueur dans Codex (src/lib/lifecycle.ts:51). Les documents externes n'ont que sourceOrg, externalRef et receivedAt (src/db/schema.ts:155-157), affichés en src/app/documents/[id]/page.tsx:340-344. Il n'existe aucun champ d'édition ou d'indice de l'émetteur, ni par document ni par révision (revisions, schema.ts). Dans A17, la date d'émission d'un document externe est « ouverte » (docs/audit-deck-ged.md:1370-1374).
 
 </details>
 
@@ -1463,7 +1463,7 @@ Ensuite, il faudra appliquer la règle dans `validateFields`, dans `DocFields` (
 
 <details><summary>Constat dans le code</summary>
 
-src/lib/actions.ts:117-130 : `validateFields` n'exige que le projet (l.122), le programme (l.123) et l'organisme source pour un document externe (l.124). Dans src/components/dialogs/Dialogs.tsx:252-299, seul `sourceOrg` porte `required` (l.250). externalRef, receivedAt, projectPhase, workPackage, discipline, researchTheme, studyId, ipStatus et processOwnerId n'ont aucun `required`. La phase est une simple datalist de `PROJECT_PHASES` (src/lib/i18n.ts:203, Dialogs.tsx:269-270), jamais préremplie depuis `projects.stage`. docs/modele-cible.md:96-100 : « propriétaire de processus (facultatif) ». Le deck, ligne 607 de sa transcription, dit « Champs supplémentaires obligatoires ». A24 est « Répondu en partie » (docs/audit-deck-epc2i.md:1412-1416).
+src/lib/actions.ts:117-130 : `validateFields` n'exige que le projet (l.122), le programme (l.123) et l'organisme source pour un document externe (l.124). Dans src/components/dialogs/Dialogs.tsx:252-299, seul `sourceOrg` porte `required` (l.250). externalRef, receivedAt, projectPhase, workPackage, discipline, researchTheme, studyId, ipStatus et processOwnerId n'ont aucun `required`. La phase est une simple datalist de `PROJECT_PHASES` (src/lib/i18n.ts:203, Dialogs.tsx:269-270), jamais préremplie depuis `projects.stage`. docs/modele-cible.md:96-100 : « propriétaire de processus (facultatif) ». Le deck, ligne 607 de sa transcription, dit « Champs supplémentaires obligatoires ». A24 est « Répondu en partie » (docs/audit-deck-ged.md:1412-1416).
 
 </details>
 
@@ -1482,7 +1482,7 @@ Ensuite : une liste de destinataires (personnes ou fonctions), une table d'accus
 
 <details><summary>Constat dans le code</summary>
 
-src/db/schema.ts ne contient aucune table de diffusion, de destinataires ni d'accusé de lecture. src/lib/actions.ts n'a aucune notification (grep notif, diffus, accus : rien). La mise en vigueur (`approveRevision` et `putInForce`, src/lib/lifecycle.ts) change seulement les statuts et écrit au journal. L'audit marque M06 « Ouvert » (docs/audit-deck-epc2i.md:1532-1536), comme P10 (1682-1684).
+src/db/schema.ts ne contient aucune table de diffusion, de destinataires ni d'accusé de lecture. src/lib/actions.ts n'a aucune notification (grep notif, diffus, accus : rien). La mise en vigueur (`approveRevision` et `putInForce`, src/lib/lifecycle.ts) change seulement les statuts et écrit au journal. L'audit marque M06 « Ouvert » (docs/audit-deck-ged.md:1532-1536), comme P10 (1682-1684).
 
 </details>
 
@@ -1516,7 +1516,7 @@ Il n'existe aucun tableau de bord : pas de volumes par type, département ou sit
 
 <details><summary>Constat dans le code</summary>
 
-src/app/page.tsx:51-55 : l'Accueil n'a que trois compteurs (à valider, échéances, mises en vigueur de la semaine). L'écran Archivage compte seulement les documents par type (src/app/archivage/page.tsx:85). Les onglets d'administration (src/app/administration/page.tsx:15) n'ont pas d'écran de statistiques. M13 est « Ouvert » (docs/audit-deck-epc2i.md:1574-1578). Power BI n'a pas été retenu comme exigence (docs/decisions.md:475-476) : un tableau de bord se ferait donc dans Codex.
+src/app/page.tsx:51-55 : l'Accueil n'a que trois compteurs (à valider, échéances, mises en vigueur de la semaine). L'écran Archivage compte seulement les documents par type (src/app/archivage/page.tsx:85). Les onglets d'administration (src/app/administration/page.tsx:15) n'ont pas d'écran de statistiques. M13 est « Ouvert » (docs/audit-deck-ged.md:1574-1578). Power BI n'a pas été retenu comme exigence (docs/decisions.md:475-476) : un tableau de bord se ferait donc dans Codex.
 
 </details>
 
@@ -1550,7 +1550,7 @@ Il faut d'abord la réponse de l'utilisateur à M23 : faut-il un accès en chant
 
 <details><summary>Constat dans le code</summary>
 
-Le besoin n'est pas tranché. M23 est marqué « Suite : Ouvert » dans docs/audit-deck-epc2i.md:1634-1638 : tablette ou smartphone, consultation hors ligne, dépôt depuis le terrain. L'utilisateur n'y a pas répondu, et la question n'est pas reprise dans O-01..O-11. Côté code, le manque est réel. src/app/globals.css:16 fixe une grille à barre latérale de 224 px, et la seule media query est src/app/administration/admin.module.css:12. Le panneau de la fiche document fait 400 px fixes (src/app/documents/[id]/document.module.css:25). Il n'y a ni manifeste ni service worker. La maquette ne prévoit que le bureau.
+Le besoin n'est pas tranché. M23 est marqué « Suite : Ouvert » dans docs/audit-deck-ged.md:1634-1638 : tablette ou smartphone, consultation hors ligne, dépôt depuis le terrain. L'utilisateur n'y a pas répondu, et la question n'est pas reprise dans O-01..O-11. Côté code, le manque est réel. src/app/globals.css:16 fixe une grille à barre latérale de 224 px, et la seule media query est src/app/administration/admin.module.css:12. Le panneau de la fiche document fait 400 px fixes (src/app/documents/[id]/document.module.css:25). Il n'y a ni manifeste ni service worker. La maquette ne prévoit que le bureau.
 
 </details>
 
@@ -1569,7 +1569,7 @@ Il faut aussi compléter la liste des types (LDC, AVT, DEF, CLO ?). Ce point com
 
 <details><summary>Constat dans le code</summary>
 
-Constaté par grep. clientDeliverable n'apparaît que dans src/db/schema.ts:74 (colonne), src/db/seed.ts:99 (amorçage), src/app/api/registry/route.ts:52 (publication), src/app/administration/page.tsx:94 (affichage) et dans les libellés de src/lib/i18n.ts:58 et 152. Aucune logique ne le lit. La liste des types concernés est le point 4 de docs/registre-points-ouverts.md (O-05). P08 est « Ouvert » (docs/audit-deck-epc2i.md:1672-1674).
+Constaté par grep. clientDeliverable n'apparaît que dans src/db/schema.ts:74 (colonne), src/db/seed.ts:99 (amorçage), src/app/api/registry/route.ts:52 (publication), src/app/administration/page.tsx:94 (affichage) et dans les libellés de src/lib/i18n.ts:58 et 152. Aucune logique ne le lit. La liste des types concernés est le point 4 de docs/registre-points-ouverts.md (O-05). P08 est « Ouvert » (docs/audit-deck-ged.md:1672-1674).
 
 </details>
 
@@ -1591,7 +1591,7 @@ Questions A18 à poser :
 
 <details><summary>Constat dans le code</summary>
 
-Constaté. `lang` est une valeur texte unique (src/db/schema.ts:140). Le dialogue ne propose que fr et en (src/components/dialogs/Dialogs.tsx:225-226). Aucune table ni colonne ne relie un original à sa traduction. FACET_KEYS (src/lib/search.ts:3) n'a pas de facette Langue. A18 est « Ouvert » (docs/audit-deck-epc2i.md:1376-1380).
+Constaté. `lang` est une valeur texte unique (src/db/schema.ts:140). Le dialogue ne propose que fr et en (src/components/dialogs/Dialogs.tsx:225-226). Aucune table ni colonne ne relie un original à sa traduction. FACET_KEYS (src/lib/search.ts:3) n'a pas de facette Langue. A18 est « Ouvert » (docs/audit-deck-ged.md:1376-1380).
 
 </details>
 
@@ -1610,7 +1610,7 @@ L'OCR des documents numérisés reste un point séparé (M09).
 
 <details><summary>Constat dans le code</summary>
 
-`matches` (src/lib/search.ts:29-34) ne porte que sur le titre, l'ID, les alias, les mots-clés, le type, l'organisme source, la référence externe et le sous-type. src/lib/pdf.ts:1-2 n'écrit qu'un PDF de remplacement. Aucune extraction de texte : pas de tsvector, pdf-parse ni mammoth dans src ou package.json. Le deck (transcription, l.115) ne demande que « des filtres optimisés pour la recherche ». La question M10 de l'audit (« La recherche doit-elle couvrir le contenu des fichiers, scans compris, ou seulement les métadonnées ? ») est toujours « Ouvert » (docs/audit-deck-epc2i.md:1556-1560).
+`matches` (src/lib/search.ts:29-34) ne porte que sur le titre, l'ID, les alias, les mots-clés, le type, l'organisme source, la référence externe et le sous-type. src/lib/pdf.ts:1-2 n'écrit qu'un PDF de remplacement. Aucune extraction de texte : pas de tsvector, pdf-parse ni mammoth dans src ou package.json. Le deck (transcription, l.115) ne demande que « des filtres optimisés pour la recherche ». La question M10 de l'audit (« La recherche doit-elle couvrir le contenu des fichiers, scans compris, ou seulement les métadonnées ? ») est toujours « Ouvert » (docs/audit-deck-ged.md:1556-1560).
 
 </details>
 
@@ -1622,12 +1622,12 @@ L'OCR des documents numérisés reste un point séparé (M09).
 Le fichier créé depuis un modèle est une copie brute : ni l'ID, ni la révision, ni le titre ne sont injectés. À faire, si l'utilisateur le confirme :
 - à la création, puis à chaque nouvelle révision ou version de travail, renseigner dans le DOCX ou le XLSX des propriétés personnalisées ou des contrôles de contenu (ID, titre, révision, statut, propriétaire) ;
 - outillage ZIP et XML à ajouter ;
-- des modèles réels EPC2I préparés avec ces champs.
+- des modèles réels de l'entreprise préparés avec ces champs.
 Règle à décider avec l'utilisateur : génère-t-on l'en-tête, ou appose-t-on un cartouche sur un rendu PDF (lien avec M12) ? Les modèles de lancement restent aussi à fournir (G06).
 
 <details><summary>Constat dans le code</summary>
 
-src/lib/actions.ts:169-176 et 185 : le contenu du modèle est lu (`readStored`) puis enregistré tel quel (`stageFile`) dans la version A.1, sans aucune transformation. Aucune bibliothèque DOCX ou XLSX dans package.json. Le besoin n'est pas tranché : la question A22 (« partir d'un modèle Word ou Excel dont l'en-tête est prérempli ? ») n'a reçu qu'une réponse partielle, avec la mention « l'en-tête des fichiers n'est pas prérempli » (docs/audit-deck-epc2i.md:1400-1404). La question M12, « Les en-têtes et pieds de page (ID, révision, statut) sont-ils générés automatiquement ? », est « Ouvert » (docs/audit-deck-epc2i.md:1568-1572).
+src/lib/actions.ts:169-176 et 185 : le contenu du modèle est lu (`readStored`) puis enregistré tel quel (`stageFile`) dans la version A.1, sans aucune transformation. Aucune bibliothèque DOCX ou XLSX dans package.json. Le besoin n'est pas tranché : la question A22 (« partir d'un modèle Word ou Excel dont l'en-tête est prérempli ? ») n'a reçu qu'une réponse partielle, avec la mention « l'en-tête des fichiers n'est pas prérempli » (docs/audit-deck-ged.md:1400-1404). La question M12, « Les en-têtes et pieds de page (ID, révision, statut) sont-ils générés automatiquement ? », est « Ouvert » (docs/audit-deck-ged.md:1568-1572).
 
 </details>
 
@@ -1642,7 +1642,7 @@ Aujourd'hui, on modifie un fichier en le téléchargeant puis en le redéposant 
 
 <details><summary>Constat dans le code</summary>
 
-Aucune intégration d'édition en ligne (WOPI, Office pour le web, Collabora, OnlyOffice) dans src/. src/lib/storage.ts accède à SharePoint par Microsoft Graph en mode application, et les utilisateurs ne s'y connectent jamais (docs/decisions.md:514-516). Le besoin n'a jamais été exprimé : §6.6 q11 de l'audit « Ouvert, lié à O-01 » (docs/audit-deck-epc2i.md:1234-1235), P10 « Ouvert. Codex n'offre pas de coédition » (1682-1684), O-01 non répondue (decisions.md:574).
+Aucune intégration d'édition en ligne (WOPI, Office pour le web, Collabora, OnlyOffice) dans src/. src/lib/storage.ts accède à SharePoint par Microsoft Graph en mode application, et les utilisateurs ne s'y connectent jamais (docs/decisions.md:514-516). Le besoin n'a jamais été exprimé : §6.6 q11 de l'audit « Ouvert, lié à O-01 » (docs/audit-deck-ged.md:1234-1235), P10 « Ouvert. Codex n'offre pas de coédition » (1682-1684), O-01 non répondue (decisions.md:574).
 
 </details>
 
@@ -1660,7 +1660,7 @@ Ensuite : OCR au dépôt (Tesseract ou service), stockage et indexation du texte
 
 <details><summary>Constat dans le code</summary>
 
-src/lib/search.ts:28-33 : la recherche ne porte que sur les métadonnées (titre, ID, alias, mots-clés, type, organisme source, référence externe, sous-type), jamais sur le contenu des fichiers. Aucune dépendance d'OCR ni d'extraction de texte dans package.json. Les fichiers sont stockés bruts (src/lib/storage.ts). M09 et M10 sont « Ouvert » (docs/audit-deck-epc2i.md:1550-1560).
+src/lib/search.ts:28-33 : la recherche ne porte que sur les métadonnées (titre, ID, alias, mots-clés, type, organisme source, référence externe, sous-type), jamais sur le contenu des fichiers. Aucune dépendance d'OCR ni d'extraction de texte dans package.json. Les fichiers sont stockés bruts (src/lib/storage.ts). M09 et M10 sont « Ouvert » (docs/audit-deck-ged.md:1550-1560).
 
 </details>
 
@@ -1677,7 +1677,7 @@ Attention : le « service de conversion » dont parlait la description n'existe 
 
 <details><summary>Constat dans le code</summary>
 
-Le manque est réel. putInForce (src/lib/lifecycle.ts:45-53) change seulement des statuts et des dates : aucun rendu n'est produit. La route de fichier (src/app/api/documents/[id]/file/route.ts:93-99) sert le fichier stocké tel quel, sans filigrane ; simplePdf (src/lib/pdf.ts) ne sert qu'à fabriquer un PDF de remplacement pour les documents de démo sans fichier. Le registre n'a aucun champ de format (type RegistryType, src/db/registry.ts:7-12), et stageFile (src/lib/storage.ts:195-200) accepte tous les types MIME. Aucun service de conversion n'existe : DocClient.tsx:14 indique « no conversion exists », et la chaîne i18n preview_note (src/lib/i18n.ts:18) vient de la maquette et n'est utilisée nulle part. package.json n'a aucune bibliothèque PDF. L'audit (M12, docs/audit-deck-epc2i.md) dit « Ouvert ». La question M12 n'a jamais été tranchée et ne figure pas parmi O-01..O-11.
+Le manque est réel. putInForce (src/lib/lifecycle.ts:45-53) change seulement des statuts et des dates : aucun rendu n'est produit. La route de fichier (src/app/api/documents/[id]/file/route.ts:93-99) sert le fichier stocké tel quel, sans filigrane ; simplePdf (src/lib/pdf.ts) ne sert qu'à fabriquer un PDF de remplacement pour les documents de démo sans fichier. Le registre n'a aucun champ de format (type RegistryType, src/db/registry.ts:7-12), et stageFile (src/lib/storage.ts:195-200) accepte tous les types MIME. Aucun service de conversion n'existe : DocClient.tsx:14 indique « no conversion exists », et la chaîne i18n preview_note (src/lib/i18n.ts:18) vient de la maquette et n'est utilisée nulle part. package.json n'a aucune bibliothèque PDF. L'audit (M12, docs/audit-deck-ged.md) dit « Ouvert ». La question M12 n'a jamais été tranchée et ne figure pas parmi O-01..O-11.
 
 </details>
 
@@ -1717,7 +1717,7 @@ Dans tous les cas, documenter le chiffrement du volume `.data` (base et fichiers
 
 <details><summary>Constat dans le code</summary>
 
-Constaté : src/lib/storage.ts:40-63 (store local : writeFile/readFile/link en clair dans FILES_DIR) ; src/db/index.ts:13-14 (FILES_DIR = .data/files) ; aucun chiffrement applicatif dans put/get. La base PGlite (.data) n'est pas chiffrée non plus. docs/audit-deck-epc2i.md:609 (G02 : « fichiers par défaut sur le disque local sans chiffrement »). Le choix du stockage SharePoint, qui réglerait la question pour les fichiers, est la question ouverte O-01 (docs/decisions.md:574).
+Constaté : src/lib/storage.ts:40-63 (store local : writeFile/readFile/link en clair dans FILES_DIR) ; src/db/index.ts:13-14 (FILES_DIR = .data/files) ; aucun chiffrement applicatif dans put/get. La base PGlite (.data) n'est pas chiffrée non plus. docs/audit-deck-ged.md:609 (G02 : « fichiers par défaut sur le disque local sans chiffrement »). Le choix du stockage SharePoint, qui réglerait la question pour les fichiers, est la question ouverte O-01 (docs/decisions.md:574).
 
 </details>
 
@@ -1756,7 +1756,7 @@ Un motif de gel peut être ajouté dès maintenant, sans attendre M03.
 
 <details><summary>Constat dans le code</summary>
 
-Constaté : src/lib/queries.ts:222 (échéance de conservation proposée « destroy » ou « review ») ; src/db/registry.ts : 23 types (et non 24) ont `"disposition": "destroy"` ; src/app/archivage/DueTable.tsx:17 et :41-43 (seules actions : archiveDocuments et holdDocuments) ; src/lib/i18n.ts:213 (ENFORCED_PERMS sans 'destroy') ; src/lib/actions.ts:610-688 (archive, gel, levée, restauration ; aucune destruction ni revue) ; :641 (le gel journalise d.typeCode au lieu d'un motif). M03 est une question d'audit ouverte (docs/audit-deck-epc2i.md:1514-1518), et les durées attendent O-07 (docs/decisions.md:580).
+Constaté : src/lib/queries.ts:222 (échéance de conservation proposée « destroy » ou « review ») ; src/db/registry.ts : 23 types (et non 24) ont `"disposition": "destroy"` ; src/app/archivage/DueTable.tsx:17 et :41-43 (seules actions : archiveDocuments et holdDocuments) ; src/lib/i18n.ts:213 (ENFORCED_PERMS sans 'destroy') ; src/lib/actions.ts:610-688 (archive, gel, levée, restauration ; aucune destruction ni revue) ; :641 (le gel journalise d.typeCode au lieu d'un motif). M03 est une question d'audit ouverte (docs/audit-deck-ged.md:1514-1518), et les durées attendent O-07 (docs/decisions.md:580).
 
 </details>
 
@@ -1766,7 +1766,7 @@ Constaté : src/lib/queries.ts:222 (échéance de conservation proposée « dest
 - **Revérifié le 18 octobre 2026** : constat inchangé. Ligne de l'auditeur dans la matrice : Lire seul (src/db/seed-org.ts:123) ; `workflow: role !== 'auditeur'` (src/lib/context.ts:88) ; journal global et son export réservés à l'accès Administration (src/app/api/export/audit/route.ts:29) ; `canRead` sans exception pour l'auditeur (src/lib/access.ts:155-175).
 
 Le rôle peut auditer un document à la fois, et seulement parmi ceux qu'il peut lire. Il n'a ni journal global, ni export, ni détail des circuits terminés, ni accès aux documents Confidentiels et Très confidentiels hors de son département.
-À demander (M05, ouvert dans docs/audit-deck-epc2i.md:1526-1530) :
+À demander (M05, ouvert dans docs/audit-deck-ged.md:1526-1530) :
 - qui consulte le journal, et avec quel périmètre (métadonnées seules, ou contenu des confidentiels) ;
 - combien de temps on garde le journal.
 Ensuite :
@@ -1793,7 +1793,7 @@ Constaté. Dans src/db/seed-org.ts:123, la ligne de l'auditeur n'a que Lire. src
 
 <details><summary>Constat dans le code</summary>
 
-Constaté. Dans canRead (src/lib/access.ts:74-78), public, restreint et interne renvoient tous `true`. inDraftingCircle (access.ts:54-57) inclut `ctx.seesAll`, donc les gestionnaires, ainsi que le propriétaire : canRead rend true avant même le test de confidentialité (ligne 69). Or docs/modele-cible.md:70-77 dit que les lecteurs désignés « sont les seuls lecteurs d'un document très confidentiel », et D-14 ne vise que les brouillons. document_readers ne porte que userId (src/db/schema.ts:198-205). La route fichier ne distingue pas consulter et télécharger : `download=1` ne fait que changer l'en-tête et journaliser (file/route.ts:76-80 et 112-115). Côté décisions, A12 n'est « répondu » que pour l'échelle : les règles par niveau sont des propositions (docs/audit-deck-epc2i.md:1340-1344).
+Constaté. Dans canRead (src/lib/access.ts:74-78), public, restreint et interne renvoient tous `true`. inDraftingCircle (access.ts:54-57) inclut `ctx.seesAll`, donc les gestionnaires, ainsi que le propriétaire : canRead rend true avant même le test de confidentialité (ligne 69). Or docs/modele-cible.md:70-77 dit que les lecteurs désignés « sont les seuls lecteurs d'un document très confidentiel », et D-14 ne vise que les brouillons. document_readers ne porte que userId (src/db/schema.ts:198-205). La route fichier ne distingue pas consulter et télécharger : `download=1` ne fait que changer l'en-tête et journaliser (file/route.ts:76-80 et 112-115). Côté décisions, A12 n'est « répondu » que pour l'échelle : les règles par niveau sont des propositions (docs/audit-deck-ged.md:1340-1344).
 
 </details>
 
@@ -1821,7 +1821,7 @@ Constaté : src/lib/context.ts:46-68 (utilisateur et rôle lus dans les cookies 
 - **Effort** : important · **Références** : D-13, ACC-02, G31, M07, O-02
 - **Revérifié le 18 octobre 2026** : constat inchangé sur le fond : Public, Restreint et Interne sont lus de la même façon (`canRead`, src/lib/access.ts:162-165) ; aucun partage externe, accès invité ni filigrane.
 - **Avancé le 18 octobre 2026** (lot 10, étape 4, sans décision ; le point reste bloqué) : le bouton de la fiche (`ShareButton`, src/components/ui/client.tsx) a pour nom accessible et info-bulle « Copier le lien du document » / « Copy the document link » (libellé `copy_link`, qui remplace `share`), ce qu'il fait réellement ; visuel inchangé (icône de la maquette). La diffusion encadrée attend toujours M07 et O-02.
-- **Analyse comparative du 25 octobre 2026** — Deux attentes du marché se rattachent à ce point (M07), à des niveaux différents. (1) **Transmittals formels** : bordereau numéroté, accusé de réception, historique de diffusion aux clients et fournisseurs. C'est un niveau avancé (Aconex, OpenText, ProjectWise), mais c'est la fonction clé d'une GED d'EPC : aujourd'hui, Codex n'a que le sous-type « Bordereau de transmission » du type LET dans le registre (src/db/registry.ts:1211), sans aucune fonction derrière ; le point 80 (drapeau « livrable client ») cite le même bordereau. Priorité suggérée : P1, une fois M07 tranchée. (2) **Partage externe sécurisé** : lien expirant, accès invité, filigrane dynamique au téléchargement. Standard (Box, SharePoint), absent de Codex ; les accès invités dépendent d'O-02 et le filigrane rejoint le point 86. Priorité suggérée : P2. L'état du point ne change pas.
+- **Analyse comparative du 25 octobre 2026** — Deux attentes du marché se rattachent à ce point (M07), à des niveaux différents. (1) **Transmittals formels** : bordereau numéroté, accusé de réception, historique de diffusion aux clients et fournisseurs. C'est un niveau avancé (Aconex, OpenText, ProjectWise), mais c'est la fonction clé d'une GED d'ingénierie et de construction clés en main : aujourd'hui, Codex n'a que le sous-type « Bordereau de transmission » du type LET dans le registre (src/db/registry.ts:1211), sans aucune fonction derrière ; le point 80 (drapeau « livrable client ») cite le même bordereau. Priorité suggérée : P1, une fois M07 tranchée. (2) **Partage externe sécurisé** : lien expirant, accès invité, filigrane dynamique au téléchargement. Standard (Box, SharePoint), absent de Codex ; les accès invités dépendent d'O-02 et le filigrane rejoint le point 86. Priorité suggérée : P2. L'état du point ne change pas.
 
 Reste à faire trancher par l'utilisateur (M07 ; dépend aussi d'O-02 pour des accès invités) comment se fait la diffusion d'un document Restreint au client ou au partenaire désigné : lien de partage expirant, accès invité, export tracé avec filigrane ou cartouche, ou simple bordereau de transmission. Il faudra ensuite :
 - le destinataire externe désigné sur le document ;
@@ -1832,7 +1832,7 @@ D'ici là, renommer ou réétiqueter le bouton « Partager » (« Copier le lien
 
 <details><summary>Constat dans le code</summary>
 
-Constaté : src/lib/access.ts:74-78 (public, restreint et interne renvoient true de la même façon ; en interne c'est cohérent avec D-13, puisque Restreint est moins protégé qu'Interne) ; src/components/ui/client.tsx:76-91 (ShareButton copie window.location.href, icône « more ») ; src/app/api/documents/[id]/file/route.ts:75-84 (aucun marquage du niveau ni de la révision sur le fichier servi) ; aucun code de partage externe, d'invité ou de filigrane dans src/. docs/audit-deck-epc2i.md:870 (G31 : « aucun mécanisme de diffusion à un client ») et :1540-1542 (M07 ouvert). Le mode de diffusion est une question d'audit M07 non tranchée ; les accès invités dépendent d'O-02.
+Constaté : src/lib/access.ts:74-78 (public, restreint et interne renvoient true de la même façon ; en interne c'est cohérent avec D-13, puisque Restreint est moins protégé qu'Interne) ; src/components/ui/client.tsx:76-91 (ShareButton copie window.location.href, icône « more ») ; src/app/api/documents/[id]/file/route.ts:75-84 (aucun marquage du niveau ni de la révision sur le fichier servi) ; aucun code de partage externe, d'invité ou de filigrane dans src/. docs/audit-deck-ged.md:870 (G31 : « aucun mécanisme de diffusion à un client ») et :1540-1542 (M07 ouvert). Le mode de diffusion est une question d'audit M07 non tranchée ; les accès invités dépendent d'O-02.
 
 </details>
 
@@ -1849,7 +1849,7 @@ Une fois tranchée par l'utilisateur la question d'audit M04 (types concernés, 
 
 <details><summary>Constat dans le code</summary>
 
-Constaté : src/lib/actions.ts:438 (toutes les étapes sont insérées avec `sign: false`) ; src/db/schema.ts:278 (colonne sign) ; src/app/validations/page.tsx:124 (mention eIDAS affichée seulement si `r.current?.sign`, donc jamais) ; src/lib/actions.ts:502 (action d'audit 'sign' jamais atteinte) ; src/lib/i18n.ts:20 (sign_note) ; design/GED Groupe.dc.html:644, 656 et 722 (« Validation + signature »). docs/audit-deck-epc2i.md:744 (G17) et :1520-1524 (M04 ouvert : types concernés, niveau eIDAS, prestataire).
+Constaté : src/lib/actions.ts:438 (toutes les étapes sont insérées avec `sign: false`) ; src/db/schema.ts:278 (colonne sign) ; src/app/validations/page.tsx:124 (mention eIDAS affichée seulement si `r.current?.sign`, donc jamais) ; src/lib/actions.ts:502 (action d'audit 'sign' jamais atteinte) ; src/lib/i18n.ts:20 (sign_note) ; design/GED Groupe.dc.html:644, 656 et 722 (« Validation + signature »). docs/audit-deck-ged.md:744 (G17) et :1520-1524 (M04 ouvert : types concernés, niveau eIDAS, prestataire).
 
 </details>
 
@@ -1868,7 +1868,7 @@ Attention, la liste France / Royaume-Uni / Maroc citée par M17 vient des donné
 
 <details><summary>Constat dans le code</summary>
 
-Le manque est réel, et le cadrage attend l'utilisateur. M17 (docs/audit-deck-epc2i.md:1598-1602) est toujours « Ouvert » : quels types contiennent des données personnelles, quelles durées, validation par le DPO. Ce que montre le code :
+Le manque est réel, et le cadrage attend l'utilisateur. M17 (docs/audit-deck-ged.md:1598-1602) est toujours « Ouvert » : quels types contiennent des données personnelles, quelles durées, validation par le DPO. Ce que montre le code :
 (1) Aucun indicateur « données personnelles » sur le type ni sur le document (rien dans src/db/schema.ts ni dans src/db/registry.ts).
 (2) Le seul type RH, RHF « RH & Formation » (registry.ts:636-683), a la règle 5 ans, déclencheur employee_departure, sort 'destroy'. Or triggerDate renvoie null pour « départ » (src/lib/retention.ts:25). Ces documents n'ont donc jamais de fin de conservation et n'apparaissent pas dans les échéances (queries.ts:222).
 (3) Aucune destruction n'est exécutée. Il n'existe pas d'action destroy dans src/lib/actions.ts (archiveDocuments, holdDocuments, releaseHold et restoreArchived seulement, lignes 609-685), et 'destroy' est absent de ENFORCED_PERMS (src/lib/i18n.ts:213). La purge est donc impossible.
@@ -1928,7 +1928,7 @@ C'est l'API d'import de Codex (D-21), pas le code de migration lui-même.
 
 <details><summary>Constat dans le code</summary>
 
-Constaté. Dans src/lib/importer.ts:181, `status` n'accepte que in_force et draft. L'insertion (importer.ts:337-348) n'écrit ni state, ni obsoleteAt, ni archivedAt, ni legalHold : le document reçoit les valeurs par défaut (state 'active', legalHold false). La révision n'a que approvedAt (ligne 351), sans approbateurs. Le déclencheur `superseded` de src/lib/retention.ts:18 dépend de obsoleteAt ou archivedAt, que l'import ne renseigne jamais. La question de reprendre ou non les documents périmés est ouverte (A23, docs/audit-deck-epc2i.md:1406-1410 ; O-11).
+Constaté. Dans src/lib/importer.ts:181, `status` n'accepte que in_force et draft. L'insertion (importer.ts:337-348) n'écrit ni state, ni obsoleteAt, ni archivedAt, ni legalHold : le document reçoit les valeurs par défaut (state 'active', legalHold false). La révision n'a que approvedAt (ligne 351), sans approbateurs. Le déclencheur `superseded` de src/lib/retention.ts:18 dépend de obsoleteAt ou archivedAt, que l'import ne renseigne jamais. La question de reprendre ou non les documents périmés est ouverte (A23, docs/audit-deck-ged.md:1406-1410 ; O-11).
 
 </details>
 
@@ -2026,7 +2026,7 @@ La partie faisable sans décision est faite depuis le 11 octobre 2026 (point 10)
 
 <details><summary>Constat dans le code</summary>
 
-Constaté : src/components/shell/Header.tsx:89-115 (cloche limitée aux étapes à valider et à l'activité récente) ; src/lib/actions.ts:437 (due = +7 jours, aucune relance) ; src/db/schema.ts:35-44 (users sans e-mail) ; aucune occurrence de smtp, sendMail, nodemailer ni relance dans src/ ; docs/audit-deck-epc2i.md:762 (G19 : révision ouverte par ECO listée nulle part), 1216 (§6.6 q2 : Teams/Outlook « non discuté »), 1610-1614 (M19 : ni notification ni escalade).
+Constaté : src/components/shell/Header.tsx:89-115 (cloche limitée aux étapes à valider et à l'activité récente) ; src/lib/actions.ts:437 (due = +7 jours, aucune relance) ; src/db/schema.ts:35-44 (users sans e-mail) ; aucune occurrence de smtp, sendMail, nodemailer ni relance dans src/ ; docs/audit-deck-ged.md:762 (G19 : révision ouverte par ECO listée nulle part), 1216 (§6.6 q2 : Teams/Outlook « non discuté »), 1610-1614 (M19 : ni notification ni escalade).
 
 </details>
 
@@ -2075,7 +2075,7 @@ Aujourd'hui, on peut seulement déposer à la main un fichier .eml ou .msg (ou u
 
 <details><summary>Constat dans le code</summary>
 
-Manque constaté dans le code. Le type LET a bien le sous-type « Email formalisé » (src/db/registry.ts:1191-1216). Les métadonnées d'un document externe existent, mais se saisissent à la main : sourceOrg, externalRef et receivedAt dans src/db/schema.ts:155-157, src/lib/actions.ts:100-102 et src/components/dialogs/Dialogs.tsx:250-256. En revanche, rien ne capture un e-mail. Le sélecteur de fichier n'accepte qu'un fichier, sans filtre de format (src/components/dialogs/Modal.tsx:127). Les tables de types de fichier ne connaissent ni .eml ni .msg (EXT_BY_MIME et MIME_BY_EXT, src/lib/storage.ts:142-150) : un e-mail déposé est donc stocké en application/octet-stream et ne s'affiche pas en aperçu, qui ne gère que PDF, images et texte (src/app/documents/[id]/DocClient.tsx:20-22). Aucun code ne lit l'expéditeur, la date ou le Message-ID, ni ne sépare les pièces jointes : une recherche de « eml|msg|rfc822|outlook|mailparser » dans src/ ne trouve rien. Une version de travail ne porte qu'un fichier (src/db/schema.ts:229-247), et aucune table ne relie des documents entre eux (src/db/schema.ts, liste des pgTable ; voir M11). La méthode de capture n'est pas tranchée : M08 est noté « Ouvert » dans docs/audit-deck-epc2i.md:1548, et la question ne figure pas parmi O-01 à O-11 (docs/decisions.md:572-584). Aucune décision de docs/decisions.md n'écarte ce besoin.
+Manque constaté dans le code. Le type LET a bien le sous-type « Email formalisé » (src/db/registry.ts:1191-1216). Les métadonnées d'un document externe existent, mais se saisissent à la main : sourceOrg, externalRef et receivedAt dans src/db/schema.ts:155-157, src/lib/actions.ts:100-102 et src/components/dialogs/Dialogs.tsx:250-256. En revanche, rien ne capture un e-mail. Le sélecteur de fichier n'accepte qu'un fichier, sans filtre de format (src/components/dialogs/Modal.tsx:127). Les tables de types de fichier ne connaissent ni .eml ni .msg (EXT_BY_MIME et MIME_BY_EXT, src/lib/storage.ts:142-150) : un e-mail déposé est donc stocké en application/octet-stream et ne s'affiche pas en aperçu, qui ne gère que PDF, images et texte (src/app/documents/[id]/DocClient.tsx:20-22). Aucun code ne lit l'expéditeur, la date ou le Message-ID, ni ne sépare les pièces jointes : une recherche de « eml|msg|rfc822|outlook|mailparser » dans src/ ne trouve rien. Une version de travail ne porte qu'un fichier (src/db/schema.ts:229-247), et aucune table ne relie des documents entre eux (src/db/schema.ts, liste des pgTable ; voir M11). La méthode de capture n'est pas tranchée : M08 est noté « Ouvert » dans docs/audit-deck-ged.md:1548, et la question ne figure pas parmi O-01 à O-11 (docs/decisions.md:572-584). Aucune décision de docs/decisions.md n'écarte ce besoin.
 
 </details>
 
@@ -2092,7 +2092,7 @@ Selon la réponse :
 
 <details><summary>Constat dans le code</summary>
 
-Constaté. requestValidation refuse une révision sans version de travail (src/lib/actions.ts:413, `need_file`). Aucun type ni champ ne décrit une « référence externe » vers un système maître : externalRef sert aux documents d'origine externe (schema.ts:156). La seule API de dépôt est POST /api/import, prévue pour la migration (D-21), avec un jeton unique CODEX_IMPORT_TOKEN. P04 est « Traité en partie » et Q06 « Répondu en partie » (docs/audit-deck-epc2i.md:1656-1658 et 1775-1777) : seuls les ECR/ECO sont tranchés (D-16).
+Constaté. requestValidation refuse une révision sans version de travail (src/lib/actions.ts:413, `need_file`). Aucun type ni champ ne décrit une « référence externe » vers un système maître : externalRef sert aux documents d'origine externe (schema.ts:156). La seule API de dépôt est POST /api/import, prévue pour la migration (D-21), avec un jeton unique CODEX_IMPORT_TOKEN. P04 est « Traité en partie » et Q06 « Répondu en partie » (docs/audit-deck-ged.md:1656-1658 et 1775-1777) : seuls les ECR/ECO sont tranchés (D-16).
 
 </details>
 
@@ -2168,7 +2168,7 @@ Qui héberge, qui exploite et où sont les données n'a pas été décidé. Ce c
 
 <details><summary>Constat dans le code</summary>
 
-Vérifié : package.json:8 (`next start --port 3100`) ; ni Dockerfile, ni compose, ni configuration de proxy, de TLS ou de gestionnaire de processus (git ls-files), ni dossier .github. Le seul autre mode d'exécution est l'app Mac (desktop/build-app.sh:62). L'audit laisse la question ouverte : docs/audit-deck-epc2i.md, §6.6 q3 (« Ouvert… qui l'héberge et la maintient n'a pas été dit ») et M22.
+Vérifié : package.json:8 (`next start --port 3100`) ; ni Dockerfile, ni compose, ni configuration de proxy, de TLS ou de gestionnaire de processus (git ls-files), ni dossier .github. Le seul autre mode d'exécution est l'app Mac (desktop/build-app.sh:62). L'audit laisse la question ouverte : docs/audit-deck-ged.md, §6.6 q3 (« Ouvert… qui l'héberge et la maintient n'a pas été dit ») et M22.
 
 </details>
 
@@ -2207,7 +2207,7 @@ La règle d'exclusion de l'auteur et du demandeur reste une proposition à confi
 
 <details><summary>Constat dans le code</summary>
 
-Le mécanisme est en place. Le circuit est porté par le type et modifiable dans l'administration (updateType, src/lib/actions.ts:766 et 777 ; TypeEditor, Dialogs.tsx:735-767). Les titulaires s'ajoutent et se retirent (addFunctionHolder et removeFunctionHolder, actions.ts:732-756). Les valeurs sont de démonstration : FUNCTIONS et HOLDERS (src/db/seed-org.ts:62-103) et circuit (src/db/registry.ts). LET, RFQ et PHO ont un circuit vide. Aucun RACI n'a été fourni (M01, docs/audit-deck-epc2i.md:1502-1506 ; O-06).
+Le mécanisme est en place. Le circuit est porté par le type et modifiable dans l'administration (updateType, src/lib/actions.ts:766 et 777 ; TypeEditor, Dialogs.tsx:735-767). Les titulaires s'ajoutent et se retirent (addFunctionHolder et removeFunctionHolder, actions.ts:732-756). Les valeurs sont de démonstration : FUNCTIONS et HOLDERS (src/db/seed-org.ts:62-103) et circuit (src/db/registry.ts). LET, RFQ et PHO ont un circuit vide. Aucun RACI n'a été fourni (M01, docs/audit-deck-ged.md:1502-1506 ; O-06).
 
 </details>
 
@@ -2242,7 +2242,7 @@ Les deux premiers éléments peuvent se coder dès maintenant sur la liste provi
 
 <details><summary>Constat dans le code</summary>
 
-Point confirmé. Le recueil prévu par la slide 9 (MIG-05) n'est pas fait (docs/audit-deck-epc2i.md:699 et 1080). La liste des départements est provisoire (src/db/seed-org.ts:6-22, D-19, O-04). Côté code, il n'y avait aucune page par département : src/app ne contenait que administration, archivage, documents, explorateur, recherche et validations. Ce n'est plus vrai depuis le 11 octobre 2026 (point 11 : src/app/departements, `departmentPage` dans src/lib/queries.ts). Les recherches enregistrées sont les 3 du seed (src/db/seed-org.ts:127-131, insérées par src/db/seed.ts:106) ; elles sont en lecture seule (listSavedSearches, src/lib/queries.ts:281-285) et aucune action ne permet d'en créer. La table saved_searches n'a ni département ni propriétaire (src/db/schema.ts:339-345).
+Point confirmé. Le recueil prévu par la slide 9 (MIG-05) n'est pas fait (docs/audit-deck-ged.md:699 et 1080). La liste des départements est provisoire (src/db/seed-org.ts:6-22, D-19, O-04). Côté code, il n'y avait aucune page par département : src/app ne contenait que administration, archivage, documents, explorateur, recherche et validations. Ce n'est plus vrai depuis le 11 octobre 2026 (point 11 : src/app/departements, `departmentPage` dans src/lib/queries.ts). Les recherches enregistrées sont les 3 du seed (src/db/seed-org.ts:127-131, insérées par src/db/seed.ts:106) ; elles sont en lecture seule (listSavedSearches, src/lib/queries.ts:281-285) et aucune action ne permet d'en créer. La table saved_searches n'a ni département ni propriétaire (src/db/schema.ts:339-345).
 
 </details>
 
@@ -2362,11 +2362,11 @@ src/lib/access.ts:155-172 (`canRead` : rôle, cercle de rédaction, confidential
 
 ## Attend des données de l'utilisateur (2)
 
-Il faut des contenus ou des règles réels d'EPC2I.
+Il faut des contenus ou des règles réels de l'entreprise.
 
 ### Référentiels et données (2)
 
-#### 119. Charger les vrais modèles EPC2I (FRM-QMS)
+#### 119. Charger les vrais modèles de l'entreprise (FRM-QMS)
 
 - **Effort** : faible · **Références** : PAR-05, G06, A22
 - **Revérifié le 18 octobre 2026** : constat inchangé : les 4 modèles FRM de démonstration (src/db/seed-docs.ts:71-74, avec leurs types cibles) n'ont pas de fichier ; `isUsableTemplate` ne demande pas de fichier (src/lib/access.ts:217-219).
@@ -2375,7 +2375,7 @@ Il n'y a rien à développer. Le dépôt passe déjà par Administration › Mod
 
 <details><summary>Constat dans le code</summary>
 
-Les 4 modèles FRM du jeu de démonstration (src/db/seed-docs.ts:67-70) reçoivent des versions de travail sans fichier : seed.ts:177-181 n'écrit aucun fileKey. isUsableTemplate (src/lib/access.ts:89-91) ne demande pas de fichier, et createDocument crée alors A.1 sans contenu (src/lib/actions.ts:168-175 et 194-196). A22 indique que la liste des modèles du lancement reste à fournir (docs/audit-deck-epc2i.md:1404).
+Les 4 modèles FRM du jeu de démonstration (src/db/seed-docs.ts:67-70) reçoivent des versions de travail sans fichier : seed.ts:177-181 n'écrit aucun fileKey. isUsableTemplate (src/lib/access.ts:89-91) ne demande pas de fichier, et createDocument crée alors A.1 sans contenu (src/lib/actions.ts:168-175 et 194-196). A22 indique que la liste des modèles du lancement reste à fournir (docs/audit-deck-ged.md:1404).
 
 </details>
 
@@ -2481,7 +2481,7 @@ Remplacer la l. 23 par `OUT="$TMP/Codex.app"` : le bundle est construit dans le 
 
 <details><summary>Constat dans le code</summary>
 
-desktop/build-app.sh:23 construit le bundle dans `OUT="desktop/dist/Codex.app"`. Il est copié par `ditto` vers `~/Applications` (l. 70), puis laissé sur place : le `trap` de la l. 25 ne supprime que `$TMP`. Un dossier temporaire existe pourtant déjà (`TMP="$(mktemp -d)"`, l. 24). `.gitignore` exclut `/desktop/dist` du dépôt, mais pas de Spotlight ni de Launch Services : deux « Codex.app » de même identifiant `com.epc2i.codex` coexistent. Noté dans docs/avancement-v2.md:60.
+desktop/build-app.sh:23 construit le bundle dans `OUT="desktop/dist/Codex.app"`. Il est copié par `ditto` vers `~/Applications` (l. 70), puis laissé sur place : le `trap` de la l. 25 ne supprime que `$TMP`. Un dossier temporaire existe pourtant déjà (`TMP="$(mktemp -d)"`, l. 24). `.gitignore` exclut `/desktop/dist` du dépôt, mais pas de Spotlight ni de Launch Services : deux « Codex.app » de même identifiant `com.atrium.codex` coexistent. Noté dans docs/avancement-v2.md:60.
 
 </details>
 
@@ -2518,4 +2518,4 @@ desktop/build-app.sh:65 signe en ad hoc (`codesign --force --deep --sign -`). L'
 
 ### Point écarté par la vérification
 
-- **Nom affiché « Codex — GED Groupe » au lieu de « GED EPC2I »** : Ce n'est pas un manque de développement. ACC-01 et G11 portent sur un point d'accès unique, et l'audit les classe « couvert » puis « intégré » (docs/audit-deck-epc2i.md:547 et 684-690). docs/decisions.md:474 l'acte : « Codex est l'application « GED EPC2I » (D-06) ». Le nom affiché reprend fidèlement la maquette, qui montre elle-même « Codex » et brand_sub « GED Groupe » (design/GED Groupe.dc.html:24 et 569). Les conventions imposent cette fidélité. L'utilisateur n'a jamais demandé de renommage, et la question ne fait pas partie des questions ouvertes O-01 à O-11 de docs/decisions.md.
+- **Nom affiché « Codex — GED Groupe » au lieu de « GED du groupe »** : Ce n'est pas un manque de développement. ACC-01 et G11 portent sur un point d'accès unique, et l'audit les classe « couvert » puis « intégré » (docs/audit-deck-ged.md:547 et 684-690). docs/decisions.md:474 l'acte : « Codex est l'application « GED du groupe » (D-06) ». Le nom affiché reprend fidèlement la maquette, qui montre elle-même « Codex » et brand_sub « GED Groupe » (design/GED Groupe.dc.html:24 et 569). Les conventions imposent cette fidélité. L'utilisateur n'a jamais demandé de renommage, et la question ne fait pas partie des questions ouvertes O-01 à O-11 de docs/decisions.md.

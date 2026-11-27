@@ -32,7 +32,7 @@ describe('role and identity', () => {
     expect(roleFromAccess(null)).toBeNull();
   });
   it('makes a unique user id from the e-mail and two initials from the name', () => {
-    expect(userIdFor('Hélène.Martin@epc-groupe.com', new Set())).toBe('helene.martin');
+    expect(userIdFor('Hélène.Martin@atrium.example', new Set())).toBe('helene.martin');
     expect(userIdFor('a.b@x.fr', new Set(['a.b', 'a.b-2']))).toBe('a.b-3');
     expect(initialsOf('Claire Bardet')).toBe('CB');
     expect(initialsOf('Marie-Hélène Porquet')).toBe('MP');

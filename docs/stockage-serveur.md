@@ -17,7 +17,7 @@ l'exploitant**, dans l'ordre. Les étapes 1 à 5 suffisent pour être protégé 
 | Élément | État |
 |---|---|
 | Application Coolify `codex` | `https://codex.projectdirection.fr`, branche `main`, en marche et saine, sur le serveur `localhost` (la machine qui fait tourner Coolify). |
-| Base de données | Serveur PostgreSQL commun EPC2I (`DATABASE_URL`, schéma `codex`). Sauvegardée chaque nuit par `pg_dump` (dépôt Matrix, `infra/postgres/sauvegarde/sauvegarder.sh`, 14 jours). |
+| Base de données | Serveur PostgreSQL commun de la suite Atrium (`DATABASE_URL`, schéma `codex`). Sauvegardée chaque nuit par `pg_dump` (dépôt Matrix, `infra/postgres/sauvegarde/sauvegarder.sh`, 14 jours). |
 | Fichiers déposés | Volume Docker `manjb61o00i8pdtg738izfh0-codex-data` monté sur `/data` ; fichiers dans `/data/files`. |
 | Sauvegarde des fichiers | **Aucune.** Le `pg_dump` ne contient pas les fichiers. `CODEX_BACKUP_DIR` n'est pas posé (défaut `/data/backups`, sur le même volume que les fichiers) et `CODEX_SCHEDULE_BACKUP` non plus. |
 | Antivirus | **Aucun** : `CODEX_CLAMD` n'est pas posé ; les fichiers sont stockés sans analyse. |
@@ -158,7 +158,7 @@ install -d -m 700 /root/.restic
 # Sans lui, la copie est illisible, et perdue.
 openssl rand -base64 32 > /root/.restic/mot-de-passe && chmod 600 /root/.restic/mot-de-passe
 cat > /root/.restic/env <<'EOF'
-export RESTIC_REPOSITORY=s3:https://<point d'accès S3>/<nom du bucket>/epc2i
+export RESTIC_REPOSITORY=s3:https://<point d'accès S3>/<nom du bucket>/atrium
 export RESTIC_PASSWORD_FILE=/root/.restic/mot-de-passe
 export AWS_ACCESS_KEY_ID=<clé d'accès du bucket>
 export AWS_SECRET_ACCESS_KEY=<secret du bucket>
@@ -169,8 +169,11 @@ chmod 600 /root/.restic/env
 
 Puis une tâche chaque nuit, **après** la sauvegarde de Codex et le `pg_dump` du serveur commun 🖥️ (`crontab -e`) :
 
+Un dépôt restic déjà créé garde son adresse et son étiquette d'origine : ne changer ni l'une ni l'autre (seul un
+nouveau dépôt prend les noms ci-dessous).
+
 ```cron
-30 4 * * * . /root/.restic/env && restic backup /srv/sauvegardes --tag epc2i --quiet && restic forget --tag epc2i --keep-daily 14 --keep-weekly 8 --keep-monthly 12 --prune --quiet
+30 4 * * * . /root/.restic/env && restic backup /srv/sauvegardes --tag atrium --quiet && restic forget --tag atrium --keep-daily 14 --keep-weekly 8 --keep-monthly 12 --prune --quiet
 ```
 
 `/srv/sauvegardes` contient la sauvegarde de Codex. Les dumps du serveur commun sont dans le volume des sauvegardes de

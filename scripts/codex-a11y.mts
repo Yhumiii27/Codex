@@ -7,7 +7,7 @@
 //   npm run a11y -- --url http://localhost:3100   an app already running, on its own database: no dialog is sent
 //                                       (see DIALOGS), but the records opened are journalised as consultations
 //   --lang en                          English interface (French by default); --lang all for both
-//   --theme light                      light display (Norma 1.0, cookie epc2i-theme; dark by default)
+//   --theme light                      light display (Norma 1.0, cookie atrium-theme; dark by default)
 //   --port 3190                        port of the server started here
 //   --json report.json                 every finding, moderate and minor ones included
 //   --narrow                           narrow display and zoom (WCAG 1.4.10, 1.4.4; scripts/codex-narrow.mts): every
@@ -210,7 +210,7 @@ async function pass(browser: Browser, base: string, lang: Lang, size: Size | und
   const ctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: vp.scale });
   // tsx keeps the names of the functions it compiles (__name), which measureLayout carries into the page.
   await ctx.addInitScript('globalThis.__name = globalThis.__name || ((f) => f);');
-  await ctx.addCookies([{ name: 'codex-lang', value: lang, url: base }, { name: 'epc2i-theme', value: THEME, url: base }]);
+  await ctx.addCookies([{ name: 'codex-lang', value: lang, url: base }, { name: 'atrium-theme', value: THEME, url: base }]);
   const page = await ctx.newPage();
   const tag = size && size.key !== 'bureau' ? ` (${size.label})` : '';
   page.on('pageerror', (e) => problems.push(`[${lang}] erreur JavaScript${tag} : ${e.message}`));

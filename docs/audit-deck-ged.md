@@ -1,4 +1,4 @@
-# Audit du deck « Création de la GED EPC2I »
+# Audit du deck « Création de la GED »
 
 Audit réalisé le 7 octobre 2026 dans la session de travail locale, avant toute intégration du deck dans Codex. Ce fichier
 le restaure dans le dépôt pour qu'une session cloud n'ait ni à redemander le deck, ni à relancer l'audit, ni à reposer
@@ -9,9 +9,9 @@ les questions déjà tranchées.
 | | |
 |---|---|
 | Date | 7 octobre 2026. Demande à 12:19, résultat à 12:39, synthèse rendue à l'utilisateur à 12:40 (heures UTC ; Paris = UTC+2). |
-| Deck audité | `docs/sources/creation-ged-epc2i.pptx` (18 slides). Transcription texte : `docs/sources/deck-ged-epc2i.md`. |
+| Deck audité | `docs/sources/creation-ged.pptx` (18 slides). Transcription texte : `docs/sources/deck-ged.md`. |
 | Code audité | Codex **v1**, c'est-à-dire l'application construite le matin même d'après la maquette Claude Design. Elle n'existe plus : le modèle v2 l'a remplacée avant le premier commit. Les références de code de l'audit d'origine (`src/db/seed-data.ts`, `actions.ts:74-82`…) ne correspondent donc plus au dépôt et ne sont pas reprises. |
-| Méthode | Workflow multi-agents « audit-ged-epc2i-deck » en cinq volets menés en parallèle : exigences, modèle de métadonnées, écarts deck ↔ Codex (vérifiés dans le code), architecture, critique du deck. Puis une vérification contradictoire (relecture de la transcription du modèle de métadonnées ; revérification de chaque écart dans le code) et un critique de complétude qui a relu l'ensemble. |
+| Méthode | Workflow multi-agents « audit-ged-deck » en cinq volets menés en parallèle : exigences, modèle de métadonnées, écarts deck ↔ Codex (vérifiés dans le code), architecture, critique du deck. Puis une vérification contradictoire (relecture de la transcription du modèle de métadonnées ; revérification de chaque écart dans le code) et un critique de complétude qui a relu l'ensemble. |
 | Résultat | 64 exigences ; un modèle de métadonnées sur 4 niveaux (transcription jugée exacte) ; 48 écarts (après vérification : 6 couverts, 21 partiels, 12 absents, 9 en conflit) ; 5 options d'architecture et une recommandation ; 24 ambiguïtés, 16 contradictions et 23 manques ; 12 points oubliés, 14 conflits entre analyses et 12 questions prioritaires. |
 | Suites | L'utilisateur a répondu aux 10 questions de l'audit le 7 octobre à 13:38, puis aux confirmations 1 à 5 (sur 6) à 17:52 ; la 6e, sur SharePoint, est restée sans réponse (O-01). Ces décisions, citées mot pour mot, sont dans [decisions.md](decisions.md) (D-05 à D-21). Le modèle qui en découle a été intégré dans le code sous le nom de **modèle v2** : il est décrit dans [modele-cible.md](modele-cible.md), qui fait foi, et son état est dans [avancement-v2.md](avancement-v2.md). |
 
@@ -50,7 +50,7 @@ Je n'ai rien intégré pour l'instant. Le deck décrit une GED à monter avec le
 - **SharePoint** : une bibliothèque unique qui sert à la fois de base de données et de coffre-fort.
 - **Banque de termes SharePoint** : elle porte les métadonnées.
 - **Power Automate** : il porte les workflows.
-- **Power Apps** : une interface unique « GED EPC2I », pour que les utilisateurs ne se perdent pas dans la bibliothèque.
+- **Power Apps** : une interface unique « GED du groupe », pour que les utilisateurs ne se perdent pas dans la bibliothèque.
 
 **Les étapes (slides 6 à 9).**
 1. Faire l'état des lieux des arborescences actuelles.
@@ -93,7 +93,7 @@ Les conflits à trancher :
 
 Ce qui manque surtout dans Codex : le Domaine, le Sous-type, l'Auteur distinct du propriétaire, les dates d'effet et de révision, l'Organisme source, les champs de niveau 4, le passage à obsolète, de vraies restrictions d'accès et l'outil de migration.
 
-À savoir aussi : les données de démo de Codex (carrières, minage) sont fictives et sans rapport avec EPC2I.
+À savoir aussi : les données de démo de Codex (carrières, minage) sont fictives et sans rapport avec l'entreprise.
 
 > **Note du 9 octobre** : le décompte « 6 couverts, 21 partiels, 12 absents et 9 en conflit » est celui obtenu après
 > la vérification contradictoire (le premier passage comptait 10 couverts et 17 partiels, voir §5.1). Les données de
@@ -120,7 +120,7 @@ Il y a donc trois modèles à réconcilier : la maquette Codex, la spec Keystone
 - **Absent** : les rôles (qui gère quoi), la signature électronique, la diffusion des documents et la preuve de lecture, le partage externe, la numérisation et l'OCR, la recherche dans le contenu des fichiers, les liens entre documents (« remplacé par »), le RGPD pour les documents RH, la frontière avec Keystone, Vigie et Cursus.
 
 #### Ce que je propose
-Garder le socle SharePoint du deck : bibliothèque unique, banque de termes, types de contenu, versions, Purview, édition Office. Codex devient l'application « GED EPC2I » à la place de Power Apps, et les workflows restent dans Codex plutôt que dans Power Automate. On y va par étapes : d'abord en lecture via Microsoft Graph, puis la création et les circuits.
+Garder le socle SharePoint du deck : bibliothèque unique, banque de termes, types de contenu, versions, Purview, édition Office. Codex devient l'application « GED du groupe » à la place de Power Apps, et les workflows restent dans Codex plutôt que dans Power Automate. On y va par étapes : d'abord en lecture via Microsoft Graph, puis la création et les circuits.
 
 Avant tout branchement, je préparerais Codex :
 1. aligner le modèle sur le deck ;
@@ -220,17 +220,17 @@ FON-05 supposent la pile Microsoft, écartée par D-06).
 
 | ID | Exigence | Slides | Nature | Description |
 |---|---|---|---|---|
-| **ARC-01** | Base documentaire centralisée unique pour tout le groupe | 2, 3, 5 | explicite | La GED doit être la base centralisée de tous les documents d'EPC2I, avec des filtres optimisés pour la recherche. Elle remplace l'éparpillement actuel entre outils et dossiers cloisonnés, qui multiplie les sources et les doublons et fait perdre des documents. |
+| **ARC-01** | Base documentaire centralisée unique pour tout le groupe | 2, 3, 5 | explicite | La GED doit être la base centralisée de tous les documents de l'entreprise, avec des filtres optimisés pour la recherche. Elle remplace l'éparpillement actuel entre outils et dossiers cloisonnés, qui multiplie les sources et les doublons et fait perdre des documents. |
 | **ARC-02** | Construire sur les outils Microsoft existants | 4, 5 | explicite | La GED doit s'appuyer sur les outils Microsoft déjà en place : SharePoint pour le stockage, Power Automate pour les flux et Power Apps pour l'interface. La slide 4 montre aussi les logos Power BI, Power Pages et Power Virtual Agents, mais aucun usage n'en est décrit : ce ne sont donc pas des exigences. Ce choix diffère de la pile technique actuelle de Codex (Next.js + PGlite) et doit être tranché. |
 | **ARC-03** | Bibliothèque de documents unique, à la fois base de données et coffre-fort | 5, 6, 7 | explicite | Une seule bibliothèque de documents, créée dans le SharePoint global, sert à la fois de base de données (métadonnées) et de coffre-fort pour les fichiers. Il n'y a pas de bibliothèque par service ni d'arborescence de dossiers : le classement se fait par les métadonnées. |
 | **ARC-04** | Moteur de flux pour la création, la validation, la modification et l'obsolescence | 5, 8 | explicite | Les workflows du cycle de vie documentaire (création, validation, modification, passage à l'état obsolète, etc.) doivent être portés par un moteur de flux automatisé. Le deck cite Power Automate. |
-| **ARC-05** | Interface utilisateur unique qui masque la base | 5, 10 | explicite | Les utilisateurs passent par une interface applicative unique (Power Apps dans le deck) au lieu de naviguer directement dans la bibliothèque, « sans qu'ils ne puissent se perdre dans la BDD ». L'application s'appelle « GED EPC2I ». |
+| **ARC-05** | Interface utilisateur unique qui masque la base | 5, 10 | explicite | Les utilisateurs passent par une interface applicative unique (Power Apps dans le deck) au lieu de naviguer directement dans la bibliothèque, « sans qu'ils ne puissent se perdre dans la BDD ». L'application s'appelle « GED du groupe ». |
 
 ### Accès et sécurité (6)
 
 | ID | Exigence | Slides | Nature | Description |
 |---|---|---|---|---|
-| **ACC-01** | Accès à tous les documents par l'application commune « GED EPC2I » | 10 | explicite | L'application commune « GED EPC2I » est le point d'accès à l'ensemble des documents, pour tous les utilisateurs et tous les domaines. |
+| **ACC-01** | Accès à tous les documents par l'application commune « GED du groupe » | 10 | explicite | L'application commune « GED du groupe » est le point d'accès à l'ensemble des documents, pour tous les utilisateurs et tous les domaines. |
 | **ACC-02** | Restriction d'accès selon le niveau de confidentialité | 10, 13 | explicite | L'accès à un document peut être restreint selon sa classe de confidentialité. Les valeurs sont celles du tronc commun : Interne, Confidentiel, Très confidentiel, Restreint. |
 | **ACC-03** | Restriction d'accès selon le statut du document | 10 | explicite | L'accès peut être restreint selon le statut du document. L'exemple donné est le statut « Brouillon » : un brouillon ne doit pas être visible par tous. |
 | **ACC-04** | Règles de restriction activables au besoin et extensibles | 10 | implicite | Les accès « peuvent être restreints au besoin », et la liste des critères se termine par « … ». Les règles d'accès doivent donc pouvoir être réglées au cas par cas et accepter d'autres critères que la confidentialité et le statut. |
@@ -544,7 +544,7 @@ La vérification a ramené 4 écarts de « couvert » à « partiel » (G05, G15
 | [G08](#g08) | Workflow de validation avec circuit prédéfini selon le type de document | partiel | moyen | intégré |
 | [G09](#g09) | Modification d'un document validé (principe ECR/ECO) et demandes de modification | en conflit | important | intégré |
 | [G10](#g10) | Passage d'un document à l'état obsolète (et demandes associées) | absent | moyen | intégré |
-| [G11](#g11) | Accès via l'application commune unique « GED EPC2I » | couvert | faible | intégré |
+| [G11](#g11) | Accès via l'application commune unique « GED du groupe » | couvert | faible | intégré |
 | [G12](#g12) | Pages dédiées par métier / département mettant en avant les filtres principaux | partiel | moyen | **partiel** |
 | [G13](#g13) | Restriction des accès (classe de confidentialité, statut brouillon…) | absent | important | **partiel** |
 | [G14](#g14) | Fonction : création de documents et fourniture de leur ID unique | partiel | moyen | intégré |
@@ -642,7 +642,7 @@ par les décisions D-06 à D-21 et par le modèle v2.
 
 - **Constat sur la v1** : Table `templates` sans fichier : le brouillon créé depuis un modèle n'avait aucun contenu, s'appelait « Sans titre — … » et recevait un service et un processus codés en dur.
 - **Vérification** : « Partiel », confirmé.
-- **Aujourd'hui — intégré.** Un modèle est un document de type FRM au contexte QMS (D-10), versionné et validé comme les autres. « Nouveau depuis un modèle » copie le fichier de la révision en vigueur du modèle dans la version A.1 du nouveau document (`createDocument`, `src/lib/actions.ts` ; `isUsableTemplate`, `src/lib/access.ts`). Onglet Administration › Modèles (QMS), avec, depuis le 18 octobre 2026, le nombre d'utilisations de chaque modèle (`documents.template_id`, documents que le lecteur peut lire, D-14), aussi affiché dans le choix du modèle. Reste : les modèles du jeu de démonstration n'ont pas de fichier (`src/db/seed-docs.ts`) ; les vrais modèles EPC2I sont à fournir.
+- **Aujourd'hui — intégré.** Un modèle est un document de type FRM au contexte QMS (D-10), versionné et validé comme les autres. « Nouveau depuis un modèle » copie le fichier de la révision en vigueur du modèle dans la version A.1 du nouveau document (`createDocument`, `src/lib/actions.ts` ; `isUsableTemplate`, `src/lib/access.ts`). Onglet Administration › Modèles (QMS), avec, depuis le 18 octobre 2026, le nombre d'utilisations de chaque modèle (`documents.template_id`, documents que le lecteur peut lire, D-14), aussi affiché dans le choix du modèle. Reste : les modèles du jeu de démonstration n'ont pas de fichier (`src/db/seed-docs.ts`) ; les vrais modèles de l'entreprise sont à fournir.
 
 <a id="g07"></a>
 #### G07 — Workflow de création de document (avec codification automatique)
@@ -681,13 +681,13 @@ par les décisions D-06 à D-21 et par le modèle v2.
 - **Aujourd'hui — intégré.** Intégré côté Codex. Demande de retrait (`requestChange` de type `obsolescence`), décision dans Vigie (D-17), puis état `obsolete` : le circuit en cours est clos et les révisions ouvertes sont annulées (`applyChangeDecision`, `src/lib/lifecycle.ts`). C'est distinct de l'archivage (`archiveDocuments`) ; une restauration d'archive rend au document son état d'avant (`restoreArchived`). Mêmes réserves que G09 sur Vigie.
 
 <a id="g11"></a>
-#### G11 — Accès via l'application commune unique « GED EPC2I »
+#### G11 — Accès via l'application commune unique « GED du groupe »
 
 *Deck* : Slide 10. *Statut le 7 octobre* : couvert. *Effort estimé* : faible.
 
 - **Constat sur la v1** : Codex était déjà le point d'accès unique (7 écrans), sous le nom « Codex — GED Groupe ».
 - **Vérification** : « Couvert », confirmé, avec deux réserves : pas d'authentification, PGlite et fichiers locaux ; le deck pensait à une application Power Apps.
-- **Aujourd'hui — intégré.** Codex est le point d'accès unique et tient le rôle de l'application « GED EPC2I » du deck (D-06). Le nom affiché reste « Codex — GED Groupe » (`src/app/layout.tsx`, `brand_sub` dans `src/lib/i18n.ts`) : le nom « GED EPC2I » n'a pas été repris et l'utilisateur ne s'est pas prononcé. L'identité reste simulée (voir G13).
+- **Aujourd'hui — intégré.** Codex est le point d'accès unique et tient le rôle de l'application « GED du groupe » du deck (D-06). Le nom affiché reste « Codex — GED Groupe » (`src/app/layout.tsx`, `brand_sub` dans `src/lib/i18n.ts`) : le nom « GED du groupe » n'a pas été repris et l'utilisateur ne s'est pas prononcé. L'identité reste simulée (voir G13).
 
 <a id="g12"></a>
 #### G12 — Pages dédiées par métier / département mettant en avant les filtres principaux
@@ -975,7 +975,7 @@ par les décisions D-06 à D-21 et par le modèle v2.
 
 - **Constat sur la v1** : Aucun des 4 champs.
 - **Vérification** : « Absent », confirmé.
-- **Aujourd'hui — partiel.** Organisme source (obligatoire), référence externe et date de réception (facultatives, alors que le deck les rend obligatoires). Le champ « sens entrant / sortant » n'existe pas et ne figure pas dans `docs/modele-cible.md` §7 ; l'utilisateur ne s'est pas prononcé. Avec D-08, un courrier émis par EPC2I est d'origine interne, ce qui retire une partie du besoin.
+- **Aujourd'hui — partiel.** Organisme source (obligatoire), référence externe et date de réception (facultatives, alors que le deck les rend obligatoires). Le champ « sens entrant / sortant » n'existe pas et ne figure pas dans `docs/modele-cible.md` §7 ; l'utilisateur ne s'est pas prononcé. Avec D-08, un courrier émis par l'entreprise est d'origine interne, ce qui retire une partie du besoin.
 
 <a id="g44"></a>
 #### G44 — Niveau 4 – Champs spécifiques DP (code projet, phase projet, lot / work package, discipline)
@@ -1026,7 +1026,7 @@ par les décisions D-06 à D-21 et par le modèle v2.
 
 ### 6.1 L'approche du deck
 
-Ce que j'ai compris du deck : construire la GED uniquement avec les outils Microsoft 365 déjà en place, sans développement ni hébergement. (1) Une bibliothèque de documents unique dans le SharePoint global sert à la fois de base de données (les colonnes) et de coffre-fort (droits, versions). On classe par métadonnées, plus par arborescence de dossiers. (2) Les métadonnées vivent dans la banque de termes SharePoint (métadonnées gérées) et sont structurées en 4 niveaux. Niv 1 : un type de contenu parent « GED Document » et 4 types enfants : Interne (DI), Externe (DE), Projet (DP), Recherche (DR). Niv 2 : un tronc commun de 20 champs, dont un ID immuable généré, le domaine dérivé du type de contenu, catégorie/type/sous-type en métadonnées gérées, propriétaire, auteur, 7 statuts (Brouillon, En révision, Approuvé, En vigueur, Remplacé, Archivé, Obsolète), département, 4 niveaux de confidentialité, mots-clés, version, 4 dates, langue, classe de conservation, et un organisme source obligatoire pour l'externe. Niv 3 : une taxonomie Catégorie > Type > Sous-types par domaine, soit 10 types DI, 10 DE, 12 DP et 13 DR. Niv 4 : des champs obligatoires propres à chaque domaine (par exemple code projet, phase, lot et discipline pour DP). (3) Le versioning natif SharePoint et des modèles de documents. (4) Power Automate pour les flux : création avec codification automatique selon le type, validation par un circuit prédéfini selon le type, modification d'un document validé sur le principe ECR/ECO, passage à l'état obsolète. (5) Une app Power Apps « GED EPC2I » comme point d'entrée unique : création avec ID unique, recherche dans toute la GED, pages par métier, liens qui ouvrent le document dans la bibliothèque SharePoint, suivi de mes workflows et de mes actions en attente, accès restreint selon la confidentialité et le statut brouillon. Déroulé prévu : inventaire des arborescences actuelles, création des termes, création et paramétrage de la bibliothèque, modèles, migration par vagues, puis suppression ou archivage des anciennes arborescences. Hypothèses implicites : licences déjà payées, rien à héberger, maintenance par la DSI ou un profil low-code, et on garde l'édition Office, la sécurité Entra et la conformité Purview.
+Ce que j'ai compris du deck : construire la GED uniquement avec les outils Microsoft 365 déjà en place, sans développement ni hébergement. (1) Une bibliothèque de documents unique dans le SharePoint global sert à la fois de base de données (les colonnes) et de coffre-fort (droits, versions). On classe par métadonnées, plus par arborescence de dossiers. (2) Les métadonnées vivent dans la banque de termes SharePoint (métadonnées gérées) et sont structurées en 4 niveaux. Niv 1 : un type de contenu parent « GED Document » et 4 types enfants : Interne (DI), Externe (DE), Projet (DP), Recherche (DR). Niv 2 : un tronc commun de 20 champs, dont un ID immuable généré, le domaine dérivé du type de contenu, catégorie/type/sous-type en métadonnées gérées, propriétaire, auteur, 7 statuts (Brouillon, En révision, Approuvé, En vigueur, Remplacé, Archivé, Obsolète), département, 4 niveaux de confidentialité, mots-clés, version, 4 dates, langue, classe de conservation, et un organisme source obligatoire pour l'externe. Niv 3 : une taxonomie Catégorie > Type > Sous-types par domaine, soit 10 types DI, 10 DE, 12 DP et 13 DR. Niv 4 : des champs obligatoires propres à chaque domaine (par exemple code projet, phase, lot et discipline pour DP). (3) Le versioning natif SharePoint et des modèles de documents. (4) Power Automate pour les flux : création avec codification automatique selon le type, validation par un circuit prédéfini selon le type, modification d'un document validé sur le principe ECR/ECO, passage à l'état obsolète. (5) Une app Power Apps « GED du groupe » comme point d'entrée unique : création avec ID unique, recherche dans toute la GED, pages par métier, liens qui ouvrent le document dans la bibliothèque SharePoint, suivi de mes workflows et de mes actions en attente, accès restreint selon la confidentialité et le statut brouillon. Déroulé prévu : inventaire des arborescences actuelles, création des termes, création et paramétrage de la bibliothèque, modèles, migration par vagues, puis suppression ou archivage des anciennes arborescences. Hypothèses implicites : licences déjà payées, rien à héberger, maintenance par la DSI ou un profil low-code, et on garde l'édition Office, la sécurité Entra et la conformité Purview.
 
 ### 6.2 Codex v1, tel qu'analysé le 7 octobre
 
@@ -1063,7 +1063,7 @@ Enfin, la spec Keystone (Keystone/docs/spec/00-overview.md) attend déjà que Co
 | Slide 5 · Bibliothèque de documents unique dans le SharePoint global | Un seul conteneur pour tous les documents contrôlés du groupe, classés par métadonnées plutôt que dans des dossiers et sites dispersés. | Même idée : une seule table documents, un classement multi-axes et un explorateur qui passe d'un axe à l'autre. Mais le stockage est propre à Codex (PGlite + .data/files), pas SharePoint. Les « espaces » Codex (un par entité) ne sont pas des bibliothèques distinctes. | Une seule table `documents` ; fichiers sur disque local ou dans une bibliothèque SharePoint pilotée par Codex (D-06). Voir G02. |
 | Slide 5 · La bibliothèque fait office de base de données et de coffre-fort | Les colonnes SharePoint servent de base. Les droits hérités, les versions, la corbeille et la rétention Purview servent de coffre. | Codex est lui-même la base et le coffre : PGlite embarqué dans un seul processus, fichiers sur disque local, verrous applicatifs (archivé, gel juridique, circuit en cours). Il n'y a ni chiffrement, ni authentification réelle, ni filtrage des lectures. | Codex est la base ; contrôle en lecture en place, pas de chiffrement, identité simulée. Voir G02, G13. |
 | Slide 5 · Power Automate pour les flux | Les automatismes du cycle de vie (création, validation, modification, obsolescence) sont faits en low-code. | Ce sont les Server Actions de src/lib/actions.ts (requestApproval, decideStep, delegateStep, archiveDocuments, holdDocuments), avec 3 circuits codés : simple, signature, revue annuelle. | Server Actions, circuit porté par le type et résolu par fonctions (D-15). Voir G08. |
-| Slide 5 · IU Power Apps « GED EPC2I » | Une interface unique pour que les utilisateurs ne se perdent pas dans la bibliothèque. | C'est exactement le rôle de Codex : 7 écrans (accueil, explorateur, fiche, recherche, validations, archivage, administration), bilingues, avec des liens partageables. | Codex reste l'interface unique (D-06). Voir G11. |
+| Slide 5 · IU Power Apps « GED du groupe » | Une interface unique pour que les utilisateurs ne se perdent pas dans la bibliothèque. | C'est exactement le rôle de Codex : 7 écrans (accueil, explorateur, fiche, recherche, validations, archivage, administration), bilingues, avec des liens partageables. | Codex reste l'interface unique (D-06). Voir G11. |
 | Slide 6 · 1 – État de l'art des arborescences existantes | Inventorier les dossiers actuels (emplacements, volumes, propriétaires) et préparer leur correspondance avec la nouvelle taxonomie. | Aucun équivalent : c'est un travail d'organisation. Les données Codex sont celles, fictives, de la maquette. | Hors de Codex : relève de l'outil de migration (D-21). |
 | Slide 6 · 2 – Métadonnées dans la banque de termes SharePoint | Catégorie, type, sous-type, département, mots-clés, classe de conservation et organisme source deviennent des ensembles de termes hiérarchiques, gérés au même endroit et réutilisables partout. | La table taxonomy (axes entity/service/process/type/conf), plate et bilingue, modifiable dans Administration › Plan de classement. Il n'y a ni hiérarchie Catégorie > Type > Sous-type, ni synonymes, ni mots-clés gérés. Les valeurs sont celles de la maquette, pas celles du deck. | Registre des types de Codex (familles, types, sous-types), départements, sites, fonctions (D-07). Voir G03. |
 | Slide 6 · 3 / Slide 7 · 1 – Création de la bibliothèque unique | Une bibliothèque portant le type de contenu parent « GED Document » et ses 4 types enfants DI, DE, DP et DR. Chacun a le tronc commun et ses champs de niveau 4. | Une seule table documents, mais sans notion de domaine ni de type de contenu : les mêmes colonnes pour tous, aucun champ propre à un domaine. Seul affaireCode existe ; il manque phase, lot, discipline, organisme source, sens entrant/sortant, programme de recherche, etc. | Pas de types de contenu : deux axes origine et rattachement, et des champs de contexte (D-08). Voir G20. |
@@ -1086,7 +1086,7 @@ Enfin, la spec Keystone (Keystone/docs/spec/00-overview.md) attend déjà que Co
 
 #### Option A – Le plan du deck tel quel (SharePoint + Power Automate + Power Apps), Codex sert de maquette
 
-On réalise les slides 5 à 11 à la lettre : bibliothèque unique, banque de termes, types de contenu, versioning, flux Power Automate et app canvas Power Apps « GED EPC2I ». Codex sert seulement de référence d'ergonomie. Son code est abandonné.
+On réalise les slides 5 à 11 à la lettre : bibliothèque unique, banque de termes, types de contenu, versioning, flux Power Automate et app canvas Power Apps « GED du groupe ». Codex sert seulement de référence d'ergonomie. Son code est abandonné.
 
 **Avantages**
 
@@ -1100,13 +1100,13 @@ On réalise les slides 5 à 11 à la lettre : bibliothèque unique, banque de te
 - Power Apps sur une grosse bibliothèque bute sur la délégation : Search() et les filtres sur métadonnées gérées ne sont pas délégués (plafond de 500 à 2 000 lignes). La recherche dans toute la GED et les facettes de la maquette sont difficiles à reproduire, et l'écriture des métadonnées gérées est laborieuse.
 - Circuits par type, ECR/ECO, 7 statuts et codification demandent beaucoup de flux, peu testables, exécutés sous un compte de service. Sans contrôle de concurrence, le compteur d'ID peut produire des doublons.
 - L'intégration avec Keystone (webhooks, index, dépôt) passe par des connecteurs HTTP ou personnalisés, qui exigent une licence Premium.
-- Ergonomie inférieure à la maquette. On s'écarte de la trajectoire « Système EPC2i » (Keystone, Vigie et Cursus sont en Next.js).
+- Ergonomie inférieure à la maquette. On s'écarte de la trajectoire « Suite Atrium » (Keystone, Vigie et Cursus sont en Next.js).
 
 **Effort** : Moyen (M) à construire, mais long à fiabiliser. Le socle SharePoint est commun à toutes les options. S'y ajoutent une dizaine de flux et une app canvas. L'effort dépend surtout de l'inventaire et du volume à migrer.
 
 **Adéquation au deck** : Totale : c'est le deck.
 
-#### Option B – Codex devient l'app « GED EPC2I » au-dessus de SharePoint (Microsoft Graph), avec les workflows dans Codex
+#### Option B – Codex devient l'app « GED du groupe » au-dessus de SharePoint (Microsoft Graph), avec les workflows dans Codex
 
 SharePoint garde la bibliothèque unique, les types de contenu (DI, DE, DP, DR), la banque de termes, les versions, les droits et Purview. Il reste la référence pour les fichiers et les métadonnées. Codex remplace Power Apps et Power Automate. Il lit et écrit par Microsoft Graph (fichiers, champs, versions, banque de termes, types de contenu) avec des jetons délégués Entra ID, donc avec les droits de l'utilisateur. Un Postgres managé ne garde que ce que SharePoint ne sait pas faire : circuits, commentaires, audit métier, compteurs d'ID, liens Keystone, recherches enregistrées, et un index des métadonnées synchronisé (delta ou webhooks) pour les facettes et les tableaux de bord. « Ouvrir » renvoie vers SharePoint ou vers Word sur le poste (ms-word:ofe|u|…).
 
@@ -1191,7 +1191,7 @@ On construit le socle SharePoint du deck (étapes des slides 6 et 7). Le premier
 
 ### 6.5 Recommandation de l'audit (non retenue)
 
-Je recommande de garder le socle SharePoint du deck et de faire de Codex l'app « GED EPC2I » à la place de Power Apps (option B), en y allant par étapes (option E).
+Je recommande de garder le socle SharePoint du deck et de faire de Codex l'app « GED du groupe » à la place de Power Apps (option B), en y allant par étapes (option E).
 
 1) Le socle SharePoint des slides 6 et 7 se fait sans dépendre de Codex : inventaire, banque de termes construite à partir des slides 13 à 18, types de contenu DI, DE, DP et DR, bibliothèque unique, versioning majeur et mineur avec masquage des brouillons, modèles, migration par vagues avec les outils Microsoft. Il est utile quelle que soit l'interface retenue, et c'est lui qui garde l'édition Office, Purview, l'audit Microsoft 365 et la sécurité Entra.
 
@@ -1214,7 +1214,7 @@ Condition pour B : la DSI doit accepter d'héberger et de maintenir une applicat
     - **Suite** : **Répondu** (D-06) : Codex.
 2. Où vivent les workflows (création, validation, ECR/ECO, obsolescence) : dans Codex ou dans Power Automate ? Les notifications et approbations doivent-elles apparaître dans Teams ou Outlook ?
     - **Suite** : **Répondu** (D-06) : dans Codex. Notifications dans Teams ou Outlook : non discuté.
-3. La DSI accepte-t-elle d'héberger et d'exploiter une application sur mesure (Azure App Service ou conteneur, Postgres managé, sauvegardes) ? Qui la maintient ? Est-ce la trajectoire voulue pour tout le « Système EPC2i » (Keystone, Vigie, Cursus) ?
+3. La DSI accepte-t-elle d'héberger et d'exploiter une application sur mesure (Azure App Service ou conteneur, Postgres managé, sauvegardes) ? Qui la maintient ? Est-ce la trajectoire voulue pour tout le « Suite Atrium » (Keystone, Vigie, Cursus) ?
     - **Suite** : **Ouvert.** Le choix de Codex implique une application sur mesure à héberger ; qui l'héberge et la maintient n'a pas été dit.
 4. Quelles licences Microsoft 365 avez-vous (Business Premium, E3, E5) ? L'application automatique d'étiquettes de rétention et la revue de destruction demandent E5 ou E5 Compliance. Les connecteurs HTTP ou personnalisés vers Keystone demandent Power Platform Premium.
     - **Suite** : **Sans objet en grande partie** : la Power Platform est abandonnée. Reste à voir pour SharePoint si l'option de stockage est retenue.
@@ -1316,7 +1316,7 @@ tranché dans le modèle ou le code, ouvert, ou sans objet.
 #### A08 — ECR/ECO : définition et étapes (slides 8, 9, 11)
 
 - **Constat** : Le 'principe de l'ECR/ECO' (Engineering Change Request / Order, issu de la gestion de configuration) est cité trois fois sans être défini : ni objet, ni étapes, ni acteurs.
-- **Question** : Chez EPC2I, la demande de modification (ECR) est-elle un objet distinct avec son propre numéro ? Qui peut l'émettre, et qui l'accepte ou la refuse (le propriétaire, un comité) ? Faut-il une analyse d'impact (documents liés, formations, projets en cours) ? L'ECO consiste-t-il à ouvrir une nouvelle révision en brouillon pendant que la révision courante reste 'En vigueur' ? Ce mécanisme vaut-il pour les quatre domaines ou seulement pour les DI et DP techniques ?
+- **Question** : Dans l'entreprise, la demande de modification (ECR) est-elle un objet distinct avec son propre numéro ? Qui peut l'émettre, et qui l'accepte ou la refuse (le propriétaire, un comité) ? Faut-il une analyse d'impact (documents liés, formations, projets en cours) ? L'ECO consiste-t-il à ouvrir une nouvelle révision en brouillon pendant que la révision courante reste 'En vigueur' ? Ce mécanisme vaut-il pour les quatre domaines ou seulement pour les DI et DP techniques ?
 - **Suite** : **Répondu** (D-16, D-18) : ECR/ECO centralisés dans Vigie ; les demandes se font depuis Codex (documents) ou Keystone (projets). Les étapes sont à définir dans Vigie (O-10).
 
 #### A09 — Cycle de vie : transitions et déclencheurs (slides 8, 11, 13)
@@ -1469,8 +1469,8 @@ tranché dans le modèle ou le code, ouvert, ou sans objet.
 
 #### C11 — DE d'origine externe mais avec des documents sortants (slides 12, 18)
 
-- **Constat** : Le DE est défini comme 'Origine externe' (slide 12), mais la slide 18 lui ajoute un champ 'sens du document (entrant/sortant)'. Un courrier ou une offre émis par EPC2I sont d'origine interne : on ne sait pas s'ils relèvent du DE ou du DI.
-- **Suite** : **Résolu en partie** par D-08 : un document émis par EPC2I est d'origine interne. Le champ « sens » n'est pas repris et l'utilisateur ne s'est pas prononcé (voir G43).
+- **Constat** : Le DE est défini comme 'Origine externe' (slide 12), mais la slide 18 lui ajoute un champ 'sens du document (entrant/sortant)'. Un courrier ou une offre émis par l'entreprise sont d'origine interne : on ne sait pas s'ils relèvent du DE ou du DI.
+- **Suite** : **Résolu en partie** par D-08 : un document émis par l'entreprise est d'origine interne. Le champ « sens » n'est pas repris et l'utilisateur ne s'est pas prononcé (voir G43).
 
 #### C12 — Doublons entre niveau 2 et niveau 4 (slides 13, 18)
 
@@ -1615,7 +1615,7 @@ tranché dans le modèle ou le code, ouvert, ou sans objet.
 
 #### M20 — Couverture métier de la taxonomie
 
-- **Pourquoi** : La slide 11 cite le commercial et la communication, mais les DI n'ont ni catégorie Commercial pour les documents émis (devis, offres), ni catégorie Communication, ni catégorie Juridique corporate (statuts, PV d'assemblée). Les documents métier déjà présents dans Codex (FDS, registre des explosifs, plan et instruction de tir, plan de prévention, habilitation CPT, autorisation préfectorale ICPE) n'ont pas de place évidente dans les slides 14 à 17. Le vocabulaire DP (PID, RAID log, ITP, as-built) évoque de grands projets EPC plus que des campagnes de tir.
+- **Pourquoi** : La slide 11 cite le commercial et la communication, mais les DI n'ont ni catégorie Commercial pour les documents émis (devis, offres), ni catégorie Communication, ni catégorie Juridique corporate (statuts, PV d'assemblée). Les documents métier déjà présents dans Codex (FDS, registre des explosifs, plan et instruction de tir, plan de prévention, habilitation CPT, autorisation préfectorale ICPE) n'ont pas de place évidente dans les slides 14 à 17. Le vocabulaire DP (PID, RAID log, ITP, as-built) évoque de grands projets d'ingénierie et de construction clés en main plus que des campagnes de tir.
 - **Question** : Pouvez-vous indiquer, pour chaque type documentaire actuel, sa place dans les quatre domaines (catégorie, type, sous-type) ? Faut-il ajouter des catégories Commercial, Communication, Juridique corporate et HSE pyrotechnie ? La taxonomie DP correspond-elle bien à vos affaires réelles ?
 - **Suite** : **Répondu en partie** : registre fusionné de 69 types (types Keystone ajoutés) et données de démonstration alignées sur Keystone ; les documents de la maquette (explosifs) ont disparu. Il n'existe pas de type « communication » alors que c'est l'exemple de l'utilisateur pour le niveau Public (O-08). Catégories manquantes et doublons : `docs/registre-points-ouverts.md`.
 
@@ -1649,11 +1649,11 @@ Relevés par le critique de complétude.
 
 - **Suite** : **Tranché pour Codex** : `TYPE-CONTEXTE-SEQ` avec le code projet complet (ex. `PID-HLT-026-001`) ; le code projet complet est proposé, non confirmé (D-09). La spec Keystone reste à corriger, dans le dépôt Keystone.
 
-**P03.** Les analyses prennent la fiction de démonstration pour la réalité d'EPC2I. Les données de Codex parlent de carrières et de minage : carrière de Montcel, plan de tir, sites Lyon, Cugny, dépôts, UK et Maroc (src/db/seed-data.ts). Keystone décrit une autre activité : ponts roulants et automatismes, atelier à Lyon, magasins au Havre et à Marseille, projets en Europe et Amérique du Nord, Afrique et Asie-Pacifique, P&ID, automates, essais FAT et SAT (00-overview.md l.39). Plusieurs propositions reposent sur cette fiction : les questions de la critique (RGPD France/UK/Maroc, ICPE et pyrotechnie, instructions de tir, catégorie « HSE pyrotechnie »), le reclassement des 30 documents de démo dans l'analyse d'écart, et l'« utilisatrice HSE » de l'analyse d'architecture. Des sigles entrent aussi en collision : FDS veut dire fiche de données de sécurité dans Codex mais spécification fonctionnelle dans Keystone ; PID veut dire Project Initiation Document dans le deck (slide 16) mais P&ID dans Keystone.
+**P03.** Les analyses prennent la fiction de démonstration pour la réalité de l'entreprise. Les données de Codex parlent de carrières et de minage : carrière de Montcel, plan de tir, sites Lyon, Cugny, dépôts, UK et Maroc (src/db/seed-data.ts). Keystone décrit une autre activité : ponts roulants et automatismes, atelier à Lyon, magasins au Havre et à Marseille, projets en Europe et Amérique du Nord, Afrique et Asie-Pacifique, P&ID, automates, essais FAT et SAT (00-overview.md l.39). Plusieurs propositions reposent sur cette fiction : les questions de la critique (RGPD France/UK/Maroc, ICPE et pyrotechnie, instructions de tir, catégorie « HSE pyrotechnie »), le reclassement des 30 documents de démo dans l'analyse d'écart, et l'« utilisatrice HSE » de l'analyse d'architecture. Des sigles entrent aussi en collision : FDS veut dire fiche de données de sécurité dans Codex mais spécification fonctionnelle dans Keystone ; PID veut dire Project Initiation Document dans le deck (slide 16) mais P&ID dans Keystone.
 
 - **Suite** : **Traité en partie** : personnes et projets de démonstration alignés sur Keystone (`src/db/seed-org.ts`) ; organisation provisoire en attendant l'organigramme (D-19). FDS désigne la spécification fonctionnelle et les fiches de données de sécurité sont un sous-type de DTF ; le code PID désigne le P&ID, le sous-type de DEF s'appelle « PID (document d'initialisation de projet) » (`src/db/registry.ts`, `docs/registre-points-ouverts.md`).
 
-**P04.** Aucune analyse ne trace la frontière avec les autres applications du Système EPC2i. La taxonomie du deck reprend des documents que d'autres outils produisent déjà : fiches de NC, rapports d'audit, plans CAPA, analyses de risques et rapports d'incident (DI QHSE) recoupent Vigie (événements, plan d'actions, DUERP, audits). La catégorie DE Règlementation recoupe la veille réglementaire de Vigie. Matrice de compétences, supports de formation et feuilles de présence (DI RH et Formation) recoupent Cursus. Journal de décisions, RAID, reporting, ordre de changement, punch list et ITP (DP) recoupent Keystone. Les plans (DP) recoupent SolidWorks PDM, et les bons de commande et factures (DE) recoupent Sage X3. Aucune analyse ne demande quel système fait foi. Vigie a d'ailleurs un écran /documents laissé hors périmètre.
+**P04.** Aucune analyse ne trace la frontière avec les autres applications du Suite Atrium. La taxonomie du deck reprend des documents que d'autres outils produisent déjà : fiches de NC, rapports d'audit, plans CAPA, analyses de risques et rapports d'incident (DI QHSE) recoupent Vigie (événements, plan d'actions, DUERP, audits). La catégorie DE Règlementation recoupe la veille réglementaire de Vigie. Matrice de compétences, supports de formation et feuilles de présence (DI RH et Formation) recoupent Cursus. Journal de décisions, RAID, reporting, ordre de changement, punch list et ITP (DP) recoupent Keystone. Les plans (DP) recoupent SolidWorks PDM, et les bons de commande et factures (DE) recoupent Sage X3. Aucune analyse ne demande quel système fait foi. Vigie a d'ailleurs un écran /documents laissé hors périmètre.
 
 - **Suite** : **Traité en partie** : les ECR/ECO vont dans Vigie (D-16). Les frontières avec Cursus, Sage X3, SolidWorks PDM et les modules qualité de Vigie restent ouvertes.
 
@@ -1665,9 +1665,9 @@ Relevés par le critique de complétude.
 
 - **Suite** : **Ouvert** : aucune détection de doublons (aucune empreinte de fichier). L'import ne détecte que le rejeu d'une même référence d'origine (`src/lib/importer.ts`).
 
-**P07.** L'enjeu ISO 9001 n'est pas soulevé. Les « documents contrôlés » de la slide 12 correspondent à la maîtrise des informations documentées (§7.5 de la norme). Le registre Keystone associe chaque type à une clause ISO et présente le journal d'audit comme servant aux audits ISO 9001. Personne ne demande si EPC2I est certifié, ce qui fixerait d'office plusieurs exigences : approbation, diffusion, identification des révisions, prévention de l'usage de documents périmés.
+**P07.** L'enjeu ISO 9001 n'est pas soulevé. Les « documents contrôlés » de la slide 12 correspondent à la maîtrise des informations documentées (§7.5 de la norme). Le registre Keystone associe chaque type à une clause ISO et présente le journal d'audit comme servant aux audits ISO 9001. Personne ne demande si l'entreprise est certifiée, ce qui fixerait d'office plusieurs exigences : approbation, diffusion, identification des révisions, prévention de l'usage de documents périmés.
 
-- **Suite** : **Ouvert** : chaque type porte une clause ISO dans le registre, mais la certification d'EPC2I n'a pas été demandée.
+- **Suite** : **Ouvert** : chaque type porte une clause ISO dans le registre, mais la certification de l'entreprise n'a pas été demandée.
 
 **P08.** Diffusion, accusé de réception et partage client : la spec Keystone attend déjà de Codex une liste de diffusion, une preuve d'approbation, un journal de téléchargements et un accusé de réception client via le portail client Keystone (M14). La critique propose Power Pages pour le partage externe sans citer ce portail, et l'analyse d'écart ne traite pas du tout la diffusion.
 
@@ -1752,7 +1752,7 @@ Relevés par le critique de complétude.
 Le critique de complétude a resserré l'ensemble en 12 questions. Les 10 questions posées à l'utilisateur à 12:40
 (§2) en sont une version condensée.
 
-**Q01.** Socle technique : la bibliothèque SharePoint unique reste-t-elle le coffre-fort et la source de vérité des fichiers et des métadonnées, Codex devenant l'application « GED EPC2I » à la place de Power Apps ? Ou bien Codex remplace-t-il SharePoint ? Et les workflows tournent-ils dans Codex ou dans Power Automate ? Tout en dépend : schéma, stockage, authentification et intégration Keystone. La spec Keystone suppose aujourd'hui que Codex possède les fichiers, la numérotation, les circuits et la rétention.
+**Q01.** Socle technique : la bibliothèque SharePoint unique reste-t-elle le coffre-fort et la source de vérité des fichiers et des métadonnées, Codex devenant l'application « GED du groupe » à la place de Power Apps ? Ou bien Codex remplace-t-il SharePoint ? Et les workflows tournent-ils dans Codex ou dans Power Automate ? Tout en dépend : schéma, stockage, authentification et intégration Keystone. La spec Keystone suppose aujourd'hui que Codex possède les fichiers, la numérotation, les circuits et la rétention.
 
 - **Suite** : **Répondu** (D-06).
 
@@ -1788,7 +1788,7 @@ Le critique de complétude a resserré l'ensemble en 12 questions. Les 10 questi
 
 - **Suite** : **Répondu** (D-16, D-17, D-18). Étapes à définir dans Vigie (O-10).
 
-**Q10.** Organisation réelle : les données de démo de Codex (carrières, minage, sites Lyon, Cugny, dépôts, UK, Maroc) sont fictives et ne correspondent pas à Keystone (atelier de Lyon, magasins du Havre et de Marseille, projets en Europe, Afrique et Asie). Quelles sont les vraies sociétés, les vrais sites et les vrais départements (valeurs de Département / Fonction) ? Faut-il un champ Société / Site, absent du deck ? EPC2I est-il certifié ISO 9001 ?
+**Q10.** Organisation réelle : les données de démo de Codex (carrières, minage, sites Lyon, Cugny, dépôts, UK, Maroc) sont fictives et ne correspondent pas à Keystone (atelier de Lyon, magasins du Havre et de Marseille, projets en Europe, Afrique et Asie). Quelles sont les vraies sociétés, les vrais sites et les vrais départements (valeurs de Département / Fonction) ? Faut-il un champ Société / Site, absent du deck ? L'entreprise est-elle certifiée ISO 9001 ?
 
 - **Suite** : **En attente** de l'organigramme (D-19, O-04). Site facultatif dans le modèle. Certification ISO 9001 : non demandée.
 

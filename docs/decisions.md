@@ -1,4 +1,4 @@
-# Journal des décisions — Codex (GED EPC2I)
+# Journal des décisions — Codex (GED du groupe)
 
 Ce fichier fait foi pour les décisions prises avec l'utilisateur pendant la session de travail locale du 7 au
 9 octobre 2026. Il sert à ce qu'aucune session ne repose une question déjà tranchée. Le modèle détaillé qui en découle
@@ -14,11 +14,11 @@ Règles de lecture :
 
 ## À savoir pour reprendre dans une session cloud
 
-- Le deck « Création de la GED EPC2I » est dans le dépôt : `docs/sources/creation-ged-epc2i.pptx`, avec sa
-  transcription en texte dans `docs/sources/deck-ged-epc2i.md`. Inutile de le redemander.
+- Le deck « Création de la GED » est dans le dépôt : `docs/sources/creation-ged.pptx`, avec sa
+  transcription en texte dans `docs/sources/deck-ged.md`. Inutile de le redemander.
 - L'audit du deck a été fait le 7 octobre, et ses 10 questions ont reçu leurs réponses (D-06 à D-21). Inutile de le
   relancer avant de toucher au code : le modèle qui en découle est implémenté. Le rapport détaillé est dans
-  `docs/audit-deck-epc2i.md`.
+  `docs/audit-deck-ged.md`.
 - `docs/modele-cible.md` contient aussi des propositions de l'assistant, implémentées mais non confirmées : Entra ID
   (§1), codification hors projet, ID attribué au brouillon, alias et nom de fichier (§3), « Remplacé » et mise en
   vigueur automatique (§4). Il les signale en tête et renvoie ici ; en cas de doute, la section « Choix de l'assistant
@@ -98,9 +98,9 @@ Règles de lecture :
   - L'audit a posé 10 questions à trancher (D-06 à D-21).
 - **Décision retenue** : le deck décrit la GED voulue, et les réponses de l'utilisateur aux 10 questions priment sur
   le deck là où elles en diffèrent.
-- **Mise en œuvre** : `docs/sources/creation-ged-epc2i.pptx` (le deck), `docs/sources/deck-ged-epc2i.md` (sa
+- **Mise en œuvre** : `docs/sources/creation-ged.pptx` (le deck), `docs/sources/deck-ged.md` (sa
   transcription), `docs/modele-cible.md` (synthèse du deck, de la spec Keystone et des arbitrages). Le rapport
-  d'audit détaillé est dans `docs/audit-deck-epc2i.md`.
+  d'audit détaillé est dans `docs/audit-deck-ged.md`.
 
 ### D-06 — Socle technique : Codex fait tout, SharePoint en option pour les fichiers
 - **Date** : question le 7 octobre à 12:40 (question 1 de l'audit), réponse à 13:38. L'assistant avait annoncé à
@@ -418,10 +418,10 @@ Règles de lecture :
   l'audit, les décisions et l'historique.
 - **Mise en œuvre** :
   - `CLAUDE.md` ;
-  - `docs/sources/creation-ged-epc2i.pptx` et `docs/sources/deck-ged-epc2i.md` ;
+  - `docs/sources/creation-ged.pptx` et `docs/sources/deck-ged.md` ;
   - ce fichier ;
   - `docs/historique.md` ;
-  - le rapport d'audit, `docs/audit-deck-epc2i.md` ;
+  - le rapport d'audit, `docs/audit-deck-ged.md` ;
   - la section « Décisions et points ouverts » de `README.md`.
 
 ### D-26 — Modification acceptée alors qu'une révision est déjà ouverte : greffe ou attente
@@ -452,7 +452,7 @@ Règles de lecture :
 - **Date** : 22 octobre 2026.
 - **Contexte** : Codex exigeait PostgreSQL 18 sur un serveur (repli de la recherche par la collation `pg_unicode_fast`,
   propre à la 18). Le passage du socle Matrix en 18 (proposition P-01) a cassé la production des autres outils et a
-  été annulé (dépôt Matrix, PR #11) : le serveur commun EPC2I reste en PostgreSQL 16 (`postgres:16-bookworm`).
+  été annulé (dépôt Matrix, PR #11) : le serveur commun de la suite Atrium reste en PostgreSQL 16 (`postgres:16-bookworm`).
 - **Réponse de l'utilisateur** :
   > fait le necessaire pour que codex soit en postgresql 16 comme le reste des outils
 - **Décision retenue** : Codex fonctionne sur le serveur commun en **PostgreSQL 16** ; il accepte PostgreSQL 16 ou
@@ -469,7 +469,7 @@ Règles de lecture :
   (`CODEX_STORAGE=local`), dans le volume `/data` de son conteneur Coolify, la base étant sur le serveur commun (M-01).
 - **Réponse de l'utilisateur** :
   > Nous devons passer a une étape supérieure. Nous allons choisir pour le moment d'héberger la bibliothèque de document sur notre serveur. Fait moi toute la préparation a cela et s'il y a des étapes que je dois faire pour toi fait un guide pas a pas pour que je puisse le faire
-- **Décision retenue** : pour le moment, les fichiers restent dans le stockage local de Codex sur le serveur EPC2I
+- **Décision retenue** : pour le moment, les fichiers restent dans le stockage local de Codex sur le serveur de l'entreprise
   (option A de `docs/fiches-decision.md`, O-01) ; SharePoint n'est pas activé. « Pour le moment » : O-01 pourra être
   rouverte ; rien n'est irréversible (le stockage est enregistré fichier par fichier).
 - **Mise en œuvre** : sauvegarde des fichiers quand la base est sur un serveur PostgreSQL (copie incrémentale vérifiée
@@ -600,7 +600,7 @@ Règles de lecture :
 | 7 oct., 12:40 | Question 7 : « quelle matrice type → circuit ? » | Principe tranché (D-15), matrice provisoire (O-06). |
 | 7 oct., 12:40 | Question 8 : « quelles étapes ? » (ECR/ECO) | Relève de Vigie (D-16, O-10). |
 | 7 oct., 12:40 | Question 10 : « Quels volumes et quels emplacements faut-il migrer ? » | Pas de réponse ; la migration est hors de Codex (D-21, O-11). |
-| 7 oct., 12:40 | « Je peux mettre l'audit détaillé (64 exigences, 48 écarts, taxonomie complète) dans une page à partager si tu veux. » | Pas de réponse. Le rapport est dans `docs/audit-deck-epc2i.md`. |
+| 7 oct., 12:40 | « Je peux mettre l'audit détaillé (64 exigences, 48 écarts, taxonomie complète) dans une page à partager si tu veux. » | Pas de réponse. Le rapport est dans `docs/audit-deck-ged.md`. |
 | 7 oct., 17:33 ; reposée à 18:07, à 23:18 et le 8 oct. à 06:18 | « Pour SharePoint : un fichier par révision, et aucun accès direct des utilisateurs à la bibliothèque ? » | Répondue pour le moment le 2 novembre 2026 : pas de SharePoint, fichiers sur notre serveur (D-28). |
 | 7 oct., 23:18 ; 8 oct., 06:18 | Arbitrages du registre, organigramme, branchements réels de Keystone, de Vigie et d'Entra ID | En attente (O-04, O-05, T-01). |
 | 8 oct., 07:09 et 07:36 | Tester soi-même, dans la fenêtre de l'app Mac, le dépôt d'un fichier et un téléchargement | Pas de retour (T-02). |
@@ -1312,7 +1312,7 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
     l'utilisateur n'a pas choisi de type, choisir un modèle prend son premier type cible ; tant qu'il n'a pas choisi de
     modèle, le premier modèle du type est proposé ;
   - **non fait** : exclure le sous-type « Formulaire » de la liste des modèles (FRM couvre formulaires vierges et
-    modèles), modèle par défaut par type dans le registre ; les vrais modèles EPC2I restent à fournir (G06). Démo :
+    modèles), modèle par défaut par type dans le registre ; les vrais modèles de l'entreprise restent à fournir (G06). Démo :
     PV, procédure (PRO, MOP), rapport d'incident (RSQ) et compte rendu (MIN) rattachés.
 - **Conservation par document : date d'événement, dérogation, répercussion de la règle du type** (points 7 et 18 de
   `docs/reste-a-faire.md`, D-20, 17 octobre ; durées (O-07) et sort final à échéance (M03) non décidés) :
@@ -1722,7 +1722,7 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
 ## Ce qui est explicitement hors périmètre
 
 - **Power Automate et Power Apps** : on ne s'en sert pas.
-  - Les circuits tournent dans Codex, et Codex est l'application « GED EPC2I » (D-06).
+  - Les circuits tournent dans Codex, et Codex est l'application « GED du groupe » (D-06).
   - Le deck montre aussi les logos de Power BI, Power Pages et Power Virtual Agents. Il ne décrit aucun usage, et
     l'audit ne les a pas retenus comme exigences.
 - **SharePoint comme base ou source de vérité** : SharePoint ne porte ni métadonnées, ni banque de termes, ni droits,
@@ -1742,11 +1742,11 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
 ## Réponses aux questions que la session cloud a reposées
 
 ### « Le deck et l'audit n'ont pas survécu au transfert »
-Le deck est versionné dans `docs/sources/creation-ged-epc2i.pptx`, et sa transcription dans
-`docs/sources/deck-ged-epc2i.md`. Il n'y a pas à redemander le fichier ni à relancer l'audit avant de toucher au code :
+Le deck est versionné dans `docs/sources/creation-ged.pptx`, et sa transcription dans
+`docs/sources/deck-ged.md`. Il n'y a pas à redemander le fichier ni à relancer l'audit avant de toucher au code :
 - les 10 questions de l'audit ont reçu leurs réponses (D-06 à D-21) ;
 - le modèle qui en découle est implémenté (`docs/modele-cible.md`, `docs/avancement-v2.md`) ;
-- le rapport d'audit est dans `docs/audit-deck-epc2i.md`.
+- le rapport d'audit est dans `docs/audit-deck-ged.md`.
 
 ### Pile Microsoft 365 ou Codex autonome ?
 **Tranché le 7 octobre (D-06) : Codex autonome.**
@@ -1811,7 +1811,7 @@ Les valeurs de la maquette n'existent plus dans le modèle v2 :
   - Question ouverte O-03.
 - **Réponse partielle du 15 octobre 2026** (décision M-01, consignée dans le dépôt Matrix) : « Oui, je valide le
   format postgreSQL commun avec un schema par outil ».
-  - Codex rejoint la base commune `epc2i`, dans son schéma `codex`, avec son rôle `codex_app`.
+  - Codex rejoint la base commune de la suite (`atrium`), dans son schéma `codex`, avec son rôle `codex_app`.
   - Aucun outil ne lit le schéma d'un autre : la liaison avec Keystone reste une API.
   - Le contrat de dépôt et de synchronisation des documents projet reste ouvert (O-03).
 

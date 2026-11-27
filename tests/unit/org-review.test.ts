@@ -11,11 +11,11 @@ type Row = Partial<Record<(typeof ORG_COLUMNS)[number], string>>;
 const file = (rows: Row[], header: string[] = HEADER) => csv([header, ...rows.map((r) => header.map((h) => r[h as keyof Row] ?? ''))]);
 
 const VALID: Row[] = [
-  { Nature: 'département', Code: 'DGE', 'Libellé FR': 'Direction générale', 'Libellé EN': 'Executive management', Société: 'EPC2I SAS', Responsable: 'adupont' },
-  { Nature: 'département', Code: 'QAL', 'Libellé FR': 'Qualité', Société: 'EPC2I SAS' },
-  { Nature: 'site', Code: 'lyon', 'Libellé FR': 'Lyon', Société: 'EPC2I SAS' },
+  { Nature: 'département', Code: 'DGE', 'Libellé FR': 'Direction générale', 'Libellé EN': 'Executive management', Société: 'Entreprise SAS', Responsable: 'adupont' },
+  { Nature: 'département', Code: 'QAL', 'Libellé FR': 'Qualité', Société: 'Entreprise SAS' },
+  { Nature: 'site', Code: 'lyon', 'Libellé FR': 'Lyon', Société: 'Entreprise SAS' },
   { Nature: 'personne', Code: 'adupont', Nom: 'A. Dupont', 'Libellé FR': 'Directeur', Département: 'DGE', Site: 'lyon', 'Rôle Codex': 'validateur' },
-  { Nature: 'personne', Code: 'bmartin', Nom: 'B. Martin', Département: 'QAL', Société: 'EPC2I Services' },
+  { Nature: 'personne', Code: 'bmartin', Nom: 'B. Martin', Département: 'QAL', Société: 'Entreprise Services' },
 ];
 
 describe('checkOrgCsv', () => {
@@ -26,7 +26,7 @@ describe('checkOrgCsv', () => {
     expect(r.departments[1].labelEn).toBe('Qualité');
     expect(r.sites.map((s) => s.key)).toEqual(['lyon']);
     expect(r.people.map((p) => p.id)).toEqual(['adupont', 'bmartin']);
-    expect(r.companies).toEqual(['EPC2I SAS', 'EPC2I Services']);
+    expect(r.companies).toEqual(['Entreprise SAS', 'Entreprise Services']);
     expect(orgReportLines(r, 'org.csv').join('\n')).toContain('Aucune erreur, aucun doublon, aucune collision.');
   });
 

@@ -4,10 +4,18 @@ Codex garde sa base dans PGlite (PostgreSQL embarqué, dossier `CODEX_DATA_DIR/p
 développement, la démonstration et l'app Mac. Avec `DATABASE_URL`, il travaille sur un serveur PostgreSQL à la place
 (point 51 de [reste-a-faire.md](reste-a-faire.md), 18 octobre 2026). **Décision M-01 du 15 octobre 2026** : « Oui, je
 valide le format postgreSQL commun avec un schema par outil » ([decisions.md](decisions.md)) : en ligne, ce serveur
-est le serveur commun EPC2I (base `epc2i`, un schéma par outil), dont le socle est dans le dépôt Matrix
+est le serveur commun de la suite Atrium (base `atrium`, un schéma par outil), dont le socle est dans le dépôt Matrix
 (`infra/postgres/README.md`, plan `docs/architecture-postgres.md`). L'hébergement lui-même (M22) et le contrat de
 liaison avec Keystone (reste de O-03) ne sont pas décidés. Les choix appliqués sont listés dans
 [decisions.md](decisions.md), « Choix de l'assistant non validés explicitement ».
+
+**Renommage du serveur commun (suite Atrium, 27 novembre 2026).** Matrix renomme le serveur en une seule opération
+(runbook de la PR #107 du dépôt Matrix) : base `epc2i` → `atrium`, hôte `epc2i-postgres` → `atrium-postgres`,
+`/etc/epc2i/` → `/etc/atrium/`. Codex n'écrit ni le nom de la base ni l'hôte dans son code : il les lit dans
+`DATABASE_URL` seulement, et aucun contrôle ne porte sur le nom de la base. Avant l'opération, `DATABASE_URL` garde
+`…@epc2i-postgres:5432/epc2i` ; après, l'exploitant la remplace par `…@atrium-postgres:5432/atrium` dans le fichier
+d'environnement (`/etc/atrium/codex.env`, ou la variable de Coolify), puis redémarre Codex. Rien d'autre ne change
+(schéma `codex`, rôle `codex_app`, migrations). Les exemples de ce dépôt donnent déjà le nom cible.
 
 Code : `src/db/sql-client.ts` (connexion brute commune aux deux moteurs, pool de connexions), `src/db/index.ts`
 (`openDb`, fonctions et déclencheurs, remplissage), `src/db/migrations.ts` (disposition de la base, migrateur, reprise
@@ -44,11 +52,11 @@ d'une base ancienne). Mesures : [performances.md](performances.md).
 ## Activer
 
 ```bash
-DATABASE_URL=postgres://codex_app:motdepasse@hote:5432/epc2i npm run start
+DATABASE_URL=postgres://codex_app:motdepasse@hote:5432/atrium npm run start
 ```
 
 - **Serveur** : PostgreSQL **16** au moins (refusé sinon, avec un message), compilé avec ICU (collations `codex_fr`
-  et `und-x-icu`). Le serveur commun EPC2I est en PostgreSQL 16 (décision P-01 de Matrix, 22 octobre 2026) ; 17 et 18
+  et `und-x-icu`). Le serveur commun de la suite Atrium est en PostgreSQL 16 (décision P-01 de Matrix, 22 octobre 2026) ; 17 et 18
   conviennent aussi. Voir « Repli de la recherche » pour ce qui change selon la version.
 - **Schéma et rôle** : sur le serveur commun, le socle Matrix crée le schéma `codex`, propriété de `codex_app`, avec
   `search_path=codex` et `idle_in_transaction_session_timeout=5min` pour ce rôle (`init/02-schemas.sql`). Sur un
@@ -206,7 +214,7 @@ Le serveur commun reste en PostgreSQL 16 (décision P-01 de Matrix) ; Codex exig
 
 Les deux appliquent la correspondance de casse complète d'Unicode avec le sigma final, comme `toLowerCase` de
 JavaScript (`fold`, `src/lib/search.ts`). `pg_c_utf8` (PostgreSQL 17) et les collations libc (`C.UTF-8` de la base
-`epc2i`) font une correspondance un pour un sans sigma final : jamais utilisées.
+commune) font une correspondance un pour un sans sigma final : jamais utilisées.
 
 Vérifié sur l'image du socle Matrix (PostgreSQL 16.15, ICU 72), par `tests/integration/search-sql.test.ts` et une
 comparaison de tous les points de code attribués par Node 22 (Unicode 16.0) : accents français, œ/Œ, æ/Æ, ß et ẞ (→ ß),
@@ -314,7 +322,7 @@ CODEX_TEST_DATABASE_URL=postgres://postgres@127.0.0.1:5432/postgres npm run test
   PostgreSQL 16.15, ICU 72) : 109 fichiers, 1 464 tests réussis, 3 sautés (dont le tri `codex_fr`) ; quatre tests
   PGlite de sauvegarde et d'intégrité ont dépassé leur délai de 15 s sur la machine chargée d'un premier passage et
   passent seuls. `postgres:18-bookworm` (18, ICU 72) : 109 fichiers, 1 464 réussis, 3 sautés. Puis
-  `npm run db:migrate` en `codex_app` sur la base `epc2i` du socle : `0000_init` et `0001_partage` appliquées,
+  `npm run db:migrate` en `codex_app` sur la base commune du socle : `0000_init` et `0001_partage` appliquées,
   `codex_fold` posé avec `"und-x-icu"`, `partage/90-droits.sql` rejoué : `droits.verifier()` sans erreur.
 - Essai du 22 octobre 2026, lot 11 (PostgreSQL 18.3, rôles du socle) : 109 fichiers, 1 464 tests réussis, 3 sautés.
   Le socle Matrix lui-même (`init/01` à `03`, rejoués par un petit lecteur des commandes de psql, faute de psql),

@@ -20,8 +20,14 @@ if pgrep -f "$APP/Contents/MacOS/Codex" >/dev/null || curl -s -o /dev/null --max
   echo "Codex est ouvert (ou son serveur tourne sur le port 3110) : quittez-le puis relancez npm run app." >&2
   exit 1
 fi
-# Only ever delete bundles that are this app.
-ours() { [[ "$(plutil -extract CFBundleIdentifier raw "$1/Contents/Info.plist" 2>/dev/null)" == "com.epc2i.codex" ]]; }
+# Only ever delete bundles that are this app: com.atrium.codex, or the bundle id of the builds made before the Atrium
+# rename (27 Nov 2026), still recognised so that an old install is replaced (transition, to drop with Norma 4.0).
+LEGACY_BUNDLE_ID="com.$(printf 'e%s' 'pc2i').codex"
+ours() {
+  local id
+  id="$(plutil -extract CFBundleIdentifier raw "$1/Contents/Info.plist" 2>/dev/null)"
+  [[ "$id" == "com.atrium.codex" || "$id" == "$LEGACY_BUNDLE_ID" ]]
+}
 OUT="desktop/dist/Codex.app"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -45,7 +51,7 @@ PLIST="$OUT/Contents/Info.plist"
 plutil -create xml1 "$PLIST"
 plutil -insert CFBundleName -string "Codex" "$PLIST"
 plutil -insert CFBundleDisplayName -string "Codex" "$PLIST"
-plutil -insert CFBundleIdentifier -string "com.epc2i.codex" "$PLIST"
+plutil -insert CFBundleIdentifier -string "com.atrium.codex" "$PLIST"
 plutil -insert CFBundleExecutable -string "Codex" "$PLIST"
 plutil -insert CFBundleIconFile -string "Codex" "$PLIST"
 plutil -insert CFBundlePackageType -string "APPL" "$PLIST"
@@ -54,7 +60,7 @@ plutil -insert CFBundleVersion -string "$(date +%Y%m%d%H%M)" "$PLIST"
 plutil -insert LSMinimumSystemVersion -string "13.0" "$PLIST"
 plutil -insert LSApplicationCategoryType -string "public.app-category.productivity" "$PLIST"
 plutil -insert NSHighResolutionCapable -bool true "$PLIST"
-plutil -insert NSHumanReadableCopyright -string "Système EPC2i — GED Groupe" "$PLIST"
+plutil -insert NSHumanReadableCopyright -string "Suite Atrium — GED" "$PLIST"
 plutil -insert NSAppTransportSecurity -dictionary "$PLIST"
 plutil -insert NSAppTransportSecurity.NSAllowsLocalNetworking -bool true "$PLIST"
 plutil -insert CodexProjectDir -string "$PROJECT" "$PLIST"

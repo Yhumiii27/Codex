@@ -1,12 +1,12 @@
-# Transcription du deck « Création de la GED EPC2I »
+# Transcription du deck « Création de la GED »
 
-> **Source faisant foi : `docs/sources/creation-ged-epc2i.pptx`.** Ce fichier en est une transcription texte, produite pour pouvoir lire le deck sans outil PowerPoint. En cas de doute, c’est le `.pptx` qui fait foi. Rien n’a été résumé ni reformulé.
+> **Source faisant foi : `docs/sources/creation-ged.pptx`.** Ce fichier en est une transcription texte, produite pour pouvoir lire le deck sans outil PowerPoint. En cas de doute, c’est le `.pptx` qui fait foi. Rien n’a été résumé ni reformulé, sauf une chose : le 27 novembre 2026 (suite Atrium, décision du propriétaire), le nom de l’entreprise et de sa filiale a été retiré du `.pptx` comme de cette transcription (titre, masques, thèmes, propriétés du fichier ; « Filiale partenaire » à la place de la filiale) et le logo blanc du groupe (`ppt/media/image2.png`) remplacé par une image transparente de même taille.
 
 ## Fiche de transcription
 
 | Élément | Valeur |
 |---|---|
-| Fichier source | `docs/sources/creation-ged-epc2i.pptx` |
+| Fichier source | `docs/sources/creation-ged.pptx` |
 | Dernière modification enregistrée dans le fichier | 2026-04-14T12:24:43Z |
 | Transcription réalisée le | 2026-10-09 |
 | Diapositives transcrites | 18 (le fichier en déclare 18, dont 0 masquée(s)) |
@@ -31,14 +31,14 @@
 
 ### Éléments répétés par les masques (non transcrits diapositive par diapositive)
 
-Ces éléments sont portés par les masques de diapositive du modèle « EPC 2018 » (formes hors espaces réservés) et sont donc hérités par les diapositives qui utilisent ces masques. Ils ne sont pas répétés dans chaque section ci-dessous.
+Ces éléments sont portés par les masques de diapositive du modèle de présentation de l'entreprise (2018) (formes hors espaces réservés) et sont donc hérités par les diapositives qui utilisent ces masques. Ils ne sont pas répétés dans chaque section ci-dessous.
 
-- `ppt/slideMasters/slideMaster2.xml` (diapositive 1) : textes « LES SYSTÈMES D’AMORCAGE [numéro de diapositive] », « EPC France » ; images `ppt/media/image1.jpeg` (texte alternatif : « Blast.jpg »), `ppt/media/image2.png` (texte alternatif : « logo-epcgroupe-W.png »)
-- `ppt/slideMasters/slideMaster3.xml` (diapositives 2 à 18) : textes « EPC France », « LES SYSTÈMES D’AMORCAGE [numéro de diapositive] » ; images `ppt/media/image2.png` (texte alternatif : « logo-epcgroupe-W.png »)
+- `ppt/slideMasters/slideMaster2.xml` (diapositive 1) : textes « LES SYSTÈMES D’AMORCAGE [numéro de diapositive] », « Filiale partenaire » ; images `ppt/media/image1.jpeg` (texte alternatif : « Blast.jpg »), `ppt/media/image2.png` (texte alternatif : logo du groupe, version blanche)
+- `ppt/slideMasters/slideMaster3.xml` (diapositives 2 à 18) : textes « Filiale partenaire », « LES SYSTÈMES D’AMORCAGE [numéro de diapositive] » ; images `ppt/media/image2.png` (texte alternatif : logo du groupe, version blanche)
 
 ## Table des matières
 
-1. [Diapositive 1 — Création de la GED EPC2I](#diapositive-1)
+1. [Diapositive 1 — Création de la GED](#diapositive-1)
 2. [Diapositive 2 — Pourquoi ? — Qu’est ce qu’une GED ?](#diapositive-2)
 3. [Diapositive 3 — Pourquoi ? — Quel intérêt ?](#diapositive-3)
 4. [Diapositive 4 — Comment ? — Via les outils Microsoft existants](#diapositive-4)
@@ -61,10 +61,10 @@ Ces éléments sont portés par les masques de diapositive du modèle « EPC 201
 
 <a id="diapositive-1"></a>
 
-## Diapositive 1 — Création de la GED EPC2I
+## Diapositive 1 — Création de la GED
 
 <!-- titre : forme « Titre 1 » -->
-**Titre :** Création de la GED EPC2I
+**Titre :** Création de la GED
 
 <!-- texte : forme « Espace réservé du texte 2 » -->
 Pourquoi?
@@ -343,7 +343,7 @@ Les créations / modifications dans l’existant
 L’accès
 
 <!-- texte : forme « ZoneTexte 3 » -->
-L’accès a l’ensemble des documents se fera via l’application commune « GED EPC2I ».
+L’accès a l’ensemble des documents se fera via l’application commune « GED du groupe ».
 
 Des pages dédiées métiers seront disponibles dans l’app pour mettre en avant les filtres principaux liés aux utilisateurs.
 

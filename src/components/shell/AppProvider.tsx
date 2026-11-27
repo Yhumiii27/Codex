@@ -23,7 +23,7 @@ type AppCtx = {
   /** « À traiter » (lib/queries.ts myTodo): the sidebar badge and the bell, the most recent list the shell was given. */
   todo: MyAction[];
   reportTodo: (x: Todo) => void;
-  /** Display read from the epc2i-theme cookie at render (the switch changes it in the browser afterwards). */
+  /** Display read from the atrium-theme cookie at render (the switch changes it in the browser afterwards). */
   theme: Theme;
   /** The five latest entries of the bell's « Activité récente ». */
   recent: Recent[];

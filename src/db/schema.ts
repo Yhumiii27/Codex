@@ -4,7 +4,7 @@ import { boolean, check, date, index, integer, jsonb, pgSchema, primaryKey, seri
 // Data model of the GED — see docs/modele-cible.md.
 
 /**
- * PostgreSQL schema of Codex (decision M-01: one shared EPC2I database, one schema per tool): its tables, functions,
+ * PostgreSQL schema of Codex (decision M-01: one shared Atrium database, one schema per tool): its tables, functions,
  * triggers, collation and the journal of its migrations (codex.__drizzle_migrations), on the shared server and in PGlite
  * alike. The pgSchema object is deliberately not exported: exported, drizzle-kit would start a migration with
  * CREATE SCHEMA, which the codex_app role may not run (the schema is created by the server's setup, in the Matrix

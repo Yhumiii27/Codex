@@ -26,7 +26,7 @@ conservés (PRO, NCR, PID, CER…) ; les types du deck ont reçu un code mnémon
    (fin de programme) : la date n'est pas connue de Codex, la fin de conservation reste donc à calculer. Faut-il un
    déclencheur « fin de programme » et un repli sur la date de création hors projet ?
 4. Livrables client : renseigné pour EXG, MES, REM et les types Keystone. LDC, AVT, DEF, CLO aussi ?
-5. COC n'admet que l'origine externe : EPC2I émet-elle ses propres déclarations CE (intégrateur de machines) ?
+5. COC n'admet que l'origine externe : l'entreprise émet-elle ses propres déclarations CE (intégrateur de machines) ?
 6. Durées à confirmer : RSQ applique 40 ans (DUERP) à toutes les analyses de risques, rapports d'incident et CAPA ;
    RHF applique « départ du salarié + 5 ans » aussi aux supports de formation et fiches de poste.
 7. Doublons du deck conservés : « demande d'achat » (FIN / ADC), « journal de décisions » (GOV / PIL), « RFQ » (COM / RFQ).

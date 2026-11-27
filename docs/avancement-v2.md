@@ -34,7 +34,7 @@ au-delà de trois, cloche, puis **FR | EN au-dessus de sombre | clair**, `PrefsS
 **Norma 1.0.0 et affichage clair (24 novembre 2026).** Copie du socle commun de la suite dans `norma/`
 (`norma.config.json`, `npm run norma:check`, job « Norma » de la CI, `@norma/REGLES.md` en tête de `CLAUDE.md`) ;
 bouton d'affichage sombre / clair à droite du sélecteur FR / EN (`src/components/shell/ThemeToggle.tsx`, cookie
-`epc2i-theme` lu par `src/app/layout.tsx`, `src/lib/theme.ts`), valeurs claires de Norma en fin de
+`atrium-theme` lu par `src/app/layout.tsx`, `src/lib/theme.ts`), valeurs claires de Norma en fin de
 `src/app/nocturne.css`, ombres et textes atténués passés en variables ; `npm run a11y -- --theme light` sans violation,
 rejoué par la CI.
 
@@ -117,7 +117,7 @@ Classé selon ce qui le bloque : le détail est en tête de `docs/reste-a-faire.
   et questions-réponses par IA), tous à valider par l'utilisateur avant de développer, et 17 points annotés avec
   l'attente du marché et une priorité suggérée ; seul écart jugé bloquant pour une mise en service : l'authentification
   réelle (point 93, O-02). Aucun état ne change.
-- **Données de l'utilisateur** : les vrais modèles EPC2I, la date de clôture de l'exercice.
+- **Données de l'utilisateur** : les vrais modèles de l'entreprise, la date de clôture de l'exercice.
 - **App Mac** : les corrections ci-dessous, et le test du dépôt et du téléchargement dans sa fenêtre (T-02), sur
   macOS.
 
