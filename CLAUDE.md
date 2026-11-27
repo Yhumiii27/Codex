@@ -37,7 +37,7 @@ son français dans `src/i18n/fr-help.ts`.
 
 Ces documents sont dans le dépôt : ne redemande pas à l'utilisateur ce qui y figure. Le deck, son audit et les
 décisions ont été produits dans une session locale le 7 octobre 2026 ; **ne relance pas l'audit**. Les questions
-encore ouvertes sont numérotées O-01 à O-11 dans `docs/decisions.md` : on peut les reposer une fois, en citant leur
+encore ouvertes sont numérotées O-01 à O-12 dans `docs/decisions.md` : on peut les reposer une fois, en citant leur
 numéro, sans les trancher à la place de l'utilisateur.
 
 | Fichier | Contenu |

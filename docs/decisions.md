@@ -819,7 +819,8 @@ Ces choix sont appliqués dans le code, mais l'utilisateur ne les a pas confirm�
   - **proposé, non appliqué, à confirmer** : la réservation d'une révision en brouillon (« Réserver » et « Libérer »
     sur la fiche, libération forcée par un gestionnaire documentaire, dépôt refusé à toute autre personne que celle
     qui l'a réservée, mention « Réservé par … »). Elle change la façon de travailler du cercle de rédaction
-    (propriétaire, modificateur désigné, gestionnaires) : elle attend l'accord de l'utilisateur.
+    (propriétaire, modificateur désigné, gestionnaires) : elle attend l'accord de l'utilisateur, posée comme
+    question O-12 le 27 novembre 2026 (options, durée, cas de l'ECO).
 - **Listes filtrées et paginées par la base** (12 octobre ; point 50 de `docs/reste-a-faire.md`) :
   - la recherche, son export, l'explorateur et l'onglet Journal donnent exactement ce que donnait la version en
     mémoire, gardée comme référence des tests, jusque dans les cas limites : une marque d'ordre d'octet en tête d'un
@@ -1840,6 +1841,7 @@ Fiches d'aide à la décision (état du code, options, effort, ce qui deviendrai
 | O-09 | **Propositions de l'assistant à confirmer** : voir « Choix de l'assistant non validés explicitement ». | utilisateur | ce fichier ; `docs/modele-cible.md` §3-4 |
 | O-10 | **ECR/ECO** : quelles étapes, dans un module à créer dans Vigie ? Comment accepter les demandes nées dans Keystone, que le webhook de Codex refuse aujourd'hui ? Faut-il faire pointer vers Vigie le module ECO de Keystone ? | utilisateur (décision) ; dépôts Vigie et Keystone | D-16, D-18 ; `src/server/integrations/vigie/` |
 | O-11 | **Migration** : quels volumes et quels emplacements reprendre, pour l'outil séparé ? | utilisateur | D-21 ; `docs/api.md` (`POST /api/import`) |
+| O-12 | **Réservation d'un brouillon** (point 20, CX-020 ; posée le 27 novembre 2026) : faut-il qu'une personne du cercle de rédaction puisse **réserver** la révision en brouillon d'un document (« Réserver » / « Libérer » sur la fiche, mention « Réservé par … depuis … »), de sorte que **seule elle** puisse y déposer une version de travail tant qu'elle la tient ? Options : **(a) non**, garder la seule détection optimiste en place depuis le 12 octobre (un dépôt fait depuis une vue périmée est refusé, les deux versions restent conservées, D-12) ; **(b) oui, réservation exclusive** : dépôt refusé à toute autre personne, libération par le titulaire, à la demande d'approbation ou de force par un gestionnaire documentaire (motif obligatoire, journalisée) ; **(c) oui, réservation indicative** : la mention s'affiche et prévient, sans refuser le dépôt. Pour (b) et (c), à préciser : durée au-delà de laquelle une réservation tombe d'elle-même (proposition : aucune, libération forcée seulement), et si le modificateur désigné par un ECO peut être écarté par une réservation du propriétaire (proposition : non, l'ECO l'emporte). Sans réponse, rien n'est construit : (b) change la façon de travailler du cercle de rédaction (propriétaire, modificateur désigné, gestionnaires). | utilisateur | « Modifications simultanées » ci-dessus ; `docs/modele-cible.md` §4 et §7 ; `src/lib/concurrency.ts` |
 
 ### Travaux en attente (pas des questions)
 
